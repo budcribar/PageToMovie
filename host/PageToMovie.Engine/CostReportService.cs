@@ -1325,11 +1325,7 @@ public sealed class CostReportService
         for (var i = list.Count - 1; i >= 0; i--)
         {
             var e = list[i];
-            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
-            if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
-            if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
+            if (!IsMatchingVideoTake(e, scene, clip, takeIndex))
                 continue;
             var dict = e.Deserialize<Dictionary<string, object?>>()
                        ?? new Dictionary<string, object?>();
@@ -1338,6 +1334,17 @@ public sealed class CostReportService
             return true;
         }
         return false;
+    }
+
+    private static bool IsMatchingVideoTake(JsonElement e, int scene, int clip, int? takeIndex)
+    {
+        if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) return false;
+        if (!TryGetInt(e, "clip", out var cn) || cn != clip) return false;
+        if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
+            return false;
+        return true;
     }
 
     /// <summary>H1 — next take_index and minutes since last take for scene+clip.</summary>
@@ -1352,28 +1359,31 @@ public sealed class CostReportService
         DateTimeOffset? lastTs = null;
         foreach (var e in raw)
         {
-            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
+            if (!IsMatchingVideoTake(e, scene, clip, takeIndex: null))
                 continue;
-            if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
-            if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
             prior++;
-            if (e.TryGetProperty("ts", out var tsEl) &&
-                tsEl.ValueKind == JsonValueKind.String &&
-                DateTimeOffset.TryParse(
-                    tsEl.GetString(),
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind,
-                    out var parsed) &&
-                (lastTs is null || parsed > lastTs))
-            {
-                lastTs = parsed;
-            }
+            lastTs = LaterTimestamp(e, lastTs);
         }
 
         double? minutes = null;
         if (lastTs is not null)
             minutes = Math.Max(0, (DateTimeOffset.Now - lastTs.Value).TotalMinutes);
         return (prior + 1, minutes);
+    }
+
+    private static DateTimeOffset? LaterTimestamp(JsonElement e, DateTimeOffset? lastTs)
+    {
+        if (!e.TryGetProperty("ts", out var tsEl) ||
+            tsEl.ValueKind != JsonValueKind.String ||
+            !DateTimeOffset.TryParse(
+                tsEl.GetString(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var parsed))
+            return lastTs;
+        if (lastTs is null || parsed > lastTs)
+            return parsed;
+        return lastTs;
     }
 
     public async Task<IReadOnlyList<CostEvent>> GetCostLedgerAsync(

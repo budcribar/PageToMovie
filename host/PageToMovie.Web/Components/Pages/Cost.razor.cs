@@ -164,33 +164,51 @@ public partial class Cost : IAsyncDisposable
     {
         try
         {
-            var focus = StudioDeepLinks.QueryValue(Nav, "focus");
-            if (focus is "cost" or DurationFocus or "both" or CraftFocus)
-                _editFocus = focus;
-
-            var phase = StudioDeepLinks.QueryValue(Nav, "phase");
-            if (string.IsNullOrWhiteSpace(phase))
-            {
-                // ?focus= alone opens shaping / craft
-                if (_editFocus is "cost" or DurationFocus or "both")
-                    _phase = DecisionPhase.Shaping;
-                else if (_editFocus == CraftFocus)
-                    _phase = DecisionPhase.EditFocus;
-                return;
-            }
-            if (phase.Equals("edit", StringComparison.OrdinalIgnoreCase))
-                _phase = DecisionPhase.EditFocus;
-            else if (phase.Equals("shape", StringComparison.OrdinalIgnoreCase)
-                     || phase.Equals("shaping", StringComparison.OrdinalIgnoreCase))
-                _phase = DecisionPhase.Shaping;
-            else if (phase.Equals("confirm", StringComparison.OrdinalIgnoreCase)
-                     || phase.Equals(GeneratePath, StringComparison.OrdinalIgnoreCase))
-                _phase = DecisionPhase.ConfirmGenerate;
-
-            if (_phase == DecisionPhase.Shaping && _editFocus is null or CraftFocus)
-                _editFocus = "both";
+            ApplyFocusFromQuery();
+            ApplyPhaseFromQuery();
         }
         catch { /* ignore */ }
+    }
+
+    private void ApplyFocusFromQuery()
+    {
+        var focus = StudioDeepLinks.QueryValue(Nav, "focus");
+        if (focus is "cost" or DurationFocus or "both" or CraftFocus)
+            _editFocus = focus;
+    }
+
+    private void ApplyPhaseFromQuery()
+    {
+        var phase = StudioDeepLinks.QueryValue(Nav, "phase");
+        if (string.IsNullOrWhiteSpace(phase))
+        {
+            ApplyPhaseFromFocusAlone();
+            return;
+        }
+        ApplyNamedPhase(phase);
+        if (_phase == DecisionPhase.Shaping && _editFocus is null or CraftFocus)
+            _editFocus = "both";
+    }
+
+    private void ApplyPhaseFromFocusAlone()
+    {
+        // ?focus= alone opens shaping / craft
+        if (_editFocus is "cost" or DurationFocus or "both")
+            _phase = DecisionPhase.Shaping;
+        else if (_editFocus == CraftFocus)
+            _phase = DecisionPhase.EditFocus;
+    }
+
+    private void ApplyNamedPhase(string phase)
+    {
+        if (phase.Equals("edit", StringComparison.OrdinalIgnoreCase))
+            _phase = DecisionPhase.EditFocus;
+        else if (phase.Equals("shape", StringComparison.OrdinalIgnoreCase)
+                 || phase.Equals("shaping", StringComparison.OrdinalIgnoreCase))
+            _phase = DecisionPhase.Shaping;
+        else if (phase.Equals("confirm", StringComparison.OrdinalIgnoreCase)
+                 || phase.Equals(GeneratePath, StringComparison.OrdinalIgnoreCase))
+            _phase = DecisionPhase.ConfirmGenerate;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -353,13 +371,21 @@ public partial class Cost : IAsyncDisposable
             || string.Equals(_report.ClipSource, "blueprint", StringComparison.OrdinalIgnoreCase)
             || string.Equals(_report.ClipSource, "remaining", StringComparison.OrdinalIgnoreCase));
 
-    private string EstimateBasisLabel =>
-        _report is null ? "—"
-        : string.Equals(_report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase) ? "remaining (on disk + missing)"
-        : HasShotPlan && string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase) ? "shot plan"
-        : string.Equals(_report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase) ? "screenplay (projected)"
-        : string.IsNullOrWhiteSpace(_report.EstimateBasis) ? "projected"
-        : _report.EstimateBasis;
+    private string EstimateBasisLabel => FormatEstimateBasisLabel(_report, HasShotPlan);
+
+    private static string FormatEstimateBasisLabel(CostReport? report, bool hasShotPlan)
+    {
+        if (report is null) return "—";
+        if (string.Equals(report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase))
+            return "remaining (on disk + missing)";
+        if (hasShotPlan && string.Equals(report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase))
+            return "shot plan";
+        if (string.Equals(report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase))
+            return "screenplay (projected)";
+        if (string.IsNullOrWhiteSpace(report.EstimateBasis))
+            return "projected";
+        return report.EstimateBasis;
+    }
 
     private string EstimateConfidenceLabel =>
         _report?.EstimateConfidence switch
@@ -509,26 +535,33 @@ public partial class Cost : IAsyncDisposable
         var uid = (Session.UserId ?? "").Trim();
         if (string.IsNullOrEmpty(uid)) uid = "local";
 
-        var acl = await Engine.GetProjectAclAsync(_projectId);
-        if (acl is not null)
-        {
-            if (string.Equals(acl.OwnerUserId, uid, StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(acl.OwnerUserId))
-                _collabRole = CollabRole.Owner;
-            else if (acl.Editors.Any(e => string.Equals(e, uid, StringComparison.OrdinalIgnoreCase)))
-                _collabRole = CollabRole.Editor;
-            else if (acl.Viewers.Any(v => string.Equals(v, uid, StringComparison.OrdinalIgnoreCase)))
-                _collabRole = CollabRole.Viewer;
-            else
-                // Shared list membership may lag; treat as viewer-safe default if not listed
-                _collabRole = string.IsNullOrWhiteSpace(acl.OwnerUserId) ? CollabRole.Owner : CollabRole.Viewer;
-        }
-        else
+        ApplyCollabRole(await Engine.GetProjectAclAsync(_projectId), uid);
+        await ApplyScriptLeaseAsync();
+        await ApplyBlockingJobAsync();
+    }
+
+    private void ApplyCollabRole(ProjectAclClientDto? acl, string uid)
+    {
+        if (acl is null)
         {
             // Solo / ACL unavailable — full Owner powers (I1 soft fail-open)
             _collabRole = CollabRole.Owner;
+            return;
         }
+        if (string.Equals(acl.OwnerUserId, uid, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(acl.OwnerUserId))
+            _collabRole = CollabRole.Owner;
+        else if (acl.Editors.Any(e => string.Equals(e, uid, StringComparison.OrdinalIgnoreCase)))
+            _collabRole = CollabRole.Editor;
+        else if (acl.Viewers.Any(v => string.Equals(v, uid, StringComparison.OrdinalIgnoreCase)))
+            _collabRole = CollabRole.Viewer;
+        else
+            // Shared list membership may lag; treat as viewer-safe default if not listed
+            _collabRole = string.IsNullOrWhiteSpace(acl.OwnerUserId) ? CollabRole.Owner : CollabRole.Viewer;
+    }
 
+    private async Task ApplyScriptLeaseAsync()
+    {
         // I3: script / plan lease
         var scriptLease = await Engine.GetProjectLeaseAsync(_projectId, "script");
         if (scriptLease is not null
@@ -537,26 +570,29 @@ public partial class Cost : IAsyncDisposable
         {
             _scriptLeaseHolder = scriptLease.HolderUserId;
         }
+    }
 
+    private async Task ApplyBlockingJobAsync()
+    {
         // I2: job service — any active full-film-ish job on this project
         var jobs = await Engine.GetJobsAsync(mine: false, projectId: _projectId);
         var active = jobs?.Jobs?
-            .Where(j =>
-            {
-                var st = (j.Status ?? "").Trim().ToLowerInvariant();
-                if (st is not ("running" or "queued")) return false;
-                var k = (j.Kind ?? "").Trim().ToLowerInvariant();
-                // Full-movie / pipeline blockers (not single-scene edits)
-                return k is "batch" or "stage2" or "stage1" or "book_import" or "book_prepare"
-                    or "cast-extract" or "speak-batch";
-            })
+            .Where(IsBlockingFullFilmJob)
             .OrderByDescending(j => j.StartedAt ?? DateTimeOffset.MinValue)
             .FirstOrDefault();
-        if (active is not null)
-        {
-            _blockingJobKind = active.Kind ?? "job";
-            _blockingJobId = active.JobId;
-        }
+        if (active is null) return;
+        _blockingJobKind = active.Kind ?? "job";
+        _blockingJobId = active.JobId;
+    }
+
+    private static bool IsBlockingFullFilmJob(JobSnapshot j)
+    {
+        var st = (j.Status ?? "").Trim().ToLowerInvariant();
+        if (st is not ("running" or "queued")) return false;
+        var k = (j.Kind ?? "").Trim().ToLowerInvariant();
+        // Full-movie / pipeline blockers (not single-scene edits)
+        return k is "batch" or "stage2" or "stage1" or "book_import" or "book_prepare"
+            or "cast-extract" or "speak-batch";
     }
 
     private async Task ChooseGenerate()
@@ -647,97 +683,108 @@ public partial class Cost : IAsyncDisposable
         _busy = true;
         try
         {
-            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
-            // I4: always re-fetch estimate before navigating
-            await LoadAsync();
-            if (_report is null)
-            {
-                _error ??= "Could not refresh the estimate. Check your connection and try again.";
-                return;
-            }
-            _confirmEstimateSnapshot = DisplayEstimateUsd;
-
-            // I3 PlanBusy
-            if (PlanBusy)
-            {
-                _collabNote = $"PlanBusy: {_scriptLeaseHolder} is editing the screenplay/plan. Wait until they finish, then try again. You can still generate unlocked scenes on Film.";
-                return;
-            }
-            // I2 GeneratingBusy
-            if (GeneratingBusy)
-            {
-                _collabNote = $"GeneratingBusy: a {_blockingJobKind} job is already running on this project. Monitor it instead of starting another full pass.";
-                return;
-            }
-
+            if (!await TryPrepareConfirmGenerateAsync()) return;
             _preferPath = GeneratePath;
             await PersistPrefAsync(PreferPathKey, GeneratePath);
-
-            // F1/F4: when shot plan ready, ensure looks then resumable fill-holes + Film
-            if (ActiveProject.CanScenes && !GeneratingBusy)
-            {
-                try
-                {
-                    // North Star: used cast/place plates before video spend (skip already locked).
-                    try
-                    {
-                        await Engine.StartPlanLooksAsync(new StartPlanLooksRequest
-                        {
-                            ProjectId = _projectId,
-                            Count = 3,
-                            SkipAlreadyLocked = true,
-                            IncludeCast = true,
-                            IncludeLocations = true,
-                        });
-                    }
-                    catch
-                    {
-                        // Best-effort — still generate clips if looks queue fails
-                    }
-
-                    // Chain through shots page so we wait for plan_looks (if running) then fill-holes.
-                    var resQ = string.IsNullOrWhiteSpace(_draftRes)
-                        ? ""
-                        : $"&res={Uri.EscapeDataString(_draftRes)}";
-                    Nav.NavigateTo($"adaptation/shots?from=decision&autoGen=1{resQ}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _collabNote = "Could not auto-start generate: " + ex.Message + " — open Film to generate.";
-                }
-            }
-
-            // B6: no shot plan yet — start Stage‑2 then chain fill-holes on the shots page
-            if (!ActiveProject.CanScenes && ActiveProject.CanEstimate && !GeneratingBusy)
-            {
-                try
-                {
-                    await Engine.StartStage2Async(new StartStage2Request
-                    {
-                        ProjectId = _projectId,
-                        Scenes = "all",
-                        Resolution = _draftRes,
-                    });
-                    var resQ = string.IsNullOrWhiteSpace(_draftRes)
-                        ? ""
-                        : $"&res={Uri.EscapeDataString(_draftRes)}";
-                    Nav.NavigateTo($"adaptation/shots?from=decision&autoGen=1{resQ}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _collabNote = "Could not start shot plan: " + ex.Message + " — open Shot plan to build it, then Film.";
-                    Nav.NavigateTo(ResolveGenerateHref());
-                    return;
-                }
-            }
-
+            if (await TryNavigateFillHolesAsync()) return;
+            if (await TryNavigateStage2ThenFillAsync()) return;
             Nav.NavigateTo(ResolveGenerateHref());
         }
         finally
         {
             _busy = false;
+        }
+    }
+
+    private async Task<bool> TryPrepareConfirmGenerateAsync()
+    {
+        try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
+        // I4: always re-fetch estimate before navigating
+        await LoadAsync();
+        if (_report is null)
+        {
+            _error ??= "Could not refresh the estimate. Check your connection and try again.";
+            return false;
+        }
+        _confirmEstimateSnapshot = DisplayEstimateUsd;
+
+        // I3 PlanBusy
+        if (PlanBusy)
+        {
+            _collabNote = $"PlanBusy: {_scriptLeaseHolder} is editing the screenplay/plan. Wait until they finish, then try again. You can still generate unlocked scenes on Film.";
+            return false;
+        }
+        // I2 GeneratingBusy
+        if (GeneratingBusy)
+        {
+            _collabNote = $"GeneratingBusy: a {_blockingJobKind} job is already running on this project. Monitor it instead of starting another full pass.";
+            return false;
+        }
+        return true;
+    }
+
+    private string ShotsAutoGenHref()
+    {
+        var resQ = string.IsNullOrWhiteSpace(_draftRes)
+            ? ""
+            : $"&res={Uri.EscapeDataString(_draftRes)}";
+        return $"adaptation/shots?from=decision&autoGen=1{resQ}";
+    }
+
+    private async Task<bool> TryNavigateFillHolesAsync()
+    {
+        // F1/F4: when shot plan ready, ensure looks then resumable fill-holes + Film
+        if (!ActiveProject.CanScenes || GeneratingBusy) return false;
+        try
+        {
+            // North Star: used cast/place plates before video spend (skip already locked).
+            try
+            {
+                await Engine.StartPlanLooksAsync(new StartPlanLooksRequest
+                {
+                    ProjectId = _projectId,
+                    Count = 3,
+                    SkipAlreadyLocked = true,
+                    IncludeCast = true,
+                    IncludeLocations = true,
+                });
+            }
+            catch
+            {
+                // Best-effort — still generate clips if looks queue fails
+            }
+
+            // Chain through shots page so we wait for plan_looks (if running) then fill-holes.
+            Nav.NavigateTo(ShotsAutoGenHref());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _collabNote = "Could not auto-start generate: " + ex.Message + " — open Film to generate.";
+            return false;
+        }
+    }
+
+    private async Task<bool> TryNavigateStage2ThenFillAsync()
+    {
+        // B6: no shot plan yet — start Stage‑2 then chain fill-holes on the shots page
+        if (ActiveProject.CanScenes || !ActiveProject.CanEstimate || GeneratingBusy) return false;
+        try
+        {
+            await Engine.StartStage2Async(new StartStage2Request
+            {
+                ProjectId = _projectId,
+                Scenes = "all",
+                Resolution = _draftRes,
+            });
+            Nav.NavigateTo(ShotsAutoGenHref());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _collabNote = "Could not start shot plan: " + ex.Message + " — open Shot plan to build it, then Film.";
+            Nav.NavigateTo(ResolveGenerateHref());
+            return true;
         }
     }
 
