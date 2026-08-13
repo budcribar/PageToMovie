@@ -20,79 +20,100 @@ public static class ProjectCostAggregator
         CancellationToken ct = default)
     {
         var summary = new CostSummaryDto { ProjectId = projectId };
+        var counts = await CountProjectMediaAsync(projectId, projectsRoot, ct).ConfigureAwait(false);
+        ApplyEstimates(summary, counts);
+        ApplyActuals(summary, projectId, ledger);
+        ApplyLines(summary);
+        return summary;
+    }
 
-        var projectDir = Path.Combine(projectsRoot, projectId);
-        var projectJsonPath = Path.Combine(projectDir, "project.json");
+    private sealed class MediaCounts
+    {
+        public int SceneCount;
+        public int ClipCount;
+        public int ClipsWithVideo;
+        public int ClipsWithAudio;
+    }
 
-        var sceneCount = 0;
-        var clipCount = 0;
-        var clipsWithVideo = 0;
-        var clipsWithAudio = 0;
-
-        if (File.Exists(projectJsonPath))
+    private static async Task<MediaCounts> CountProjectMediaAsync(
+        string projectId, string projectsRoot, CancellationToken ct)
+    {
+        var counts = new MediaCounts();
+        var projectJsonPath = Path.Combine(projectsRoot, projectId, "project.json");
+        if (!File.Exists(projectJsonPath)) return counts;
+        try
         {
-            try
-            {
-                var json = await File.ReadAllTextAsync(projectJsonPath, ct).ConfigureAwait(false);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array)
-                {
-                    sceneCount = scenes.GetArrayLength();
-                    foreach (var scene in scenes.EnumerateArray())
-                    {
-                        if (scene.TryGetProperty("clips", out var clips) && clips.ValueKind == JsonValueKind.Array)
-                        {
-                            clipCount += clips.GetArrayLength();
-                            foreach (var clip in clips.EnumerateArray())
-                            {
-                                if (HasMedia(clip, "videoUrl", "video", "hasVideo"))
-                                    clipsWithVideo++;
-                                if (HasMedia(clip, "audioUrl", "audio", "hasAudio"))
-                                    clipsWithAudio++;
-                            }
-                        }
-                        else
-                        {
-                            // Scene without explicit clips — treat as 1 planned clip
-                            clipCount++;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // leave zeros
-            }
+            var json = await File.ReadAllTextAsync(projectJsonPath, ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            CountScenes(doc.RootElement, counts);
+        }
+        catch
+        {
+            // leave zeros
+        }
+        return counts;
+    }
+
+    private static void CountScenes(JsonElement root, MediaCounts counts)
+    {
+        if (!root.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Array)
+            return;
+        counts.SceneCount = scenes.GetArrayLength();
+        foreach (var scene in scenes.EnumerateArray())
+            CountSceneClips(scene, counts);
+    }
+
+    private static void CountSceneClips(JsonElement scene, MediaCounts counts)
+    {
+        if (!scene.TryGetProperty("clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+        {
+            // Scene without explicit clips — treat as 1 planned clip
+            counts.ClipCount++;
+            return;
         }
 
-        // Always populate both estimate line items (even when $0) — this is the cost split contract.
-        summary.ScenesTotal = sceneCount;
-        summary.ClipsTotal = Math.Max(clipCount, sceneCount);
-        summary.ClipsWithVideo = clipsWithVideo;
-        summary.ClipsWithAudio = clipsWithAudio;
+        counts.ClipCount += clips.GetArrayLength();
+        foreach (var clip in clips.EnumerateArray())
+        {
+            if (HasMedia(clip, "videoUrl", "video", "hasVideo"))
+                counts.ClipsWithVideo++;
+            if (HasMedia(clip, "audioUrl", "audio", "hasAudio"))
+                counts.ClipsWithAudio++;
+        }
+    }
 
-        summary.AdaptationEstimateUsd = Round2(sceneCount * AdaptationUsdPerScene);
+    private static void ApplyEstimates(CostSummaryDto summary, MediaCounts counts)
+    {
+        // Always populate both estimate line items (even when $0) — this is the cost split contract.
+        summary.ScenesTotal = counts.SceneCount;
+        summary.ClipsTotal = Math.Max(counts.ClipCount, counts.SceneCount);
+        summary.ClipsWithVideo = counts.ClipsWithVideo;
+        summary.ClipsWithAudio = counts.ClipsWithAudio;
+        summary.AdaptationEstimateUsd = Round2(counts.SceneCount * AdaptationUsdPerScene);
         summary.VideoEstimateUsd = Round2(summary.ClipsTotal * VideoUsdPerClip + summary.ClipsTotal * AudioUsdPerClip);
         summary.TotalEstimateUsd = Round2(summary.AdaptationEstimateUsd + summary.VideoEstimateUsd);
+    }
 
-        if (ledger != null)
-        {
-            var actual = ledger.GetProjectActual(projectId);
-            summary.AdaptationActualUsd = Round2(actual.AdaptationUsd);
-            summary.VideoActualUsd = Round2(actual.VideoUsd);
-            summary.TotalActualUsd = Round2(actual.AdaptationUsd + actual.VideoUsd);
-            summary.LedgerEntries = actual.EntryCount;
-        }
-        else
+    private static void ApplyActuals(CostSummaryDto summary, string projectId, CostLedgerService? ledger)
+    {
+        if (ledger is null)
         {
             summary.AdaptationActualUsd = 0;
             summary.VideoActualUsd = 0;
             summary.TotalActualUsd = 0;
             summary.LedgerEntries = 0;
+            return;
         }
 
-        // Line items for UI tables / pie charts
+        var actual = ledger.GetProjectActual(projectId);
+        summary.AdaptationActualUsd = Round2(actual.AdaptationUsd);
+        summary.VideoActualUsd = Round2(actual.VideoUsd);
+        summary.TotalActualUsd = Round2(actual.AdaptationUsd + actual.VideoUsd);
+        summary.LedgerEntries = actual.EntryCount;
+    }
+
+    private static void ApplyLines(CostSummaryDto summary)
+    {
         summary.EstimateLines =
         [
             new CostLineDto { Category = "adaptation", Label = "Adaptation (LLM)", Usd = summary.AdaptationEstimateUsd },
@@ -103,8 +124,6 @@ public static class ProjectCostAggregator
             new CostLineDto { Category = "adaptation", Label = "Adaptation (LLM)", Usd = summary.AdaptationActualUsd },
             new CostLineDto { Category = "video", Label = "Video + audio generation", Usd = summary.VideoActualUsd },
         ];
-
-        return summary;
     }
 
     private static bool HasMedia(JsonElement clip, params string[] props)

@@ -178,9 +178,37 @@ public sealed class VoicePreviewService
         if (!_video.IsConfigured)
             throw new InvalidOperationException("Connect service (XAI_API_KEY) for voice preview.");
 
+        var inputs = ResolveVoiceInputs(projectId, charKey, voiceProfile, voiceLabel, displayName, sampleText);
+        if (!force && TryGetCachedPreview(projectId, charKey, inputs, onProgress, out var hit))
+            return hit;
+
+        onProgress?.Invoke(2, 100, "Building film-style voice prompt…");
+        var refPath = TryResolveRefPath(projectId, charKey);
+        var prompt = BuildPreviewPrompt(charKey, inputs, refPath);
+        return await GenerateAndCachePreviewAsync(
+            projectId, charKey, inputs, prompt, refPath, force, onProgress, ct).ConfigureAwait(false);
+    }
+
+    private sealed class VoicePreviewInputs
+    {
+        public required string Profile { get; init; }
+        public required string Label { get; init; }
+        public required string Display { get; init; }
+        public required string Sample { get; init; }
+        public required string Fingerprint { get; init; }
+        public ClipVideoPromptBuilder.CharacterProfile? Prof { get; init; }
+    }
+
+    private VoicePreviewInputs ResolveVoiceInputs(
+        string projectId,
+        string charKey,
+        string? voiceProfile,
+        string? voiceLabel,
+        string? displayName,
+        string? sampleText)
+    {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
         profiles.TryGetValue(charKey, out var prof);
-
         var profile = !string.IsNullOrWhiteSpace(voiceProfile)
             ? voiceProfile.Trim()
             : (prof?.VoiceProfile ?? "").Trim();
@@ -193,62 +221,102 @@ public sealed class VoicePreviewService
         var sample = !string.IsNullOrWhiteSpace(sampleText)
             ? sampleText.Trim()
             : BuildSampleDialogue(display);
-
-        var fingerprint = ComputeFingerprint(charKey, profile, label, sample);
-        var cache = GetCacheInfo(projectId, charKey, profile, label, sample);
-        if (!force && cache is { Exists: true, Matches: true, MediaPath: { Length: > 0 } hit })
+        return new VoicePreviewInputs
         {
-            onProgress?.Invoke(100, 100, "Using cached voice sample");
-            return hit;
-        }
+            Profile = profile,
+            Label = label,
+            Display = display,
+            Sample = sample,
+            Fingerprint = ComputeFingerprint(charKey, profile, label, sample),
+            Prof = prof,
+        };
+    }
 
-        onProgress?.Invoke(2, 100, "Building film-style voice prompt…");
+    private bool TryGetCachedPreview(
+        string projectId,
+        string charKey,
+        VoicePreviewInputs inputs,
+        Action<int, int, string>? onProgress,
+        out string hit)
+    {
+        hit = "";
+        var cache = GetCacheInfo(projectId, charKey, inputs.Profile, inputs.Label, inputs.Sample);
+        if (cache is not { Exists: true, Matches: true, MediaPath: { Length: > 0 } path })
+            return false;
+        onProgress?.Invoke(100, 100, "Using cached voice sample");
+        hit = path;
+        return true;
+    }
 
+    private string? TryResolveRefPath(string projectId, string charKey)
+    {
+        try { return _projects.ResolveCharacterRefPath(projectId, charKey); }
+        catch { return null; }
+    }
+
+    private static string BuildLook(ClipVideoPromptBuilder.CharacterProfile? prof)
+    {
         // Cast profile fields are free-form (admin/AI-authored) — sanitize each leaf value at the
         // source; "look" itself is a structural block (nests VisualLock), so it's wrapped in
         // <Look> as-is below, not re-sanitized (see PromptTags class doc).
+        if (prof is null) return "";
         var look = "";
-        if (prof is not null)
-        {
-            if (!string.IsNullOrWhiteSpace(prof.Description))
-                look += PromptTags.SanitizeValue(prof.Description.Trim());
-            if (!string.IsNullOrWhiteSpace(prof.VisualLock))
-                look += (look.Length > 0 ? " " : "") +
-                    PromptTags.Wrap("VisualLock", PromptTags.SanitizeValue(prof.VisualLock.Trim()));
-        }
+        if (!string.IsNullOrWhiteSpace(prof.Description))
+            look += PromptTags.SanitizeValue(prof.Description.Trim());
+        if (!string.IsNullOrWhiteSpace(prof.VisualLock))
+            look += (look.Length > 0 ? " " : "") +
+                PromptTags.Wrap("VisualLock", PromptTags.SanitizeValue(prof.VisualLock.Trim()));
+        return look;
+    }
 
-        var voiceLock = !string.IsNullOrWhiteSpace(profile)
-            ? " " + PromptTags.Wrap("VoiceLock", $"{charKey}: {PromptTags.SanitizeValue(profile)}")
-            : !string.IsNullOrWhiteSpace(label)
-                ? " " + PromptTags.Wrap("VoiceLock", $"{charKey}: {PromptTags.SanitizeValue(label)}")
-                : " " + PromptTags.Wrap("VoiceLock", $"{charKey}: natural speaking voice for {display}");
+    private static string BuildVoiceLock(string charKey, VoicePreviewInputs inputs)
+    {
+        if (!string.IsNullOrWhiteSpace(inputs.Profile))
+            return " " + PromptTags.Wrap("VoiceLock", $"{charKey}: {PromptTags.SanitizeValue(inputs.Profile)}");
+        if (!string.IsNullOrWhiteSpace(inputs.Label))
+            return " " + PromptTags.Wrap("VoiceLock", $"{charKey}: {PromptTags.SanitizeValue(inputs.Label)}");
+        return " " + PromptTags.Wrap("VoiceLock", $"{charKey}: natural speaking voice for {inputs.Display}");
+    }
 
-        // Optional locked portrait for lip-sync consistency (reference_images)
-        string? refPath = null;
-        try { refPath = _projects.ResolveCharacterRefPath(projectId, charKey); }
-        catch { /* optional */ }
+    private static bool HasRefImage(string? refPath) =>
+        !string.IsNullOrWhiteSpace(refPath) && File.Exists(refPath);
 
+    private static string BuildPreviewPrompt(string charKey, VoicePreviewInputs inputs, string? refPath)
+    {
+        var look = BuildLook(inputs.Prof);
+        var voiceLock = BuildVoiceLock(charKey, inputs);
         var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(refPath) && File.Exists(refPath))
+        if (HasRefImage(refPath))
         {
             sb.AppendLine(
-                $"Close-up of {display} speaking to camera. Match appearance of reference <IMAGE_1> exactly.");
+                $"Close-up of {inputs.Display} speaking to camera. Match appearance of reference <IMAGE_1> exactly.");
         }
         else
         {
             sb.AppendLine(
-                $"Close-up of {display}, adult person speaking directly to camera, neutral soft background, film still.");
+                $"Close-up of {inputs.Display}, adult person speaking directly to camera, neutral soft background, film still.");
         }
 
         if (look.Length > 0)
             sb.AppendLine(PromptTags.Wrap("Look", look));
         sb.AppendLine(PromptTags.Wrap("Audio",
             $"REQUIRED native Grok dialogue. {charKey} ON CAMERA lip-syncs " +
-            $"exactly: \"{PromptTags.SanitizeValue(sample)}\". Other mouths closed. Speech intelligible; never silent.{voiceLock}"));
+            $"exactly: \"{PromptTags.SanitizeValue(inputs.Sample)}\". Other mouths closed. Speech intelligible; never silent.{voiceLock}"));
         sb.AppendLine(
             "Single continuous take, natural performance, no music, no captions, no on-screen text.");
+        return sb.ToString().Trim();
+    }
 
-        var prompt = sb.ToString().Trim();
+    private async Task<string> GenerateAndCachePreviewAsync(
+        string projectId,
+        string charKey,
+        VoicePreviewInputs inputs,
+        string prompt,
+        string? refPath,
+        bool force,
+        Action<int, int, string>? onProgress,
+        CancellationToken ct)
+    {
         var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
         var model = ProjectModelSelection.RequireVideo(cfg, "Voice preview");
         var duration = PreviewDurationSeconds;
@@ -257,47 +325,56 @@ public sealed class VoicePreviewService
         onProgress?.Invoke(8, 100, "Submitting short video for voice sample…");
         _log.LogInformation(
             "Voice preview submit {Char} dur={Dur}s profileLen={P} sampleLen={S} force={F}",
-            charKey, duration, profile.Length, sample.Length, force);
+            charKey, duration, inputs.Profile.Length, inputs.Sample.Length, force);
 
-        var refs = !string.IsNullOrWhiteSpace(refPath) && File.Exists(refPath)
-            ? (IReadOnlyList<string>)new[] { refPath }
-            : null;
-
+        var refs = HasRefImage(refPath) ? (IReadOnlyList<string>)new[] { refPath! } : null;
         var requestId = await _video.SubmitGenerationAsync(
-            prompt,
-            duration,
-            resolution,
-            model,
-            ct,
-            referenceImagePaths: refs);
+            prompt, duration, resolution, model, ct, referenceImagePaths: refs);
 
         onProgress?.Invoke(12, 100, "Generating video audio…");
         await AppendLogSafe(onProgress, 12, "request_id=" + requestId);
 
-        var videoUrl = await _video.PollForVideoUrlAsync(
-            requestId,
-            msg =>
-            {
-                // "status=pending (42%)" → map into 12–85
-                var pct = TryParseGrokProgress(msg);
-                var mapped = pct is >= 0 and <= 100
-                    ? 12 + (int)Math.Round(pct.Value * 0.73)
-                    : 40;
-                onProgress?.Invoke(Math.Clamp(mapped, 12, 85), 100, msg);
-            },
-            ct);
+        var videoUrl = await _video.PollForVideoUrlAsync(requestId, msg => ReportPollProgress(onProgress, msg), ct);
+        return await DownloadPreviewAsync(projectId, charKey, inputs, videoUrl, duration, onProgress, ct)
+            .ConfigureAwait(false);
+    }
 
+    private static void ReportPollProgress(Action<int, int, string>? onProgress, string msg)
+    {
+        // "status=pending (42%)" → map into 12–85
+        var pct = TryParseGrokProgress(msg);
+        var mapped = pct is >= 0 and <= 100
+            ? 12 + (int)Math.Round(pct.Value * 0.73)
+            : 40;
+        onProgress?.Invoke(Math.Clamp(mapped, 12, 85), 100, msg);
+    }
+
+    private async Task<string> DownloadPreviewAsync(
+        string projectId,
+        string charKey,
+        VoicePreviewInputs inputs,
+        string videoUrl,
+        int duration,
+        Action<int, int, string>? onProgress,
+        CancellationToken ct)
+    {
         onProgress?.Invoke(88, 100, "Downloading sample…");
-        var dir = GetPreviewDir(projectId);
-        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(GetPreviewDir(projectId));
         var mp4Path = GetMp4Path(projectId, charKey);
         var metaPath = GetMetaPath(projectId, charKey);
 
         await _video.DownloadToFileAsync(videoUrl, mp4Path, ct);
-
         if (!File.Exists(mp4Path) || new FileInfo(mp4Path).Length < 512)
             throw new InvalidOperationException("Voice sample download produced empty file.");
 
+        TryDeleteLegacyMp3(projectId, charKey);
+        await WritePreviewMetaAsync(metaPath, charKey, inputs, duration, ct).ConfigureAwait(false);
+        onProgress?.Invoke(100, 100, "Voice sample ready");
+        return mp4Path;
+    }
+
+    private void TryDeleteLegacyMp3(string projectId, string charKey)
+    {
         // Drop legacy MP3 if regenerating so cache resolution prefers the new MP4
         try
         {
@@ -306,27 +383,28 @@ public sealed class VoicePreviewService
                 File.Delete(legacyMp3);
         }
         catch { /* best effort */ }
+    }
 
+    private static Task WritePreviewMetaAsync(
+        string metaPath, string charKey, VoicePreviewInputs inputs, int duration, CancellationToken ct)
+    {
         var meta = new Dictionary<string, object?>
         {
-            ["fingerprint"] = fingerprint,
+            ["fingerprint"] = inputs.Fingerprint,
             ["charKey"] = charKey,
-            ["displayName"] = display,
-            ["voiceProfile"] = profile,
-            ["voiceLabel"] = label,
-            ["sampleText"] = sample,
+            ["displayName"] = inputs.Display,
+            ["voiceProfile"] = inputs.Profile,
+            ["voiceLabel"] = inputs.Label,
+            ["sampleText"] = inputs.Sample,
             ["durationSeconds"] = duration,
             ["generatedAt"] = DateTimeOffset.UtcNow.ToString("O"),
             ["source"] = "video-gen",
             ["format"] = "mp4",
         };
-        await File.WriteAllTextAsync(
+        return File.WriteAllTextAsync(
             metaPath,
             JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }),
             ct);
-
-        onProgress?.Invoke(100, 100, "Voice sample ready");
-        return mp4Path;
     }
 
     /// <summary>Test hook for progress percent parsing.</summary>

@@ -48,64 +48,141 @@ public static class CostCategories
 
         var m = (mode ?? "").Trim().ToLowerInvariant();
         var k = (kind ?? "").Trim().ToLowerInvariant();
+        if (m.Length > 0 && TryResolveFromMode(m, out var fromMode))
+            return fromMode;
+        return ResolveFromKind(k);
+    }
 
-        // Purpose tags win over transport kind when we know them.
-        if (m.Length > 0)
+    private static readonly HashSet<string> ReviewModes = new(StringComparer.Ordinal)
+    {
+        "plate_rank_classify", "dialogue_verify", "dialogue_verification",
+        "clip_auto_review", "clip-auto-review", "movie_auto_review",
+        "movie_review_synthesis", "auto_review",
+    };
+
+    private static readonly HashSet<string> CharacterModes = new(StringComparer.Ordinal)
+    {
+        "cast_from_screenplay", "cast_visual_literalize", "species_kind_classify",
+        "character_emotion_arc_classify", "wardrobe_continuity_classify",
+    };
+
+    private static readonly HashSet<string> ShotPlanModes = new(StringComparer.Ordinal)
+    {
+        "shot_plan_refine_classify", "beat_pacing_classify", "camera_director_classify",
+        "cinematic_lighting_classify", "negative_prompt_classify", "depth_of_field_classify",
+        "color_palette_grading_classify", "silent_beat_classify", "onscreen_cast_classify",
+        "extend_cut_classify",
+    };
+
+    private static readonly HashSet<string> VoiceModes = new(StringComparer.Ordinal)
+    {
+        "voice_clone", "voice_preview", "tts", "dialogue_tts",
+    };
+
+    private static readonly HashSet<string> MusicModes = new(StringComparer.Ordinal)
+    {
+        "ambient_sfx_classify", "sound_design_composer_classify",
+        "music", "bgm", "score", "scene_music",
+    };
+
+    private static readonly HashSet<string> VideoModes = new(StringComparer.Ordinal)
+    {
+        "fresh", "video-extend", "video_extend", "reseed", "extend",
+        "done", "failed", "running", "queued",
+    };
+
+    private static readonly HashSet<string> ReviewKinds = new(StringComparer.Ordinal)
+    {
+        "clip-auto-review", "clip-auto-review-batch", "movie-auto-review",
+        "video_review", "dialogue_verification", "auto_review", "vision",
+    };
+
+    private static readonly HashSet<string> VideoKinds = new(StringComparer.Ordinal)
+    {
+        "video", "video_extend", "video_poll", "film", "clip", "lip_sync",
+    };
+
+    private static readonly HashSet<string> CharacterKinds = new(StringComparer.Ordinal)
+    {
+        "image", "image_edit", "character", "portrait", "plates",
+    };
+
+    private static readonly HashSet<string> MusicKinds = new(StringComparer.Ordinal)
+    {
+        "music", "bgm", "score",
+    };
+
+    private static readonly HashSet<string> VoiceKinds = new(StringComparer.Ordinal)
+    {
+        "audio", "voice", "tts", "voice-preview", "voice_clone", "speech",
+    };
+
+    private static readonly HashSet<string> ScreenplayKinds = new(StringComparer.Ordinal)
+    {
+        "chat", "planning", "script", "screenplay", "ocr",
+        "import", "cast_extract", "shot_plan",
+    };
+
+    /// <summary>Purpose tags win over transport kind when we know them. False = fall through to kind.</summary>
+    private static bool TryResolveFromMode(string m, out string category)
+    {
+        // Automated review / QA (post-generation pickers and Gemini video reviews).
+        if (m.Contains("review", StringComparison.Ordinal) || ReviewModes.Contains(m))
         {
-            // Automated review / QA (post-generation pickers and Gemini video reviews).
-            if (m.Contains("review", StringComparison.Ordinal) ||
-                m is "plate_rank_classify" or "dialogue_verify" or "dialogue_verification"
-                or "clip_auto_review" or "clip-auto-review" or "movie_auto_review"
-                or "movie_review_synthesis" or "auto_review")
-                return Review;
-
-            if (m.StartsWith("book_to_fountain", StringComparison.Ordinal) ||
-                m is "vision_meta_adaptation")
-                return Screenplay;
-
-            if (m is "learning_propose")
-                return Other;
-
-            if (m is "cast_from_screenplay" or "cast_visual_literalize" or "species_kind_classify"
-                or "character_emotion_arc_classify" or "wardrobe_continuity_classify")
-                return Characters;
-
-            // Shot-plan / style classifiers while planning the film (not post-hoc QA).
-            if (m is "shot_plan_refine_classify" or "beat_pacing_classify" or "camera_director_classify"
-                or "cinematic_lighting_classify" or "negative_prompt_classify" or "depth_of_field_classify"
-                or "color_palette_grading_classify" or "silent_beat_classify" or "onscreen_cast_classify"
-                or "extend_cut_classify")
-                return Screenplay;
-
-            if (m is "ambient_sfx_classify" or "sound_design_composer_classify")
-                return Music;
-
-            if (m is "voice_clone" or "voice_preview" or "tts" or "dialogue_tts")
-                return Voice;
-
-            if (m is "music" or "bgm" or "score" or "scene_music")
-                return Music;
-
-            // Video generation modes (not review).
-            if (m is "fresh" or "video-extend" or "video_extend" or "reseed" or "extend"
-                or "done" or "failed" or "running" or "queued")
-                return Video;
+            category = Review;
+            return true;
         }
 
-        return k switch
+        if (m.StartsWith("book_to_fountain", StringComparison.Ordinal) ||
+            m == "vision_meta_adaptation" ||
+            ShotPlanModes.Contains(m))
         {
-            // Post-gen QA jobs often use these kinds (see FilmJobService).
-            "clip-auto-review" or "clip-auto-review-batch" or "movie-auto-review"
-                or "video_review" or "dialogue_verification" or "auto_review" => Review,
-            "video" or "video_extend" or "video_poll" or "film" or "clip" or "lip_sync" => Video,
-            "image" or "image_edit" or "character" or "portrait" or "plates" => Characters,
-            "music" or "bgm" or "score" => Music,
-            "audio" or "voice" or "tts" or "voice-preview" or "voice_clone" or "speech" => Voice,
-            "chat" or "planning" or "script" or "screenplay" or "ocr"
-                or "import" or "cast_extract" or "shot_plan" => Screenplay,
-            // Generic vision: often review frames/clips; import OCR uses chat/ocr kinds above.
-            "vision" => Review,
-            _ => Other,
-        };
+            category = Screenplay;
+            return true;
+        }
+
+        if (m == "learning_propose")
+        {
+            category = Other;
+            return true;
+        }
+
+        if (CharacterModes.Contains(m))
+        {
+            category = Characters;
+            return true;
+        }
+
+        if (MusicModes.Contains(m))
+        {
+            category = Music;
+            return true;
+        }
+
+        if (VoiceModes.Contains(m))
+        {
+            category = Voice;
+            return true;
+        }
+
+        if (VideoModes.Contains(m))
+        {
+            category = Video;
+            return true;
+        }
+
+        category = Other;
+        return false;
+    }
+
+    private static string ResolveFromKind(string k)
+    {
+        if (ReviewKinds.Contains(k)) return Review;
+        if (VideoKinds.Contains(k)) return Video;
+        if (CharacterKinds.Contains(k)) return Characters;
+        if (MusicKinds.Contains(k)) return Music;
+        if (VoiceKinds.Contains(k)) return Voice;
+        if (ScreenplayKinds.Contains(k)) return Screenplay;
+        return Other;
     }
 }

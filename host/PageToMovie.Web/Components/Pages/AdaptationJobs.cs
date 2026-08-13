@@ -27,6 +27,12 @@ public abstract partial class AdaptationPageBase
         /// <summary>True after user hits Cancel — waiters should exit even if the API is dead.</summary>
         public bool ClientCancelRequested { get; private set; }
 
+        private sealed class JobPollState
+        {
+            public string? TrackedId;
+            public int EmptyOrGoneHits;
+        }
+
         public bool JobRunning =>
             !ClientCancelRequested &&
             (string.Equals(Job?.Status, JobStatusRunning, StringComparison.OrdinalIgnoreCase) ||
@@ -197,132 +203,166 @@ public abstract partial class AdaptationPageBase
             _pollCts = new CancellationTokenSource();
             var ct = _pollCts.Token;
             var trackedId = Job?.JobId;
-            var emptyOrGoneHits = 0;
-            _ = Task.Run(async () =>
+            _ = Task.Run(() => PollJobLoopAsync(ct, trackedId), CancellationToken.None);
+        }
+
+        private async Task PollJobLoopAsync(CancellationToken ct, string? trackedId)
+        {
+            try
+            {
+                var state = new JobPollState { TrackedId = trackedId };
+                var keepGoing = true;
+                while (keepGoing && !ct.IsCancellationRequested && !ClientCancelRequested)
+                    keepGoing = await PollOnceAsync(ct, state);
+            }
+            catch (OperationCanceledException) { /* expected */ }
+            catch { /* ignore poll errors */ }
+        }
+
+        private async Task<bool> PollOnceAsync(CancellationToken ct, JobPollState state)
+        {
+            await Task.Delay(1500, ct);
+            if (ClientCancelRequested)
+                return false;
+            try
+            {
+                using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                pollCts.CancelAfter(TimeSpan.FromSeconds(4));
+
+                var snap = await TryLoadSnapshotAsync(state.TrackedId, pollCts);
+
+                if (ClientCancelRequested)
+                    return false;
+
+                if (snap is null || IsGhostOrMissing(snap, state.TrackedId))
+                    return await HandleGoneHitsAsync(state);
+
+                state.EmptyOrGoneHits = 0;
+                if (string.IsNullOrWhiteSpace(state.TrackedId) && !string.IsNullOrWhiteSpace(snap.JobId))
+                    state.TrackedId = snap.JobId;
+
+                await S.InvokeAsync(() => ApplySnapshotToUi(snap));
+                if (!snap.IsFinished)
+                    return true;
+                await HandleFinishedIfTerminalAsync(snap);
+                return false;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested || ClientCancelRequested)
+            {
+                return false;
+            }
+            catch
+            {
+                // transient 502 during deploy — keep polling until user cancels
+                return true;
+            }
+        }
+
+        private async Task<JobSnapshot?> TryLoadSnapshotAsync(string? trackedId, CancellationTokenSource pollCts)
+        {
+            JobSnapshot? snap = null;
+            // Prefer the job we started so we don't stick to a ghost "running" row
+            // after the server process died (Admin shows no active jobs).
+            if (!string.IsNullOrWhiteSpace(trackedId))
             {
                 try
                 {
-                    while (!ct.IsCancellationRequested && !ClientCancelRequested)
-                    {
-                        await Task.Delay(1500, ct);
-                        if (ClientCancelRequested) break;
-                        try
-                        {
-                            using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                            pollCts.CancelAfter(TimeSpan.FromSeconds(4));
-
-                            JobSnapshot? snap = null;
-                            // Prefer the job we started so we don't stick to a ghost "running" row
-                            // after the server process died (Admin shows no active jobs).
-                            if (!string.IsNullOrWhiteSpace(trackedId))
-                            {
-                                try
-                                {
-                                    snap = await S.Engine.TryGetJobAsync(trackedId, pollCts.Token);
-                                }
-                                catch { /* fall through to list */ }
-                            }
-                            if (snap is null)
-                            {
-                                var jobs = await S.Engine.GetJobAsync(pollCts.Token);
-                                snap = jobs?.Job;
-                            }
-
-                            if (ClientCancelRequested) break;
-
-                            // Server has nothing running for us — drop zombie progress UI.
-                            if (snap is null
-                                || (JobRunning
-                                    && snap.IsFinished
-                                    && !string.IsNullOrWhiteSpace(trackedId)
-                                    && !string.Equals(snap.JobId, trackedId, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                emptyOrGoneHits++;
-                                if (JobRunning && emptyOrGoneHits >= 3)
-                                {
-                                    await S.InvokeAsync(() =>
-                                    {
-                                        MarkJobLostOnServer(
-                                            "The write job is no longer on the server (likely a restart during the long AI call). "
-                                            + "Nothing is running in Admin → Jobs — try Create draft from book again.");
-                                    });
-                                    break;
-                                }
-                                continue;
-                            }
-
-                            emptyOrGoneHits = 0;
-                            if (string.IsNullOrWhiteSpace(trackedId) && !string.IsNullOrWhiteSpace(snap.JobId))
-                                trackedId = snap.JobId;
-
-                            await S.InvokeAsync(() =>
-                            {
-                                if (ClientCancelRequested) return;
-                                Job = snap;
-                                AbsorbProgressFromSnapshot(snap);
-                                AbsorbProgressFromLine(snap.Message);
-                                if (Job is not null && ProgressTotal > 0)
-                                {
-                                    Job.Index = Math.Max(Job.Index, ProgressIndex);
-                                    Job.Total = Math.Max(Job.Total, ProgressTotal);
-                                }
-                                if (S is AdaptationImport importPage && JobRunning)
-                                {
-                                    importPage.Drop._importing = true;
-                                    if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus)
-                                        || importPage.Drop._importStatus == "Cancelled")
-                                        importPage.Drop._importStatus =
-                                            snap.Message ?? "Job still running on the server…";
-                                }
-                                S.StateHasChanged();
-                            });
-                            if (snap.IsFinished)
-                            {
-                                if (snap.Status is "done" or JobStatusError or JobStatusCancelled or "partial")
-                                    await S.InvokeAsync(async () =>
-                                    {
-                                        if (S is AdaptationImport importPage)
-                                        {
-                                            importPage.Drop._importing = false;
-                                            importPage.Drop._importPct = null;
-                                        }
-                                        // Unstick Create-from-book waiters that key off Busy.
-                                        if (S.Busy && snap.Status is JobStatusError or JobStatusCancelled)
-                                        {
-                                            S.Busy = false;
-                                            S.BusyMessage = null;
-                                            S.Error = snap.Error ?? snap.Message;
-                                        }
-                                        else if (S.Busy && snap.Status is "done" or "partial")
-                                        {
-                                            // CreateFromBookAsync loop will SoftLoad; still drop Busy if orphaned.
-                                        }
-                                        await S.SoftLoadAsync();
-                                        if (snap.Status == "done")
-                                        {
-                                            try { await S.OnAdaptationJobTerminalAsync(snap); }
-                                            catch (Exception ex) { S.Error ??= ex.Message; }
-                                        }
-                                        else if (snap.Status == JobStatusError)
-                                            S.Error = snap.Error ?? snap.Message ?? "Job failed";
-                                        S.StateHasChanged();
-                                    });
-                                break;
-                            }
-                        }
-                        catch (OperationCanceledException) when (ct.IsCancellationRequested || ClientCancelRequested)
-                        {
-                            break;
-                        }
-                        catch
-                        {
-                            // transient 502 during deploy — keep polling until user cancels
-                        }
-                    }
+                    snap = await S.Engine.TryGetJobAsync(trackedId, pollCts.Token);
                 }
-                catch (OperationCanceledException) { /* expected */ }
-                catch { /* ignore poll errors */ }
-            }, CancellationToken.None);
+                catch { /* fall through to list */ }
+            }
+            if (snap is null)
+            {
+                var jobs = await S.Engine.GetJobAsync(pollCts.Token);
+                snap = jobs?.Job;
+            }
+            return snap;
+        }
+
+        private bool IsGhostOrMissing(JobSnapshot? snap, string? trackedId) =>
+            snap is null
+            || (JobRunning
+                && snap.IsFinished
+                && !string.IsNullOrWhiteSpace(trackedId)
+                && !string.Equals(snap.JobId, trackedId, StringComparison.OrdinalIgnoreCase));
+
+        private async Task<bool> HandleGoneHitsAsync(JobPollState state)
+        {
+            state.EmptyOrGoneHits++;
+            if (JobRunning && state.EmptyOrGoneHits >= 3)
+            {
+                await S.InvokeAsync(NotifyJobLostOnServer);
+                return false;
+            }
+            return true;
+        }
+
+        private void NotifyJobLostOnServer() =>
+            MarkJobLostOnServer(
+                "The write job is no longer on the server (likely a restart during the long AI call). "
+                + "Nothing is running in Admin → Jobs — try Create draft from book again.");
+
+        private void ApplySnapshotToUi(JobSnapshot snap)
+        {
+            if (ClientCancelRequested) return;
+            Job = snap;
+            AbsorbProgressFromSnapshot(snap);
+            AbsorbProgressFromLine(snap.Message);
+            if (Job is not null && ProgressTotal > 0)
+            {
+                Job.Index = Math.Max(Job.Index, ProgressIndex);
+                Job.Total = Math.Max(Job.Total, ProgressTotal);
+            }
+            UpdateImportRunningStatus(snap);
+            S.StateHasChanged();
+        }
+
+        private void UpdateImportRunningStatus(JobSnapshot snap)
+        {
+            if (S is AdaptationImport importPage && JobRunning)
+            {
+                importPage.Drop._importing = true;
+                if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus)
+                    || importPage.Drop._importStatus == "Cancelled")
+                    importPage.Drop._importStatus =
+                        snap.Message ?? "Job still running on the server…";
+            }
+        }
+
+        private Task HandleFinishedIfTerminalAsync(JobSnapshot snap)
+        {
+            if (snap.Status is "done" or JobStatusError or JobStatusCancelled or "partial")
+                return S.InvokeAsync(() => HandleFinishedSnapshotAsync(snap));
+            return Task.CompletedTask;
+        }
+
+        private async Task HandleFinishedSnapshotAsync(JobSnapshot snap)
+        {
+            if (S is AdaptationImport importPage)
+            {
+                importPage.Drop._importing = false;
+                importPage.Drop._importPct = null;
+            }
+            // Unstick Create-from-book waiters that key off Busy.
+            if (S.Busy && snap.Status is JobStatusError or JobStatusCancelled)
+            {
+                S.Busy = false;
+                S.BusyMessage = null;
+                S.Error = snap.Error ?? snap.Message;
+            }
+            else if (S.Busy && snap.Status is "done" or "partial")
+            {
+                // CreateFromBookAsync loop will SoftLoad; still drop Busy if orphaned.
+            }
+            await S.SoftLoadAsync();
+            if (snap.Status == "done")
+            {
+                try { await S.OnAdaptationJobTerminalAsync(snap); }
+                catch (Exception ex) { S.Error ??= ex.Message; }
+            }
+            else if (snap.Status == JobStatusError)
+                S.Error = snap.Error ?? snap.Message ?? "Job failed";
+            S.StateHasChanged();
         }
 
         /// <summary>
@@ -369,70 +409,87 @@ public abstract partial class AdaptationPageBase
                 return;
             // Don't reattach a ghost — verify asynchronously then either poll or clear.
             var id = Job.JobId;
-            _ = Task.Run(async () =>
+            _ = Task.Run(() => ReattachRunningJobAsync(id));
+        }
+
+        private async Task ReattachRunningJobAsync(string? id)
+        {
+            try
+            {
+                var live = await FetchLiveJobAsync(id);
+                await S.InvokeAsync(() => ApplyReattachUi(live));
+            }
+            catch
+            {
+                // Leave UI alone if we can't reach the API yet.
+            }
+        }
+
+        private async Task<JobSnapshot?> FetchLiveJobAsync(string? id)
+        {
+            JobSnapshot? live = null;
+            if (!string.IsNullOrWhiteSpace(id))
             {
                 try
                 {
-                    JobSnapshot? live = null;
-                    if (!string.IsNullOrWhiteSpace(id))
-                    {
-                        try
-                        {
-                            live = await S.Engine.TryGetJobAsync(id, _pollCts?.Token ?? CancellationToken.None);
-                        }
-                        catch { /* list fallback */ }
-                    }
-                    if (live is null)
-                    {
-                        var list = await S.Engine.GetJobAsync(_pollCts?.Token ?? CancellationToken.None);
-                        live = list?.Job;
-                    }
-
-                    await S.InvokeAsync(() =>
-                    {
-                        if (live is null || live.IsFinished
-                            || (live.Status is not (JobStatusRunning or JobStatusQueued)))
-                        {
-                            // Stale client snapshot after server restart — do not show Writing 6/10.
-                            if (JobRunning)
-                            {
-                                Job = live is { IsFinished: true } ? live : null;
-                                ProgressIndex = 0;
-                                ProgressTotal = 0;
-                                S.Busy = false;
-                                S.BusyMessage = null;
-                                if (S is AdaptationImport importPage)
-                                {
-                                    importPage.Drop._importing = false;
-                                    importPage.Drop._importPct = null;
-                                }
-                            }
-                            S.StateHasChanged();
-                            return;
-                        }
-
-                        Job = live;
-                        AbsorbProgressFromSnapshot(live);
-                        AbsorbProgressFromLine(live.Message);
-                        if (S is AdaptationImport importPage2)
-                        {
-                            importPage2.Drop._importing = true;
-                            if (string.IsNullOrWhiteSpace(importPage2.Drop._importStatus))
-                                importPage2.Drop._importStatus =
-                                    live.Message ?? "Resumed — job still running on the server…";
-                            if (string.IsNullOrWhiteSpace(importPage2.Drop._chosenFileName)
-                                && !string.IsNullOrWhiteSpace(live.Kind))
-                                importPage2.Drop._chosenFileName = live.Kind;
-                        }
-                        StartJobPolling();
-                        S.StateHasChanged();
-                    });
+                    live = await S.Engine.TryGetJobAsync(id, _pollCts?.Token ?? CancellationToken.None);
                 }
-                catch
-                {
-                    // Leave UI alone if we can't reach the API yet.
-                }
-            });
+                catch { /* list fallback */ }
+            }
+            if (live is null)
+            {
+                var list = await S.Engine.GetJobAsync(_pollCts?.Token ?? CancellationToken.None);
+                live = list?.Job;
+            }
+            return live;
+        }
+
+        private void ApplyReattachUi(JobSnapshot? live)
+        {
+            if (live is null || live.IsFinished
+                || (live.Status is not (JobStatusRunning or JobStatusQueued)))
+            {
+                ClearStaleReattachSnapshot(live);
+                S.StateHasChanged();
+                return;
+            }
+
+            Job = live;
+            AbsorbProgressFromSnapshot(live);
+            AbsorbProgressFromLine(live.Message);
+            ApplyReattachImportFields(live);
+            StartJobPolling();
+            S.StateHasChanged();
+        }
+
+        private void ClearStaleReattachSnapshot(JobSnapshot? live)
+        {
+            // Stale client snapshot after server restart — do not show Writing 6/10.
+            if (!JobRunning)
+                return;
+            Job = live is { IsFinished: true } ? live : null;
+            ProgressIndex = 0;
+            ProgressTotal = 0;
+            S.Busy = false;
+            S.BusyMessage = null;
+            if (S is AdaptationImport importPage)
+            {
+                importPage.Drop._importing = false;
+                importPage.Drop._importPct = null;
+            }
+        }
+
+        private void ApplyReattachImportFields(JobSnapshot live)
+        {
+            if (S is not AdaptationImport importPage)
+                return;
+            importPage.Drop._importing = true;
+            if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus))
+                importPage.Drop._importStatus =
+                    live.Message ?? "Resumed — job still running on the server…";
+            if (string.IsNullOrWhiteSpace(importPage.Drop._chosenFileName)
+                && !string.IsNullOrWhiteSpace(live.Kind))
+                importPage.Drop._chosenFileName = live.Kind;
         }
 
         /// <summary>
@@ -512,56 +569,107 @@ public abstract partial class AdaptationPageBase
             var msg = snap.Message ?? "";
             var kind = snap.Kind ?? "";
 
+            if (TryMessageFromPageRegex(msg) is { } fromPage)
+                return fromPage;
+            if (TryMessageFromChunkRegex(msg) is { } fromChunk)
+                return fromChunk;
+            if (TryMessageFromSceneOfRegex(msg, kind) is { } fromSceneOf)
+                return fromSceneOf;
+            if (TryMessageFromScenesDoneRegex(msg, kind) is { } fromScenesDone)
+                return fromScenesDone;
+            if (TryMessageFromSceneRegex(msg, kind, snap) is { } fromScene)
+                return fromScene;
+            if (TryMessageFromKeywords(msg, kind) is { } fromKeywords)
+                return fromKeywords;
+            if (string.IsNullOrWhiteSpace(msg))
+                return kind switch
+                {
+                    JobKindStage2 => "Building shot plan…",
+                    "stage1" or "book_import" => "Writing screenplay…",
+                    _ => "Working…",
+                };
+            // Last resort: short clean message, never dump long engine lines
+            return msg.Length > 80 ? msg[..77] + "…" : msg;
+        }
+
+        private static string? TryMessageFromPageRegex(string msg)
+        {
             var page = CommonRegex.Match(
                 msg, @"page\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (page.Success)
                 return $"Reading book — page {page.Groups[1].Value} of {page.Groups[2].Value}";
+            return null;
+        }
 
+        private static string? TryMessageFromChunkRegex(string msg)
+        {
             var chunk = CommonRegex.Match(
                 msg, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (chunk.Success)
                 return $"Writing screenplay — part {chunk.Groups[1].Value} of {chunk.Groups[2].Value}";
+            return null;
+        }
 
+        private static string? TryMessageFromSceneOfRegex(string msg, string kind)
+        {
             var sceneOf = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (sceneOf.Success && kind is JobKindStage2)
+            if (!sceneOf.Success || kind is not JobKindStage2)
+                return null;
+            var a = sceneOf.Groups[1].Value;
+            var b = sceneOf.Groups[2].Value;
+            if (int.TryParse(a, out var sa) && int.TryParse(b, out var sb) && sb > 0)
             {
-                var a = sceneOf.Groups[1].Value;
-                var b = sceneOf.Groups[2].Value;
-                if (int.TryParse(a, out var sa) && int.TryParse(b, out var sb) && sb > 0)
-                {
-                    var pct = (int)Math.Round(100.0 * Math.Max(0, sa - 1) / sb);
-                    return $"Planning shots — scene {a} of {b} ({pct}%)";
-                }
-                return $"Planning shots — scene {a} of {b}";
+                var pct = (int)Math.Round(100.0 * Math.Max(0, sa - 1) / sb);
+                return $"Planning shots — scene {a} of {b} ({pct}%)";
             }
+            return $"Planning shots — scene {a} of {b}";
+        }
 
+        private static string? TryMessageFromScenesDoneRegex(string msg, string kind)
+        {
             var scenesDone = CommonRegex.Match(
                 msg, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (scenesDone.Success && kind is JobKindStage2)
+            if (!scenesDone.Success || kind is not JobKindStage2)
+                return null;
+            var a = scenesDone.Groups[1].Value;
+            var b = scenesDone.Groups[2].Value;
+            if (int.TryParse(a, out var da) && int.TryParse(b, out var db) && db > 0)
             {
-                var a = scenesDone.Groups[1].Value;
-                var b = scenesDone.Groups[2].Value;
-                if (int.TryParse(a, out var da) && int.TryParse(b, out var db) && db > 0)
-                {
-                    var pct = (int)Math.Round(100.0 * da / db);
-                    return $"Planning shots — {a} of {b} scenes done ({pct}%)";
-                }
+                var pct = (int)Math.Round(100.0 * da / db);
+                return $"Planning shots — {a} of {b} scenes done ({pct}%)";
             }
+            return null;
+        }
 
+        private static string? TryMessageFromSceneRegex(string msg, string kind, JobSnapshot snap)
+        {
             var scene = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (scene.Success && kind is JobKindStage2)
+            if (!scene.Success || kind is not JobKindStage2)
+                return null;
+            if (snap.Total > 0)
             {
-                if (snap.Total > 0)
-                {
-                    var idx = Math.Max(snap.Index, 0);
-                    var pct = (int)Math.Round(100.0 * idx / snap.Total);
-                    return $"Planning shots — scene {scene.Groups[1].Value} of {snap.Total} ({pct}%)";
-                }
-                return $"Planning shots — scene {scene.Groups[1].Value}";
+                var idx = Math.Max(snap.Index, 0);
+                var pct = (int)Math.Round(100.0 * idx / snap.Total);
+                return $"Planning shots — scene {scene.Groups[1].Value} of {snap.Total} ({pct}%)";
             }
+            return $"Planning shots — scene {scene.Groups[1].Value}";
+        }
 
+        private static string? TryMessageFromKeywords(string msg, string kind)
+        {
+            if (TryMessageFromCombineRefineKeywords(msg) is { } combineRefine)
+                return combineRefine;
+            if (TryMessageFromAdaptKeywords(msg, kind) is { } adapt)
+                return adapt;
+            if (TryMessageFromPlanExtractReadKeywords(msg, kind) is { } planExtractRead)
+                return planExtractRead;
+            return null;
+        }
+
+        private static string? TryMessageFromCombineRefineKeywords(string msg)
+        {
             if (msg.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Stitch", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Combining", StringComparison.OrdinalIgnoreCase))
@@ -575,6 +683,11 @@ public abstract partial class AdaptationPageBase
             if (msg.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Attaching", StringComparison.OrdinalIgnoreCase))
                 return "Matching book pictures…";
+            return null;
+        }
+
+        private static string? TryMessageFromAdaptKeywords(string msg, string kind)
+        {
             if (msg.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Fountain", StringComparison.OrdinalIgnoreCase) ||
@@ -588,6 +701,11 @@ public abstract partial class AdaptationPageBase
                     return "Building shot plan…";
                 return "Writing screenplay…";
             }
+            return null;
+        }
+
+        private static string? TryMessageFromPlanExtractReadKeywords(string msg, string kind)
+        {
             if (msg.Contains("Planning", StringComparison.OrdinalIgnoreCase) || kind is JobKindStage2)
                 return "Building shot plan…";
             if (msg.Contains("extract", StringComparison.OrdinalIgnoreCase))
@@ -599,15 +717,7 @@ public abstract partial class AdaptationPageBase
                 msg.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
                 kind is "book_prepare")
                 return "Reading book…";
-            if (string.IsNullOrWhiteSpace(msg))
-                return kind switch
-                {
-                    JobKindStage2 => "Building shot plan…",
-                    "stage1" or "book_import" => "Writing screenplay…",
-                    _ => "Working…",
-                };
-            // Last resort: short clean message, never dump long engine lines
-            return msg.Length > 80 ? msg[..77] + "…" : msg;
+            return null;
         }
     }
 }

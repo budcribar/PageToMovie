@@ -20,6 +20,12 @@ public partial class AdaptationScreenplay
         internal BookContextDto? _bookContext;
         internal ElementReference _bookWindowEl;
 
+        private sealed class BookImportPollState
+        {
+            public JobSnapshot? Snap;
+            public int GoneHits;
+        }
+
         internal async Task AfterRenderDragBindAsync()
         {
             if (_bookWindowNeedsDragBind && _showBookModal)
@@ -144,130 +150,7 @@ public partial class AdaptationScreenplay
             await S.InvokeAsync(S.StateHasChanged);
             try
             {
-                await S.Jobs.EnsureHubAsync();
-                var started = await S.Engine.StartBookImportAsync(
-                    S.ProjectId,
-                    skipPrepare: true,
-                    forceExtract: false,
-                    forceVision: false,
-                    autoVision: false,
-                    model: S.Pipeline.Model);
-                if (started is not null)
-                {
-                    S.Jobs.Job = started;
-                    S.Jobs.AbsorbProgressFromSnapshot(started);
-                }
-                else
-                {
-                    var jobs0 = await S.Engine.GetJobAsync();
-                    S.Jobs.Job = jobs0?.Job;
-                    if (S.Jobs.Job is not null)
-                        S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job);
-                }
-
-                var trackId = S.Jobs.Job?.JobId;
-                S.Jobs.StartJobPolling();
-
-                var finishedOk = false;
-                var goneHits = 0;
-                // Long novels: multi-chunk / single-pass can run 30–90+ minutes
-                for (var i = 0; i < 5400; i++)
-                {
-                    if (S.Jobs.ClientCancelRequested)
-                    {
-                        S.Error = null;
-                        S.Message = "Cancelled. You can try Create draft from book again.";
-                        return;
-                    }
-
-                    JobSnapshot? snap = S.Jobs.Job;
-
-                    // Always re-check the tracked job on the server (don't trust a frozen local 6/10).
-                    if (!string.IsNullOrWhiteSpace(trackId))
-                    {
-                        try
-                        {
-                            using var idCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                            var live = await S.Engine.TryGetJobAsync(trackId, idCts.Token);
-                            if (live is not null)
-                            {
-                                snap = live;
-                                goneHits = 0;
-                            }
-                            else
-                            {
-                                // 404 or empty — job not in store (restart wiped in-memory jobs).
-                                // Confirm via list: if nothing running for us, count as gone.
-                                try
-                                {
-                                    using var listCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                                    var list = await S.Engine.GetJobAsync(listCts.Token);
-                                    var primary = list?.Job;
-                                    if (primary is null || primary.IsFinished
-                                        || !string.Equals(primary.JobId, trackId, StringComparison.OrdinalIgnoreCase))
-                                        goneHits++;
-                                    else
-                                    {
-                                        snap = primary;
-                                        goneHits = 0;
-                                    }
-                                }
-                                catch
-                                {
-                                    // API 502 — do not count as gone
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            // network
-                        }
-                    }
-
-                    if (goneHits >= 3)
-                    {
-                        S.Jobs.MarkJobLostOnServer(
-                            "The write job is no longer on the server (Admin shows no active jobs — often a restart mid-call). "
-                            + "Try Create draft from book again when the host is stable.");
-                        return;
-                    }
-
-                    if (snap is not null)
-                    {
-                        S.Jobs.Job = snap;
-                        S.Jobs.AbsorbProgressFromSnapshot(snap);
-                        S.BusyMessage = AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(snap);
-                        await S.InvokeAsync(S.StateHasChanged);
-                        var st = snap.Status ?? "";
-                        if (st is "error" or "cancelled")
-                        {
-                            S.Error = snap.Error ?? snap.Message ?? "Could not create draft. Try again.";
-                            return;
-                        }
-                        if ((st == "done" || st == "partial") &&
-                            (string.IsNullOrEmpty(snap.Kind) ||
-                             snap.Kind is "book_import" or "book_prepare" or "stage1"))
-                        {
-                            finishedOk = true;
-                            break;
-                        }
-                    }
-                    await Task.Delay(1000);
-                }
-
-                if (!finishedOk)
-                {
-                    S.Error =
-                        "Still no finished draft after a long wait. Check Admin → Jobs. "
-                        + "If nothing is running, Cancel here and try Create draft from book again.";
-                    return;
-                }
-
-                S.Message = "Draft created from book";
-                await S.SoftLoadAsync();
-                await S.Editor.LoadEditorDataAsync();
-                if (S.Editor._editorReady)
-                    S.Editor.HydrateModelFromText();
+                await RunCreateFromBookJobAsync();
             }
             catch (Exception ex)
             {
@@ -278,6 +161,158 @@ public partial class AdaptationScreenplay
                 S.Busy = false;
                 S.BusyMessage = null;
             }
+        }
+
+        private async Task RunCreateFromBookJobAsync()
+        {
+            await StartOrAttachBookImportJobAsync();
+            var trackId = S.Jobs.Job?.JobId;
+            S.Jobs.StartJobPolling();
+
+            var finishedOk = await PollBookImportUntilDoneAsync(trackId);
+            if (!finishedOk)
+                return;
+
+            S.Message = "Draft created from book";
+            await S.SoftLoadAsync();
+            await S.Editor.LoadEditorDataAsync();
+            if (S.Editor._editorReady)
+                S.Editor.HydrateModelFromText();
+        }
+
+        private async Task StartOrAttachBookImportJobAsync()
+        {
+            await S.Jobs.EnsureHubAsync();
+            var started = await S.Engine.StartBookImportAsync(
+                S.ProjectId,
+                skipPrepare: true,
+                forceExtract: false,
+                forceVision: false,
+                autoVision: false,
+                model: S.Pipeline.Model);
+            if (started is not null)
+            {
+                S.Jobs.Job = started;
+                S.Jobs.AbsorbProgressFromSnapshot(started);
+                return;
+            }
+
+            var jobs0 = await S.Engine.GetJobAsync();
+            S.Jobs.Job = jobs0?.Job;
+            if (S.Jobs.Job is not null)
+                S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job);
+        }
+
+        private async Task<bool> PollBookImportUntilDoneAsync(string? trackId)
+        {
+            var state = new BookImportPollState();
+            // Long novels: multi-chunk / single-pass can run 30–90+ minutes
+            for (var i = 0; i < 5400; i++)
+            {
+                if (S.Jobs.ClientCancelRequested)
+                {
+                    S.Error = null;
+                    S.Message = "Cancelled. You can try Create draft from book again.";
+                    return false;
+                }
+
+                state.Snap = S.Jobs.Job;
+                if (!string.IsNullOrWhiteSpace(trackId))
+                    await RefreshTrackedSnapshotAsync(trackId, state);
+
+                if (state.GoneHits >= 3)
+                {
+                    S.Jobs.MarkJobLostOnServer(
+                        "The write job is no longer on the server (Admin shows no active jobs — often a restart mid-call). "
+                        + "Try Create draft from book again when the host is stable.");
+                    return false;
+                }
+
+                var outcome = await ApplyBookImportSnapshotAsync(state.Snap);
+                if (outcome is not null)
+                    return outcome.Value;
+
+                await Task.Delay(1000);
+            }
+
+            S.Error =
+                "Still no finished draft after a long wait. Check Admin → Jobs. "
+                + "If nothing is running, Cancel here and try Create draft from book again.";
+            return false;
+        }
+
+        private async Task RefreshTrackedSnapshotAsync(string trackId, BookImportPollState state)
+        {
+            try
+            {
+                using var idCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                var live = await S.Engine.TryGetJobAsync(trackId, idCts.Token);
+                if (live is not null)
+                {
+                    state.Snap = live;
+                    state.GoneHits = 0;
+                    return;
+                }
+
+                // 404 or empty — job not in store (restart wiped in-memory jobs).
+                // Confirm via list: if nothing running for us, count as gone.
+                try
+                {
+                    using var listCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                    var list = await S.Engine.GetJobAsync(listCts.Token);
+                    var primary = list?.Job;
+                    if (primary is null || primary.IsFinished
+                        || !string.Equals(primary.JobId, trackId, StringComparison.OrdinalIgnoreCase))
+                        state.GoneHits++;
+                    else
+                    {
+                        state.Snap = primary;
+                        state.GoneHits = 0;
+                    }
+                }
+                catch
+                {
+                    // API 502 — do not count as gone
+                }
+            }
+            catch
+            {
+                // network
+            }
+        }
+
+        private async Task<bool?> ApplyBookImportSnapshotAsync(JobSnapshot? snap)
+        {
+            if (snap is null)
+                return null;
+
+            S.Jobs.Job = snap;
+            S.Jobs.AbsorbProgressFromSnapshot(snap);
+            S.BusyMessage = AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(snap);
+            await S.InvokeAsync(S.StateHasChanged);
+            if (IsTerminalError(snap))
+            {
+                S.Error = snap.Error ?? snap.Message ?? "Could not create draft. Try again.";
+                return false;
+            }
+            if (IsSuccessfulFinish(snap))
+                return true;
+            return null;
+        }
+
+        private static bool IsTerminalError(JobSnapshot snap)
+        {
+            var st = snap.Status ?? "";
+            return st is "error" or "cancelled";
+        }
+
+        private static bool IsSuccessfulFinish(JobSnapshot snap)
+        {
+            var st = snap.Status ?? "";
+            if (st != "done" && st != "partial")
+                return false;
+            return string.IsNullOrEmpty(snap.Kind) ||
+                   snap.Kind is "book_import" or "book_prepare" or "stage1";
         }
     }
 

@@ -703,6 +703,32 @@ public class UserDatabaseService
     /// </summary>
     private void MigrateCanonicalAccountV6(SqliteConnection conn, BillingOptions billing)
     {
+        var (primaryId, primaryHandle, primaryEmail) = ResolveV6PrimaryIdentity(billing);
+        var aliasCandidates = CollectV6AliasCandidates(conn, billing, primaryId, primaryHandle, primaryEmail);
+        var aliasUserIds = ResolveV6AliasUserIds(conn, aliasCandidates, primaryId);
+        FreeV6AliasUniqueSlots(conn, aliasUserIds);
+        EnsureV6PrimaryUserRow(conn, primaryId, primaryHandle, primaryEmail);
+
+        int spendMoved = 0, creditsMoved = 0, keysMoved = 0, aliasesRemoved = 0;
+        foreach (var aliasId in aliasUserIds)
+        {
+            MergeOneV6AliasIntoPrimary(
+                conn, aliasId, primaryId, primaryHandle, primaryEmail,
+                ref spendMoved, ref creditsMoved, ref keysMoved, ref aliasesRemoved);
+        }
+
+        FinalizeV6PrimaryHandleEmail(conn, primaryId, primaryHandle, primaryEmail);
+        var projectsTouched = RehomeAliasProjectsV6(primaryId, aliasUserIds, aliasCandidates);
+        RewriteV6ProjectIdPrefixes(conn, primaryId, aliasUserIds, aliasCandidates);
+
+        _logger.LogInformation(
+            "v6 canonical account merge → {Primary} ({Handle}, {Email}): aliases_removed={Aliases} " +
+            "api_calls_moved={Spend} credit_rows_moved={Credits} keys_upserted={Keys} projects_rehomed={Projects}",
+            primaryId, primaryHandle, primaryEmail, aliasesRemoved, spendMoved, creditsMoved, keysMoved, projectsTouched);
+    }
+
+    private static (string PrimaryId, string PrimaryHandle, string PrimaryEmail) ResolveV6PrimaryIdentity(BillingOptions billing)
+    {
         var primaryId = string.IsNullOrWhiteSpace(billing.LegacyCostOwnerUserId)
             ? DefaultOperatorUserId
             : billing.LegacyCostOwnerUserId.Trim();
@@ -716,86 +742,129 @@ public class UserDatabaseService
         var primaryEmail = string.IsNullOrWhiteSpace(billing.CanonicalAccountEmail)
             ? "budcribar@msn.com"
             : NormalizeEmail(billing.CanonicalAccountEmail) ?? "budcribar@msn.com";
+        return (primaryId, primaryHandle, primaryEmail);
+    }
 
+    private static HashSet<string> CollectV6AliasCandidates(
+        SqliteConnection conn,
+        BillingOptions billing,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
         var aliasCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddAlias(string? raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return;
-            var t = raw.Trim();
-            if (string.Equals(t, primaryId, StringComparison.OrdinalIgnoreCase)) return;
-            if (string.Equals(t, primaryHandle, StringComparison.OrdinalIgnoreCase)) return;
-            aliasCandidates.Add(t);
-            var seg = ProjectOwnership.SanitizeOwnerSegment(t);
-            if (seg.Length > 0 &&
-                !string.Equals(seg, primaryId, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(seg, ProjectOwnership.SanitizeOwnerSegment(primaryHandle), StringComparison.OrdinalIgnoreCase))
-                aliasCandidates.Add(seg);
-        }
-
         foreach (var part in (billing.AccountMergeAliasIds ?? "")
                      .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            AddAlias(part);
-        AddAlias(primaryEmail);
+            AddV6Alias(aliasCandidates, part, primaryId, primaryHandle);
+        AddV6Alias(aliasCandidates, primaryEmail, primaryId, primaryHandle);
         // Local-part of email (budcribar from budcribar@msn.com) is NOT an alias if it equals primary.
 
+        CollectV6AliasesByEmail(conn, aliasCandidates, primaryId, primaryHandle, primaryEmail);
+        CollectV6AliasesFromAllUsers(conn, aliasCandidates, primaryId, primaryHandle, primaryEmail);
+        return aliasCandidates;
+    }
+
+    private static void AddV6Alias(HashSet<string> aliasCandidates, string? raw, string primaryId, string primaryHandle)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        var t = raw.Trim();
+        if (string.Equals(t, primaryId, StringComparison.OrdinalIgnoreCase)) return;
+        if (string.Equals(t, primaryHandle, StringComparison.OrdinalIgnoreCase)) return;
+        aliasCandidates.Add(t);
+        var seg = ProjectOwnership.SanitizeOwnerSegment(t);
+        if (seg.Length > 0 &&
+            !string.Equals(seg, primaryId, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(seg, ProjectOwnership.SanitizeOwnerSegment(primaryHandle), StringComparison.OrdinalIgnoreCase))
+            aliasCandidates.Add(seg);
+    }
+
+    private static void CollectV6AliasesByEmail(
+        SqliteConnection conn,
+        HashSet<string> aliasCandidates,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
         // Any DB row whose email is the canonical email but user_id is not primary → alias.
-        using (var findByEmail = conn.CreateCommand())
-        {
-            findByEmail.CommandText = @"
+        using var findByEmail = conn.CreateCommand();
+        findByEmail.CommandText = @"
                 SELECT user_id, username, email FROM users
                 WHERE email IS NOT NULL AND LOWER(TRIM(email)) = LOWER(@email);";
-            findByEmail.Parameters.AddWithValue("@email", primaryEmail);
-            using var r = findByEmail.ExecuteReader();
-            while (r.Read())
-            {
-                var uid = r.IsDBNull(0) ? "" : r.GetString(0);
-                if (!string.Equals(uid, primaryId, StringComparison.OrdinalIgnoreCase))
-                    AddAlias(uid);
-                if (!r.IsDBNull(1)) AddAlias(r.GetString(1));
-            }
-        }
-
-        // Any user_id / username that sanitizes to a known alias segment (e.g. budcribarmsn.com).
-        using (var findAll = conn.CreateCommand())
+        findByEmail.Parameters.AddWithValue("@email", primaryEmail);
+        using var r = findByEmail.ExecuteReader();
+        while (r.Read())
         {
-            findAll.CommandText = "SELECT user_id, username, email FROM users;";
-            using var r = findAll.ExecuteReader();
-            var snapshot = new List<(string Id, string? Name, string? Email)>();
-            while (r.Read())
-            {
-                snapshot.Add((
-                    r.IsDBNull(0) ? "" : r.GetString(0),
-                    r.IsDBNull(1) ? null : r.GetString(1),
-                    r.IsDBNull(2) ? null : r.GetString(2)));
-            }
-            r.Close();
-
-            var knownSegs = new HashSet<string>(
-                aliasCandidates.Select(ProjectOwnership.SanitizeOwnerSegment)
-                    .Where(s => s.Length > 0),
-                StringComparer.OrdinalIgnoreCase);
-            // Always treat msn.com email-shaped handles as aliases of budcribar when configured.
-            knownSegs.Add("budcribarmsn_com");
-            knownSegs.Add("budcribar_msn_com");
-
-            foreach (var row in snapshot)
-            {
-                if (string.Equals(row.Id, primaryId, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var idSeg = ProjectOwnership.SanitizeOwnerSegment(row.Id);
-                var nameSeg = ProjectOwnership.SanitizeOwnerSegment(row.Name);
-                if (knownSegs.Contains(idSeg) || knownSegs.Contains(nameSeg))
-                {
-                    AddAlias(row.Id);
-                    AddAlias(row.Name);
-                }
-                if (!string.IsNullOrWhiteSpace(row.Email) &&
-                    string.Equals(NormalizeEmail(row.Email), primaryEmail, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(row.Id, primaryId, StringComparison.OrdinalIgnoreCase))
-                    AddAlias(row.Id);
-            }
+            var uid = r.IsDBNull(0) ? "" : r.GetString(0);
+            if (!string.Equals(uid, primaryId, StringComparison.OrdinalIgnoreCase))
+                AddV6Alias(aliasCandidates, uid, primaryId, primaryHandle);
+            if (!r.IsDBNull(1)) AddV6Alias(aliasCandidates, r.GetString(1), primaryId, primaryHandle);
         }
+    }
 
+    private static void CollectV6AliasesFromAllUsers(
+        SqliteConnection conn,
+        HashSet<string> aliasCandidates,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
+        // Any user_id / username that sanitizes to a known alias segment (e.g. budcribarmsn.com).
+        using var findAll = conn.CreateCommand();
+        findAll.CommandText = "SELECT user_id, username, email FROM users;";
+        using var r = findAll.ExecuteReader();
+        var snapshot = new List<(string Id, string? Name, string? Email)>();
+        while (r.Read())
+        {
+            snapshot.Add((
+                DbString(r, 0) ?? "",
+                DbString(r, 1),
+                DbString(r, 2)));
+        }
+        r.Close();
+
+        var knownSegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in aliasCandidates)
+        {
+            var s = ProjectOwnership.SanitizeOwnerSegment(c);
+            if (s.Length > 0)
+                knownSegs.Add(s);
+        }
+        // Always treat msn.com email-shaped handles as aliases of budcribar when configured.
+        knownSegs.Add("budcribarmsn_com");
+        knownSegs.Add("budcribar_msn_com");
+
+        foreach (var row in snapshot)
+            AddV6AliasFromSnapshotRow(aliasCandidates, knownSegs, row, primaryId, primaryHandle, primaryEmail);
+    }
+
+    private static void AddV6AliasFromSnapshotRow(
+        HashSet<string> aliasCandidates,
+        HashSet<string> knownSegs,
+        (string Id, string? Name, string? Email) row,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
+        if (string.Equals(row.Id, primaryId, StringComparison.OrdinalIgnoreCase))
+            return;
+        var idSeg = ProjectOwnership.SanitizeOwnerSegment(row.Id);
+        var nameSeg = ProjectOwnership.SanitizeOwnerSegment(row.Name);
+        if (knownSegs.Contains(idSeg) || knownSegs.Contains(nameSeg))
+        {
+            AddV6Alias(aliasCandidates, row.Id, primaryId, primaryHandle);
+            AddV6Alias(aliasCandidates, row.Name, primaryId, primaryHandle);
+        }
+        if (!string.IsNullOrWhiteSpace(row.Email) &&
+            string.Equals(NormalizeEmail(row.Email), primaryEmail, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(row.Id, primaryId, StringComparison.OrdinalIgnoreCase))
+            AddV6Alias(aliasCandidates, row.Id, primaryId, primaryHandle);
+    }
+
+    private static HashSet<string> ResolveV6AliasUserIds(
+        SqliteConnection conn,
+        HashSet<string> aliasCandidates,
+        string primaryId)
+    {
         // Resolve actual alias user_ids present in DB (match id or username case-insensitively).
         var aliasUserIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cand in aliasCandidates)
@@ -811,7 +880,11 @@ public class UserDatabaseService
                 !string.Equals(found, primaryId, StringComparison.OrdinalIgnoreCase))
                 aliasUserIds.Add(found.Trim());
         }
+        return aliasUserIds;
+    }
 
+    private static void FreeV6AliasUniqueSlots(SqliteConnection conn, HashSet<string> aliasUserIds)
+    {
         // Free unique username/email on aliases BEFORE we assign them to primary.
         foreach (var aliasId in aliasUserIds)
         {
@@ -824,29 +897,42 @@ public class UserDatabaseService
             free.Parameters.AddWithValue("@alias", aliasId);
             free.ExecuteNonQuery();
         }
+    }
 
+    private static void EnsureV6PrimaryUserRow(
+        SqliteConnection conn,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
         // Ensure primary user row exists (email/handle applied after alias unique slots freed).
-        using (var ensure = conn.CreateCommand())
-        {
-            ensure.CommandText = @"
+        using var ensure = conn.CreateCommand();
+        ensure.CommandText = @"
                 INSERT INTO users (user_id, username, password_hash, role, created_at, email, email_confirmed_at)
                 VALUES (@id, @handle, '', 'User', @created, @email, @created)
                 ON CONFLICT(user_id) DO NOTHING;";
-            ensure.Parameters.AddWithValue("@id", primaryId);
-            ensure.Parameters.AddWithValue("@handle", primaryHandle);
-            ensure.Parameters.AddWithValue("@email", primaryEmail);
-            ensure.Parameters.AddWithValue("@created", DateTime.UtcNow.ToString("o"));
-            ensure.ExecuteNonQuery();
-        }
+        ensure.Parameters.AddWithValue("@id", primaryId);
+        ensure.Parameters.AddWithValue("@handle", primaryHandle);
+        ensure.Parameters.AddWithValue("@email", primaryEmail);
+        ensure.Parameters.AddWithValue("@created", DateTime.UtcNow.ToString("o"));
+        ensure.ExecuteNonQuery();
+    }
 
-        int spendMoved = 0, creditsMoved = 0, keysMoved = 0, aliasesRemoved = 0;
-
-        foreach (var aliasId in aliasUserIds)
+    private static void MergeOneV6AliasIntoPrimary(
+        SqliteConnection conn,
+        string aliasId,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail,
+        ref int spendMoved,
+        ref int creditsMoved,
+        ref int keysMoved,
+        ref int aliasesRemoved)
+    {
+        // --- API keys: prefer primary when both set; otherwise take alias ---
+        using (var keys = conn.CreateCommand())
         {
-            // --- API keys: prefer primary when both set; otherwise take alias ---
-            using (var keys = conn.CreateCommand())
-            {
-                keys.CommandText = @"
+            keys.CommandText = @"
                     INSERT INTO user_api_keys (user_id, provider_id, encrypted_api_key, updated_at)
                     SELECT @primary, provider_id, encrypted_api_key, updated_at
                     FROM user_api_keys WHERE user_id = @alias
@@ -858,82 +944,82 @@ public class UserDatabaseService
                             ELSE user_api_keys.encrypted_api_key
                         END,
                         updated_at = excluded.updated_at;";
-                keys.Parameters.AddWithValue("@primary", primaryId);
-                keys.Parameters.AddWithValue("@alias", aliasId);
-                keysMoved += keys.ExecuteNonQuery();
-            }
-            using (var delKeys = conn.CreateCommand())
-            {
-                delKeys.CommandText = "DELETE FROM user_api_keys WHERE user_id = @alias;";
-                delKeys.Parameters.AddWithValue("@alias", aliasId);
-                delKeys.ExecuteNonQuery();
-            }
+            keys.Parameters.AddWithValue("@primary", primaryId);
+            keys.Parameters.AddWithValue("@alias", aliasId);
+            keysMoved += keys.ExecuteNonQuery();
+        }
+        using (var delKeys = conn.CreateCommand())
+        {
+            delKeys.CommandText = "DELETE FROM user_api_keys WHERE user_id = @alias;";
+            delKeys.Parameters.AddWithValue("@alias", aliasId);
+            delKeys.ExecuteNonQuery();
+        }
 
-            // --- Spend / estimates (user_api_calls) ---
-            using (var api = conn.CreateCommand())
-            {
-                api.CommandText = "UPDATE user_api_calls SET user_id = @primary WHERE user_id = @alias;";
-                api.Parameters.AddWithValue("@primary", primaryId);
-                api.Parameters.AddWithValue("@alias", aliasId);
-                spendMoved += api.ExecuteNonQuery();
-            }
+        // --- Spend / estimates (user_api_calls) ---
+        using (var api = conn.CreateCommand())
+        {
+            api.CommandText = "UPDATE user_api_calls SET user_id = @primary WHERE user_id = @alias;";
+            api.Parameters.AddWithValue("@primary", primaryId);
+            api.Parameters.AddWithValue("@alias", aliasId);
+            spendMoved += api.ExecuteNonQuery();
+        }
 
-            // --- Generation errors ---
-            using (var gen = conn.CreateCommand())
-            {
-                gen.CommandText = "UPDATE generation_errors SET user_id = @primary WHERE user_id = @alias;";
-                gen.Parameters.AddWithValue("@primary", primaryId);
-                gen.Parameters.AddWithValue("@alias", aliasId);
-                gen.ExecuteNonQuery();
-            }
+        // --- Generation errors ---
+        using (var gen = conn.CreateCommand())
+        {
+            gen.CommandText = "UPDATE generation_errors SET user_id = @primary WHERE user_id = @alias;";
+            gen.Parameters.AddWithValue("@primary", primaryId);
+            gen.Parameters.AddWithValue("@alias", aliasId);
+            gen.ExecuteNonQuery();
+        }
 
-            // --- Credit ledger ---
-            using (var led = conn.CreateCommand())
-            {
-                led.CommandText = "UPDATE credit_ledger SET user_id = @primary WHERE user_id = @alias;";
-                led.Parameters.AddWithValue("@primary", primaryId);
-                led.Parameters.AddWithValue("@alias", aliasId);
-                creditsMoved += led.ExecuteNonQuery();
-            }
+        // --- Credit ledger ---
+        using (var led = conn.CreateCommand())
+        {
+            led.CommandText = "UPDATE credit_ledger SET user_id = @primary WHERE user_id = @alias;";
+            led.Parameters.AddWithValue("@primary", primaryId);
+            led.Parameters.AddWithValue("@alias", aliasId);
+            creditsMoved += led.ExecuteNonQuery();
+        }
 
-            // --- Auth tokens ---
-            using (var tok = conn.CreateCommand())
-            {
-                tok.CommandText = "UPDATE auth_tokens SET user_id = @primary WHERE user_id = @alias;";
-                tok.Parameters.AddWithValue("@primary", primaryId);
-                tok.Parameters.AddWithValue("@alias", aliasId);
-                tok.ExecuteNonQuery();
-            }
+        // --- Auth tokens ---
+        using (var tok = conn.CreateCommand())
+        {
+            tok.CommandText = "UPDATE auth_tokens SET user_id = @primary WHERE user_id = @alias;";
+            tok.Parameters.AddWithValue("@primary", primaryId);
+            tok.Parameters.AddWithValue("@alias", aliasId);
+            tok.ExecuteNonQuery();
+        }
 
-            // --- Merge credit balances + pick best password / role / confirmation ---
-            string? aliasPass = null;
-            string? aliasRole = null;
-            string? aliasEmailConfirmed = null;
-            double aliasBal = 0, aliasGranted = 0, aliasUsed = 0;
-            using (var read = conn.CreateCommand())
-            {
-                read.CommandText = @"
+        // --- Merge credit balances + pick best password / role / confirmation ---
+        string? aliasPass = null;
+        string? aliasRole = null;
+        string? aliasEmailConfirmed = null;
+        double aliasBal = 0, aliasGranted = 0, aliasUsed = 0;
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = @"
                     SELECT password_hash, role, email_confirmed_at,
                            COALESCE(credits_balance_usd, 0),
                            COALESCE(credits_lifetime_granted_usd, 0),
                            COALESCE(credits_lifetime_used_usd, 0)
                     FROM users WHERE user_id = @alias LIMIT 1;";
-                read.Parameters.AddWithValue("@alias", aliasId);
-                using var r = read.ExecuteReader();
-                if (r.Read())
-                {
-                    aliasPass = r.IsDBNull(0) ? null : r.GetString(0);
-                    aliasRole = r.IsDBNull(1) ? null : r.GetString(1);
-                    aliasEmailConfirmed = r.IsDBNull(2) ? null : r.GetString(2);
-                    aliasBal = r.IsDBNull(3) ? 0 : r.GetDouble(3);
-                    aliasGranted = r.IsDBNull(4) ? 0 : r.GetDouble(4);
-                    aliasUsed = r.IsDBNull(5) ? 0 : r.GetDouble(5);
-                }
-            }
-
-            using (var mergeUser = conn.CreateCommand())
+            read.Parameters.AddWithValue("@alias", aliasId);
+            using var r = read.ExecuteReader();
+            if (r.Read())
             {
-                mergeUser.CommandText = @"
+                aliasPass = DbString(r, 0);
+                aliasRole = DbString(r, 1);
+                aliasEmailConfirmed = DbString(r, 2);
+                aliasBal = DbDouble(r, 3) ?? 0;
+                aliasGranted = DbDouble(r, 4) ?? 0;
+                aliasUsed = DbDouble(r, 5) ?? 0;
+            }
+        }
+
+        using (var mergeUser = conn.CreateCommand())
+        {
+            mergeUser.CommandText = @"
                     UPDATE users SET
                         username = @handle,
                         email = @email,
@@ -950,53 +1036,61 @@ public class UserDatabaseService
                         credits_lifetime_granted_usd = COALESCE(credits_lifetime_granted_usd, 0) + @aliasGranted,
                         credits_lifetime_used_usd = COALESCE(credits_lifetime_used_usd, 0) + @aliasUsed
                     WHERE user_id = @primary;";
-                mergeUser.Parameters.AddWithValue("@handle", primaryHandle);
-                mergeUser.Parameters.AddWithValue("@email", primaryEmail);
-                mergeUser.Parameters.AddWithValue("@aliasConfirmed", (object?)aliasEmailConfirmed ?? DBNull.Value);
-                mergeUser.Parameters.AddWithValue("@aliasPass", (object?)aliasPass ?? DBNull.Value);
-                mergeUser.Parameters.AddWithValue("@aliasRole", (object?)aliasRole ?? DBNull.Value);
-                mergeUser.Parameters.AddWithValue("@aliasBal", aliasBal);
-                mergeUser.Parameters.AddWithValue("@aliasGranted", aliasGranted);
-                mergeUser.Parameters.AddWithValue("@aliasUsed", aliasUsed);
-                mergeUser.Parameters.AddWithValue("@primary", primaryId);
-                mergeUser.ExecuteNonQuery();
-            }
-
-            // Drop alias user row (children already reassigned).
-            using (var del = conn.CreateCommand())
-            {
-                del.CommandText = "DELETE FROM users WHERE user_id = @alias;";
-                del.Parameters.AddWithValue("@alias", aliasId);
-                aliasesRemoved += del.ExecuteNonQuery();
-            }
+            mergeUser.Parameters.AddWithValue("@handle", primaryHandle);
+            mergeUser.Parameters.AddWithValue("@email", primaryEmail);
+            mergeUser.Parameters.AddWithValue("@aliasConfirmed", (object?)aliasEmailConfirmed ?? DBNull.Value);
+            mergeUser.Parameters.AddWithValue("@aliasPass", (object?)aliasPass ?? DBNull.Value);
+            mergeUser.Parameters.AddWithValue("@aliasRole", (object?)aliasRole ?? DBNull.Value);
+            mergeUser.Parameters.AddWithValue("@aliasBal", aliasBal);
+            mergeUser.Parameters.AddWithValue("@aliasGranted", aliasGranted);
+            mergeUser.Parameters.AddWithValue("@aliasUsed", aliasUsed);
+            mergeUser.Parameters.AddWithValue("@primary", primaryId);
+            mergeUser.ExecuteNonQuery();
         }
 
-        // Ensure primary has handle + email even when no alias rows existed.
-        using (var finalize = conn.CreateCommand())
+        // Drop alias user row (children already reassigned).
+        using (var del = conn.CreateCommand())
         {
-            // Free username/email unique slots held by nothing after deletes.
-            finalize.CommandText = @"
+            del.CommandText = "DELETE FROM users WHERE user_id = @alias;";
+            del.Parameters.AddWithValue("@alias", aliasId);
+            aliasesRemoved += del.ExecuteNonQuery();
+        }
+    }
+
+    private void FinalizeV6PrimaryHandleEmail(
+        SqliteConnection conn,
+        string primaryId,
+        string primaryHandle,
+        string primaryEmail)
+    {
+        // Ensure primary has handle + email even when no alias rows existed.
+        using var finalize = conn.CreateCommand();
+        // Free username/email unique slots held by nothing after deletes.
+        finalize.CommandText = @"
                 UPDATE users SET
                     username = @handle,
                     email = @email,
                     email_confirmed_at = COALESCE(email_confirmed_at, @confirmed)
                 WHERE user_id = @primary;";
-            finalize.Parameters.AddWithValue("@handle", primaryHandle);
-            finalize.Parameters.AddWithValue("@email", primaryEmail);
-            finalize.Parameters.AddWithValue("@confirmed", DateTime.UtcNow.ToString("o"));
-            finalize.Parameters.AddWithValue("@primary", primaryId);
-            try { finalize.ExecuteNonQuery(); }
-            catch (SqliteException ex)
-            {
-                // Username/email unique conflict with a non-alias account — leave as-is, log.
-                _logger.LogWarning(ex,
-                    "v6 could not set handle/email on {Primary} (unique conflict)", primaryId);
-            }
+        finalize.Parameters.AddWithValue("@handle", primaryHandle);
+        finalize.Parameters.AddWithValue("@email", primaryEmail);
+        finalize.Parameters.AddWithValue("@confirmed", DateTime.UtcNow.ToString("o"));
+        finalize.Parameters.AddWithValue("@primary", primaryId);
+        try { finalize.ExecuteNonQuery(); }
+        catch (SqliteException ex)
+        {
+            // Username/email unique conflict with a non-alias account — leave as-is, log.
+            _logger.LogWarning(ex,
+                "v6 could not set handle/email on {Primary} (unique conflict)", primaryId);
         }
+    }
 
-        // Rehome project folders + rewrite ownerUserId / project_id references in spend rows.
-        var projectsTouched = RehomeAliasProjectsV6(primaryId, aliasUserIds, aliasCandidates);
-
+    private static void RewriteV6ProjectIdPrefixes(
+        SqliteConnection conn,
+        string primaryId,
+        HashSet<string> aliasUserIds,
+        HashSet<string> aliasCandidates)
+    {
         // Rewrite project_id prefixes in cost tables (alias/slug → primary/slug).
         foreach (var alias in aliasUserIds.Concat(aliasCandidates).Distinct(StringComparer.OrdinalIgnoreCase))
         {
@@ -1015,11 +1109,6 @@ public class UserDatabaseService
                 catch { /* table may lack project_id in weird schemas */ }
             }
         }
-
-        _logger.LogInformation(
-            "v6 canonical account merge → {Primary} ({Handle}, {Email}): aliases_removed={Aliases} " +
-            "api_calls_moved={Spend} credit_rows_moved={Credits} keys_upserted={Keys} projects_rehomed={Projects}",
-            primaryId, primaryHandle, primaryEmail, aliasesRemoved, spendMoved, creditsMoved, keysMoved, projectsTouched);
     }
 
     /// <summary>
@@ -1039,16 +1128,7 @@ public class UserDatabaseService
         if (string.IsNullOrEmpty(primarySeg))
             primarySeg = DefaultOperatorUserId;
 
-        var segs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primarySeg };
-        // Collect every alias folder segment we might own.
-        foreach (var a in aliasUserIds.Concat(aliasCandidates))
-        {
-            var s = ProjectOwnership.SanitizeOwnerSegment(a);
-            if (s.Length > 0 && !string.Equals(s, primarySeg, StringComparison.OrdinalIgnoreCase))
-                segs.Add(s);
-        }
-        segs.Remove(primarySeg);
-
+        var segs = BuildV6AliasSegments(primaryId, aliasUserIds, aliasCandidates);
         var targetOwnerDir = Path.Combine(projectsRoot, primarySeg);
         Directory.CreateDirectory(targetOwnerDir);
 
@@ -1061,43 +1141,81 @@ public class UserDatabaseService
 
             foreach (var projectDir in Directory.GetDirectories(srcOwnerDir))
             {
-                var slug = Path.GetFileName(projectDir);
-                if (string.IsNullOrWhiteSpace(slug) ||
-                    string.Equals(slug, "workspace.json", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var dest = Path.Combine(targetOwnerDir, slug);
-                try
-                {
-                    if (Directory.Exists(dest))
-                    {
-                        // Target already has this slug — keep target, patch owner on source in place then skip move.
-                        PatchProjectOwnerFile(projectDir, primaryId);
-                        PatchProjectOwnerFile(dest, primaryId);
-                        continue;
-                    }
-
-                    Directory.Move(projectDir, dest);
-                    PatchProjectOwnerFile(dest, primaryId);
-                    moved++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "v6 could not rehome project {Src} → {Dest}", projectDir, dest);
-                    try { PatchProjectOwnerFile(projectDir, primaryId); } catch { /* ignore */ }
-                }
+                var dest = Path.Combine(targetOwnerDir, Path.GetFileName(projectDir));
+                TryMoveV6ProjectDir(projectDir, dest, primaryId, ref moved);
             }
 
-            // Drop empty alias owner folder
-            try
-            {
-                if (Directory.Exists(srcOwnerDir) &&
-                    !Directory.EnumerateFileSystemEntries(srcOwnerDir).Any())
-                    Directory.Delete(srcOwnerDir);
-            }
-            catch { /* ignore */ }
+            DeleteEmptyV6OwnerDir(srcOwnerDir);
         }
 
+        PatchV6WorkspacePointers(projectsRoot, segs, primarySeg);
+        PatchV6FlatLegacyOwners(projectsRoot, segs, primarySeg, aliasUserIds, primaryId);
+        return moved;
+    }
+
+    private static HashSet<string> BuildV6AliasSegments(
+        string primaryId,
+        IEnumerable<string> aliasUserIds,
+        IEnumerable<string> aliasCandidates)
+    {
+        var primarySeg = ProjectOwnership.SanitizeOwnerSegment(primaryId);
+        if (string.IsNullOrEmpty(primarySeg))
+            primarySeg = DefaultOperatorUserId;
+
+        var segs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primarySeg };
+        // Collect every alias folder segment we might own.
+        foreach (var a in aliasUserIds.Concat(aliasCandidates))
+        {
+            var s = ProjectOwnership.SanitizeOwnerSegment(a);
+            if (s.Length > 0 && !string.Equals(s, primarySeg, StringComparison.OrdinalIgnoreCase))
+                segs.Add(s);
+        }
+        segs.Remove(primarySeg);
+        return segs;
+    }
+
+    private void TryMoveV6ProjectDir(string projectDir, string dest, string primaryId, ref int moved)
+    {
+        var slug = Path.GetFileName(projectDir);
+        if (string.IsNullOrWhiteSpace(slug) ||
+            string.Equals(slug, "workspace.json", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            if (Directory.Exists(dest))
+            {
+                // Target already has this slug — keep target, patch owner on source in place then skip move.
+                PatchProjectOwnerFile(projectDir, primaryId);
+                PatchProjectOwnerFile(dest, primaryId);
+                return;
+            }
+
+            Directory.Move(projectDir, dest);
+            PatchProjectOwnerFile(dest, primaryId);
+            moved++;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "v6 could not rehome project {Src} → {Dest}", projectDir, dest);
+            try { PatchProjectOwnerFile(projectDir, primaryId); } catch { /* ignore */ }
+        }
+    }
+
+    private static void DeleteEmptyV6OwnerDir(string srcOwnerDir)
+    {
+        // Drop empty alias owner folder
+        try
+        {
+            if (Directory.Exists(srcOwnerDir) &&
+                !Directory.EnumerateFileSystemEntries(srcOwnerDir).Any())
+                Directory.Delete(srcOwnerDir);
+        }
+        catch { /* ignore */ }
+    }
+
+    private void PatchV6WorkspacePointers(string projectsRoot, HashSet<string> segs, string primarySeg)
+    {
         // Patch workspace.json active project pointer if it pointed at an alias path.
         try
         {
@@ -1119,7 +1237,15 @@ public class UserDatabaseService
         {
             _logger.LogWarning(ex, "v6 could not patch workspace.json active project");
         }
+    }
 
+    private static void PatchV6FlatLegacyOwners(
+        string projectsRoot,
+        HashSet<string> segs,
+        string primarySeg,
+        IEnumerable<string> aliasUserIds,
+        string primaryId)
+    {
         // Flat legacy projects with wrong ownerUserId field only
         try
         {
@@ -1134,16 +1260,23 @@ public class UserDatabaseService
                 try
                 {
                     var json = File.ReadAllText(meta);
-                    if (aliasUserIds.Any(a =>
-                            json.Contains(a, StringComparison.OrdinalIgnoreCase)))
+                    if (JsonContainsAnyAlias(json, aliasUserIds))
                         PatchProjectOwnerFile(dir, primaryId);
                 }
                 catch { /* ignore */ }
             }
         }
         catch { /* ignore */ }
+    }
 
-        return moved;
+    private static bool JsonContainsAnyAlias(string json, IEnumerable<string> aliasUserIds)
+    {
+        foreach (var a in aliasUserIds)
+        {
+            if (json.Contains(a, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static void PatchProjectOwnerFile(string projectDir, string ownerUserId)
@@ -1512,41 +1645,54 @@ public class UserDatabaseService
         cmd.Parameters.AddWithValue("@take", take);
         using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await r.ReadAsync(ct).ConfigureAwait(false))
-        {
-            list.Add(new UserApiCallRow
-            {
-                Id = r.GetInt64(0),
-                UserId = r.GetString(1),
-                Ts = r.GetString(2),
-                ProjectId = r.IsDBNull(3) ? null : r.GetString(3),
-                JobId = r.IsDBNull(4) ? null : r.GetString(4),
-                Kind = r.GetString(5),
-                Mode = r.IsDBNull(6) ? null : r.GetString(6),
-                Category = r.IsDBNull(7) || string.IsNullOrWhiteSpace(r.GetString(7))
-                    ? CostCategories.Resolve(r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6))
-                    : CostCategories.Resolve(r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6), r.GetString(7)),
-                Provider = r.IsDBNull(8) ? null : r.GetString(8),
-                Model = r.IsDBNull(9) ? null : r.GetString(9),
-                Endpoint = r.IsDBNull(10) ? null : r.GetString(10),
-                HttpStatus = r.IsDBNull(11) ? null : r.GetInt32(11),
-                Ok = r.GetInt32(12) != 0,
-                DurationMs = r.IsDBNull(13) ? null : r.GetInt64(13),
-                EstimatedUsd = r.IsDBNull(14) ? null : r.GetDouble(14),
-                Currency = r.IsDBNull(15) ? "USD" : r.GetString(15),
-                Scene = r.IsDBNull(16) ? null : r.GetInt32(16),
-                Clip = r.IsDBNull(17) ? null : r.GetInt32(17),
-                CharKey = r.IsDBNull(18) ? null : r.GetString(18),
-                Resolution = r.IsDBNull(19) ? null : r.GetString(19),
-                DurationSec = r.IsDBNull(20) ? null : r.GetDouble(20),
-                InputTokens = r.IsDBNull(21) ? null : r.GetInt32(21),
-                OutputTokens = r.IsDBNull(22) ? null : r.GetInt32(22),
-                Purpose = r.IsDBNull(23) ? null : r.GetString(23),
-                Error = r.IsDBNull(24) ? null : r.GetString(24),
-                Fakes = r.GetInt32(25) != 0,
-            });
-        }
+            list.Add(ReadUserApiCallRow(r));
         return list;
     }
+
+    private static string? DbString(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
+    private static int? DbInt32(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt32(i);
+    private static long? DbInt64(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt64(i);
+    private static double? DbDouble(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetDouble(i);
+
+    private static string ResolveCallCategory(SqliteDataReader r)
+    {
+        var kind = r.GetString(5);
+        var mode = DbString(r, 6);
+        var category = DbString(r, 7);
+        if (string.IsNullOrWhiteSpace(category))
+            return CostCategories.Resolve(kind, mode);
+        return CostCategories.Resolve(kind, mode, category);
+    }
+
+    private static UserApiCallRow ReadUserApiCallRow(SqliteDataReader r) => new()
+    {
+        Id = r.GetInt64(0),
+        UserId = r.GetString(1),
+        Ts = r.GetString(2),
+        ProjectId = DbString(r, 3),
+        JobId = DbString(r, 4),
+        Kind = r.GetString(5),
+        Mode = DbString(r, 6),
+        Category = ResolveCallCategory(r),
+        Provider = DbString(r, 8),
+        Model = DbString(r, 9),
+        Endpoint = DbString(r, 10),
+        HttpStatus = DbInt32(r, 11),
+        Ok = r.GetInt32(12) != 0,
+        DurationMs = DbInt64(r, 13),
+        EstimatedUsd = DbDouble(r, 14),
+        Currency = DbString(r, 15) ?? "USD",
+        Scene = DbInt32(r, 16),
+        Clip = DbInt32(r, 17),
+        CharKey = DbString(r, 18),
+        Resolution = DbString(r, 19),
+        DurationSec = DbDouble(r, 20),
+        InputTokens = DbInt32(r, 21),
+        OutputTokens = DbInt32(r, 22),
+        Purpose = DbString(r, 23),
+        Error = DbString(r, 24),
+        Fakes = r.GetInt32(25) != 0,
+    };
 
 
     /// <summary>
@@ -2400,31 +2546,7 @@ public class UserDatabaseService
             cmd.Parameters.AddWithValue("@take", take);
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
-            {
-                list.Add(new GenerationErrorRow
-                {
-                    Id = r.GetInt64(0),
-                    Ts = r.GetString(1),
-                    UserId = r.IsDBNull(2) ? null : r.GetString(2),
-                    ProjectId = r.IsDBNull(3) ? null : r.GetString(3),
-                    JobId = r.IsDBNull(4) ? null : r.GetString(4),
-                    Scene = r.IsDBNull(5) ? null : r.GetInt32(5),
-                    Clip = r.IsDBNull(6) ? null : r.GetInt32(6),
-                    Stage = r.GetString(7),
-                    Provider = r.IsDBNull(8) ? null : r.GetString(8),
-                    Model = r.IsDBNull(9) ? null : r.GetString(9),
-                    ErrorType = r.GetString(10),
-                    ErrorMessage = r.IsDBNull(11) ? null : r.GetString(11),
-                    HttpStatus = r.IsDBNull(12) ? null : r.GetInt32(12),
-                    RequestedCount = r.IsDBNull(13) ? null : r.GetInt32(13),
-                    ReturnedCount = r.IsDBNull(14) ? null : r.GetInt32(14),
-                    MissingIdsJson = r.IsDBNull(15) ? null : r.GetString(15),
-                    Attempt = r.GetInt32(16),
-                    Resolved = r.GetInt32(17) != 0,
-                    RequestSummary = r.IsDBNull(18) ? null : r.GetString(18),
-                    ResponseSummary = r.IsDBNull(19) ? null : r.GetString(19),
-                });
-            }
+                list.Add(ReadGenerationErrorRow(r));
         }
         catch (Exception ex)
         {
@@ -2432,6 +2554,30 @@ public class UserDatabaseService
         }
         return list;
     }
+
+    private static GenerationErrorRow ReadGenerationErrorRow(SqliteDataReader r) => new()
+    {
+        Id = r.GetInt64(0),
+        Ts = r.GetString(1),
+        UserId = DbString(r, 2),
+        ProjectId = DbString(r, 3),
+        JobId = DbString(r, 4),
+        Scene = DbInt32(r, 5),
+        Clip = DbInt32(r, 6),
+        Stage = r.GetString(7),
+        Provider = DbString(r, 8),
+        Model = DbString(r, 9),
+        ErrorType = r.GetString(10),
+        ErrorMessage = DbString(r, 11),
+        HttpStatus = DbInt32(r, 12),
+        RequestedCount = DbInt32(r, 13),
+        ReturnedCount = DbInt32(r, 14),
+        MissingIdsJson = DbString(r, 15),
+        Attempt = r.GetInt32(16),
+        Resolved = r.GetInt32(17) != 0,
+        RequestSummary = DbString(r, 18),
+        ResponseSummary = DbString(r, 19),
+    };
 
     public async Task<string?> GetDecryptedXaiApiKeyAsync(string userId, CancellationToken ct = default) =>
         await GetDecryptedProviderApiKeyAsync(userId, "grok", ct).ConfigureAwait(false);

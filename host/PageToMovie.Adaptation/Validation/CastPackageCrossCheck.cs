@@ -69,6 +69,21 @@ public static class CastPackageCrossCheck
     public static Report Evaluate(string? fountainText, string? castSeedsJson, string? bookText = null)
     {
         var report = new Report();
+        FillSpeakers(report, fountainText);
+        AddBookWarnings(report, bookText);
+        if (!TryLoadSeeds(castSeedsJson, report, out var seeds))
+            return report;
+        ScoreRequiredSpeakers(report, seeds);
+        ScoreExtraCast(report, seeds);
+        ComputeScores(report);
+        CollectGroupCastKeys(report, seeds);
+        if (report.RequiredSpeakers.Count == 0 && seeds.Count > 0)
+            report.Warnings.Add("No non-narrator dialogue cues found — cast membership could not be cross-checked.");
+        return report;
+    }
+
+    private static void FillSpeakers(Report report, string? fountainText)
+    {
         var speakers = ExtractSpeakers(fountainText);
         report.Speakers = speakers.ToList();
         report.RequiredSpeakers = speakers
@@ -76,29 +91,38 @@ public static class CastPackageCrossCheck
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
 
-        if (!string.IsNullOrWhiteSpace(bookText))
+    private static void AddBookWarnings(Report report, string? bookText)
+    {
+        if (string.IsNullOrWhiteSpace(bookText))
+            return;
+
+        report.SpeakersMissingFromBook = FindSpeakersMissingFromBook(
+                report.RequiredSpeakers, bookText)
+            .ToList();
+        foreach (var name in report.SpeakersMissingFromBook)
         {
-            report.SpeakersMissingFromBook = FindSpeakersMissingFromBook(
-                    report.RequiredSpeakers, bookText)
-                .ToList();
-            foreach (var name in report.SpeakersMissingFromBook)
-            {
-                report.Warnings.Add(
-                    $"Speaking character '{name}' does not appear in the book text " +
-                    "(possible invented name; prefer group tokens like CHILDREN for unnamed groups).");
-            }
+            report.Warnings.Add(
+                $"Speaking character '{name}' does not appear in the book text " +
+                "(possible invented name; prefer group tokens like CHILDREN for unnamed groups).");
         }
+    }
 
+    private static bool TryLoadSeeds(
+        string? castSeedsJson,
+        Report report,
+        out Dictionary<string, JsonElement> seeds)
+    {
+        seeds = null!;
         if (string.IsNullOrWhiteSpace(castSeedsJson))
         {
             report.Failures.Add(
                 "No cast_seeds.json — cast package missing. Stage 1 alone is not a complete adaptation package.");
             report.Score = 0;
-            return report;
+            return false;
         }
 
-        Dictionary<string, JsonElement> seeds;
         try
         {
             seeds = ParseSeeds(castSeedsJson);
@@ -107,7 +131,7 @@ public static class CastPackageCrossCheck
         {
             report.Failures.Add($"cast_seeds.json did not parse: {ex.Message}");
             report.Score = 0;
-            return report;
+            return false;
         }
 
         report.CastKeys = seeds.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
@@ -115,107 +139,124 @@ public static class CastPackageCrossCheck
         {
             report.Failures.Add("character_seed_tokens is empty.");
             report.Score = 0;
-            return report;
+            return false;
         }
 
-        var points = 0.0;
-        var maxPoints = 0.0;
+        return true;
+    }
 
+    private static void ScoreRequiredSpeakers(Report report, Dictionary<string, JsonElement> seeds)
+    {
         foreach (var speaker in report.RequiredSpeakers)
+            ScoreOneRequiredSpeaker(report, seeds, speaker);
+    }
+
+    private static void ScoreOneRequiredSpeaker(
+        Report report,
+        Dictionary<string, JsonElement> seeds,
+        string speaker)
+    {
+        var match = ResolveCastKey(speaker, seeds);
+        if (match is null)
         {
-            maxPoints += 10;
-            var match = ResolveCastKey(speaker, seeds);
-            if (match is null)
-            {
-                report.SpeakersMissingFromCast.Add(speaker);
-                report.Failures.Add(
-                    $"Speaking character '{speaker}' has no cast_seeds entry " +
-                    $"(expected Character_{SanitizeKey(speaker)} or matching display name).");
-                continue;
-            }
-
-            report.MatchedKeys.Add(match);
-            points += 5; // membership
-            var seed = seeds[match];
-            var q = ScoreSeed(match, speaker, seed);
-            report.Quality[match] = q;
-            // description + visual detail (5 pts)
-            var detail = 0.0;
-            if (q.HasDescription && q.DescriptionChars >= 24) detail += 2.5;
-            else if (q.HasDescription) detail += 1.0;
-            else report.Failures.Add($"Cast '{match}' missing usable description.");
-
-            if (q.HasVisualLock) detail += 1.5;
-            else report.Warnings.Add($"Cast '{match}' missing visual_lock — portraits may drift.");
-
-            if (q.HasWardrobe) detail += 0.5;
-            else report.Warnings.Add($"Cast '{match}' missing wardrobe lock.");
-
-            if (q.HasSpecies) detail += 0.5;
-            else report.Warnings.Add($"Cast '{match}' missing species_kind.");
-
-            points += Math.Min(5.0, detail);
+            report.SpeakersMissingFromCast.Add(speaker);
+            report.Failures.Add(
+                $"Speaking character '{speaker}' has no cast_seeds entry " +
+                $"(expected Character_{SanitizeKey(speaker)} or matching display name).");
+            return;
         }
 
-        // Extra cast not required for dialogue is fine (animals, background).
+        report.MatchedKeys.Add(match);
+        var q = ScoreSeed(match, speaker, seeds[match]);
+        report.Quality[match] = q;
+        if (!q.HasDescription)
+            report.Failures.Add($"Cast '{match}' missing usable description.");
+        if (!q.HasVisualLock)
+            report.Warnings.Add($"Cast '{match}' missing visual_lock — portraits may drift.");
+        if (!q.HasWardrobe)
+            report.Warnings.Add($"Cast '{match}' missing wardrobe lock.");
+        if (!q.HasSpecies)
+            report.Warnings.Add($"Cast '{match}' missing species_kind.");
+    }
+
+    private static void ScoreExtraCast(Report report, Dictionary<string, JsonElement> seeds)
+    {
         foreach (var key in report.CastKeys)
         {
             if (report.MatchedKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
                 continue;
-            var seed = seeds[key];
-            var q = ScoreSeed(key, key, seed);
+            var q = ScoreSeed(key, key, seeds[key]);
             report.Quality[key] = q;
             if (!q.HasDescription)
                 report.Warnings.Add($"Non-speaking cast '{key}' has weak/empty description.");
         }
+    }
+
+    private static void ComputeScores(Report report)
+    {
+        var maxPoints = report.RequiredSpeakers.Count * 10.0;
+        var points = 0.0;
+        foreach (var key in report.MatchedKeys)
+            points += 5.0 + Math.Min(5.0, DetailPoints(report.Quality[key]));
 
         report.Score = maxPoints <= 0
             ? (report.Failures.Count == 0 ? 100 : 0)
             : Math.Round(100.0 * points / maxPoints, 1);
 
-        // Sub-scores for the cast-judge layer (benchmark / admin).
         var memberOk = report.RequiredSpeakers.Count == 0
             ? 100.0
             : 100.0 * report.MatchedKeys.Count / Math.Max(1, report.RequiredSpeakers.Count);
         report.MembershipScore = Math.Round(Math.Min(100.0, memberOk), 1);
+
         var descPoints = 0.0;
         var descMax = 0.0;
         foreach (var q in report.Quality.Values)
         {
             descMax += 5;
-            if (q.HasDescription && q.DescriptionChars >= 24) descPoints += 2.5;
-            else if (q.HasDescription) descPoints += 1.0;
-            if (q.HasVisualLock) descPoints += 1.5;
-            if (q.HasWardrobe) descPoints += 0.5;
-            if (q.HasSpecies) descPoints += 0.5;
+            descPoints += DetailPoints(q);
         }
         report.DescriptionScore = descMax <= 0
             ? 0
             : Math.Round(100.0 * descPoints / descMax, 1);
+    }
 
+    private static double DetailPoints(CharacterQuality q)
+    {
+        var detail = 0.0;
+        if (q.HasDescription && q.DescriptionChars >= 24) detail += 2.5;
+        else if (q.HasDescription) detail += 1.0;
+        if (q.HasVisualLock) detail += 1.5;
+        if (q.HasWardrobe) detail += 0.5;
+        if (q.HasSpecies) detail += 0.5;
+        return detail;
+    }
+
+    private static void CollectGroupCastKeys(Report report, Dictionary<string, JsonElement> seeds)
+    {
         foreach (var key in report.CastKeys)
         {
             seeds.TryGetValue(key, out var seedEl);
-            string? castKind = null;
-            string? display = null;
-            string? desc = null;
-            if (seedEl.ValueKind == JsonValueKind.Object)
-            {
-                if (seedEl.TryGetProperty("cast_kind", out var ck) && ck.ValueKind == JsonValueKind.String)
-                    castKind = ck.GetString();
-                if (seedEl.TryGetProperty("canonical_given_name", out var cn) && cn.ValueKind == JsonValueKind.String)
-                    display = cn.GetString();
-                if (seedEl.TryGetProperty("description", out var ds) && ds.ValueKind == JsonValueKind.String)
-                    desc = ds.GetString();
-            }
+            var (castKind, display, desc) = ReadSeedIdentity(seedEl);
             if (CastKindClassifier.IsGroup(key, display, castKind, desc))
                 report.GroupCastKeys.Add(key);
         }
+    }
 
-        if (report.RequiredSpeakers.Count == 0 && seeds.Count > 0)
-            report.Warnings.Add("No non-narrator dialogue cues found — cast membership could not be cross-checked.");
+    private static (string? CastKind, string? Display, string? Description) ReadSeedIdentity(JsonElement seed)
+    {
+        string? castKind = null;
+        string? display = null;
+        string? desc = null;
+        if (seed.ValueKind != JsonValueKind.Object)
+            return (castKind, display, desc);
 
-        return report;
+        if (seed.TryGetProperty("cast_kind", out var ck) && ck.ValueKind == JsonValueKind.String)
+            castKind = ck.GetString();
+        if (seed.TryGetProperty("canonical_given_name", out var cn) && cn.ValueKind == JsonValueKind.String)
+            display = cn.GetString();
+        if (seed.TryGetProperty("description", out var ds) && ds.ValueKind == JsonValueKind.String)
+            desc = ds.GetString();
+        return (castKind, display, desc);
     }
 
     /// <summary>
@@ -378,7 +419,23 @@ public static class CastPackageCrossCheck
         if (string.IsNullOrWhiteSpace(stem))
             return null;
 
-        // Candidate group labels from the stem (SUITOR → SUITORS, MAN → MEN / PEOPLE).
+        foreach (var cand in GroupStemCandidates(stem).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var tryKey = JsonKeys.CharacterPrefix + SanitizeKey(cand);
+            foreach (var key in seeds.Keys)
+            {
+                if (!SeedMatchesCandidate(key, tryKey, cand))
+                    continue;
+                if (TryAcceptGroupKey(key, seeds[key], tryKey))
+                    return key;
+            }
+        }
+
+        return null;
+    }
+
+    private static List<string> GroupStemCandidates(string stem)
+    {
         var candidates = new List<string> { stem, stem + "S", stem + "ES" };
         if (stem.Equals("MAN", StringComparison.OrdinalIgnoreCase))
             candidates.AddRange(new[] { "MEN", "PEOPLE", "CROWD" });
@@ -388,39 +445,22 @@ public static class CastPackageCrossCheck
             candidates.AddRange(new[] { "CHILDREN", "KIDS" });
         if (stem.Equals("SUITOR", StringComparison.OrdinalIgnoreCase))
             candidates.Add("THE SUITORS");
+        return candidates;
+    }
 
-        foreach (var cand in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var tryKey = JsonKeys.CharacterPrefix + SanitizeKey(cand);
-            foreach (var key in seeds.Keys)
-            {
-                if (!key.Equals(tryKey, StringComparison.OrdinalIgnoreCase)
-                    && !NormalizeSpeaker(CastKindClassifier.StripPrefix(key))
-                        .Equals(NormalizeSpeaker(cand), StringComparison.OrdinalIgnoreCase))
-                    continue;
+    private static bool SeedMatchesCandidate(string key, string tryKey, string cand)
+    {
+        if (key.Equals(tryKey, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return NormalizeSpeaker(CastKindClassifier.StripPrefix(key))
+            .Equals(NormalizeSpeaker(cand), StringComparison.OrdinalIgnoreCase);
+    }
 
-                // Prefer true groups; still accept a singular stem key if that's all we have.
-                var seed = seeds[key];
-                string? castKind = null;
-                string? display = null;
-                string? desc = null;
-                if (seed.ValueKind == JsonValueKind.Object)
-                {
-                    if (seed.TryGetProperty("cast_kind", out var ck) && ck.ValueKind == JsonValueKind.String)
-                        castKind = ck.GetString();
-                    if (seed.TryGetProperty("canonical_given_name", out var cn) && cn.ValueKind == JsonValueKind.String)
-                        display = cn.GetString();
-                    if (seed.TryGetProperty("description", out var ds) && ds.ValueKind == JsonValueKind.String)
-                        desc = ds.GetString();
-                }
-                var isGroup = CastKindClassifier.IsGroup(key, display, castKind, desc);
-                // Numbered generics should land on groups when available.
-                if (isGroup || key.Equals(tryKey, StringComparison.OrdinalIgnoreCase))
-                    return key;
-            }
-        }
-
-        return null;
+    private static bool TryAcceptGroupKey(string key, JsonElement seed, string tryKey)
+    {
+        var (castKind, display, desc) = ReadSeedIdentity(seed);
+        var isGroup = CastKindClassifier.IsGroup(key, display, castKind, desc);
+        return isGroup || key.Equals(tryKey, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>SUITOR 1 / FIRST SUITOR / SUITOR #2 → SUITOR; null if not numbered-generic shaped.</summary>
