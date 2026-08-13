@@ -135,17 +135,31 @@ public sealed class ClientVoiceSubstitutionService
         // STT-verified (line ↔ window) pairs from the once-per-book phrase cache, keyed by scene. When
         // a line matches one of these, we trust its verified window outright instead of guessing.
         var phrases = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
-        var confidentByScene = phrases?.Phrases
+        var confidentByScene = BuildConfidentByScene(phrases);
+
+        // ── Pass 1: stitch + silence-detect every scene, and learn the original narrator's words/second
+        //    from the scenes we're confident about (detected windows line up 1:1 with the lines). ──
+        var (prepared, wpsSamples) = await PrepareScenesAsync(projectId, alignment, ct);
+
+        // The narrator's pace: median of the confident samples, else a sensible narration default.
+        var speakerWps = MedianSpeakerWps(wpsSamples);
+        await LogSpeakerPaceAsync(speakerWps, wpsSamples.Count);
+
+        // ── Pass 2: place each line where the original spoke, at the learned pace, then overlay. ──
+        await OverlayPreparedScenesAsync(projectId, prepared, confidentByScene, speakerWps, results, ct);
+        return results;
+    }
+
+    private static Dictionary<int, List<VoiceCapturePhrase>> BuildConfidentByScene(VoiceCapturePhrases? phrases) =>
+        phrases?.Phrases
             .Where(pp => pp.Confident)
             .GroupBy(pp => pp.Scene)
             .ToDictionary(g => g.Key, g => g.OrderBy(pp => pp.WindowStartSec).ToList())
             ?? new Dictionary<int, List<VoiceCapturePhrase>>();
 
-        static int WordCount(string? t) =>
-            string.IsNullOrWhiteSpace(t) ? 1 : Math.Max(1, t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length);
-
-        // ── Pass 1: stitch + silence-detect every scene, and learn the original narrator's words/second
-        //    from the scenes we're confident about (detected windows line up 1:1 with the lines). ──
+    private async Task<(List<PreparedScene> Prepared, List<double> WpsSamples)> PrepareScenesAsync(
+        string projectId, ProjectVoiceAlignment alignment, CancellationToken ct)
+    {
         var prepared = new List<PreparedScene>();
         var wpsSamples = new List<double>();
         foreach (var sv in alignment.SceneVoices.OrderBy(v => v.Scene))
@@ -153,84 +167,112 @@ public sealed class ClientVoiceSubstitutionService
             ct.ThrowIfCancellationRequested();
             try
             {
-                var clipUrls = await _stitch.CollectClipUrlsAsync(projectId, sv.Scene, ct: ct);
-                if (clipUrls.Count == 0)
-                {
-                    prepared.Add(new PreparedScene(sv.Scene) { Error = "no clips on disk for scene" });
-                    continue;
-                }
-
-                string sceneVideoUrl;
-                if (clipUrls.Count == 1)
-                {
-                    sceneVideoUrl = clipUrls[0];
-                }
-                else
-                {
-                    var stitched = await _stitch.ConcatAsync(clipUrls, ct);
-                    if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url))
-                    {
-                        prepared.Add(new PreparedScene(sv.Scene) { Error = stitched.Error ?? "scene stitch failed" });
-                        continue;
-                    }
-                    sceneVideoUrl = stitched.Url;
-                }
-
-                // Mixed scene (mom baked in) or nothing to voice → passthrough with original audio kept.
-                var lines = sv.Lines
-                    .Where(l => !string.IsNullOrWhiteSpace(l.VoiceAudioRelativePath))
-                    .OrderBy(l => l.Index)
-                    .ToList();
-                if (sv.HasOtherSpeakers || lines.Count == 0)
-                {
-                    prepared.Add(new PreparedScene(sv.Scene) { SceneVideoUrl = sceneVideoUrl, Passthrough = true });
-                    continue;
-                }
-
-                var detect = await _js.InvokeAsync<JsSpeechDetectResult>(
-                    "PageToMovieFfmpeg.detectSpeechSegmentsAsync", ct, sceneVideoUrl, new { });
-                var windows = (detect?.Segments ?? new List<JsSpeechWindow>())
-                    .Where(w => w.EndSec - w.StartSec >= 0.15)
-                    .OrderBy(w => w.StartSec)
-                    .ToList();
-
-                // Confident scene: windows line up 1:1 → each pair is a plausible words/second sample.
-                if (windows.Count == lines.Count)
-                {
-                    for (var j = 0; j < lines.Count; j++)
-                    {
-                        var dur = windows[j].EndSec - windows[j].StartSec;
-                        if (dur < 0.2) continue;
-                        var wps = WordCount(lines[j].Text) / dur;
-                        if (wps is >= 1.0 and <= 5.0) wpsSamples.Add(wps); // plausible narration pace
-                    }
-                }
-
-                prepared.Add(new PreparedScene(sv.Scene)
-                {
-                    SceneVideoUrl = sceneVideoUrl,
-                    Lines = lines,
-                    Windows = windows,
-                    SceneDur = detect?.TotalSec ?? 0,
-                });
+                prepared.Add(await PrepareOneSceneAsync(projectId, sv, wpsSamples, ct));
             }
             catch (Exception ex)
             {
                 prepared.Add(new PreparedScene(sv.Scene) { Error = ex.Message });
             }
         }
+        return (prepared, wpsSamples);
+    }
 
-        // The narrator's pace: median of the confident samples, else a sensible narration default.
+    private async Task<PreparedScene> PrepareOneSceneAsync(
+        string projectId, SceneVoiceTrack sv, List<double> wpsSamples, CancellationToken ct)
+    {
+        var clipUrls = await _stitch.CollectClipUrlsAsync(projectId, sv.Scene, ct: ct);
+        if (clipUrls.Count == 0)
+            return new PreparedScene(sv.Scene) { Error = "no clips on disk for scene" };
+
+        var (sceneVideoUrl, stitchError) = await ResolveSceneVideoUrlAsync(clipUrls, ct);
+        if (stitchError is not null)
+            return new PreparedScene(sv.Scene) { Error = stitchError };
+
+        // Mixed scene (mom baked in) or nothing to voice → passthrough with original audio kept.
+        var lines = sv.Lines
+            .Where(l => !string.IsNullOrWhiteSpace(l.VoiceAudioRelativePath))
+            .OrderBy(l => l.Index)
+            .ToList();
+        if (sv.HasOtherSpeakers || lines.Count == 0)
+            return new PreparedScene(sv.Scene) { SceneVideoUrl = sceneVideoUrl, Passthrough = true };
+
+        var detect = await _js.InvokeAsync<JsSpeechDetectResult>(
+            "PageToMovieFfmpeg.detectSpeechSegmentsAsync", ct, sceneVideoUrl!, new { });
+        var windows = FilterSpeechWindows(detect);
+
+        CollectWpsSamples(windows, lines, wpsSamples);
+
+        return new PreparedScene(sv.Scene)
+        {
+            SceneVideoUrl = sceneVideoUrl,
+            Lines = lines,
+            Windows = windows,
+            SceneDur = detect?.TotalSec ?? 0,
+        };
+    }
+
+    private async Task<(string? Url, string? Error)> ResolveSceneVideoUrlAsync(
+        IReadOnlyList<string> clipUrls, CancellationToken ct)
+    {
+        if (clipUrls.Count == 1)
+            return (clipUrls[0], null);
+
+        var stitched = await _stitch.ConcatAsync(clipUrls, ct);
+        if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url))
+            return (null, stitched.Error ?? "scene stitch failed");
+        return (stitched.Url, null);
+    }
+
+    private static List<JsSpeechWindow> FilterSpeechWindows(JsSpeechDetectResult? detect) =>
+        (detect?.Segments ?? new List<JsSpeechWindow>())
+            .Where(w => w.EndSec - w.StartSec >= 0.15)
+            .OrderBy(w => w.StartSec)
+            .ToList();
+
+    private static void CollectWpsSamples(
+        List<JsSpeechWindow> windows, List<SceneVoiceLine> lines, List<double> wpsSamples)
+    {
+        // Confident scene: windows line up 1:1 → each pair is a plausible words/second sample.
+        if (windows.Count == lines.Count)
+        {
+            for (var j = 0; j < lines.Count; j++)
+            {
+                var dur = windows[j].EndSec - windows[j].StartSec;
+                if (dur < 0.2) continue;
+                var wps = WordCount(lines[j].Text) / dur;
+                if (wps is >= 1.0 and <= 5.0) wpsSamples.Add(wps); // plausible narration pace
+            }
+        }
+    }
+
+    private static int WordCount(string? t) =>
+        string.IsNullOrWhiteSpace(t) ? 1 : Math.Max(1, t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length);
+
+    private static double MedianSpeakerWps(List<double> wpsSamples)
+    {
         var speakerWps = 2.3;
         if (wpsSamples.Count > 0)
         {
             wpsSamples.Sort();
             speakerWps = wpsSamples[wpsSamples.Count / 2];
         }
-        try { await _js.InvokeVoidAsync("console.log", $"[dub] learned speaker pace: {speakerWps:0.00} words/sec (from {wpsSamples.Count} confident window(s))"); }
-        catch { /* logging only */ }
+        return speakerWps;
+    }
 
-        // ── Pass 2: place each line where the original spoke, at the learned pace, then overlay. ──
+    private async Task LogSpeakerPaceAsync(double speakerWps, int sampleCount)
+    {
+        try { await _js.InvokeVoidAsync("console.log", $"[dub] learned speaker pace: {speakerWps:0.00} words/sec (from {sampleCount} confident window(s))"); }
+        catch { /* logging only */ }
+    }
+
+    private async Task OverlayPreparedScenesAsync(
+        string projectId,
+        List<PreparedScene> prepared,
+        Dictionary<int, List<VoiceCapturePhrase>> confidentByScene,
+        double speakerWps,
+        List<SceneOverlayResult> results,
+        CancellationToken ct)
+    {
         foreach (var p in prepared)
         {
             ct.ThrowIfCancellationRequested();
@@ -247,99 +289,137 @@ public sealed class ClientVoiceSubstitutionService
 
             try
             {
-                var lines = p.Lines;
-                var windows = p.Windows ?? new List<JsSpeechWindow>();
-                var words = lines.Select(l => WordCount(l.Text)).ToList();
-                var totalWords = (double)Math.Max(1, words.Sum());
-                var totalSpeech = windows.Sum(w => Math.Max(0, w.EndSec - w.StartSec));
-
-                // A point on the concatenated-speech timeline → real clip time (walks the windows).
-                double RealTime(double speechT)
-                {
-                    if (windows.Count == 0) return speechT;
-                    double acc = 0;
-                    foreach (var w in windows)
-                    {
-                        var dur = Math.Max(0, w.EndSec - w.StartSec);
-                        if (speechT <= acc + dur) return w.StartSec + (speechT - acc);
-                        acc += dur;
-                    }
-                    return windows[^1].EndSec;
-                }
-
-                // STT-verified windows for this scene (consumed as matched, in order).
-                var sceneConfident = confidentByScene.TryGetValue(p.Scene, out var cs)
-                    ? new List<VoiceCapturePhrase>(cs)
-                    : new List<VoiceCapturePhrase>();
-                var confirmedUsed = 0;
-
-                var segs = new List<object>();
-                double cumWords = 0;
-                for (var i = 0; i < lines.Count; i++)
-                {
-                    var lineUrl = await _media.GetLocalBlobUrlAsync(projectId, lines[i].VoiceAudioRelativePath ?? "");
-                    if (!string.IsNullOrWhiteSpace(lineUrl))
-                    {
-                        double startSec, endSec;
-                        var confirmed = TakeConfidentMatch(sceneConfident, lines[i].Text);
-                        if (confirmed is not null)
-                        {
-                            // Scribe verified this exact line is in this window → trust it outright.
-                            startSec = confirmed.WindowStartSec;
-                            endSec = confirmed.WindowEndSec;
-                            confirmedUsed++;
-                        }
-                        else
-                        {
-                            // WHERE the dialog starts: the real 1:1 window when detection agrees, else the
-                            // word-weighted slice of the combined speech timeline (or the scene if none).
-                            if (windows.Count == lines.Count)
-                                startSec = windows[i].StartSec;
-                            else if (windows.Count > 0 && totalSpeech > 0.1)
-                                startSec = RealTime(cumWords / totalWords * totalSpeech);
-                            else
-                                startSec = cumWords / totalWords * (p.SceneDur > 0 ? p.SceneDur : lines.Count * 3.0);
-
-                            // HOW LONG the line should take at the narrator's LEARNED pace — the calibration
-                            // target the browser stretches the clone toward (clone → speaker pace). Immune to
-                            // inflated windows (trailing silence), which is what broke placement before.
-                            endSec = startSec + Math.Max(0.4, words[i] / speakerWps);
-                        }
-                        segs.Add(new { audioUrl = lineUrl, startSec, endSec });
-                    }
-                    cumWords += words[i];
-                }
-
-                if (confirmedUsed > 0)
-                {
-                    try { await _js.InvokeVoidAsync("console.log", $"[dub] scene {p.Scene:D2}: {confirmedUsed} line(s) placed from STT-verified windows"); }
-                    catch { /* logging only */ }
-                }
-
-                if (segs.Count == 0)
-                {
-                    results.Add(new SceneOverlayResult(p.Scene, true, p.SceneVideoUrl, "voice audio not synced"));
-                    continue;
-                }
-
-                // Mute the original clip audio and lay the placed + stretched lines onto silence
-                // (muteBase) — one narrator (you), timed to where the original spoke, no double voice.
-                var overlay = await _js.InvokeAsync<JsOverlayResult>(
-                    "PageToMovieFfmpeg.overlayVoiceSegmentsAsync",
-                    ct, p.SceneVideoUrl ?? "", segs.ToArray(), new { muteBase = true });
-
-                if (overlay is { Success: true } && !string.IsNullOrWhiteSpace(overlay.Url))
-                    results.Add(new SceneOverlayResult(p.Scene, true, overlay.Url, null));
-                else
-                    results.Add(new SceneOverlayResult(p.Scene, false, null, overlay?.Error ?? "overlay failed"));
+                results.Add(await OverlayOnePreparedSceneAsync(projectId, p, confidentByScene, speakerWps, ct));
             }
             catch (Exception ex)
             {
                 results.Add(new SceneOverlayResult(p.Scene, false, null, ex.Message));
             }
         }
+    }
 
-        return results;
+    private async Task<SceneOverlayResult> OverlayOnePreparedSceneAsync(
+        string projectId,
+        PreparedScene p,
+        Dictionary<int, List<VoiceCapturePhrase>> confidentByScene,
+        double speakerWps,
+        CancellationToken ct)
+    {
+        var lines = p.Lines!;
+        var windows = p.Windows ?? new List<JsSpeechWindow>();
+
+        // STT-verified windows for this scene (consumed as matched, in order).
+        var sceneConfident = confidentByScene.TryGetValue(p.Scene, out var cs)
+            ? new List<VoiceCapturePhrase>(cs)
+            : new List<VoiceCapturePhrase>();
+
+        var (segs, confirmedUsed) = await BuildOverlaySegmentsAsync(
+            projectId, lines, windows, p.SceneDur, speakerWps, sceneConfident);
+
+        if (confirmedUsed > 0)
+            await LogConfirmedPlacementAsync(p.Scene, confirmedUsed);
+
+        if (segs.Count == 0)
+            return new SceneOverlayResult(p.Scene, true, p.SceneVideoUrl, "voice audio not synced");
+
+        // Mute the original clip audio and lay the placed + stretched lines onto silence
+        // (muteBase) — one narrator (you), timed to where the original spoke, no double voice.
+        var overlay = await _js.InvokeAsync<JsOverlayResult>(
+            "PageToMovieFfmpeg.overlayVoiceSegmentsAsync",
+            ct, p.SceneVideoUrl ?? "", segs.ToArray(), new { muteBase = true });
+
+        if (overlay is { Success: true } && !string.IsNullOrWhiteSpace(overlay.Url))
+            return new SceneOverlayResult(p.Scene, true, overlay.Url, null);
+        else
+            return new SceneOverlayResult(p.Scene, false, null, overlay?.Error ?? "overlay failed");
+    }
+
+    private async Task<(List<object> Segs, int ConfirmedUsed)> BuildOverlaySegmentsAsync(
+        string projectId,
+        List<SceneVoiceLine> lines,
+        List<JsSpeechWindow> windows,
+        double sceneDur,
+        double speakerWps,
+        List<VoiceCapturePhrase> sceneConfident)
+    {
+        var words = lines.Select(l => WordCount(l.Text)).ToList();
+        var totalWords = (double)Math.Max(1, words.Sum());
+        var totalSpeech = windows.Sum(w => Math.Max(0, w.EndSec - w.StartSec));
+        var segs = new List<object>();
+        var confirmedUsed = 0;
+        double cumWords = 0;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var lineUrl = await _media.GetLocalBlobUrlAsync(projectId, lines[i].VoiceAudioRelativePath ?? "");
+            if (!string.IsNullOrWhiteSpace(lineUrl))
+            {
+                var (startSec, endSec, confirmed) = PlaceLine(
+                    lines[i], i, words, windows, lines.Count, totalWords, totalSpeech,
+                    sceneDur, speakerWps, cumWords, sceneConfident);
+                if (confirmed)
+                    confirmedUsed++;
+                segs.Add(new { audioUrl = lineUrl, startSec, endSec });
+            }
+            cumWords += words[i];
+        }
+        return (segs, confirmedUsed);
+    }
+
+    private static (double StartSec, double EndSec, bool Confirmed) PlaceLine(
+        SceneVoiceLine line,
+        int i,
+        List<int> words,
+        List<JsSpeechWindow> windows,
+        int lineCount,
+        double totalWords,
+        double totalSpeech,
+        double sceneDur,
+        double speakerWps,
+        double cumWords,
+        List<VoiceCapturePhrase> sceneConfident)
+    {
+        var confirmed = TakeConfidentMatch(sceneConfident, line.Text);
+        if (confirmed is not null)
+        {
+            // Scribe verified this exact line is in this window → trust it outright.
+            return (confirmed.WindowStartSec, confirmed.WindowEndSec, true);
+        }
+
+        double startSec;
+        // WHERE the dialog starts: the real 1:1 window when detection agrees, else the
+        // word-weighted slice of the combined speech timeline (or the scene if none).
+        if (windows.Count == lineCount)
+            startSec = windows[i].StartSec;
+        else if (windows.Count > 0 && totalSpeech > 0.1)
+            startSec = SpeechTimeToRealTime(windows, cumWords / totalWords * totalSpeech);
+        else
+            startSec = cumWords / totalWords * (sceneDur > 0 ? sceneDur : lineCount * 3.0);
+
+        // HOW LONG the line should take at the narrator's LEARNED pace — the calibration
+        // target the browser stretches the clone toward (clone → speaker pace). Immune to
+        // inflated windows (trailing silence), which is what broke placement before.
+        var endSec = startSec + Math.Max(0.4, words[i] / speakerWps);
+        return (startSec, endSec, false);
+    }
+
+    /// <summary>A point on the concatenated-speech timeline → real clip time (walks the windows).</summary>
+    private static double SpeechTimeToRealTime(List<JsSpeechWindow> windows, double speechT)
+    {
+        if (windows.Count == 0) return speechT;
+        double acc = 0;
+        foreach (var w in windows)
+        {
+            var dur = Math.Max(0, w.EndSec - w.StartSec);
+            if (speechT <= acc + dur) return w.StartSec + (speechT - acc);
+            acc += dur;
+        }
+        return windows[^1].EndSec;
+    }
+
+    private async Task LogConfirmedPlacementAsync(int scene, int confirmedUsed)
+    {
+        try { await _js.InvokeVoidAsync("console.log", $"[dub] scene {scene:D2}: {confirmedUsed} line(s) placed from STT-verified windows"); }
+        catch { /* logging only */ }
     }
 
     /// <summary>A scene after Pass 1: stitched video + detected windows (or a passthrough/error), held
