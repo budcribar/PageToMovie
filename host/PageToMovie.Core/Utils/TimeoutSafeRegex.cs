@@ -22,6 +22,19 @@ public static partial class CommonRegex
     /// <summary>Default match budget for every helper and compiled pattern here.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
+#if !PAGETOMOVIE_FOUNTAIN
+    // Must live in this same partial, after Timeout: C# does not define static-field
+    // init order across partials, and TimeSpan.Zero is an invalid Regex match timeout.
+    /// <summary>Matches consecutive whitespace characters (\s+).</summary>
+    public static readonly Regex WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, Timeout);
+
+    /// <summary>Matches consecutive dots or dots with surrounding spaces (\s*\.\s*\.+).</summary>
+    public static readonly Regex DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, Timeout);
+
+    /// <summary>Matches standard HTML tags (<[^>]+>).</summary>
+    public static readonly Regex HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, Timeout);
+#endif
+
     public static Regex Create(string pattern, RegexOptions options = RegexOptions.None) =>
         new(pattern, options, Timeout);
 
