@@ -68,26 +68,11 @@ public static class SpecializedHttpAndMimeExtensions
         _ => "Authorization"
     };
 
-    public static SpecializedHttpHeader ParseSpecializedHttpHeader(this string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
-        {
-            "authorization" => SpecializedHttpHeader.Authorization,
-            "content-type" or "contenttype" => SpecializedHttpHeader.ContentType,
-            "accept" => SpecializedHttpHeader.Accept,
-            "user-agent" or "useragent" => SpecializedHttpHeader.UserAgent,
-            "x-api-key" or "xapikey" or "api-key" => SpecializedHttpHeader.XApiKey,
-            "x-correlation-id" or "xcorrelationid" or "correlation-id" => SpecializedHttpHeader.XCorrelationId,
-            "x-request-id" or "xrequestid" or "request-id" => SpecializedHttpHeader.XRequestId,
-            "x-ratelimit-limit" or "xratelimitlimit" or "ratelimit-limit" => SpecializedHttpHeader.XRateLimitLimit,
-            "x-ratelimit-remaining" or "xratelimitremaining" or "ratelimit-remaining" => SpecializedHttpHeader.XRateLimitRemaining,
-            "x-ratelimit-reset" or "xratelimitreset" or "ratelimit-reset" => SpecializedHttpHeader.XRateLimitReset,
-            "cache-control" or "cachecontrol" => SpecializedHttpHeader.CacheControl,
-            "etag" => SpecializedHttpHeader.ETag,
-            "if-none-match" or "ifnonematch" => SpecializedHttpHeader.IfNoneMatch,
-            "location" => SpecializedHttpHeader.Location,
-            "retry-after" or "retryafter" => SpecializedHttpHeader.RetryAfter,
-            _ => SpecializedHttpHeader.Authorization
-        };
+    public static SpecializedHttpHeader ParseSpecializedHttpHeader(this string? value)
+    {
+        value.TryParseSpecializedHttpHeader(out var result);
+        return result;
+    }
 
     public static bool TryParseSpecializedHttpHeader(this string? value, out SpecializedHttpHeader result)
     {
@@ -147,26 +132,11 @@ public static class SpecializedHttpAndMimeExtensions
         _ => JsonKeys.ApplicationJson
     };
 
-    public static SpecializedMimeType ParseSpecializedMimeType(this string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
-        {
-            JsonKeys.ApplicationJson or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
-            "application/pdf" or "pdf" or "applicationpdf" => SpecializedMimeType.ApplicationPdf,
-            "application/zip" or "zip" or "applicationzip" => SpecializedMimeType.ApplicationZip,
-            "application/octet-stream" or "octet-stream" or "applicationoctetstream" => SpecializedMimeType.ApplicationOctetStream,
-            "text/plain" or "plain" or "textplain" or "txt" => SpecializedMimeType.TextPlain,
-            "text/html" or "html" or "texthtml" => SpecializedMimeType.TextHtml,
-            "text/css" or "css" or "textcss" => SpecializedMimeType.TextCss,
-            "text/fountain" or "fountain" or "textfountain" => SpecializedMimeType.TextFountain,
-            "video/mp4" or "mp4" or "videomp4" => SpecializedMimeType.VideoMp4,
-            "video/webm" or "webm" or "videowebm" => SpecializedMimeType.VideoWebm,
-            "audio/mpeg" or "mp3" or "mpeg" or "audiompeg" => SpecializedMimeType.AudioMpeg,
-            "audio/wav" or "wav" or "audiowav" => SpecializedMimeType.AudioWav,
-            "image/png" or "png" or "imagepng" => SpecializedMimeType.ImagePng,
-            "image/jpeg" or "jpg" or "jpeg" or "imagejpeg" => SpecializedMimeType.ImageJpeg,
-            "image/webp" or "webp" or "imagewebp" => SpecializedMimeType.ImageWebp,
-            _ => SpecializedMimeType.ApplicationJson
-        };
+    public static SpecializedMimeType ParseSpecializedMimeType(this string? value)
+    {
+        value.TryParseSpecializedMimeType(out var result);
+        return result;
+    }
 
     public static bool TryParseSpecializedMimeType(this string? value, out SpecializedMimeType result)
     {
