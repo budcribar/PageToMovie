@@ -213,7 +213,7 @@ else
             <span>finish voice + locks on</span>
         }
         <a class="alert-link" href="characters">Characters →</a>
-        @if (ProductionModes.IsDraft(List._costReport?.ProductionMode) == false)
+        @if (!ProductionModes.IsDraft(List._costReport?.ProductionMode))
         {
             <span class="text-muted"> · or switch to <a class="alert-link" href="cost">Draft mode</a> for a first watch without plates</span>
         }

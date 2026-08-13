@@ -18,6 +18,9 @@ namespace PageToMovie.Engine;
 public sealed class GrokImageClient : IImageClient
 {
     public const string ApiBase = SupportedModelCatalog.XaiApiBase;
+    private const string KindImage = "image";
+    private const string EndpointGenerations = "images/generations";
+    private const string EndpointEdits = "images/edits";
 
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
@@ -36,7 +39,7 @@ public sealed class GrokImageClient : IImageClient
         _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -81,8 +84,8 @@ public sealed class GrokImageClient : IImageClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "image",
-                Endpoint = "images/generations",
+                Kind = KindImage,
+                Endpoint = EndpointGenerations,
                 Model = modelName,
                 DurationMs = sw.ElapsedMilliseconds,
                 Prompt = prompt,
@@ -94,14 +97,14 @@ public sealed class GrokImageClient : IImageClient
 
         async Task<IReadOnlyList<byte[]>> DoRequestAsync(int attemptNum)
         {
-            using var resp = await SendJsonAsync(HttpMethod.Post, "images/generations", payload, ct);
+            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointGenerations, payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = "image",
-                    Endpoint = "images/generations",
+                    Kind = KindImage,
+                    Endpoint = EndpointGenerations,
                     Model = modelName,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -121,8 +124,8 @@ public sealed class GrokImageClient : IImageClient
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = "image",
-                    Endpoint = "images/generations",
+                    Kind = KindImage,
+                    Endpoint = EndpointGenerations,
                     Model = modelName,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -140,8 +143,8 @@ public sealed class GrokImageClient : IImageClient
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "image",
-                Endpoint = "images/generations",
+                Kind = KindImage,
+                Endpoint = EndpointGenerations,
                 Model = modelName,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -205,12 +208,12 @@ public sealed class GrokImageClient : IImageClient
         var costumeIndex = -1;
         if (hasCostumeRef)
         {
-            imageUris.Add(await FileToDataUriAsync(costumeRefPath!, ct, maxEdge: 1024, jpegQuality: 85)
+            imageUris.Add(await FileToDataUriAsync(costumeRefPath ?? "", ct, maxEdge: 1024, jpegQuality: 85)
                 .ConfigureAwait(false));
             costumeIndex = imageUris.Count - 1;
         }
 
-        var refNames = refs.Select(Path.GetFileName).Where(x => x is not null).Cast<string>().ToList();
+        var refNames = refs.Select(Path.GetFileName).OfType<string>().ToList();
         if (hasCostumeRef && Path.GetFileName(costumeRefPath) is { } costumeFileName)
             refNames.Add(costumeFileName);
         using var throttle = new SemaphoreSlim(3, 3);
@@ -297,7 +300,7 @@ public sealed class GrokImageClient : IImageClient
                         await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                         {
                             Kind = "image_edit",
-                            Endpoint = "images/edits",
+                            Endpoint = EndpointEdits,
                             Model = modelName,
                             DurationMs = sw.ElapsedMilliseconds,
                             Prompt = variantPrompt,
@@ -316,7 +319,7 @@ public sealed class GrokImageClient : IImageClient
                     await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                     {
                         Kind = "image_edit",
-                        Endpoint = "images/edits",
+                        Endpoint = EndpointEdits,
                         Model = modelName,
                         DurationMs = sw.ElapsedMilliseconds,
                         Prompt = variantPrompt,
@@ -338,7 +341,7 @@ public sealed class GrokImageClient : IImageClient
                     await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                     {
                         Kind = "image_edit",
-                        Endpoint = "images/edits",
+                        Endpoint = EndpointEdits,
                         Model = modelName,
                         DurationMs = sw.ElapsedMilliseconds,
                         Prompt = variantPrompt,
@@ -383,7 +386,7 @@ public sealed class GrokImageClient : IImageClient
                 Encoding.UTF8,
                 "application/json");
             // Per-request Bearer — never mutate shared DefaultRequestHeaders (multi-user race).
-            using var req = new HttpRequestMessage(HttpMethod.Post, "images/edits") { Content = content };
+            using var req = new HttpRequestMessage(HttpMethod.Post, EndpointEdits) { Content = content };
             var key = ResolveApiKey();
             if (!string.IsNullOrWhiteSpace(key))
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
@@ -413,7 +416,7 @@ public sealed class GrokImageClient : IImageClient
 
             // Fallback: "image" as string[] (older / alternate parsers)
             var alt = BasePayload();
-            alt["image"] = arr.DeepClone();
+            alt[KindImage] = arr.DeepClone();
             var (ok2, code2, body2, retryAfter2) = await SendAsync(alt).ConfigureAwait(false);
             if (ok2) return body2;
 
@@ -439,21 +442,19 @@ public sealed class GrokImageClient : IImageClient
         }
 
         // Single image: "image" as data-URI string, then { "url": ... }
-        {
-            var p = BasePayload();
-            p["image"] = imageUris[0];
-            var (ok, code, body, retryAfter) = await SendAsync(p).ConfigureAwait(false);
-            if (ok) return body;
+        var p = BasePayload();
+        p[KindImage] = imageUris[0];
+        var (ok, code, body, retryAfter) = await SendAsync(p).ConfigureAwait(false);
+        if (ok) return body;
 
-            var p2 = BasePayload();
-            p2["image"] = new JsonObject { ["url"] = imageUris[0] };
-            var (ok2, code2, body2, retryAfter2) = await SendAsync(p2).ConfigureAwait(false);
-            if (ok2) return body2;
+        var p2 = BasePayload();
+        p2[KindImage] = new JsonObject { ["url"] = imageUris[0] };
+        var (ok2, code2, body2, retryAfter2) = await SendAsync(p2).ConfigureAwait(false);
+        if (ok2) return body2;
 
-            throw new ChatHttpStatusException(code2 != 0 ? code2 : code,
-                $"Image edit failed: {Trim(body2.Length > 0 ? body2 : body, 400)}",
-                retryAfter2 ?? retryAfter);
-        }
+        throw new ChatHttpStatusException(code2 != 0 ? code2 : code,
+            $"Image edit failed: {Trim(body2.Length > 0 ? body2 : body, 400)}",
+            retryAfter2 ?? retryAfter);
     }
 
     private static string BuildMultiImageOrderHint(int count)
@@ -538,7 +539,7 @@ public sealed class GrokImageClient : IImageClient
             {
                 if (data is null)
                     return $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
-                if ((long)data.Size < bytes.Length || edge > maxEdge)
+                if (data.Size < bytes.Length || edge > maxEdge)
                 {
                     _log.LogDebug(
                         "Ref {File}: {SrcKb:0} KB → {DstKb:0} KB (maxEdge={Edge})",

@@ -108,10 +108,10 @@ public sealed class InMemoryLockService : ILockService
         if (string.IsNullOrWhiteSpace(jobId)) return;
         lock (_gate)
         {
-            foreach (var kv in _locks.ToArray())
+            foreach (var kv in _locks.ToArray()
+                         .Where(kv => string.Equals(kv.Value.JobId, jobId, StringComparison.OrdinalIgnoreCase)))
             {
-                if (string.Equals(kv.Value.JobId, jobId, StringComparison.OrdinalIgnoreCase))
-                    _locks.TryRemove(kv.Key, out _);
+                _locks.TryRemove(kv.Key, out _);
             }
         }
     }
@@ -137,10 +137,9 @@ public sealed class InMemoryLockService : ILockService
         var now = DateTimeOffset.UtcNow;
         lock (_gate)
         {
-            foreach (var kv in _locks.ToArray())
+            foreach (var kv in _locks.ToArray().Where(kv => kv.Value.ExpiresAt <= now))
             {
-                if (kv.Value.ExpiresAt <= now)
-                    _locks.TryRemove(kv.Key, out _);
+                _locks.TryRemove(kv.Key, out _);
             }
             return _locks.Values.Select(Clone).OrderBy(l => l.Resource).ToList();
         }

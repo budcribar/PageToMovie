@@ -48,7 +48,7 @@ public sealed class FakeGrokChatClient : IChatClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = string.IsNullOrWhiteSpace(mode) ? "chat" : mode!,
+                Kind = string.IsNullOrWhiteSpace(mode) ? "chat" : mode,
                 Mode = mode,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -501,10 +501,7 @@ public sealed class FakeGrokChatClient : IChatClient
     private static bool ContainsWord(string upperName, string[] words)
     {
         var tokens = CommonRegex.Split(upperName, "[^A-Z]+");
-        foreach (var w in words)
-            if (Array.IndexOf(tokens, w) >= 0)
-                return true;
-        return false;
+        return words.Any(w => Array.IndexOf(tokens, w) >= 0);
     }
 
     private static void AddCastName(List<string> order, Dictionary<string, bool> speaks, string name, bool spoken)
@@ -556,9 +553,8 @@ public sealed class FakeGrokChatClient : IChatClient
 
             // Action line: pick up inline UPPERCASE animal/creature/group names (e.g. a silent "LAMB")
             // so non-speaking cast still appear. Keyword-gated to avoid matching FADE/INT/etc.
-            foreach (Match m in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b"))
+            foreach (var w in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b").Select(m => m.Value))
             {
-                var w = m.Value;
                 if (CueStopWords.Contains(w)) continue;
                 if (ContainsWord(w, AnimalWords) || ContainsWord(w, CreatureWords) || ContainsWord(w, GroupWords))
                     AddCastName(order, speaks, w, spoken: false);

@@ -9,9 +9,9 @@
             style="width: auto; min-width: 110px; font-size: 0.8rem;"
             value="@Localizer.CurrentCulture.Name"
             @onchange="OnLanguageChangedAsync">
-        @foreach (var c in Localizer.SupportedCultures)
+        @foreach (var name in Localizer.SupportedCultures.Select(c => c.Name))
         {
-            <option value="@c.Name">@GetLanguageDisplayName(c.Name)</option>
+            <option value="@name">@GetLanguageDisplayName(name)</option>
         }
     </select>
 </div>

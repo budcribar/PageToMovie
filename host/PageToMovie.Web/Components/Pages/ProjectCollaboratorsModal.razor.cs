@@ -43,7 +43,7 @@ public sealed partial class ProjectCollaboratorsModal : IDisposable
 
     private void CancelSearch()
     {
-        try { _searchCts?.Cancel(); } catch { /* */ }
+        try { _searchCts?.Cancel(); } catch { /* cancel is best-effort */ }
         _searchCts?.Dispose();
         _searchCts = null;
     }

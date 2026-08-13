@@ -341,6 +341,13 @@ public enum SubjectMovementSpeedBand
 
 public static class AdaptationSyntaxEnumExtensions
 {
+    private const string ApiOther = "other";
+    private const string ApiBalanced = "balanced";
+    private const string ApiCentered = "centered";
+    private const string ApiDynamic = "dynamic";
+    private const string ApiMedium = "medium";
+    private const string ApiStandard = "standard";
+
     public static AdaptationConfidenceScore ParseAdaptationConfidenceScore(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -362,7 +369,7 @@ public static class AdaptationSyntaxEnumExtensions
                 "romance" => BookGenreType.Romance,
                 "historical" => BookGenreType.Historical,
                 "memoir" => BookGenreType.Memoir,
-                "other" => BookGenreType.Other,
+                ApiOther => BookGenreType.Other,
                 _ => BookGenreType.Fiction
             };
 
@@ -434,7 +441,7 @@ public static class AdaptationSyntaxEnumExtensions
             {
                 "left" => DualDialogueLayout.Left,
                 "right" => DualDialogueLayout.Right,
-                "balanced" => DualDialogueLayout.Balanced,
+                ApiBalanced => DualDialogueLayout.Balanced,
                 _ => DualDialogueLayout.None
             };
 
@@ -447,7 +454,7 @@ public static class AdaptationSyntaxEnumExtensions
                 "dialogue" => FountainTokenType.Dialogue,
                 "parenthetical" => FountainTokenType.Parenthetical,
                 "transition" => FountainTokenType.Transition,
-                "centered" => FountainTokenType.Centered,
+                ApiCentered => FountainTokenType.Centered,
                 "page_break" or "pagebreak" => FountainTokenType.PageBreak,
                 "section_header" or "sectionheader" => FountainTokenType.SectionHeader,
                 "synopsis" => FountainTokenType.Synopsis,
@@ -461,7 +468,7 @@ public static class AdaptationSyntaxEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "rule_of_thirds" or "ruleofthirds" => FramingCompositionStyle.RuleOfThirds,
-                "centered" => FramingCompositionStyle.Centered,
+                ApiCentered => FramingCompositionStyle.Centered,
                 "symmetrical" => FramingCompositionStyle.Symmetrical,
                 "golden_ratio" or "goldenratio" => FramingCompositionStyle.GoldenRatio,
                 "extreme_wide" or "extremewide" => FramingCompositionStyle.ExtremeWide,
@@ -540,7 +547,7 @@ public static class AdaptationSyntaxEnumExtensions
                 "innocent" => ProtagonistArchetypeKind.Innocent,
                 "outlaw" => ProtagonistArchetypeKind.Outlaw,
                 "sage" => ProtagonistArchetypeKind.Sage,
-                "other" => ProtagonistArchetypeKind.Other,
+                ApiOther => ProtagonistArchetypeKind.Other,
                 _ => ProtagonistArchetypeKind.Hero
             };
 
@@ -672,7 +679,7 @@ public static class AdaptationSyntaxEnumExtensions
             {
                 "scene_based" or "scenebased" => WardrobeConsistencyMode.SceneBased,
                 "time_based" or "timebased" => WardrobeConsistencyMode.TimeBased,
-                "dynamic" => WardrobeConsistencyMode.Dynamic,
+                ApiDynamic => WardrobeConsistencyMode.Dynamic,
                 _ => WardrobeConsistencyMode.FixedPerCharacter
             };
 
@@ -732,7 +739,7 @@ public static class AdaptationSyntaxEnumExtensions
             DualDialogueLayout.None => "none",
             DualDialogueLayout.Left => "left",
             DualDialogueLayout.Right => "right",
-            DualDialogueLayout.Balanced => "balanced",
+            DualDialogueLayout.Balanced => ApiBalanced,
             _ => "none"
         };
 
@@ -764,7 +771,7 @@ public static class AdaptationSyntaxEnumExtensions
             FountainTokenType.Dialogue => "dialogue",
             FountainTokenType.Parenthetical => "parenthetical",
             FountainTokenType.Transition => "transition",
-            FountainTokenType.Centered => "centered",
+            FountainTokenType.Centered => ApiCentered,
             FountainTokenType.PageBreak => "page_break",
             FountainTokenType.SectionHeader => "section_header",
             FountainTokenType.Synopsis => "synopsis",
@@ -797,18 +804,18 @@ public static class AdaptationSyntaxEnumExtensions
             BookGenreType.Romance => "romance",
             BookGenreType.Historical => "historical",
             BookGenreType.Memoir => "memoir",
-            BookGenreType.Other => "other",
+            BookGenreType.Other => ApiOther,
             _ => "fiction"
         };
 
     public static string ToApiString(this NarrativePacingStyle pacing) => pacing switch
         {
             NarrativePacingStyle.FastPaced => "fast_paced",
-            NarrativePacingStyle.Balanced => "balanced",
+            NarrativePacingStyle.Balanced => ApiBalanced,
             NarrativePacingStyle.SlowBurn => "slow_burn",
             NarrativePacingStyle.Episodic => "episodic",
             NarrativePacingStyle.ActionHeavy => "action_heavy",
-            _ => "balanced"
+            _ => ApiBalanced
         };
 
     public static string ToApiString(this ProtagonistArchetypeKind archetype) => archetype switch
@@ -820,27 +827,27 @@ public static class AdaptationSyntaxEnumExtensions
             ProtagonistArchetypeKind.Innocent => "innocent",
             ProtagonistArchetypeKind.Outlaw => "outlaw",
             ProtagonistArchetypeKind.Sage => "sage",
-            ProtagonistArchetypeKind.Other => "other",
+            ProtagonistArchetypeKind.Other => ApiOther,
             _ => "hero"
         };
 
     public static string ToApiString(this AdaptationConfidenceScore score) => score switch
         {
             AdaptationConfidenceScore.Low => "low",
-            AdaptationConfidenceScore.Medium => "medium",
+            AdaptationConfidenceScore.Medium => ApiMedium,
             AdaptationConfidenceScore.High => "high",
             AdaptationConfidenceScore.VeryHigh => "very_high",
             AdaptationConfidenceScore.Uncertain => "uncertain",
-            _ => "medium"
+            _ => ApiMedium
         };
 
     public static string ToApiString(this TextSanitizationMode mode) => mode switch
         {
             TextSanitizationMode.Strict => "strict",
-            TextSanitizationMode.Standard => "standard",
+            TextSanitizationMode.Standard => ApiStandard,
             TextSanitizationMode.Minimal => "minimal",
             TextSanitizationMode.Raw => "raw",
-            _ => "standard"
+            _ => ApiStandard
         };
 
     public static string ToApiString(this LineEndingKind kind) => kind switch
@@ -903,12 +910,12 @@ public static class AdaptationSyntaxEnumExtensions
 
     public static string ToApiString(this Stage2PlannerModeType mode) => mode switch
         {
-            Stage2PlannerModeType.Standard => "standard",
+            Stage2PlannerModeType.Standard => ApiStandard,
             Stage2PlannerModeType.Cinematic => "cinematic",
             Stage2PlannerModeType.FastDraft => "fast_draft",
             Stage2PlannerModeType.DetailedBreakdown => "detailed_breakdown",
             Stage2PlannerModeType.AutoRegenerate => "auto_regenerate",
-            _ => "standard"
+            _ => ApiStandard
         };
 
     public static string ToApiString(this PromptTemplateFamilyType family) => family switch
@@ -951,7 +958,7 @@ public static class AdaptationSyntaxEnumExtensions
             WardrobeConsistencyMode.FixedPerCharacter => "fixed_per_character",
             WardrobeConsistencyMode.SceneBased => "scene_based",
             WardrobeConsistencyMode.TimeBased => "time_based",
-            WardrobeConsistencyMode.Dynamic => "dynamic",
+            WardrobeConsistencyMode.Dynamic => ApiDynamic,
             _ => "fixed_per_character"
         };
 
@@ -970,11 +977,11 @@ public static class AdaptationSyntaxEnumExtensions
         {
             CameraFocusDistanceSpec.Macro => "macro",
             CameraFocusDistanceSpec.CloseUp => "close_up",
-            CameraFocusDistanceSpec.Medium => "medium",
+            CameraFocusDistanceSpec.Medium => ApiMedium,
             CameraFocusDistanceSpec.Deep => "deep",
             CameraFocusDistanceSpec.Infinity => "infinity",
             CameraFocusDistanceSpec.RackFocus => "rack_focus",
-            _ => "medium"
+            _ => ApiMedium
         };
 
     public static string ToApiString(this DepthOfFieldPresetKind kind) => kind switch
@@ -983,21 +990,21 @@ public static class AdaptationSyntaxEnumExtensions
             DepthOfFieldPresetKind.Deep => "deep",
             DepthOfFieldPresetKind.TiltShift => "tilt_shift",
             DepthOfFieldPresetKind.BokehRich => "bokeh_rich",
-            DepthOfFieldPresetKind.Standard => "standard",
-            _ => "standard"
+            DepthOfFieldPresetKind.Standard => ApiStandard,
+            _ => ApiStandard
         };
 
     public static string ToApiString(this FramingCompositionStyle style) => style switch
         {
             FramingCompositionStyle.RuleOfThirds => "rule_of_thirds",
-            FramingCompositionStyle.Centered => "centered",
+            FramingCompositionStyle.Centered => ApiCentered,
             FramingCompositionStyle.Symmetrical => "symmetrical",
             FramingCompositionStyle.GoldenRatio => "golden_ratio",
             FramingCompositionStyle.ExtremeWide => "extreme_wide",
             FramingCompositionStyle.CloseUpDetail => "close_up_detail",
             FramingCompositionStyle.OverTheShoulder => "over_the_shoulder",
-            FramingCompositionStyle.Dynamic => "dynamic",
-            _ => "dynamic"
+            FramingCompositionStyle.Dynamic => ApiDynamic,
+            _ => ApiDynamic
         };
 
     public static string ToApiString(this SubjectMovementSpeedBand band) => band switch

@@ -26,6 +26,21 @@ public interface IJobProgressSink
 /// </summary>
 public sealed class FilmJobService
 {
+    private const string StatusRunning = "running";
+    private const string StatusQueued = "queued";
+    private const string StatusCancelled = "cancelled";
+    private const string StatusError = "error";
+    private const string StatusPartial = "partial";
+    private const string StatusDone = "done";
+    private const string CancelledByUser = "Cancelled by user";
+    private const string ProjectIdRequired = "projectId required";
+    private const string KindStage2 = "stage2";
+    private const string AssetsFolder = "assets";
+    private const string VideoFolder = "video";
+    private const string VoiceNotConfigured = "Voice not configured";
+    private const string ScenesKey = "scenes";
+    private const string VeoClipsKey = "veo_clips";
+
     private static readonly AsyncLocal<JobRunState?> CurrentRun = new();
     private static readonly TimeSpan DefaultLockTtl = TimeSpan.FromHours(2);
 
@@ -257,7 +272,7 @@ public sealed class FilmJobService
     {
         if (!string.IsNullOrWhiteSpace(jobId))
         {
-            var n = CancelOneJob(jobId!) ? 1 : 0;
+            var n = CancelOneJob(jobId) ? 1 : 0;
             return Task.FromResult(n);
         }
 
@@ -284,14 +299,14 @@ public sealed class FilmJobService
         }
 
         // CTS entries that might lack a store row (edge case)
-        foreach (var kv in _jobCts.ToArray())
+        foreach (var key in _jobCts.Keys.ToArray())
         {
-            if (!seen.Add(kv.Key))
+            if (!seen.Add(key))
                 continue;
-            var rec = _jobs.Get(kv.Key);
+            var rec = _jobs.Get(key);
             if (!IsInBulkCancelScope(rec?.UserId, userId, cancelAllUsers))
                 continue;
-            if (CancelOneJob(kv.Key))
+            if (CancelOneJob(key))
                 cancelled++;
         }
 
@@ -312,8 +327,8 @@ public sealed class FilmJobService
     }
 
     private static bool IsActiveJobStatus(string? status) =>
-        string.Equals(status, "running", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase);
+        string.Equals(status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, StatusQueued, StringComparison.OrdinalIgnoreCase);
 
     private bool CancelOneJob(string jobId)
     {
@@ -340,7 +355,7 @@ public sealed class FilmJobService
         // Soft gate: a full global worker pool still accepts work until the per-user queue is full.
         // Workers wait for a slot. Reject only when this user's queue is full.
         if (!string.IsNullOrWhiteSpace(userId) &&
-            _jobs.CountQueuedForUser(userId!) >= Math.Max(1, cap.MaxQueuePerUser))
+            _jobs.CountQueuedForUser(userId) >= Math.Max(1, cap.MaxQueuePerUser))
         {
             _metrics.NoteCapacityReject();
             throw new CapacityRejectedException(
@@ -377,7 +392,7 @@ public sealed class FilmJobService
     /// </summary>
     private async Task InitAndPublishJobAsync(JobSnapshot snapshot)
     {
-        snapshot.Status = "running";
+        snapshot.Status = StatusRunning;
         snapshot.Index = 0;
         snapshot.Total = 100;
         snapshot.StartedAt = DateTimeOffset.UtcNow;
@@ -408,7 +423,7 @@ public sealed class FilmJobService
             Snapshot.UserId = run.UserId;
         Snapshot.QueuedAt ??= run.QueuedAt;
         Snapshot.StartedAt ??= DateTimeOffset.UtcNow;
-        Snapshot.Status = "running";
+        Snapshot.Status = StatusRunning;
         run.StartedAt = Snapshot.StartedAt;
 
         if (!string.IsNullOrWhiteSpace(run.ActiveJobId))
@@ -417,7 +432,7 @@ public sealed class FilmJobService
             Snapshot.JobId = run.ActiveJobId;
             _jobs.Update(run.ActiveJobId, rec =>
             {
-                rec.Status = "running";
+                rec.Status = StatusRunning;
                 rec.Kind = Snapshot.Kind;
                 rec.Message = Snapshot.Message;
                 rec.ProjectId = Snapshot.ProjectId;
@@ -552,7 +567,7 @@ public sealed class FilmJobService
         var kind = meta.Kind ?? "job";
         var rec = _jobs.Create(new JobRecord
         {
-            Status = "queued",
+            Status = StatusQueued,
             Kind = kind,
             ProjectId = meta.ProjectId,
             UserId = userId,
@@ -617,7 +632,7 @@ public sealed class FilmJobService
                         using var linked = CancellationTokenSource.CreateLinkedTokenSource(run.Cts.Token, ct);
                         // Bind api_calls telemetry to this job's project for the async flow
                         using var tel = !string.IsNullOrWhiteSpace(meta.ProjectId)
-                            ? _telemetry.UseProject(meta.ProjectId!)
+                            ? _telemetry.UseProject(meta.ProjectId)
                             : null;
                         await work(linked.Token);
                     }
@@ -625,17 +640,17 @@ public sealed class FilmJobService
                     await _apiPool.RunAsync(userId, RunWorkAsync, run.Cts.Token);
 
                     var status = CurrentRun.Value?.Snapshot.Status;
-                    success = string.Equals(status, "done", StringComparison.OrdinalIgnoreCase);
+                    success = string.Equals(status, StatusDone, StringComparison.OrdinalIgnoreCase);
                 }
                 catch (OperationCanceledException)
                 {
                     try
                     {
                         if (CurrentRun.Value?.Snapshot is { } s &&
-                            !string.Equals(s.Status, "cancelled", StringComparison.OrdinalIgnoreCase) &&
-                            !string.Equals(s.Status, "done", StringComparison.OrdinalIgnoreCase))
+                            !string.Equals(s.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(s.Status, StatusDone, StringComparison.OrdinalIgnoreCase))
                         {
-                            await FinishAsync("cancelled", "Cancelled by user");
+                            await FinishAsync(StatusCancelled, CancelledByUser);
                         }
                     }
                     catch { /* ignore */ }
@@ -645,7 +660,7 @@ public sealed class FilmJobService
                     _metrics.NoteLockConflict();
                     try
                     {
-                        await FinishAsync("error", ex.Message, ex.Message);
+                        await FinishAsync(StatusError, ex.Message, ex.Message);
                     }
                     catch { /* ignore */ }
                 }
@@ -655,10 +670,10 @@ public sealed class FilmJobService
                     try
                     {
                         if (CurrentRun.Value?.Snapshot is { } s &&
-                            (string.Equals(s.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(s.Status, "queued", StringComparison.OrdinalIgnoreCase)))
+                            (string.Equals(s.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(s.Status, StatusQueued, StringComparison.OrdinalIgnoreCase)))
                         {
-                            await FinishAsync("error", ex.Message, ex.Message);
+                            await FinishAsync(StatusError, ex.Message, ex.Message);
                         }
                     }
                     catch { /* ignore */ }
@@ -669,10 +684,10 @@ public sealed class FilmJobService
                     var q = run.QueuedAt;
                     var st = run.StartedAt ?? startedAt;
                     var snapStatus = CurrentRun.Value?.Snapshot.Status;
-                    if (string.Equals(snapStatus, "done", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(snapStatus, StatusDone, StringComparison.OrdinalIgnoreCase))
                         success = true;
-                    else if (string.Equals(snapStatus, "error", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(snapStatus, "cancelled", StringComparison.OrdinalIgnoreCase))
+                    else if (string.Equals(snapStatus, StatusError, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(snapStatus, StatusCancelled, StringComparison.OrdinalIgnoreCase))
                         success = false;
 
                     _metrics.NoteJobFinished(kindDone, userId, success, q, st);
@@ -708,7 +723,7 @@ public sealed class FilmJobService
             // Cancelled while queued?
             var job = !string.IsNullOrEmpty(run.ActiveJobId) ? _jobs.Get(run.ActiveJobId) : null;
             if (job is not null &&
-                string.Equals(job.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+                string.Equals(job.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
             {
                 throw new OperationCanceledException("Job cancelled");
             }
@@ -762,7 +777,7 @@ public sealed class FilmJobService
     {
         if (string.IsNullOrEmpty(run.ActiveJobId)) return;
         run.Snapshot.Message = message;
-        run.Snapshot.Status = "queued";
+        run.Snapshot.Status = StatusQueued;
         if (run.Snapshot.Log.Count == 0 || run.Snapshot.Log[^1] != message)
         {
             run.Snapshot.Log.Add(message);
@@ -771,9 +786,9 @@ public sealed class FilmJobService
         }
         _jobs.Update(run.ActiveJobId, rec =>
         {
-            if (string.Equals(rec.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(rec.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
                 return;
-            rec.Status = "queued";
+            rec.Status = StatusQueued;
             rec.Message = message;
             rec.Log = run.Snapshot.Log.ToList();
         });
@@ -817,7 +832,7 @@ public sealed class FilmJobService
             ? _projects.ActiveProjectId
             : req.ProjectId;
         var sceneNumbers = hasClips
-            ? req.Clips!.Select(c => c.Scene)
+            ? (req.Clips ?? new List<ClipTarget>()).Select(c => c.Scene)
             : req.Scenes ?? new List<int>();
         var locks = sceneNumbers
             .Where(s => s > 0)
@@ -825,8 +840,8 @@ public sealed class FilmJobService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var queuedMsg = hasClips
-            ? $"Queued batch gen ({req.Clips!.Count} clip(s))…"
-            : $"Queued batch gen ({req.Scenes!.Count} scenes)…";
+            ? $"Queued batch gen ({(req.Clips ?? new List<ClipTarget>()).Count} clip(s))…"
+            : $"Queued batch gen ({req.Scenes.Count} scenes)…";
         return StartBackgroundJobAsync(
             ct => RunBatchGenAsync(req, projectId, ct),
             new JobEnqueueMeta
@@ -842,13 +857,13 @@ public sealed class FilmJobService
 
     /// <summary>
     /// Resolve the effective project id (from the request, else the active project) — throwing
-    /// "projectId required" when neither is set — and default a blank character key to the
+    /// ProjectIdRequired when neither is set — and default a blank character key to the
     /// narrator pseudo-character. Shared prologue for voice/speak job starts.
     /// </summary>
     private (string projectId, string charKey) ResolveProjectAndCharKey(string? reqProjectId, string? reqCharKey)
     {
         if (string.IsNullOrWhiteSpace(reqProjectId) && string.IsNullOrWhiteSpace(_projects.ActiveProjectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         var projectId = string.IsNullOrWhiteSpace(reqProjectId)
             ? _projects.ActiveProjectId
             : reqProjectId.Trim();
@@ -921,19 +936,19 @@ public sealed class FilmJobService
             ct => RunStage2Async(req, projectId, ct),
             new JobEnqueueMeta
             {
-                Kind = "stage2",
+                Kind = KindStage2,
                 ProjectId = projectId,
                 Message = "Queued Stage 2…",
             },
             lockResources: new[] { LockKeys.Stage(projectId) },
-            lockReason: "stage2");
+            lockReason: KindStage2);
     }
 
     /// <summary>C# PDF extract + optional Grok vision OCR → book_full.txt (prepare only).</summary>
     public Task<JobSnapshot> StartBookPrepareAsync(StartBookPrepareRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ProjectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         return StartBackgroundJobAsync(
             ct => RunBookPrepareAsync(req, ct),
             new JobEnqueueMeta
@@ -953,7 +968,7 @@ public sealed class FilmJobService
     public Task<JobSnapshot> StartBookImportAsync(StartBookImportRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ProjectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         return StartBackgroundJobAsync(
             ct => RunBookImportAsync(req, ct),
             new JobEnqueueMeta
@@ -974,7 +989,7 @@ public sealed class FilmJobService
         await _projects.RequireProjectAsync(projectId, ct);
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "book_prepare",
             ProjectId = projectId,
             Message = "Preparing book (PDF extract / vision OCR)…",
@@ -1012,16 +1027,16 @@ public sealed class FilmJobService
             var msg = result.ReadyForStage1
                 ? $"Book ready · {result.TextWords} words · quality={result.TextQuality} · {result.TextEngine}"
                 : $"Book prepared but Stage 1 not ready · {result.Strategy}: {result.StrategyReason}";
-            await FinishAsync(result.Ok ? "done" : "error", msg, result.Ok ? null : msg);
+            await FinishAsync(result.Ok ? StatusDone : StatusError, msg, result.Ok ? null : msg);
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Book prepare failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -1033,7 +1048,7 @@ public sealed class FilmJobService
         // Progress: 0–4 prepare, 5–10 adapt (chunk messages bump index)
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "book_import",
             ProjectId = projectId,
             Message = req.SkipPrepare
@@ -1059,7 +1074,7 @@ public sealed class FilmJobService
 
             if (!_chat.IsConfigured)
             {
-                await FinishAsync("error",
+                await FinishAsync(StatusError,
                     "API key missing. A Grok key is set in Configuration only if it decrypts for this user. " +
                     "Re-save the key after each redeploy unless Railway has a Volume at /data. " +
                     "Or set server env XAI_API_KEY.",
@@ -1112,7 +1127,7 @@ public sealed class FilmJobService
 
                 if (!prep.Ok)
                 {
-                    await FinishAsync("error", prep.StrategyReason ?? "Book prepare failed",
+                    await FinishAsync(StatusError, prep.StrategyReason ?? "Book prepare failed",
                         prep.StrategyReason ?? "Book prepare failed").ConfigureAwait(false);
                     return;
                 }
@@ -1127,7 +1142,7 @@ public sealed class FilmJobService
 
             if (!File.Exists(bookPath))
             {
-                await FinishAsync("error", "No book text after prepare",
+                await FinishAsync(StatusError, "No book text after prepare",
                     "No book text after prepare").ConfigureAwait(false);
                 return;
             }
@@ -1141,7 +1156,7 @@ public sealed class FilmJobService
 
             if (!_chat.IsConfigured)
             {
-                await FinishAsync("error", "Chat service not configured",
+                await FinishAsync(StatusError, "Chat service not configured",
                     "Chat service not configured").ConfigureAwait(false);
                 return;
             }
@@ -1195,24 +1210,24 @@ public sealed class FilmJobService
 
             if (!save.Ok)
             {
-                await FinishAsync("error", save.Error ?? "Screenplay draft failed",
+                await FinishAsync(StatusError, save.Error ?? "Screenplay draft failed",
                     save.Error ?? "Screenplay draft failed").ConfigureAwait(false);
                 return;
             }
 
             await UpdateAsync(s => s.Index = 10).ConfigureAwait(false);
             await FinishAsync(
-                "done",
+                StatusDone,
                 save.Message ?? "Screenplay draft ready — review and approve").ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user").ConfigureAwait(false);
+            await FinishAsync(StatusCancelled, CancelledByUser).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Book import failed");
-            await FinishAsync("error", ex.Message, ex.Message).ConfigureAwait(false);
+            await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
     }
 
@@ -1296,7 +1311,7 @@ public sealed class FilmJobService
             ? _projects.ActiveProjectId
             : req.ProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         return StartBackgroundJobAsync(
             ct => RunPlanLooksAsync(req, projectId, ct),
             new JobEnqueueMeta
@@ -1318,7 +1333,7 @@ public sealed class FilmJobService
         if (string.IsNullOrWhiteSpace(projectId))
             projectId = _projects.ActiveProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         return StartBackgroundJobAsync(
             ct => RunEmbellishAsync(projectId, ct),
             new JobEnqueueMeta
@@ -1339,7 +1354,7 @@ public sealed class FilmJobService
         if (string.IsNullOrWhiteSpace(projectId))
             projectId = _projects.ActiveProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         return StartBackgroundJobAsync(
             ct => RunSceneMusicGenAsync(projectId, scene, model, isVocal, ct),
             new JobEnqueueMeta
@@ -1368,7 +1383,7 @@ public sealed class FilmJobService
         {
             if (!_audio.IsConfigured)
             {
-                await FinishAsync("error", "Audio synthesis API key missing.", "Audio synthesis API key missing.");
+                await FinishAsync(StatusError, "Audio synthesis API key missing.", "Audio synthesis API key missing.");
                 return;
             }
 
@@ -1385,7 +1400,7 @@ public sealed class FilmJobService
             var audioModel = string.IsNullOrWhiteSpace(modelOverride) ? configuredModel : modelOverride;
             if (!enableMusic || string.Equals(audioModel, "none", StringComparison.OrdinalIgnoreCase))
             {
-                await FinishAsync("done", "Background music disabled in settings.");
+                await FinishAsync(StatusDone, "Background music disabled in settings.");
                 return;
             }
 
@@ -1472,12 +1487,12 @@ public sealed class FilmJobService
                 // audio client sends its HTTP error via onProgress before returning null.
                 var providerDetail = !string.IsNullOrWhiteSpace(lastProviderNote)
                     && (lastProviderNote.Contains("fail", StringComparison.OrdinalIgnoreCase)
-                        || lastProviderNote.Contains("error", StringComparison.OrdinalIgnoreCase)
+                        || lastProviderNote.Contains(StatusError, StringComparison.OrdinalIgnoreCase)
                         || lastProviderNote.Contains("HTTP", StringComparison.OrdinalIgnoreCase)
                         || lastProviderNote.Contains("key", StringComparison.OrdinalIgnoreCase))
                     ? $" {entry.DisplayName} said: “{lastProviderNote.Trim()}”."
                     : "";
-                await FinishAsync("error",
+                await FinishAsync(StatusError,
                     $"No music came back from {entry.DisplayName}.{providerDetail} " +
                     "Most likely its API key isn’t configured — the audio gate only checks that some " +
                     "provider has a key, not the one this model uses. Add its key in Configuration, or pick a different audio model.",
@@ -1499,16 +1514,16 @@ public sealed class FilmJobService
             }
 
             await UpdateAsync(s => s.Index = 100);
-            await FinishAsync("done", $"{(effectiveIsVocal ? "Singing" : "Background music")} ready ({savedSegments} segment(s)) — save to media folder");
+            await FinishAsync(StatusDone, $"{(effectiveIsVocal ? "Singing" : "Background music")} ready ({savedSegments} segment(s)) — save to media folder");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Scene music gen failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -1569,7 +1584,7 @@ public sealed class FilmJobService
             ? _projects.ActiveProjectId
             : req.ProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
 
         // Server no longer extracts frames; batch must be driven from the browser Review page.
         throw new InvalidOperationException(
@@ -1617,17 +1632,17 @@ public sealed class FilmJobService
             await AppendLogAsync(
                 $"Draft: {draft.Suggestion}/{draft.Category} · {draft.Suggestions.Count} suggestion(s)");
             await FinishAsync(
-                "done",
+                StatusDone,
                 $"Review ready S{req.Scene:D2}C{req.Clip:D2} — {draft.Suggestion} ({draft.Suggestions.Count} suggestions)");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Clip review cancelled");
+            await FinishAsync(StatusCancelled, "Clip review cancelled");
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Clip auto-review failed S{Scene}C{Clip}", req.Scene, req.Clip);
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -1641,7 +1656,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "clip-auto-review-batch",
             ProjectId = projectId,
             Scene = req.Scene is int s0 && s0 > 0 ? s0 : null,
@@ -1661,7 +1676,7 @@ public sealed class FilmJobService
             if (coords.Count == 0)
             {
                 try { await _reviewIndex.RebuildAsync(projectId, req.Scene, ct); } catch { /* non-fatal */ }
-                await FinishAsync("done", "Batch auto-review: nothing to do (no missing drafts)");
+                await FinishAsync(StatusDone, "Batch auto-review: nothing to do (no missing drafts)");
                 return;
             }
 
@@ -1722,17 +1737,17 @@ public sealed class FilmJobService
             }
 
             await FinishAsync(
-                "done",
+                StatusDone,
                 $"Batch auto-review done: {ok} ok, {failed} failed of {coords.Count}");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Batch auto-review cancelled");
+            await FinishAsync(StatusCancelled, "Batch auto-review cancelled");
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Batch auto-review failed for {ProjectId}", projectId);
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -1776,16 +1791,16 @@ public sealed class FilmJobService
                 ct: ct);
 
             await AppendLogAsync($"Saved {Path.GetFileName(path)}");
-            await FinishAsync("done", $"Voice sample ready for {req.CharKey}");
+            await FinishAsync(StatusDone, $"Voice sample ready for {req.CharKey}");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Voice sample cancelled");
+            await FinishAsync(StatusCancelled, "Voice sample cancelled");
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Voice preview failed for {Char}", req.CharKey);
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -1840,7 +1855,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "cast-extract",
             ProjectId = projectId,
             Message = "Building cast from screenplay (AI)…",
@@ -1879,7 +1894,7 @@ public sealed class FilmJobService
 
             if (!result.Ok)
             {
-                await FinishAsync("error", result.Error ?? "Cast extract failed", result.Error).ConfigureAwait(false);
+                await FinishAsync(StatusError, result.Error ?? "Cast extract failed", result.Error).ConfigureAwait(false);
                 return;
             }
 
@@ -1888,16 +1903,16 @@ public sealed class FilmJobService
                       + (result.CharacterKeys is { Count: > 0 }
                           ? " — " + string.Join(", ", result.CharacterKeys.Take(12))
                           : "");
-            await FinishAsync("done", msg).ConfigureAwait(false);
+            await FinishAsync(StatusDone, msg).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await FinishAsync("cancelled", "Cast extract cancelled").ConfigureAwait(false);
+            await FinishAsync(StatusCancelled, "Cast extract cancelled").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Cast extract failed for {Project}", projectId);
-            await FinishAsync("error", ex.Message, ex.Message).ConfigureAwait(false);
+            await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
     }
 
@@ -1907,7 +1922,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "character-plates",
             ProjectId = projectId,
             Message = req.UseGrok
@@ -1961,13 +1976,13 @@ public sealed class FilmJobService
 
             if (result.AlreadySorted)
             {
-                await FinishAsync("done", $"Already sorted ({result.SortedAt})");
+                await FinishAsync(StatusDone, $"Already sorted ({result.SortedAt})");
                 return;
             }
 
             if (!result.Ok && !string.IsNullOrEmpty(result.Reason))
             {
-                await FinishAsync("error", result.Reason, result.Reason);
+                await FinishAsync(StatusError, result.Reason, result.Reason);
                 return;
             }
 
@@ -1982,17 +1997,17 @@ public sealed class FilmJobService
                 $"skipped={result.CharactersSkipped} classified={result.ImagesClassified} " +
                 $"text_skipped={result.ImagesSkippedText}");
             await FinishAsync(
-                "done",
+                StatusDone,
                 $"Plates sorted ({result.Method}): {result.CharactersUpdated} character(s) updated");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Character plate sort failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2019,7 +2034,7 @@ public sealed class FilmJobService
                 await _characters.LockFromPathAsync(
                     projectId,
                     charKey,
-                    await ResolveLockImagePathAsync(projectId, imagePath!, ct).ConfigureAwait(false),
+                    await ResolveLockImagePathAsync(projectId, imagePath, ct).ConfigureAwait(false),
                     allowStyleOverride,
                     ct).ConfigureAwait(false),
             "lock-bookref" =>
@@ -2057,7 +2072,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "video_edit",
             ProjectId = projectId,
             Scene = req.Scene,
@@ -2077,7 +2092,7 @@ public sealed class FilmJobService
                 throw new InvalidOperationException("Video edit: connect xAI (XAI_API_KEY) in Configuration.");
 
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-            var videoDir = Path.Combine(projectDir, "assets", "video");
+            var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             var activeMp4Path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{req.Clip:D2}.mp4");
             if (!File.Exists(activeMp4Path))
                 throw new InvalidOperationException($"Scene {req.Scene} clip {req.Clip}: no clip on disk to edit.");
@@ -2163,16 +2178,16 @@ public sealed class FilmJobService
                 Ok = true,
             }, ct).ConfigureAwait(false);
 
-            await FinishAsync("done", "Edited clip ready — saved as a new take.");
+            await FinishAsync(StatusDone, "Edited clip ready — saved as a new take.");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Video edit failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2182,7 +2197,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "location_variants",
             ProjectId = projectId,
             CharKey = req.LocKey,
@@ -2237,13 +2252,13 @@ public sealed class FilmJobService
             if (result.PreviousVariantIndex is int prevLoc && result.NewVariantIndex is int nextLoc)
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"New look is #{nextLoc} — current lock is still #{prevLoc}. Click a lock to keep old or switch.");
             }
             else if (result.LockedAsPreferred)
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Plate tweaked for {req.LocKey} — new look is locked. Tweak again with words if needed.");
             }
             else if (req.AutoLockBest && string.IsNullOrWhiteSpace(req.ImageEditInstruction) && result.Paths.Count > 0)
@@ -2258,24 +2273,24 @@ public sealed class FilmJobService
                     },
                     ct: ct);
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Set plates ready for {req.LocKey} — auto-locked variant {best}");
             }
             else
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
             }
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Location variants failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2285,7 +2300,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "character",
             ProjectId = projectId,
             CharKey = req.CharKey,
@@ -2351,13 +2366,13 @@ public sealed class FilmJobService
             if (result.PreviousVariantIndex is int prevChar && result.NewVariantIndex is int nextChar)
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"New look is #{nextChar} — current lock is still #{prevChar}. Pick one.");
             }
             else if (result.LockedAsPreferred)
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Portrait tweaked for {req.CharKey} — new look is locked. Tweak again with words if needed.");
             }
             else if (req.AutoLockBest && !req.IterativeEdit && result.Paths.Count > 0)
@@ -2372,24 +2387,24 @@ public sealed class FilmJobService
                     },
                     ct: ct);
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Portraits ready for {req.CharKey} — auto-locked variant {best}");
             }
             else
             {
                 await FinishAsync(
-                    "done",
+                    StatusDone,
                     $"Variants ready for {req.CharKey} ({result.Mode}, {result.Paths.Count} image(s))");
             }
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Character variants failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2399,7 +2414,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "embellish",
             ProjectId = projectId,
             Message = "Enriching screenplay…",
@@ -2476,7 +2491,7 @@ public sealed class FilmJobService
 
             if (!result.Ok)
             {
-                await FinishAsync("error", result.Error ?? "Enrich failed.", result.Error);
+                await FinishAsync(StatusError, result.Error ?? "Enrich failed.", result.Error);
                 return;
             }
 
@@ -2488,18 +2503,18 @@ public sealed class FilmJobService
             if (result.Applied)
                 _projects.TriggerAutoGitCommit(projectId, "ptm:stage=embellish");
             await FinishAsync(
-                "done",
+                StatusDone,
                 result.Message
                 ?? $"Enriched {projectId} ({result.SceneCountAfter} scenes). Re-approve, then Fit length if you use a target runtime.");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Screenplay enrich failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2572,7 +2587,7 @@ public sealed class FilmJobService
         var total = cast.Count + locs.Count;
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "plan_looks",
             ProjectId = projectId,
             Message = total == 0
@@ -2588,7 +2603,7 @@ public sealed class FilmJobService
 
         if (total == 0)
         {
-            await FinishAsync("done", "All used cast/places already have locked looks (or none in plan).");
+            await FinishAsync(StatusDone, "All used cast/places already have locked looks (or none in plan).");
             return;
         }
 
@@ -2688,20 +2703,20 @@ public sealed class FilmJobService
             var summary = $"Plan looks done: locked {lockedN}/{total}"
                 + (failed.Count > 0 ? $" · {failed.Count} failed" : "");
             if (failed.Count > 0 && lockedN == 0)
-                await FinishAsync("error", summary, string.Join("; ", failed.Take(5)));
+                await FinishAsync(StatusError, summary, string.Join("; ", failed.Take(5)));
             else if (failed.Count > 0)
-                await FinishAsync("partial", summary);
+                await FinishAsync(StatusPartial, summary);
             else
-                await FinishAsync("done", summary);
+                await FinishAsync(StatusDone, summary);
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Plan looks batch failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2729,7 +2744,7 @@ public sealed class FilmJobService
         // the "Total=0 → 35%" placeholder during a long single-pass adapt call.
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "stage1",
             ProjectId = projectId,
             Message = "Building screenplay…",
@@ -2784,17 +2799,17 @@ public sealed class FilmJobService
                 msg += " — narration-heavy (clip gen will lean on V.O.)";
             if (result.HardErrors.Count > 0)
                 msg += $" · {result.HardErrors.Count} issue(s)";
-            await FinishAsync(result.Ok || result.SceneCount > 0 ? "done" : "error", msg,
+            await FinishAsync(result.Ok || result.SceneCount > 0 ? StatusDone : StatusError, msg,
                 result.Ok ? null : string.Join("; ", result.HardErrors.Take(3)));
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Stage 1 failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2804,8 +2819,8 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
-            Kind = "stage2",
+            Status = StatusRunning,
+            Kind = KindStage2,
             ProjectId = projectId,
             Message = "Building shot plan…",
             Index = 0,
@@ -2881,7 +2896,7 @@ public sealed class FilmJobService
                 ct: ct);
 
             await FinishAsync(
-                "done",
+                StatusDone,
                 $"Stage 2 complete: {result.SceneCount} scenes · {result.ClipCount} clips · ~{result.DurationSeconds}s");
 
             // North Star: after shot plan, auto-generate looks for used cast + places
@@ -2890,12 +2905,12 @@ public sealed class FilmJobService
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Stage 2 failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -2955,7 +2970,7 @@ public sealed class FilmJobService
     public Task<JobSnapshot> StartYouTubeUploadAsync(StartYouTubeUploadRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ProjectId))
-            throw new InvalidOperationException("projectId required");
+            throw new InvalidOperationException(ProjectIdRequired);
         var projectId = req.ProjectId;
         return StartBackgroundJobAsync(
             ct => RunYouTubeUploadAsync(req, projectId, ct),
@@ -2986,7 +3001,7 @@ public sealed class FilmJobService
             if (path is null || !File.Exists(path))
             {
                 var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-                var altWip = Path.Combine(pDir, "assets", "video", "wip_movie.mp4");
+                var altWip = Path.Combine(pDir, AssetsFolder, VideoFolder, "wip_movie.mp4");
                 if (File.Exists(altWip)) path = altWip;
             }
             if (path is null || !File.Exists(path))
@@ -3111,11 +3126,11 @@ public sealed class FilmJobService
                 _log.LogWarning(ex, "Failed to clean up temporary staged movie file {Path} after YouTube upload", path);
             }
 
-            await FinishAsync("done", $"Uploaded to YouTube: {url}");
+            await FinishAsync(StatusDone, $"Uploaded to YouTube: {url}");
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "YouTube upload cancelled");
+            await FinishAsync(StatusCancelled, "YouTube upload cancelled");
         }
         catch (Exception ex)
         {
@@ -3124,7 +3139,7 @@ public sealed class FilmJobService
                 ? $"Google API Error ({gex.HttpStatusCode}): {gex.Message} — {gex.Error?.Message}"
                 : ex.Message;
             await AppendLogAsync($"❌ YouTube upload exception: {errMessage}");
-            await FinishAsync("error", errMessage, errMessage);
+            await FinishAsync(StatusError, errMessage, errMessage);
         }
     }
 
@@ -3158,7 +3173,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "speak-batch",
             ProjectId = projectId,
             CharKey = charKey,
@@ -3174,7 +3189,7 @@ public sealed class FilmJobService
             var (ctx, ctxErr) = await ResolveSpeakContextAsync(projectId, charKey, req.Model, ct).ConfigureAwait(false);
             if (ctx is null)
             {
-                await FinishAsync("error", ctxErr ?? "Voice not configured", ctxErr ?? "Voice not configured")
+                await FinishAsync(StatusError, ctxErr ?? VoiceNotConfigured, ctxErr ?? VoiceNotConfigured)
                     .ConfigureAwait(false);
                 return;
             }
@@ -3186,7 +3201,7 @@ public sealed class FilmJobService
             {
                 await AppendLogAsync("Speak-batch: nothing to synthesize (only_missing or no dialogue).")
                     .ConfigureAwait(false);
-                await FinishAsync("done", "No lines to speak").ConfigureAwait(false);
+                await FinishAsync(StatusDone, "No lines to speak").ConfigureAwait(false);
                 return;
             }
 
@@ -3199,7 +3214,7 @@ public sealed class FilmJobService
                 s.Index = 0;
                 s.Message = $"Speak-batch: {work.Count} line(s) · parallel {maxParallel} · {providerId}";
             }).ConfigureAwait(false);
-            await AppendLogAsync(Snapshot.Message!).ConfigureAwait(false);
+            await AppendLogAsync(Snapshot.Message ?? "").ConfigureAwait(false);
 
             var done = 0;
             var failed = 0;
@@ -3256,7 +3271,7 @@ public sealed class FilmJobService
                     var absPath = Path.Combine(
                         projectDir,
                         relPath.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(absPath)!);
+                    Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
                     await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
 
                     // Ticket form used by GET /api/projects/{id}/media/file
@@ -3308,24 +3323,24 @@ public sealed class FilmJobService
 
             var failCount = Volatile.Read(ref failed);
             if (failCount == 0)
-                await FinishAsync("done", $"Speak-batch complete — {work.Count} line(s)").ConfigureAwait(false);
+                await FinishAsync(StatusDone, $"Speak-batch complete — {work.Count} line(s)").ConfigureAwait(false);
             else if (failCount >= work.Count)
-                await FinishAsync("error", $"Speak-batch failed — all {failCount} line(s) failed", "all failed")
+                await FinishAsync(StatusError, $"Speak-batch failed — all {failCount} line(s) failed", "all failed")
                     .ConfigureAwait(false);
             else
                 await FinishAsync(
-                        "partial",
+                        StatusPartial,
                         $"Speak-batch partial — {work.Count - failCount} ok, {failCount} failed")
                     .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Speak-batch cancelled").ConfigureAwait(false);
+            await FinishAsync(StatusCancelled, "Speak-batch cancelled").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Speak-batch failed for {ProjectId}", projectId);
-            await FinishAsync("error", ex.Message, ex.Message).ConfigureAwait(false);
+            await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
     }
 
@@ -3373,7 +3388,7 @@ public sealed class FilmJobService
             throw new InvalidOperationException(
                 $"No Stage 2 blueprint for project {projectId}. Run Stage 2 first.");
 
-        if (!blueprint.RootElement.TryGetProperty("scenes", out var scenesEl) ||
+        if (!blueprint.RootElement.TryGetProperty(ScenesKey, out var scenesEl) ||
             scenesEl.ValueKind != JsonValueKind.Array)
             return list;
 
@@ -3381,7 +3396,7 @@ public sealed class FilmJobService
         {
             var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
             if (sn <= 0) continue;
-            if (!s.TryGetProperty("veo_clips", out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array)
+            if (!s.TryGetProperty(VeoClipsKey, out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array)
                 continue;
             foreach (var c in clipsEl.EnumerateArray())
             {
@@ -3392,12 +3407,12 @@ public sealed class FilmJobService
                 var dialogue = "";
                 if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
                 {
-                    if (ap.TryGetProperty("dialogue", out var d))
+                    if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
                         dialogue = d.GetString() ?? "";
                     if (ap.TryGetProperty("speaker", out var sp))
                         speaker = sp.GetString();
                 }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty("dialogue", out var rootD))
+                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
                     dialogue = rootD.GetString() ?? "";
                 if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty("speaker", out var rootSp))
                     speaker = rootSp.GetString();
@@ -3425,22 +3440,22 @@ public sealed class FilmJobService
 
     private static string FindClipDialogue(JsonElement root, int scene, int clip)
     {
-        if (!root.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty(ScenesKey, out var scenes) || scenes.ValueKind != JsonValueKind.Array)
             return "";
         foreach (var s in scenes.EnumerateArray())
         {
             var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
             if (sn != scene) continue;
-            if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+            if (!s.TryGetProperty(VeoClipsKey, out var clips) || clips.ValueKind != JsonValueKind.Array)
                 return "";
             foreach (var c in clips.EnumerateArray())
             {
                 var cn = ClipKeying.ClipNumber(c);
                 if (cn != clip) continue;
                 if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
-                    ap.TryGetProperty("dialogue", out var d))
+                    ap.TryGetProperty(JsonKeys.Dialogue, out var d))
                     return d.GetString() ?? "";
-                if (c.TryGetProperty("dialogue", out var rootD))
+                if (c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
                     return rootD.GetString() ?? "";
             }
         }
@@ -3506,9 +3521,9 @@ public sealed class FilmJobService
                          ?? "unknown";
         var useEleven = providerId.Equals("elevenlabs", StringComparison.OrdinalIgnoreCase)
                         || entry?.Provider == ModelProviderFamily.ElevenLabs
-                        || voiceId!.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
+                        || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
-        if (useEleven && !_voiceClient.IsConfigured && !voiceId!.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
+        if (useEleven && !_voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
             return (null, "ElevenLabs key is not configured.");
         if (!useEleven && !_voiceClone.IsConfigured)
             return (null, "Voice provider (Fal) is not configured.");
@@ -3528,7 +3543,7 @@ public sealed class FilmJobService
 
         return (new SpeakContext
         {
-            VoiceId = voiceId!,
+            VoiceId = voiceId,
             Entry = entry,
             ProviderId = providerId,
             UseEleven = useEleven,
@@ -3654,7 +3669,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "voice-substitution",
             ProjectId = projectId,
             CharKey = charKey,
@@ -3669,7 +3684,7 @@ public sealed class FilmJobService
         {
             if (_voiceAlignment is null)
             {
-                await FinishAsync("error", "Voice alignment store unavailable.", "no alignment store")
+                await FinishAsync(StatusError, "Voice alignment store unavailable.", "no alignment store")
                     .ConfigureAwait(false);
                 return;
             }
@@ -3677,7 +3692,7 @@ public sealed class FilmJobService
             var (ctx, ctxErr) = await ResolveSpeakContextAsync(projectId, charKey, req.Model, ct).ConfigureAwait(false);
             if (ctx is null)
             {
-                await FinishAsync("error", ctxErr ?? "Voice not configured", ctxErr ?? "Voice not configured")
+                await FinishAsync(StatusError, ctxErr ?? VoiceNotConfigured, ctxErr ?? VoiceNotConfigured)
                     .ConfigureAwait(false);
                 return;
             }
@@ -3685,7 +3700,7 @@ public sealed class FilmJobService
             using var blueprint = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
             if (blueprint is null)
             {
-                await FinishAsync("error", "No shot plan for this project yet.", "no blueprint")
+                await FinishAsync(StatusError, "No shot plan for this project yet.", "no blueprint")
                     .ConfigureAwait(false);
                 return;
             }
@@ -3697,20 +3712,19 @@ public sealed class FilmJobService
             var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
             if (clipLines.Count == 0)
             {
-                await FinishAsync("done", "No matching dialogue lines to substitute.").ConfigureAwait(false);
+                await FinishAsync(StatusDone, "No matching dialogue lines to substitute.").ConfigureAwait(false);
                 return;
             }
 
             // Which scenes contain a non-narrator speaker (e.g. the mom) baked into the clip audio —
             // those keep their original audio; narrator-only scenes get muted + fully replaced by the
             // clone. Only meaningful under NarratorOnly (otherwise every speaker is being replaced).
-            var scenesWithOtherSpeakers = new HashSet<int>();
-            if (req.NarratorOnly)
-            {
-                foreach (var cl in VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null))
-                    if (cl.Lines.Any(l => !IsNarratorSpeaker(l.CharacterKey, charKey)))
-                        scenesWithOtherSpeakers.Add(cl.Scene);
-            }
+            var scenesWithOtherSpeakers = req.NarratorOnly
+                ? VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null)
+                    .Where(cl => cl.Lines.Any(l => !IsNarratorSpeaker(l.CharacterKey, charKey)))
+                    .Select(cl => cl.Scene)
+                    .ToHashSet()
+                : new HashSet<int>();
 
             // Per-SCENE strategy: concatenate every narrator line in a scene into one continuous read
             // and synthesize it in a single TTS call, so the prosody flows across the whole scene
@@ -3738,7 +3752,7 @@ public sealed class FilmJobService
                 s.Index = 0;
                 s.Message = $"Voice substitution: {totalLines} line(s) across {totalScenes} scene(s) · {ctx.ProviderId}";
             }).ConfigureAwait(false);
-            await AppendLogAsync(Snapshot.Message!).ConfigureAwait(false);
+            await AppendLogAsync(Snapshot.Message ?? "").ConfigureAwait(false);
 
             var done = 0;
             var failed = 0;
@@ -3806,7 +3820,7 @@ public sealed class FilmJobService
 
                     relPath = MediaRegistryService.RevoiceSceneLineAudioRelativePath(sceneNo, lineNo, ext);
                     absPath = Path.Combine(projectDir, relPath.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(absPath)!);
+                    Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
                     await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
                     svl.VoiceAudioRelativePath = relPath;
                     track.Lines.Add(svl);
@@ -3839,31 +3853,31 @@ public sealed class FilmJobService
             await AppendLogAsync($"Alignment saved → {VoiceAlignmentStore.RelativePath}").ConfigureAwait(false);
 
             if (failed == 0)
-                await FinishAsync("done", $"Voice substitution ready — {totalLines} line(s) across {totalScenes} scene(s)").ConfigureAwait(false);
+                await FinishAsync(StatusDone, $"Voice substitution ready — {totalLines} line(s) across {totalScenes} scene(s)").ConfigureAwait(false);
             else if (failed >= totalLines)
-                await FinishAsync("error", $"Voice substitution failed — all {failed} line(s) failed", "all failed")
+                await FinishAsync(StatusError, $"Voice substitution failed — all {failed} line(s) failed", "all failed")
                     .ConfigureAwait(false);
             else
                 await FinishAsync(
-                        "partial",
+                        StatusPartial,
                         $"Voice substitution partial — {totalLines - failed} ok, {failed} failed")
                     .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Voice substitution cancelled").ConfigureAwait(false);
+            await FinishAsync(StatusCancelled, "Voice substitution cancelled").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Voice substitution failed for {ProjectId}", projectId);
-            await FinishAsync("error", ex.Message, ex.Message).ConfigureAwait(false);
+            await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// H2 — stamp job-level take trigger for cost ledger events (fill_holes / stale_regen / user_regen / …).
     /// </summary>
-    private void ApplyVideoTakeContext(bool onlyMissing, string? takeTrigger, bool forceRegen)
+    private static void ApplyVideoTakeContext(bool onlyMissing, string? takeTrigger, bool forceRegen)
     {
         var run = CurrentRun.Value;
         if (run is null) return;
@@ -3887,15 +3901,15 @@ public sealed class FilmJobService
             req.RequireLockedCharacters = false;
 
         var hasClips = req.Clips is { Count: > 0 };
-        var scenes = (hasClips ? req.Clips!.Select(c => c.Scene) : req.Scenes)
+        var scenes = (hasClips ? (req.Clips ?? new List<ClipTarget>()).Select(c => c.Scene) : req.Scenes)
             .Distinct().OrderBy(s => s).ToList();
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "batch",
             ProjectId = projectId,
             Message = hasClips
-                ? $"Batch: {req.Clips!.Count} clip(s)…"
+                ? $"Batch: {(req.Clips ?? new List<ClipTarget>()).Count} clip(s)…"
                 : $"Batch: {scenes.Count} scene(s)…",
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
@@ -3931,7 +3945,7 @@ public sealed class FilmJobService
             }
 
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-            Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
+            Directory.CreateDirectory(Path.Combine(projectDir, AssetsFolder, VideoFolder));
 
             // Pre-count work units
             var work = new List<(int Scene, int Clip, JsonElement ClipEl)>();
@@ -3939,7 +3953,7 @@ public sealed class FilmJobService
             {
                 // Explicit multi-select of specific clips — always force-regen (ignore OnlyMissing),
                 // same as single-clip regen.
-                foreach (var target in req.Clips!.OrderBy(c => c.Scene).ThenBy(c => c.Clip))
+                foreach (var target in (req.Clips ?? new List<ClipTarget>()).OrderBy(c => c.Scene).ThenBy(c => c.Clip))
                 {
                     var sceneEl = FindScene(bp.RootElement, target.Scene);
                     if (sceneEl is null)
@@ -3980,7 +3994,7 @@ public sealed class FilmJobService
                         await AppendLogAsync($"Scene {sn}: end-credits scene — skip (rendered client-side)");
                         continue;
                     }
-                    if (!sceneEl.Value.TryGetProperty("veo_clips", out var clipsEl) ||
+                    if (!sceneEl.Value.TryGetProperty(VeoClipsKey, out var clipsEl) ||
                         clipsEl.ValueKind != JsonValueKind.Array)
                     {
                         await AppendLogAsync($"Scene {sn}: no veo_clips — skip");
@@ -3991,7 +4005,7 @@ public sealed class FilmJobService
                     {
                         var cn = ClipKeying.ClipNumber(c);
                         if (cn <= 0) continue;
-                        var path = Path.Combine(projectDir, "assets", "video", $"scene_{sn:D2}_clip_{cn:D2}.mp4");
+                        var path = Path.Combine(projectDir, AssetsFolder, VideoFolder, $"scene_{sn:D2}_clip_{cn:D2}.mp4");
                         var missing = !ClipPresentOnServerOrClient(path);
                         if (!req.OnlyMissing || missing)
                             work.Add((Scene: sn, Clip: cn, ClipEl: c.Clone()));
@@ -4002,7 +4016,7 @@ public sealed class FilmJobService
             if (work.Count == 0)
             {
                 await AppendLogAsync("Batch: nothing to generate (only_missing).");
-                await FinishAsync("done", "No clips to generate");
+                await FinishAsync(StatusDone, "No clips to generate");
                 return;
             }
 
@@ -4021,7 +4035,7 @@ public sealed class FilmJobService
                 s.Index = 0;
                 s.Message = $"Batch: {work.Count} clip(s) across {scenes.Count} scene(s) @ {resolution}";
             });
-            await AppendLogAsync(Snapshot.Message!);
+            await AppendLogAsync(Snapshot.Message ?? "");
 
             var done = 0;
             var failed = 0;
@@ -4040,7 +4054,7 @@ public sealed class FilmJobService
                     s.Clip = cn;
                     s.Message = $"Generating S{sn:D2} C{cn} ({i + 1}/{work.Count})…";
                 });
-                await AppendLogAsync(Snapshot.Message!);
+                await AppendLogAsync(Snapshot.Message ?? "");
 
                 try
                 {
@@ -4069,7 +4083,7 @@ public sealed class FilmJobService
                 }
                 catch (OperationCanceledException)
                 {
-                    await FinishAsync("cancelled", "Cancelled by user");
+                    await FinishAsync(StatusCancelled, CancelledByUser);
                     return;
                 }
                 catch (Exception ex)
@@ -4081,15 +4095,15 @@ public sealed class FilmJobService
                 }
             }
 
-            var status = failed > 0 && done == 0 ? "error"
-                : failed > 0 ? "partial"
-                : "done";
+            var status = failed > 0 && done == 0 ? StatusError
+                : failed > 0 ? StatusPartial
+                : StatusDone;
             var msg = status switch
             {
-                "error" => !string.IsNullOrWhiteSpace(firstClipError)
+                StatusError => !string.IsNullOrWhiteSpace(firstClipError)
                     ? $"Batch failed: {firstClipError}"
                     : $"Batch failed ({failed} clip(s) failed, none ok)",
-                "partial" => !string.IsNullOrWhiteSpace(firstClipError)
+                StatusPartial => !string.IsNullOrWhiteSpace(firstClipError)
                     ? $"Batch partial ({done} ok, {failed} failed): {firstClipError}"
                     : $"Batch partial ({done} ok, {failed} failed)",
                 _ => $"Batch finished ({done} clip(s))",
@@ -4098,12 +4112,12 @@ public sealed class FilmJobService
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Batch gen failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -4117,7 +4131,7 @@ public sealed class FilmJobService
 
         Snapshot = new JobSnapshot
         {
-            Status = "running",
+            Status = StatusRunning,
             Kind = "scene",
             ProjectId = projectId,
             Scene = req.Scene,
@@ -4153,7 +4167,7 @@ public sealed class FilmJobService
                 EnsureSceneCharactersLocked(projectId, req.Scene);
             }
 
-            if (!sceneEl.TryGetProperty("veo_clips", out var clipsEl) ||
+            if (!sceneEl.TryGetProperty(VeoClipsKey, out var clipsEl) ||
                 clipsEl.ValueKind != JsonValueKind.Array)
             {
                 throw new InvalidOperationException($"Scene {req.Scene} has no veo_clips.");
@@ -4161,7 +4175,7 @@ public sealed class FilmJobService
 
             var clips = clipsEl.EnumerateArray().ToList();
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-            var videoDir = Path.Combine(projectDir, "assets", "video");
+            var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             Directory.CreateDirectory(videoDir);
 
             var todo = new List<(int ClipNum, JsonElement Clip)>();
@@ -4180,7 +4194,7 @@ public sealed class FilmJobService
             if (todo.Count == 0)
             {
                 await AppendLogAsync($"Scene {req.Scene}: nothing to generate (only_missing).");
-                await FinishAsync("done", "No clips to generate");
+                await FinishAsync(StatusDone, "No clips to generate");
                 return;
             }
 
@@ -4226,6 +4240,7 @@ public sealed class FilmJobService
             var adminQaRetry = qaRetryOnFail && _user.IsAdmin &&
                                _dialogueVerification is not null &&
                                _dialogueVerification.IsConfigured;
+            var dialogueQa = adminQaRetry ? _dialogueVerification : null;
             if (qaRetryOnFail && !_user.IsAdmin)
                 await AppendLogAsync("Quality gate retry is on, but auto-regen runs in admin mode only.");
             else if (adminQaRetry)
@@ -4246,7 +4261,7 @@ public sealed class FilmJobService
                     s.Clip = cn;
                     s.Message = $"Generating S{req.Scene:D2} C{cn} ({i + 1}/{todo.Count})…";
                 });
-                await AppendLogAsync(Snapshot.Message!);
+                await AppendLogAsync(Snapshot.Message ?? "");
 
                 try
                 {
@@ -4277,7 +4292,8 @@ public sealed class FilmJobService
                             ClipDialogueVerificationResult? ver = null;
                             try
                             {
-                                ver = await _dialogueVerification!
+                                if (dialogueQa is null) break;
+                                ver = await dialogueQa
                                     .VerifyClipDialogueAsync(projectId, req.Scene, cn, force: true, ct: ct)
                                     .ConfigureAwait(false);
                             }
@@ -4331,7 +4347,7 @@ public sealed class FilmJobService
                 }
                 catch (OperationCanceledException)
                 {
-                    await FinishAsync("cancelled", "Cancelled by user");
+                    await FinishAsync(StatusCancelled, CancelledByUser);
                     return;
                 }
                 catch (Exception ex)
@@ -4351,14 +4367,14 @@ public sealed class FilmJobService
                 }
             }
 
-            // partial = some clips ok, some failed (not "done" — remux/continue need a clear signal)
-            var status = failed > 0 && done == 0 ? "error"
-                : failed > 0 ? "partial"
-                : "done";
+            // partial = some clips ok, some failed (not StatusDone — remux/continue need a clear signal)
+            var status = failed > 0 && done == 0 ? StatusError
+                : failed > 0 ? StatusPartial
+                : StatusDone;
             var msg = status switch
             {
-                "error" => $"Scene gen failed ({failed} clip(s) failed, none ok)",
-                "partial" => $"Scene gen partial ({done} ok, {failed} failed)",
+                StatusError => $"Scene gen failed ({failed} clip(s) failed, none ok)",
+                StatusPartial => $"Scene gen partial ({done} ok, {failed} failed)",
                 _ => $"Generation finished ({done} clip(s))",
             };
             await FinishAsync(status, msg, failed > 0 ? msg : null);
@@ -4385,12 +4401,12 @@ public sealed class FilmJobService
         }
         catch (OperationCanceledException)
         {
-            await FinishAsync("cancelled", "Cancelled by user");
+            await FinishAsync(StatusCancelled, CancelledByUser);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Scene gen failed");
-            await FinishAsync("error", ex.Message, ex.Message);
+            await FinishAsync(StatusError, ex.Message, ex.Message);
         }
     }
 
@@ -4404,7 +4420,7 @@ public sealed class FilmJobService
         if (!File.Exists(outPath)) return;
         try
         {
-            var videoDir = Path.GetDirectoryName(outPath)!;
+            var videoDir = Path.GetDirectoryName(outPath) ?? ".";
             var backupDir = Path.Combine(videoDir, "_backup");
             Directory.CreateDirectory(backupDir);
             var backupPath = Path.Combine(backupDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
@@ -4482,7 +4498,7 @@ public sealed class FilmJobService
         string? takeKindOverride = null)
     {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
         var overrunSec = 0.0;
 
         // H1/H2: whether this scene+clip already has media (regen vs first take).
@@ -4516,7 +4532,7 @@ public sealed class FilmJobService
         if (clip > 1 && modelEntry.SupportsVideoContinue)
         {
             var candidate = Path.Combine(
-                projectDir, "assets", "video", $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+                projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
             if (File.Exists(candidate) && new FileInfo(candidate).Length >= 1024)
                 extendSourcePath = candidate;
         }
@@ -4817,7 +4833,7 @@ public sealed class FilmJobService
                         // 1. Extract dialogue text & word count from clip blueprint
                         string dialogueText = "";
                         if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
-                            ap.TryGetProperty("dialogue", out var dEl))
+                            ap.TryGetProperty(JsonKeys.Dialogue, out var dEl))
                         {
                             dialogueText = dEl.GetString() ?? "";
                         }
@@ -4827,10 +4843,18 @@ public sealed class FilmJobService
 
                         // 2. Extract camera movement category from blueprint or visual prompt
                         string camCat = "cam_push_in";
-                        if (clipEl.TryGetProperty("camera", out var camEl) && camEl.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(camEl.GetString()))
-                            camCat = camEl.GetString()!;
-                        else if (clipEl.TryGetProperty("camera_category", out var ccEl) && ccEl.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(ccEl.GetString()))
-                            camCat = ccEl.GetString()!;
+                        if (clipEl.TryGetProperty("camera", out var camEl) && camEl.ValueKind == JsonValueKind.String)
+                        {
+                            var cam = camEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(cam))
+                                camCat = cam;
+                        }
+                        else if (clipEl.TryGetProperty("camera_category", out var ccEl) && ccEl.ValueKind == JsonValueKind.String)
+                        {
+                            var cc = ccEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(cc))
+                                camCat = cc;
+                        }
 
                         // 3. Dynamically classify scene action category via AiActionOverheadClassifier
                         var promptToAnalyze = built.Prompt ?? "";
@@ -5012,7 +5036,7 @@ public sealed class FilmJobService
     {
         try
         {
-            var dir = Path.Combine(projectDir, "assets", "video", "prompts");
+            var dir = Path.Combine(projectDir, AssetsFolder, VideoFolder, "prompts");
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, $"S{scene:D2}C{clip:D2}.txt");
             var header =
@@ -5085,7 +5109,7 @@ public sealed class FilmJobService
         try
         {
             if (!File.Exists(metaPath)) return;
-            var historyDir = Path.Combine(projectDir, "assets", "video", "history");
+            var historyDir = Path.Combine(projectDir, AssetsFolder, VideoFolder, "history");
             Directory.CreateDirectory(historyDir);
             var dest = Path.Combine(
                 historyDir,
@@ -5103,7 +5127,7 @@ public sealed class FilmJobService
         string projectDir, int scene, int clip, CancellationToken ct = default)
     {
         var result = new List<ClipPromptHistoryEntry>();
-        var historyDir = Path.Combine(projectDir, "assets", "video", "history");
+        var historyDir = Path.Combine(projectDir, AssetsFolder, VideoFolder, "history");
         if (!Directory.Exists(historyDir)) return result;
 
         var prefix = $"scene_{scene:D2}_clip_{clip:D2}_";
@@ -5294,7 +5318,7 @@ public sealed class FilmJobService
     {
         try
         {
-            if (!root.TryGetProperty("scenes", out var scenes) ||
+            if (!root.TryGetProperty(ScenesKey, out var scenes) ||
                 scenes.ValueKind != JsonValueKind.Array)
                 return null;
             foreach (var s in scenes.EnumerateArray())
@@ -5332,7 +5356,7 @@ public sealed class FilmJobService
         if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) ||
             ap.ValueKind != JsonValueKind.Object)
             return false;
-        var dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
+        var dialogue = ap.TryGetProperty(JsonKeys.Dialogue, out var d) ? d.GetString() ?? "" : "";
         if (string.IsNullOrWhiteSpace(dialogue))
             return false;
         var delivery = (ap.TryGetProperty("delivery", out var del) ? del.GetString() ?? "none" : "none")
@@ -5346,7 +5370,7 @@ public sealed class FilmJobService
 
     internal static JsonElement? FindClipInScene(JsonElement sceneEl, int clipNum)
     {
-        if (!sceneEl.TryGetProperty("veo_clips", out var clips) ||
+        if (!sceneEl.TryGetProperty(VeoClipsKey, out var clips) ||
             clips.ValueKind != JsonValueKind.Array)
             return null;
         foreach (var c in clips.EnumerateArray())
@@ -5359,7 +5383,7 @@ public sealed class FilmJobService
 
     private static JsonElement? FindScene(JsonElement root, int sceneNum)
     {
-        if (!root.TryGetProperty("scenes", out var scenes) ||
+        if (!root.TryGetProperty(ScenesKey, out var scenes) ||
             scenes.ValueKind != JsonValueKind.Array)
             return null;
         foreach (var s in scenes.EnumerateArray())
@@ -5388,14 +5412,14 @@ public sealed class FilmJobService
         string? requested,
         CancellationToken ct)
     {
-        string resolution;
+        string? resolution;
         if (!string.IsNullOrWhiteSpace(requested))
         {
             resolution = NormalizeResolution(requested);
         }
         else
         {
-            resolution = null!;
+            resolution = null;
             try
             {
                 var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
@@ -5429,7 +5453,7 @@ public sealed class FilmJobService
                 $"resolutions in one movie. Delete the existing clips first, or generate at {locked}.");
         }
 
-        return resolution;
+        return resolution ?? "480p";
     }
 
     /// <summary>
@@ -5656,7 +5680,7 @@ public sealed class FilmJobService
                 int.TryParse(m.Groups[2].Value, out var tot) &&
                 tot > 0)
             {
-                var chunkDone = line.Contains("done", StringComparison.OrdinalIgnoreCase);
+                var chunkDone = line.Contains(StatusDone, StringComparison.OrdinalIgnoreCase);
                 var frac = chunkDone
                     ? Math.Clamp((double)idx / tot, 0, 1)
                     : Math.Clamp((idx - 1.0) / tot, 0, 1);
@@ -5782,7 +5806,7 @@ public sealed class FilmJobService
             s.Message = message;
             s.Error = error;
             s.FinishedAt = DateTimeOffset.UtcNow;
-            if (s.Total > 0 && status == "done")
+            if (s.Total > 0 && status == StatusDone)
                 s.Index = s.Total;
             projectId = s.ProjectId;
             kind = s.Kind;
@@ -5790,7 +5814,7 @@ public sealed class FilmJobService
         await AppendLogAsync(message);
 
         // Scene list cache: clip/composite counts change on gen/remux/stage done
-        if (status is "done" or "error" or "cancelled")
+        if (status is StatusDone or StatusError or StatusCancelled)
         {
             if (string.IsNullOrWhiteSpace(projectId))
                 projectId = CurrentRun.Value?.Snapshot.ProjectId;
@@ -5798,20 +5822,20 @@ public sealed class FilmJobService
         }
 
         // PR4.5b: keep ARTIFACTS.md / artifact_index.json current after pipeline work
-        if (status == "done" &&
+        if (status == StatusDone &&
             !string.IsNullOrWhiteSpace(projectId) &&
             ShouldRefreshArtifactIndex(kind))
         {
-            await TryRefreshArtifactIndexAsync(projectId!).ConfigureAwait(false);
+            await TryRefreshArtifactIndexAsync(projectId).ConfigureAwait(false);
         }
 
         // Stage-end package history: one debounced commit for finished film/music work
         // (text artifacts only — MP4/MP3 stay gitignored). Intermediate clip writes do not commit.
-        if ((status == "done" || status == "partial") &&
+        if ((status == StatusDone || status == StatusPartial) &&
             !string.IsNullOrWhiteSpace(projectId) &&
             StageEndAutoGitMessage(kind) is { } gitMsg)
         {
-            _projects.TriggerAutoGitCommit(projectId!, gitMsg);
+            _projects.TriggerAutoGitCommit(projectId, gitMsg);
         }
     }
 
@@ -5844,7 +5868,7 @@ public sealed class FilmJobService
             "gen-batch" or
             "clip-auto-review" or
             "clip-auto-review-batch" or
-            "stage2" or
+            KindStage2 or
             "character-variants";
     }
 

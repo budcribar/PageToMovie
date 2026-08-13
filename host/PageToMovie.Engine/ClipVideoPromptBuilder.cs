@@ -15,6 +15,11 @@ namespace PageToMovie.Engine;
 /// </summary>
 public static class ClipVideoPromptBuilder
 {
+    private const string ModeVideoExtend = "video-extend";
+    private const string ModeContinue = "continue";
+    private const string CharactersOnScreenKey = "characters_on_screen";
+    private const string PrimarySubjectKey = "primary_subject";
+    private const string AudioTag = "Audio";
     /// <summary>Provider default negatives (not stored per-clip in Stage 2 blueprint).</summary>
     public static string GlobalNegativePrompt { get; set; } = Stage2PlannerService.GlobalNegativeDefault;
 
@@ -129,10 +134,10 @@ public static class ClipVideoPromptBuilder
         var hasPrevVideo = !string.IsNullOrWhiteSpace(previousClipVideoPath) &&
                            File.Exists(previousClipVideoPath);
         var hasStartFrame = !string.IsNullOrWhiteSpace(startFrameImagePath) &&
-                            File.Exists(startFrameImagePath!);
+                            File.Exists(startFrameImagePath);
 
-        var mode = hasPrevVideo ? "video-extend"
-            : hasStartFrame ? "continue"
+        var mode = hasPrevVideo ? ModeVideoExtend
+            : hasStartFrame ? ModeContinue
             : "fresh";
 
         // On-screen cast = plan only (never free-text names from dialogue prose)
@@ -208,11 +213,11 @@ public static class ClipVideoPromptBuilder
 
         var continuityBlock = mode switch
         {
-            "video-extend" => PromptTags.Wrap("Continuity",
+            ModeVideoExtend => PromptTags.Wrap("Continuity",
                 "This is a seamless EXTENSION of the provided previous video. " +
                 "Pick up from its last frame. Same character identity, wardrobe, lighting, and location. " +
                 "Natural progressive motion only — do not invent a new establishing shot or redesign faces/outfits."),
-            "continue" => PromptTags.Wrap("Continuity",
+            ModeContinue => PromptTags.Wrap("Continuity",
                 "Continue seamlessly from the provided starting frame (end of previous clip). " +
                 "Same character identity, wardrobe, lighting, and location. Natural progressive motion only — " +
                 "do not invent a new establishing shot or redesign faces/outfits."),
@@ -224,14 +229,14 @@ public static class ClipVideoPromptBuilder
 
         // video-extend cannot attach locked plates (API continues from previous video only).
         // Reinforce identity from CHARACTER VARIABLES text so faces/wardrobe do not drift.
-        if (mode is "video-extend" or "continue")
+        if (mode is ModeVideoExtend or ModeContinue)
             continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages);
 
         if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) &&
-            mode is "continue" or "video-extend")
+            mode is ModeContinue or ModeVideoExtend)
         {
-            var prevClean = SanitizeActionText(previousClipVisualPrompt!, onScreenKeys);
-            var note = mode == "video-extend"
+            var prevClean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
+            var note = mode == ModeVideoExtend
                 ? "already provided as video input — continue from its last frame"
                 : "context — match look and continue motion from its end";
             // prevClean is a re-embedded previous clip's own action text — it may itself already
@@ -243,7 +248,7 @@ public static class ClipVideoPromptBuilder
         else if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) && mode == "fresh")
         {
             // Cast-change reseed: no video input, but keep prior clip prose for location/lighting only.
-            var prevClean = SanitizeActionText(previousClipVisualPrompt!, onScreenKeys);
+            var prevClean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
             continuityBlock = PromptTags.WrapWithNote("Context",
                 "prior clip in scene — new cast plate refs attached; match location/lighting if still " +
                 "valid; identity from Characters + locked plates only",
@@ -323,7 +328,7 @@ public static class ClipVideoPromptBuilder
         // right above it, that primed the model to invent speech/mouth movement on someone.
         // Branch it so silent beats get an explicit "no dialogue, keep mouths neutral" cue instead.
         var hasDialogue =
-            clipEl.TryGetProperty("audio_payload", out var apForClose) &&
+            clipEl.TryGetProperty(JsonKeys.AudioPayload, out var apForClose) &&
             apForClose.TryGetProperty("dialogue", out var dlgForClose) &&
             !string.IsNullOrWhiteSpace(dlgForClose.GetString());
         sb.AppendLine(hasDialogue
@@ -425,11 +430,8 @@ public static class ClipVideoPromptBuilder
         v = SimplifyVisual(v);
         if (onScreenKeys is { Count: > 0 })
         {
-            foreach (var key in onScreenKeys)
-            {
-                if (!v.Contains(key, StringComparison.OrdinalIgnoreCase))
-                    v = $"{v} {key} is on screen.".Trim();
-            }
+            foreach (var key in onScreenKeys.Where(k => !v.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                v = $"{v} {key} is on screen.".Trim();
         }
         return v.Trim();
     }
@@ -539,7 +541,8 @@ public static class ClipVideoPromptBuilder
         // modern speech compounds often kept hyphenated
         @"co-\p{L}+|re-\p{L}+|pre-\p{L}+|non-\p{L}+" +
         @")\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        CommonRegex.Timeout);
 
     private static readonly Regex ResFpsSuffixRegex1 = new(@"\s*/\s*\d{3,4}p\s*,\s*\d{2}fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex ResFpsSuffixRegex2 = new(@"\s*/\s*\d+p[^/]*24fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
@@ -642,12 +645,12 @@ public static class ClipVideoPromptBuilder
         {
             if (string.IsNullOrWhiteSpace(key)) return;
             key = key.Trim();
-            if (!key.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)) return;
+            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)) return;
             if (found.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase))) return;
             found.Add(key);
         }
 
-        if (clipEl.TryGetProperty("characters_on_screen", out var cos) &&
+        if (clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) &&
             cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
@@ -655,12 +658,12 @@ public static class ClipVideoPromptBuilder
         }
 
         // Authoritative plan list present (even empty) — do not re-infer from prose
-        if (clipEl.TryGetProperty("characters_on_screen", out cos) &&
+        if (clipEl.TryGetProperty(CharactersOnScreenKey, out cos) &&
             cos.ValueKind == JsonValueKind.Array)
             return found;
 
         // Legacy clips without the field: explicit Character_* tokens only
-        if (clipEl.TryGetProperty("primary_subject", out var ps))
+        if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
             Add(ps.GetString());
         foreach (var k in ClipCharacterKeys(clipEl))
             Add(k);
@@ -682,7 +685,7 @@ public static class ClipVideoPromptBuilder
         {
             if (string.IsNullOrWhiteSpace(key)) return;
             key = key.Trim();
-            if (!key.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)) return;
+            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)) return;
             if (found.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase))) return;
             found.Add(key);
         }
@@ -690,15 +693,15 @@ public static class ClipVideoPromptBuilder
         foreach (var k in ResolveOnScreenCharacterKeys(clipEl))
             Add(k);
 
-        if (clipEl.TryGetProperty("primary_subject", out var ps))
+        if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
             Add(ps.GetString());
 
-        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("speaker", out var sp))
             Add(sp.GetString());
 
         // Only when plan list is missing — Character_* tokens in visual (not free-text names)
-        if (!(clipEl.TryGetProperty("characters_on_screen", out var cos) &&
+        if (!(clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) &&
               cos.ValueKind == JsonValueKind.Array))
         {
             foreach (var k in ClipCharacterKeys(clipEl))
@@ -844,11 +847,8 @@ public static class ClipVideoPromptBuilder
         if (officerKeys.Count > 0 &&
             CommonRegex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
         {
-            foreach (var k in officerKeys)
-            {
-                if (!list.Contains(k, StringComparer.OrdinalIgnoreCase))
-                    list.Add(k);
-            }
+            foreach (var k in officerKeys.Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
+                list.Add(k);
         }
 
         foreach (var (key, prof) in characters)
@@ -857,7 +857,7 @@ public static class ClipVideoPromptBuilder
             var names = new List<string>();
             if (!string.IsNullOrWhiteSpace(prof.DisplayName))
                 names.Add(prof.DisplayName.Trim());
-            var suffix = key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase)
+            var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
                 .Replace('_', ' ').Trim();
             if (suffix.Length > 0) names.Add(suffix);
             if (key.Contains("Old_Man", StringComparison.OrdinalIgnoreCase) ||
@@ -1001,14 +1001,14 @@ public static class ClipVideoPromptBuilder
         }
         if (clipEl.TryGetProperty("visual_prompt", out var vp))
             Scan(vp.GetString());
-        if (clipEl.TryGetProperty("primary_subject", out var ps))
+        if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
             Scan(ps.GetString());
-        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("speaker", out var sp))
         {
             Scan(sp.GetString());
         }
-        if (clipEl.TryGetProperty("characters_on_screen", out var cos) && cos.ValueKind == JsonValueKind.Array)
+        if (clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) && cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
                 Scan(x.GetString());
@@ -1108,12 +1108,12 @@ public static class ClipVideoPromptBuilder
         }
 
         string? primary = null;
-        if (clipEl.TryGetProperty("primary_subject", out var psEl) && psEl.ValueKind == JsonValueKind.String)
+        if (clipEl.TryGetProperty(PrimarySubjectKey, out var psEl) && psEl.ValueKind == JsonValueKind.String)
             primary = psEl.GetString();
 
         string? speaker = null;
         string? secondarySpeaker = null;
-        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
+        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
         {
             if (ap.TryGetProperty("speaker", out var spEl) && spEl.ValueKind == JsonValueKind.String)
                 speaker = spEl.GetString();
@@ -1193,8 +1193,8 @@ public static class ClipVideoPromptBuilder
         {
             var p = GetCharacterProfile(characters, key);
             var display = !string.IsNullOrWhiteSpace(p?.DisplayName)
-                ? p!.DisplayName
-                : key.Replace("Character_", "").Replace('_', ' ');
+                ? p.DisplayName
+                : key.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' ');
             var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
             // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
             // source rather than at each tag-wrap call site below.
@@ -1262,7 +1262,7 @@ public static class ClipVideoPromptBuilder
         JsonElement clipEl,
         IReadOnlyDictionary<string, CharacterProfile>? characters)
     {
-        if (!clipEl.TryGetProperty("audio_payload", out var audio) ||
+        if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var audio) ||
             audio.ValueKind != JsonValueKind.Object)
             return "";
 
@@ -1332,12 +1332,12 @@ public static class ClipVideoPromptBuilder
             // hints from the dialogue itself (which is inherently limited to words that are spoken).
             var pronHint = !string.IsNullOrWhiteSpace(pronHintInPayload)
                            && PronunciationResolver.HintAppliesToDialogue(pronHintInPayload, quote)
-                ? (pronHintInPayload.StartsWith(" ") ? pronHintInPayload : $" {PromptTags.Wrap("Pronunciation", pronHintInPayload)}")
+                ? (pronHintInPayload.StartsWith(' ') ? pronHintInPayload : $" {PromptTags.Wrap("Pronunciation", pronHintInPayload)}")
                 : BuildPronunciationHints(quote);
 
             if (isVoiceover)
             {
-                return PromptTags.Wrap("Audio",
+                return PromptTags.Wrap(AudioTag,
                     $"REQUIRED native Grok off-camera voiceover. {who} narrates " +
                     $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
             }
@@ -1349,14 +1349,14 @@ public static class ClipVideoPromptBuilder
                 var who2 = secondarySpeaker.Trim();
                 var quote2 = PromptTags.SanitizeValue(SanitizeSpokenDialogue(secondaryDialogue));
                 var pronHint2 = BuildPronunciationHints(quote2);
-                return PromptTags.Wrap("Audio",
+                return PromptTags.Wrap(AudioTag,
                     $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
                     $"exactly: \"{quote}\".{openCue} Then {who2} ON CAMERA lip-syncs " +
                     $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2} Speech intelligible; never silent.{bed}{voiceLock}");
             }
 
             // spoken_on_camera / on_camera (normalized)
-            return PromptTags.Wrap("Audio",
+            return PromptTags.Wrap(AudioTag,
                 $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
                 $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
         }
@@ -1367,7 +1367,7 @@ public static class ClipVideoPromptBuilder
             if (!string.IsNullOrWhiteSpace(score)) layers.Add(PromptTags.Wrap("Score", score));
             if (!string.IsNullOrWhiteSpace(ambient)) layers.Add(PromptTags.Wrap("Ambient", ambient));
             if (!string.IsNullOrWhiteSpace(sfx)) layers.Add(PromptTags.Wrap("Foley", sfx));
-            return PromptTags.Wrap("Audio", $"music/ambient/Foley only — {string.Join("; ", layers)}. No dialogue.");
+            return PromptTags.Wrap(AudioTag, $"music/ambient/Foley only — {string.Join("; ", layers)}. No dialogue.");
         }
         return "";
     }

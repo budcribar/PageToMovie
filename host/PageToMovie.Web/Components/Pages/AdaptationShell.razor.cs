@@ -5,7 +5,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class AdaptationShell
 {
-    [Parameter, EditorRequired] public AdaptationPageBase Host { get; set; } = null!;
+    [Parameter, EditorRequired] public required AdaptationPageBase Host { get; set; }
     [Parameter, EditorRequired] public string Step { get; set; } = "book";
     [Parameter] public RenderFragment? ChildContent { get; set; }
 

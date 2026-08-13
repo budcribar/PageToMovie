@@ -57,6 +57,10 @@ public sealed class DemoUpvoteService
     private const string InsertUpvoteSql = @"
             INSERT OR IGNORE INTO demo_upvotes (demo_id, user_id, created_at)
             VALUES ($d, $u, $t);";
+    private const string SelectCountsSql =
+        "SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN (SELECT value FROM json_each($ids)) GROUP BY demo_id;";
+    private const string SelectUpvotedSql =
+        "SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN (SELECT value FROM json_each($ids));";
 
     /// <summary>Trim, drop blanks, and de-duplicate a batch of demo ids (case-insensitive).</summary>
     private static List<string> NormalizeDistinctIds(IEnumerable<string> demoIds) =>
@@ -224,8 +228,7 @@ public sealed class DemoUpvoteService
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
             BindJsonIdList(cmd, slice);
-            cmd.CommandText =
-                "SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN (SELECT value FROM json_each($ids)) GROUP BY demo_id;";
+            cmd.CommandText = SelectCountsSql;
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -254,8 +257,7 @@ public sealed class DemoUpvoteService
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
             BindJsonIdList(cmd, slice);
-            cmd.CommandText =
-                "SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN (SELECT value FROM json_each($ids)) GROUP BY demo_id;";
+            cmd.CommandText = SelectCountsSql;
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -285,8 +287,7 @@ public sealed class DemoUpvoteService
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$u", userId.Trim());
             BindJsonIdList(cmd, slice);
-            cmd.CommandText =
-                "SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN (SELECT value FROM json_each($ids));";
+            cmd.CommandText = SelectUpvotedSql;
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
                 set.Add(r.GetString(0));
@@ -311,8 +312,7 @@ public sealed class DemoUpvoteService
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$u", userId.Trim());
             BindJsonIdList(cmd, slice);
-            cmd.CommandText =
-                "SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN (SELECT value FROM json_each($ids));";
+            cmd.CommandText = SelectUpvotedSql;
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 set.Add(r.GetString(0));

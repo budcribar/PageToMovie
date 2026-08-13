@@ -69,12 +69,7 @@ public static class BookTextAnalyzer
                 foreach (var w in wordList)
                 {
                     if (w.Length is < 4 or > 12) continue;
-                    var hasVowel = false;
-                    foreach (var c in w)
-                    {
-                        if ("aeiouAEIOU".Contains(c)) { hasVowel = true; break; }
-                    }
-                    if (!hasVowel) shortJunk++;
+                    if (!w.Any(c => "aeiouAEIOU".Contains(c))) shortJunk++;
                 }
                 garbage += Math.Min(0.35, shortJunk / (double)wordList.Length);
             }

@@ -18,7 +18,7 @@ public static class AdaptationVisionMetaParser
         return new AdaptationVisionMeta
         {
             VisualMedium = med,
-            RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style!.Trim(),
+            RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
             Notes = notes,
             DecidedBy = "adaptation",
         };
