@@ -26,7 +26,8 @@ public static class ProjectEndpoints
         // forced to the caller (the zip's original owner is ignored) so a user can't import into — or
         // overwrite — someone else's project. Multipart field <c>file</c>; optional <c>overwrite</c>=true.
         // </summary>
-        app.MapPost("/api/projects/import", PostProjectsImport);
+        app.MapPost("/api/projects/import", PostProjectsImport)
+            .WithUploadSizeLimit(ProjectArchiveService.MaxZipBytes);
         app.MapGet("/api/projects", GetProjects);
         app.MapPost("/api/projects/{id}/activate", PostProjectsIdActivate);
         // <summary>Create a new project folder under projects/ and make it active.</summary>
@@ -131,6 +132,8 @@ public static class ProjectEndpoints
     var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
     if (file is null || file.Length == 0)
         return Results.BadRequest(new { ok = false, error = "file required (project zip)" });
+    if (file.Length > ProjectArchiveService.MaxZipBytes)
+        return Results.BadRequest(new { ok = false, error = "File too large (max 512 MB)." });
 
     // Optional target name — import under a name of the caller's choosing instead of the zip's slug
     // (forceOwnerUserId still re-namespaces it under the caller, so only the slug is taken from this).

@@ -57,7 +57,8 @@ public static class AdminEndpoints
         app.MapGet("/api/admin/generation-errors", GetAdminGenerationErrors);
         // <summary>Aggregated AI/model-call telemetry (user_api_calls table) for the admin AI-Calls analytics page.</summary>
         app.MapGet("/api/admin/ai-calls", GetAdminAiCalls);
-        app.MapPost("/api/admin/projects/import", PostAdminProjectsImport);
+        app.MapPost("/api/admin/projects/import", PostAdminProjectsImport)
+            .WithUploadSizeLimit(ProjectArchiveService.MaxZipBytes);
         app.MapPost("/api/admin/users/credits", PostAdminUsersCredits);
         // <summary>Admin: set a user's password (forgot-password completion or support).</summary>
         app.MapPost("/api/admin/users/set-password", PostAdminUsersSetPassword);
@@ -638,6 +639,8 @@ public static class AdminEndpoints
     var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
     if (file is null || file.Length == 0)
         return Results.BadRequest(new { ok = false, error = "file required (project zip)" });
+    if (file.Length > ProjectArchiveService.MaxZipBytes)
+        return Results.BadRequest(new { ok = false, error = "File too large (max 512 MB)." });
 
     var preferredId = form[ApiText.ProjectIdKey].ToString();
     if (string.IsNullOrWhiteSpace(preferredId))
