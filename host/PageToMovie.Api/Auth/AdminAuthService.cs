@@ -161,78 +161,81 @@ public sealed class AdminAuthService : IAdminAuthService
         };
     }
 
-    public async Task SendEmailConfirmAsync(UserEntity user, CancellationToken ct = default)
-    {
-        if (user is null || string.IsNullOrWhiteSpace(user.Email)) return;
-        var raw = await _userDb.CreateAuthTokenAsync(
-            user.UserId, UserDatabaseService.AuthPurposeEmailConfirm, TimeSpan.FromDays(2), ct).ConfigureAwait(false);
-        var link = BuildAppLink($"/login?confirmEmail={Uri.EscapeDataString(raw)}");
-        var subject = "Confirm your PageToMovie email";
-        var text = $"Hi {user.Username},\n\nConfirm your email:\n{link}\n\nThis link expires in 48 hours.\n";
-        var html = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Username)},</p>" +
-                   $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Confirm your email</a></p>" +
-                   "<p>This link expires in 48 hours.</p>";
-        await DeliverAuthEmailAsync(
-            user, link, subject, text, html,
-            generatedLog: "EMAIL CONFIRMATION LINK generated to={Email} userId={UserId}: {Link}",
-            sentLog: "EMAIL CONFIRMATION SENT successfully to {Email}",
-            sendFailureNoun: "email confirmation",
-            skipWarning: "No IEmailSender instance present in AdminAuthService. Skipping email send for {Email}.",
-            ct).ConfigureAwait(false);
-    }
+    public Task SendEmailConfirmAsync(UserEntity user, CancellationToken ct = default) =>
+        SendAuthLinkEmailAsync(user, ConfirmEmailSpec, ct);
 
-    public async Task SendPasswordResetEmailAsync(UserEntity user, CancellationToken ct = default)
-    {
-        if (user is null || string.IsNullOrWhiteSpace(user.Email)) return;
-        var raw = await _userDb.CreateAuthTokenAsync(
-            user.UserId, UserDatabaseService.AuthPurposePasswordReset, TimeSpan.FromHours(1), ct).ConfigureAwait(false);
-        var link = BuildAppLink($"/login?resetToken={Uri.EscapeDataString(raw)}");
-        var subject = "Reset your PageToMovie password";
-        var text = $"Hi {user.Username},\n\nReset your password:\n{link}\n\nThis link expires in 1 hour.\n";
-        var html = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Username)},</p>" +
-                   $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Reset your password</a></p>" +
-                   "<p>This link expires in 1 hour. If you did not request this, ignore this email.</p>";
-        await DeliverAuthEmailAsync(
-            user, link, subject, text, html,
-            generatedLog: "PASSWORD RESET LINK generated to={Email} userId={UserId}: {Link}",
-            sentLog: "PASSWORD RESET EMAIL SENT successfully to {Email}",
-            sendFailureNoun: "password reset email",
-            skipWarning: "No IEmailSender instance present in AdminAuthService. Skipping password reset email for {Email}.",
-            ct).ConfigureAwait(false);
-    }
+    public Task SendPasswordResetEmailAsync(UserEntity user, CancellationToken ct = default) =>
+        SendAuthLinkEmailAsync(user, ResetPasswordSpec, ct);
 
-    private async Task DeliverAuthEmailAsync(
-        UserEntity user,
-        string link,
-        string subject,
-        string text,
-        string html,
-        string generatedLog,
-        string sentLog,
-        string sendFailureNoun,
-        string skipWarning,
-        CancellationToken ct)
+    private sealed record AuthEmailSpec(
+        string Purpose,
+        TimeSpan Ttl,
+        string QueryKey,
+        string Subject,
+        string ActionLabel,
+        string ExpiryText,
+        string ExpiryHtml,
+        string GeneratedLog,
+        string SentLog,
+        string SendFailureNoun,
+        string SkipWarning);
+
+    private const string ConfirmLinkExpiry = "This link expires in 48 hours.";
+
+    private static readonly AuthEmailSpec ConfirmEmailSpec = new(
+        Purpose: UserDatabaseService.AuthPurposeEmailConfirm,
+        Ttl: TimeSpan.FromDays(2),
+        QueryKey: "confirmEmail",
+        Subject: "Confirm your PageToMovie email",
+        ActionLabel: "Confirm your email",
+        ExpiryText: ConfirmLinkExpiry,
+        ExpiryHtml: ConfirmLinkExpiry,
+        GeneratedLog: "EMAIL CONFIRMATION LINK generated to={Email} userId={UserId}: {Link}",
+        SentLog: "EMAIL CONFIRMATION SENT successfully to {Email}",
+        SendFailureNoun: "email confirmation",
+        SkipWarning: "No IEmailSender instance present in AdminAuthService. Skipping email send for {Email}.");
+
+    private static readonly AuthEmailSpec ResetPasswordSpec = new(
+        Purpose: UserDatabaseService.AuthPurposePasswordReset,
+        Ttl: TimeSpan.FromHours(1),
+        QueryKey: "resetToken",
+        Subject: "Reset your PageToMovie password",
+        ActionLabel: "Reset your password",
+        ExpiryText: "This link expires in 1 hour.",
+        ExpiryHtml: "This link expires in 1 hour. If you did not request this, ignore this email.",
+        GeneratedLog: "PASSWORD RESET LINK generated to={Email} userId={UserId}: {Link}",
+        SentLog: "PASSWORD RESET EMAIL SENT successfully to {Email}",
+        SendFailureNoun: "password reset email",
+        SkipWarning: "No IEmailSender instance present in AdminAuthService. Skipping password reset email for {Email}.");
+
+    private async Task SendAuthLinkEmailAsync(UserEntity user, AuthEmailSpec spec, CancellationToken ct)
     {
+        if (user is null) return;
         var toEmail = user.Email;
-        if (string.IsNullOrWhiteSpace(toEmail))
-            return;
+        if (string.IsNullOrWhiteSpace(toEmail)) return;
+        var raw = await _userDb.CreateAuthTokenAsync(user.UserId, spec.Purpose, spec.Ttl, ct).ConfigureAwait(false);
+        var link = BuildAppLink($"/login?{spec.QueryKey}={Uri.EscapeDataString(raw)}");
+        var text = $"Hi {user.Username},\n\n{spec.ActionLabel}:\n{link}\n\n{spec.ExpiryText}\n";
+        var html = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Username)},</p>" +
+                   $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">{spec.ActionLabel}</a></p>" +
+                   $"<p>{spec.ExpiryHtml}</p>";
 
-        _logger?.LogInformation(generatedLog, toEmail, user.UserId, link);
+        _logger?.LogInformation(spec.GeneratedLog, toEmail, user.UserId, link);
         if (_email is not null)
         {
             try
             {
-                await _email.SendAsync(toEmail, subject, html, text, ct);
-                _logger?.LogInformation(sentLog, toEmail);
+                await _email.SendAsync(toEmail, spec.Subject, html, text, ct);
+                _logger?.LogInformation(spec.SentLog, toEmail);
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to send {sendFailureNoun} to {toEmail}.", ex);
+                throw new InvalidOperationException($"Failed to send {spec.SendFailureNoun} to {toEmail}.", ex);
             }
         }
         else
         {
-            _logger?.LogWarning(skipWarning, toEmail);
+            _logger?.LogWarning(spec.SkipWarning, toEmail);
         }
     }
 
