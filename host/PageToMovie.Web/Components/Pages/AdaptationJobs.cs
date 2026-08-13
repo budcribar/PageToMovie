@@ -19,6 +19,7 @@ public abstract partial class AdaptationPageBase
         private const string JobStatusQueued = "queued";
         private const string JobStatusRunning = "running";
         private const string JobKindStage2 = "stage2";
+        private const string SinglePass = "single pass";
 
         public JobSnapshot? Job { get; set; }
         public int ProgressIndex { get; set; }
@@ -208,7 +209,7 @@ public abstract partial class AdaptationPageBase
             if (AbsorbProgressIfContains(line, 9, "approving", "Fountain draft saved", "plate", "Attaching", "Merged")) return;
             if (AbsorbProgressIfContains(line, 8, "Merge", "Stitch")) return;
             if (AbsorbProgressIfContains(line, 7, "repair", "retry")) return;
-            if (AbsorbProgressIfContains(line, 5, "single pass", "Adapting", "Book split", "Writing screenplay", "Drafting")) return;
+            if (AbsorbProgressIfContains(line, 5, SinglePass, "Adapting", "Book split", "Writing screenplay", "Drafting")) return;
             if (AbsorbProgressIfContains(line, 3, "Target runtime", "Planning", "building")) return;
             AbsorbProgressIfContains(line, 1, "prepare", "Extract", "Checking book", "book text", "Loading screenplay");
         }
@@ -582,7 +583,7 @@ public abstract partial class AdaptationPageBase
                    || message.Contains("parsing", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Grok vision", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Reading page", StringComparison.OrdinalIgnoreCase)
-                   || message.Contains("single pass", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains(SinglePass, StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Adapting", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Drafting", StringComparison.OrdinalIgnoreCase)
@@ -722,20 +723,13 @@ public abstract partial class AdaptationPageBase
                 return "Writing the screenplay from the outline…";
             if (ContainsIgnoreCase(msg, "Stitching master"))
                 return "Putting the chapters together…";
-            if (ContainsIgnoreCase(msg, "Still writing", "single pass"))
+            if (ContainsIgnoreCase(msg, "Still writing", SinglePass))
                 return "Writing the full screenplay…";
             return null;
         }
 
-        private static bool ContainsIgnoreCase(string msg, params string[] needles)
-        {
-            foreach (var n in needles)
-            {
-                if (msg.Contains(n, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
-        }
+        private static bool ContainsIgnoreCase(string msg, params string[] needles) =>
+            needles.Any(n => msg.Contains(n, StringComparison.OrdinalIgnoreCase));
 
         private static string? TryMessageFromCombineRefineKeywords(string msg)
         {
@@ -758,7 +752,7 @@ public abstract partial class AdaptationPageBase
         private static string? TryMessageFromAdaptKeywords(string msg, string kind)
         {
             if (msg.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
-                msg.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains(SinglePass, StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Fountain", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("screenplay", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Phase 2", StringComparison.OrdinalIgnoreCase) ||

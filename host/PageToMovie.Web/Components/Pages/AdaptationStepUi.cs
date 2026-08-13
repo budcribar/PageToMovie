@@ -14,6 +14,9 @@ public abstract partial class AdaptationPageBase
         private const string RunStage2 = "run_stage2";
         private const string ReplanStage2 = "replan_stage2";
         private const string GenerateClips = "generate_clips";
+        private const string JobKindBookPrepare = "book_prepare";
+        private const string JobKindBookImport = "book_import";
+        private const string JobKindStage1 = "stage1";
 
         public static string NextStepLabel(string step) => step switch
         {
@@ -33,9 +36,9 @@ public abstract partial class AdaptationPageBase
         /// <summary>Short operator copy when a background job finishes (no OCR/engine jargon).</summary>
         public static string OperatorJobDoneMessage(JobSnapshot snap) => snap.Kind switch
         {
-            "book_prepare" => "Book text is ready",
-            "book_import" => "Screenplay draft ready",
-            "stage1" => snap.Message is { Length: > 0 } m && !m.Contains("quality=", StringComparison.Ordinal)
+            JobKindBookPrepare => "Book text is ready",
+            JobKindBookImport => "Screenplay draft ready",
+            JobKindStage1 => snap.Message is { Length: > 0 } m && !m.Contains("quality=", StringComparison.Ordinal)
                 ? m
                 : "Screenplay draft ready",
             "stage2" => "Shot plan ready",
@@ -53,9 +56,9 @@ public abstract partial class AdaptationPageBase
 
         public static string JobKindLabel(string? kind) => kind switch
         {
-            "book_prepare" => "book",
-            "book_import" => "import",
-            "stage1" => "screenplay",
+            JobKindBookPrepare => "book",
+            JobKindBookImport => "import",
+            JobKindStage1 => "screenplay",
             "stage2" => "shot plan",
             _ => kind ?? "",
         };
@@ -104,7 +107,7 @@ public abstract partial class AdaptationPageBase
                 return false;
 
             var kind = job.Kind ?? "";
-            var adaptationJob = kind is "stage1" or "stage2" or "book_prepare" or "book_import";
+            var adaptationJob = kind is JobKindStage1 or "stage2" or JobKindBookPrepare or JobKindBookImport;
             if (job.Status is "running" or "queued")
                 return adaptationJob || isAdmin;
 
@@ -121,7 +124,7 @@ public abstract partial class AdaptationPageBase
             if (!running || job is null)
                 return null;
             var kind = job.Kind ?? "";
-            if (kind is "stage1" or "book_import" or "book_prepare" or "embellish")
+            if (kind is JobKindStage1 or JobKindBookImport or JobKindBookPrepare or "embellish")
                 return "Long books often take 20–60 minutes. You can leave this page.";
             return null;
         }

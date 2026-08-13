@@ -13,6 +13,7 @@ namespace PageToMovie.Engine;
 public sealed class XaiBookFileSession : IBookFileSession
 {
     public const string ProviderName = "xai";
+    private const string FileIdMissingAfterUpload = "xAI file_id missing after upload.";
 
     private readonly XaiResponsesClient _client;
     private readonly BookTextRegistryService _registry;
@@ -76,7 +77,7 @@ public sealed class XaiBookFileSession : IBookFileSession
     {
         await EnsureUploadedAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(FileId))
-            throw new InvalidOperationException("xAI file_id missing after upload.");
+            throw new InvalidOperationException(FileIdMissingAfterUpload);
 
         _ = mode;
         _ = reasoningEffort;
@@ -104,7 +105,7 @@ public sealed class XaiBookFileSession : IBookFileSession
             await EnsureUploadedAsync(ct).ConfigureAwait(false);
             var fileId = FileId;
             if (string.IsNullOrWhiteSpace(fileId))
-                throw new InvalidOperationException("xAI file_id missing after upload.");
+                throw new InvalidOperationException(FileIdMissingAfterUpload);
             var restart = await _client.CompleteWithFilesAsync(
                 model, new[] { fileId }, userInstruction, ct, temperature).ConfigureAwait(false);
             LastResponseId = restart.ResponseId;
@@ -128,7 +129,7 @@ public sealed class XaiBookFileSession : IBookFileSession
             await EnsureUploadedAsync(ct).ConfigureAwait(false);
             var retryFileId = FileId;
             if (string.IsNullOrWhiteSpace(retryFileId))
-                throw new InvalidOperationException("xAI file_id missing after upload.");
+                throw new InvalidOperationException(FileIdMissingAfterUpload);
             var restart = await _client.CompleteWithFilesAsync(
                 model, new[] { retryFileId }, userInstruction, ct, temperature).ConfigureAwait(false);
             LastResponseId = restart.ResponseId;
@@ -147,7 +148,7 @@ public sealed class XaiBookFileSession : IBookFileSession
     {
         await EnsureUploadedAsync(ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(FileId))
-            throw new InvalidOperationException("xAI file_id missing after upload.");
+            throw new InvalidOperationException(FileIdMissingAfterUpload);
 
         var ids = new List<string> { FileId };
         if (extraFileIds is not null)
