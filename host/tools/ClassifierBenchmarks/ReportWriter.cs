@@ -268,22 +268,7 @@ public static class ReportWriter
 
     public static string BuildHistoryHtml(HistoryIndex index)
     {
-        // One series key per task·model·prompt·temp; AI solid + baseline dashed share color.
-        var seriesMap = new Dictionary<string, List<(string Utc, double Ai, double Base, string Task)>>();
-        foreach (var run in index.Runs.AsEnumerable().Reverse())
-        {
-            foreach (var s in run.Scores)
-            {
-                var key = SeriesKey(s);
-                if (!seriesMap.TryGetValue(key, out var list))
-                {
-                    list = new List<(string, double, double, string)>();
-                    seriesMap[key] = list;
-                }
-                list.Add((run.Utc, s.AiScore, s.BaselineScore, s.Task));
-            }
-        }
-
+        var seriesMap = CollectSeriesMap(index);
         var tasks = index.Runs.SelectMany(r => r.Scores).Select(s => s.Task)
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -295,125 +280,14 @@ public static class ReportWriter
                           ?? "ambient_sfx";
 
         var labels = index.Runs.AsEnumerable().Reverse().Select(r => r.Utc).Distinct().ToList();
-        var colors = new[]
-        {
-            "#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea", "#0891b2", "#ea580c", "#4f46e5",
-            "#0d9488", "#be185d", "#65a30d", "#7c3aed"
-        };
-
-        var datasets = new List<object>();
-        var i = 0;
-        foreach (var (key, pts) in seriesMap.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            var color = colors[i % colors.Length];
-            i++;
-            var task = pts.FirstOrDefault().Task ?? key.Split('·')[0].Trim();
-            var aiData = labels.Select(lab =>
-            {
-                var hit = pts.LastOrDefault(p => p.Utc == lab);
-                return hit.Utc == null ? (double?)null : hit.Ai;
-            }).ToList();
-            var baseData = labels.Select(lab =>
-            {
-                var hit = pts.LastOrDefault(p => p.Utc == lab);
-                return hit.Utc == null ? (double?)null : hit.Base;
-            }).ToList();
-
-            datasets.Add(new Dictionary<string, object?>
-            {
-                ["label"] = key + " · AI",
-                ["task"] = task,
-                ["data"] = aiData,
-                ["borderColor"] = color,
-                ["backgroundColor"] = color + "33",
-                ["borderWidth"] = 2.5,
-                ["spanGaps"] = true,
-                ["tension"] = 0.2,
-                ["pointRadius"] = 3,
-                ["pointHoverRadius"] = 5,
-                ["hidden"] = !task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase),
-            });
-            datasets.Add(new Dictionary<string, object?>
-            {
-                ["label"] = key + " · baseline",
-                ["task"] = task,
-                ["data"] = baseData,
-                ["borderColor"] = color,
-                ["backgroundColor"] = "transparent",
-                ["borderWidth"] = 2,
-                ["borderDash"] = new[] { 7, 4 },
-                ["spanGaps"] = true,
-                ["tension"] = 0,
-                ["pointRadius"] = 2,
-                ["pointHoverRadius"] = 4,
-                ["pointStyle"] = "rectRot",
-                ["hidden"] = !task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase),
-            });
-        }
-
+        var datasets = BuildChartDatasets(seriesMap, labels, defaultTask);
         var chartPayload = JsonSerializer.Serialize(new { labels, datasets }, JsonDefaults.Pretty);
         var tasksJson = JsonSerializer.Serialize(tasks);
         var defaultTaskJson = JsonSerializer.Serialize(defaultTask);
-
-        var filterButtons = new StringBuilder();
-        foreach (var t in tasks)
-        {
-            var on = t.Equals(defaultTask, StringComparison.OrdinalIgnoreCase);
-            filterButtons.Append(
-                $"<button type=\"button\" class=\"filter-btn{(on ? " active" : "")}\" data-task=\"{Esc(t)}\" " +
-                $"aria-pressed=\"{(on ? "true" : "false")}\">{Esc(t)}</button>\n");
-        }
-
-        var latest = index.Runs.FirstOrDefault();
-        var promptRows = new StringBuilder();
-        if (latest != null)
-        {
-            foreach (var s in latest.Scores.OrderBy(x => x.Task).ThenBy(x => x.Model)
-                         .ThenBy(x => x.PromptId).ThenBy(x => x.Temperature).ThenByDescending(x => x.AiScore))
-            {
-                var show = s.Task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase) ? "" : " hidden-row";
-                promptRows.AppendLine(
-                    $"<tr class=\"score-row{show}\" data-task=\"{Esc(s.Task)}\">" +
-                    $"<td>{Esc(s.Task)}</td><td><code>{Esc(s.Model)}</code></td><td><code>{Esc(s.PromptId)}</code></td>" +
-                    $"<td>{s.Temperature:0.##}</td><td>{s.Metric}</td><td>{s.BaselineScore:F3}</td>" +
-                    $"<td><strong>{s.AiScore:F3}</strong></td><td>{Esc(s.Winner)}</td><td>{s.SampleCount}</td></tr>");
-            }
-        }
-
-        var histRows = new StringBuilder();
-        foreach (var run in index.Runs.Take(50))
-        {
-            foreach (var s in run.Scores)
-            {
-                var show = s.Task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase) ? "" : " hidden-row";
-                histRows.AppendLine(
-                    $"<tr class=\"score-row{show}\" data-task=\"{Esc(s.Task)}\">" +
-                    $"<td>{Esc(run.Utc)}</td><td><code>{Esc(run.RunId)}</code></td><td>{Esc(s.Task)}</td>" +
-                    $"<td><code>{Esc(s.Model)}</code></td><td><code>{Esc(s.PromptId)}</code></td>" +
-                    $"<td>{s.Temperature:0.##}</td>" +
-                    $"<td>{s.BaselineScore:F3}</td><td>{s.AiScore:F3}</td><td>{Esc(s.Winner)}</td></tr>");
-            }
-        }
-
-        var leaderRows = new StringBuilder();
-        foreach (var top in ComputeLeaders(index))
-        {
-            var delta = top.AiScore - top.BaselineScore;
-            leaderRows.AppendLine(
-                $"<tr class=\"leader-row\" data-task=\"{Esc(top.Task)}\">" +
-                $"<td><code>{Esc(top.Task)}</code></td>" +
-                $"<td>{Esc(top.Metric)}</td>" +
-                $"<td><code>{Esc(top.Model)}</code></td>" +
-                $"<td><code>{Esc(top.PromptId)}</code></td>" +
-                $"<td>{top.Temperature:0.##}</td>" +
-                $"<td class=\"num ai\"><strong>{top.AiScore:F3}</strong></td>" +
-                $"<td class=\"num\">{top.BaselineScore:F3}</td>" +
-                $"<td class=\"num\">{delta.ToString("+0.000;-0.000;0", CultureInfo.InvariantCulture)}</td>" +
-                $"<td><strong>{Esc(top.Winner)}</strong></td>" +
-                $"<td>{top.SampleCount}</td>" +
-                $"<td>{Esc(top.Utc)}</td>" +
-                $"<td><code>{Esc(top.RunId)}</code></td></tr>");
-        }
+        var filterButtons = BuildFilterButtons(tasks, defaultTask);
+        var promptRows = BuildLatestPromptRows(index.Runs.FirstOrDefault(), defaultTask);
+        var histRows = BuildHistoryRows(index, defaultTask);
+        var leaderRows = BuildLeaderRows(index);
 
         return $$"""
 <!DOCTYPE html>
@@ -684,6 +558,174 @@ public static class ReportWriter
 </body>
 </html>
 """;
+    }
+
+    static Dictionary<string, List<(string Utc, double Ai, double Base, string Task)>> CollectSeriesMap(
+        HistoryIndex index)
+    {
+        var seriesMap = new Dictionary<string, List<(string Utc, double Ai, double Base, string Task)>>();
+        foreach (var run in index.Runs.AsEnumerable().Reverse())
+        {
+            foreach (var s in run.Scores)
+            {
+                var key = SeriesKey(s);
+                if (!seriesMap.TryGetValue(key, out var list))
+                {
+                    list = new List<(string, double, double, string)>();
+                    seriesMap[key] = list;
+                }
+                list.Add((run.Utc, s.AiScore, s.BaselineScore, s.Task));
+            }
+        }
+        return seriesMap;
+    }
+
+    static List<object> BuildChartDatasets(
+        Dictionary<string, List<(string Utc, double Ai, double Base, string Task)>> seriesMap,
+        List<string> labels,
+        string defaultTask)
+    {
+        var colors = new[]
+        {
+            "#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea", "#0891b2", "#ea580c", "#4f46e5",
+            "#0d9488", "#be185d", "#65a30d", "#7c3aed"
+        };
+        var datasets = new List<object>();
+        var i = 0;
+        foreach (var (key, pts) in seriesMap.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var color = colors[i % colors.Length];
+            i++;
+            var task = pts.FirstOrDefault().Task ?? key.Split('·')[0].Trim();
+            var hidden = !task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase);
+            datasets.Add(AiDataset(key, task, AlignSeriesValues(labels, pts, ai: true), color, hidden));
+            datasets.Add(BaselineDataset(key, task, AlignSeriesValues(labels, pts, ai: false), color, hidden));
+        }
+        return datasets;
+    }
+
+    static List<double?> AlignSeriesValues(
+        List<string> labels,
+        List<(string Utc, double Ai, double Base, string Task)> pts,
+        bool ai)
+    {
+        var values = new List<double?>();
+        foreach (var lab in labels)
+        {
+            var hit = pts.LastOrDefault(p => p.Utc == lab);
+            values.Add(hit.Utc == null ? null : (ai ? hit.Ai : hit.Base));
+        }
+        return values;
+    }
+
+    static Dictionary<string, object?> AiDataset(
+        string key, string task, List<double?> data, string color, bool hidden) =>
+        new()
+        {
+            ["label"] = key + " · AI",
+            ["task"] = task,
+            ["data"] = data,
+            ["borderColor"] = color,
+            ["backgroundColor"] = color + "33",
+            ["borderWidth"] = 2.5,
+            ["spanGaps"] = true,
+            ["tension"] = 0.2,
+            ["pointRadius"] = 3,
+            ["pointHoverRadius"] = 5,
+            ["hidden"] = hidden,
+        };
+
+    static Dictionary<string, object?> BaselineDataset(
+        string key, string task, List<double?> data, string color, bool hidden) =>
+        new()
+        {
+            ["label"] = key + " · baseline",
+            ["task"] = task,
+            ["data"] = data,
+            ["borderColor"] = color,
+            ["backgroundColor"] = "transparent",
+            ["borderWidth"] = 2,
+            ["borderDash"] = new[] { 7, 4 },
+            ["spanGaps"] = true,
+            ["tension"] = 0,
+            ["pointRadius"] = 2,
+            ["pointHoverRadius"] = 4,
+            ["pointStyle"] = "rectRot",
+            ["hidden"] = hidden,
+        };
+
+    static StringBuilder BuildFilterButtons(List<string> tasks, string defaultTask)
+    {
+        var filterButtons = new StringBuilder();
+        foreach (var t in tasks)
+        {
+            var on = t.Equals(defaultTask, StringComparison.OrdinalIgnoreCase);
+            filterButtons.Append(
+                $"<button type=\"button\" class=\"filter-btn{(on ? " active" : "")}\" data-task=\"{Esc(t)}\" " +
+                $"aria-pressed=\"{(on ? "true" : "false")}\">{Esc(t)}</button>\n");
+        }
+        return filterButtons;
+    }
+
+    static StringBuilder BuildLatestPromptRows(HistoryEntry? latest, string defaultTask)
+    {
+        var promptRows = new StringBuilder();
+        if (latest == null)
+            return promptRows;
+        foreach (var s in latest.Scores.OrderBy(x => x.Task).ThenBy(x => x.Model)
+                     .ThenBy(x => x.PromptId).ThenBy(x => x.Temperature).ThenByDescending(x => x.AiScore))
+        {
+            var show = s.Task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase) ? "" : " hidden-row";
+            promptRows.AppendLine(
+                $"<tr class=\"score-row{show}\" data-task=\"{Esc(s.Task)}\">" +
+                $"<td>{Esc(s.Task)}</td><td><code>{Esc(s.Model)}</code></td><td><code>{Esc(s.PromptId)}</code></td>" +
+                $"<td>{s.Temperature:0.##}</td><td>{s.Metric}</td><td>{s.BaselineScore:F3}</td>" +
+                $"<td><strong>{s.AiScore:F3}</strong></td><td>{Esc(s.Winner)}</td><td>{s.SampleCount}</td></tr>");
+        }
+        return promptRows;
+    }
+
+    static StringBuilder BuildHistoryRows(HistoryIndex index, string defaultTask)
+    {
+        var histRows = new StringBuilder();
+        foreach (var run in index.Runs.Take(50))
+        {
+            foreach (var s in run.Scores)
+            {
+                var show = s.Task.Equals(defaultTask, StringComparison.OrdinalIgnoreCase) ? "" : " hidden-row";
+                histRows.AppendLine(
+                    $"<tr class=\"score-row{show}\" data-task=\"{Esc(s.Task)}\">" +
+                    $"<td>{Esc(run.Utc)}</td><td><code>{Esc(run.RunId)}</code></td><td>{Esc(s.Task)}</td>" +
+                    $"<td><code>{Esc(s.Model)}</code></td><td><code>{Esc(s.PromptId)}</code></td>" +
+                    $"<td>{s.Temperature:0.##}</td>" +
+                    $"<td>{s.BaselineScore:F3}</td><td>{s.AiScore:F3}</td><td>{Esc(s.Winner)}</td></tr>");
+            }
+        }
+        return histRows;
+    }
+
+    static StringBuilder BuildLeaderRows(HistoryIndex index)
+    {
+        var leaderRows = new StringBuilder();
+        foreach (var top in ComputeLeaders(index))
+        {
+            var delta = top.AiScore - top.BaselineScore;
+            leaderRows.AppendLine(
+                $"<tr class=\"leader-row\" data-task=\"{Esc(top.Task)}\">" +
+                $"<td><code>{Esc(top.Task)}</code></td>" +
+                $"<td>{Esc(top.Metric)}</td>" +
+                $"<td><code>{Esc(top.Model)}</code></td>" +
+                $"<td><code>{Esc(top.PromptId)}</code></td>" +
+                $"<td>{top.Temperature:0.##}</td>" +
+                $"<td class=\"num ai\"><strong>{top.AiScore:F3}</strong></td>" +
+                $"<td class=\"num\">{top.BaselineScore:F3}</td>" +
+                $"<td class=\"num\">{delta.ToString("+0.000;-0.000;0", CultureInfo.InvariantCulture)}</td>" +
+                $"<td><strong>{Esc(top.Winner)}</strong></td>" +
+                $"<td>{top.SampleCount}</td>" +
+                $"<td>{Esc(top.Utc)}</td>" +
+                $"<td><code>{Esc(top.RunId)}</code></td></tr>");
+        }
+        return leaderRows;
     }
 
     static string SeriesKey(HistoryScore s)

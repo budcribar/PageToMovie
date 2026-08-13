@@ -151,37 +151,42 @@ public sealed class ReviewEventStore
         };
 
         foreach (var e in events)
-        {
-            Bump(dto.ByType, e.Type);
-            if (!string.IsNullOrWhiteSpace(e.Category))
-                Bump(dto.ByCategory, e.Category);
-
-            if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
-                (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase)))
-            {
-                dto.HumanFail += string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-                var cat = string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category;
-                if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase))
-                    Bump(dto.FailByCategory, cat);
-            }
-
-            if (string.Equals(e.Type, "clip_pass", StringComparison.OrdinalIgnoreCase))
-                dto.HumanPass++;
-            if (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase))
-                dto.AutoReview++;
-            if (string.Equals(e.Type, "auto_review_apply", StringComparison.OrdinalIgnoreCase))
-                dto.ApplyCount++;
-            if (string.Equals(e.Type, "regen_after_review", StringComparison.OrdinalIgnoreCase))
-                dto.RegenCount++;
-        }
+            AccumulateInsightFromEvent(dto, e);
 
         // auto_review fails counted above only when suggestion=fail; ensure human fail tally correct
         dto.HumanFail = events.Count(e =>
             string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase));
 
         return dto;
+    }
+
+    private static void AccumulateInsightFromEvent(LearningInsightsDto dto, ReviewLearningEvent e)
+    {
+        Bump(dto.ByType, e.Type);
+        if (!string.IsNullOrWhiteSpace(e.Category))
+            Bump(dto.ByCategory, e.Category);
+        TryCountFailEvent(dto, e);
+        if (string.Equals(e.Type, "clip_pass", StringComparison.OrdinalIgnoreCase))
+            dto.HumanPass++;
+        if (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase))
+            dto.AutoReview++;
+        if (string.Equals(e.Type, "auto_review_apply", StringComparison.OrdinalIgnoreCase))
+            dto.ApplyCount++;
+        if (string.Equals(e.Type, "regen_after_review", StringComparison.OrdinalIgnoreCase))
+            dto.RegenCount++;
+    }
+
+    private static void TryCountFailEvent(LearningInsightsDto dto, ReviewLearningEvent e)
+    {
+        if (!string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) &&
+            !(string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) &&
+              string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase)))
+            return;
+        dto.HumanFail += string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        var cat = string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category;
+        if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase))
+            Bump(dto.FailByCategory, cat);
     }
 
     public async Task<IReadOnlyList<ReviewLearningEvent>> ReadAllAsync(CancellationToken ct = default)
