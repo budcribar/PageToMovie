@@ -126,8 +126,8 @@ public class ProviderHttpHelpersTests
     [Fact]
     public void TranscribePageNotSupported_names_the_provider()
     {
-        var ex = Assert.Throws<NotSupportedException>(() =>
-            ChatClientHelpers.TranscribePageNotSupported("Gemini"));
+        Action act = () => ChatClientHelpers.TranscribePageNotSupported("Gemini");
+        var ex = Assert.Throws<NotSupportedException>(act);
         Assert.Contains("Gemini", ex.Message);
         Assert.Contains("Grok", ex.Message);
     }
@@ -135,8 +135,8 @@ public class ProviderHttpHelpersTests
     [Fact]
     public void ClassifyCharactersNotSupported_names_the_provider()
     {
-        var ex = Assert.Throws<NotSupportedException>(() =>
-            ChatClientHelpers.ClassifyCharactersNotSupported("Anthropic"));
+        Action act = () => ChatClientHelpers.ClassifyCharactersNotSupported("Anthropic");
+        var ex = Assert.Throws<NotSupportedException>(act);
         Assert.Contains("Anthropic", ex.Message);
     }
 
