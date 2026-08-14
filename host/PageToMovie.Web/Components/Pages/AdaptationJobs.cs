@@ -189,7 +189,7 @@ public abstract partial class AdaptationPageBase
         private bool TryAbsorbVisionProgress(string line)
         {
             var mVis = CommonRegex.Match(
-                line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
+                line, @"(?:Grok vision|Vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (mVis.Success &&
                 int.TryParse(mVis.Groups[1].Value, out var vIdx) &&
@@ -582,6 +582,7 @@ public abstract partial class AdaptationPageBase
                    || message.Contains("calling", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("parsing", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Grok vision", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Vision OCR", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Reading page", StringComparison.OrdinalIgnoreCase)
                    || message.Contains(SinglePass, StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Adapting", StringComparison.OrdinalIgnoreCase)

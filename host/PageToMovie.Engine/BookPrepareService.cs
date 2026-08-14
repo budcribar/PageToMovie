@@ -14,7 +14,7 @@ using PageToMovie.Adaptation;
 namespace PageToMovie.Engine;
 
 /// <summary>
-/// Prepare book source for Stage 1: PDF text (PdfPig), page render, optional Grok vision OCR.
+/// Prepare book source for Stage 1: PDF text (PdfPig), page render, optional catalog Vision OCR.
 /// Writes source/book_full.txt + extract_meta.json.
 /// </summary>
 public sealed class BookPrepareService
@@ -22,8 +22,6 @@ public sealed class BookPrepareService
     private const string BookImagesFolder = "book_images";
     private const string EmbeddedKind = "embedded";
     private const string RelevanceKey = "relevance";
-    private const string GrokVisionTranscribeAction = "grok_vision_transcribe";
-    private const string GrokVisionEngine = "grok_vision";
     private const string RenderedPageRelevance = "rendered_page";
 
     private readonly ProjectStore _projects;
@@ -67,8 +65,8 @@ public sealed class BookPrepareService
         Directory.CreateDirectory(imgDir);
 
         var result = new BookPrepareResult { ProjectId = projectId, Ok = false };
-        var hasXai = _vision.IsConfigured;
-        result.HasXaiKey = hasXai;
+        var visionAvailable = VisionOcrAvailable();
+        result.HasXaiKey = visionAvailable;
 
         onProgress?.Invoke("Looking for PDF / EPUB / book_full.txt…");
         var pdf = FindPdf(source);
@@ -81,13 +79,13 @@ public sealed class BookPrepareService
 
         var pageImages = await CollectPageImagesAsync(source, ct).ConfigureAwait(false);
         result.PageImageCount = pageImages.Count;
-        var strategy = DecidePrepareStrategy(analysis, pageImages.Count > 0, hasXai, forceVision, autoVision);
+        var strategy = DecidePrepareStrategy(analysis, pageImages.Count > 0, visionAvailable, forceVision, autoVision);
         result.Strategy = strategy.Action;
         result.StrategyReason = strategy.Reason;
         onProgress?.Invoke($"Strategy: {strategy.Action} — {strategy.Reason}");
 
         analysis = await MaybeRunVisionOcrAsync(
-            strategy, hasXai, pageImages, bookTxt, visionModel, analysis, result, onProgress, ct)
+            strategy, visionAvailable, pageImages, bookTxt, visionModel, analysis, result, onProgress, ct)
             .ConfigureAwait(false);
 
         await ApplyNaturalRuntimeAsync(analysis, bookTxt, ct).ConfigureAwait(false);
@@ -301,25 +299,34 @@ public sealed class BookPrepareService
         return analysis;
     }
 
-    private static BookStrategy DecidePrepareStrategy(
+    /// <summary>
+    /// Catalog Vision default + a configured vision client. Not a vendor (Grok) check.
+    /// </summary>
+    internal static bool VisionOcrAvailable(bool visionClientConfigured) =>
+        visionClientConfigured && OcrEngineIdentity.CatalogOffersVision();
+
+    private bool VisionOcrAvailable() => VisionOcrAvailable(_vision.IsConfigured);
+
+    /// <summary>Book-prepare strategy. Internal so tests can assert catalog Vision routing.</summary>
+    internal static BookStrategy DecidePrepareStrategy(
         BookTextAnalysis analysis,
         bool hasImages,
-        bool hasXai,
+        bool visionAvailable,
         bool forceVision,
         bool autoVision)
     {
-        var strategy = DecideStrategy(analysis, hasImages, hasXai);
-        if (forceVision && hasImages && hasXai)
+        var strategy = DecideStrategy(analysis, hasImages, visionAvailable);
+        if (forceVision && hasImages && visionAvailable)
         {
             strategy = new BookStrategy
             {
-                Action = GrokVisionTranscribeAction,
-                Reason = "Forced Grok vision transcription.",
+                Action = OcrEngineIdentity.VisionTranscribeAction,
+                Reason = "Forced vision transcription.",
                 ReadyForStage1 = false,
                 NeedsUser = false,
             };
         }
-        if (!autoVision && strategy.Action == GrokVisionTranscribeAction)
+        if (!autoVision && OcrEngineIdentity.IsVisionTranscribeAction(strategy.Action))
         {
             strategy = new BookStrategy
             {
@@ -334,7 +341,7 @@ public sealed class BookPrepareService
 
     private async Task<BookTextAnalysis> MaybeRunVisionOcrAsync(
         BookStrategy strategy,
-        bool hasXai,
+        bool visionAvailable,
         List<(int Page, string Path)> pageImages,
         string bookTxt,
         string? visionModel,
@@ -343,10 +350,10 @@ public sealed class BookPrepareService
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        if (strategy.Action != GrokVisionTranscribeAction)
+        if (!OcrEngineIdentity.IsVisionTranscribeAction(strategy.Action))
             return analysis;
-        if (!hasXai)
-            throw new InvalidOperationException("XAI_API_KEY required for Grok vision OCR.");
+        if (!visionAvailable)
+            throw new InvalidOperationException("Vision is not configured for page OCR.");
         if (pageImages.Count == 0)
             throw new InvalidOperationException(
                 "No page images for vision. Re-extract PDF (embedded images) first.");
@@ -357,8 +364,8 @@ public sealed class BookPrepareService
 
         await File.WriteAllTextAsync(bookTxt, visionText, ct);
         analysis = BookTextAnalyzer.Analyze(visionText, pageImages.Count);
-        analysis.TextEngine = GrokVisionEngine;
-        result.TextEngine = GrokVisionEngine;
+        analysis.TextEngine = OcrEngineIdentity.VisionEngine;
+        result.TextEngine = OcrEngineIdentity.VisionEngine;
         result.VisionPages = pageImages.Count;
         result.VisionFailedPages = failed;
         onProgress?.Invoke(
@@ -460,7 +467,7 @@ public sealed class BookPrepareService
         BookTextAnalysis analysis,
         BookStrategy strategy)
     {
-        if (result.TextEngine == GrokVisionEngine)
+        if (OcrEngineIdentity.IsVisionEngine(result.TextEngine))
         {
             var failed = result.VisionFailedPages;
             var total = Math.Max(result.VisionPages, 1);
@@ -489,7 +496,7 @@ public sealed class BookPrepareService
             : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Book prepare");
     }
 
-    private static BookStrategy DecideStrategy(BookTextAnalysis analysis, bool hasImages, bool hasXai)
+    private static BookStrategy DecideStrategy(BookTextAnalysis analysis, bool hasImages, bool visionAvailable)
     {
         var quality = analysis.TextQuality;
         var density = analysis.TextDensity;
@@ -500,7 +507,7 @@ public sealed class BookPrepareService
         var picture = kind == BookKind.PictureBook || density == TextDensity.Sparse;
         var textClearlyClean = quality == TextQuality.Good && garbage < 0.2 && words >= 80 && density != TextDensity.Sparse;
 
-        if (TryPictureBookStrategy(picture, hasImages, hasXai, textClearlyClean, quality, garbage) is { } pictureStrategy)
+        if (TryPictureBookStrategy(picture, hasImages, visionAvailable, textClearlyClean, quality, garbage) is { } pictureStrategy)
             return pictureStrategy;
         if (quality == TextQuality.Good && garbage < 0.25)
             return UseEmbeddedText("Text looks clean enough for Stage 1.");
@@ -508,22 +515,22 @@ public sealed class BookPrepareService
         var needsBetter = quality is TextQuality.Poor or TextQuality.Empty || garbage >= 0.25;
         if (!needsBetter)
             return UseEmbeddedText($"Text quality '{quality.ToApiString()}' is acceptable for Stage 1.");
-        return PoorTextStrategy(quality, hasImages, hasXai);
+        return PoorTextStrategy(quality, hasImages, visionAvailable);
     }
 
     private static BookStrategy? TryPictureBookStrategy(
-        bool picture, bool hasImages, bool hasXai, bool textClearlyClean, TextQuality quality, double garbage)
+        bool picture, bool hasImages, bool visionAvailable, bool textClearlyClean, TextQuality quality, double garbage)
     {
         if (!picture || !hasImages || textClearlyClean)
             return null;
-        if (hasXai)
+        if (visionAvailable)
         {
             return new BookStrategy
             {
-                Action = GrokVisionTranscribeAction,
+                Action = OcrEngineIdentity.VisionTranscribeAction,
                 Reason =
                     $"Picture book / sparse text (quality={quality}, garbage={garbage:0.00}). " +
-                    "Rebuilding book_full.txt with Grok vision from page images.",
+                    "Rebuilding book_full.txt with vision from page images.",
                 ReadyForStage1 = false,
             };
         }
@@ -533,7 +540,7 @@ public sealed class BookPrepareService
             Action = "need_xai_for_vision",
             Reason =
                 "Picture book images ready, but embedded PDF text is unreliable. " +
-                "Set XAI_API_KEY and re-run prepare.",
+                "Configure vision and re-run prepare.",
             ReadyForStage1 = false,
             NeedsUser = true,
         };
@@ -546,7 +553,7 @@ public sealed class BookPrepareService
         ReadyForStage1 = true,
     };
 
-    private static BookStrategy PoorTextStrategy(TextQuality quality, bool hasImages, bool hasXai)
+    private static BookStrategy PoorTextStrategy(TextQuality quality, bool hasImages, bool visionAvailable)
     {
         if (!hasImages)
         {
@@ -559,12 +566,12 @@ public sealed class BookPrepareService
             };
         }
 
-        if (hasXai)
+        if (visionAvailable)
         {
             return new BookStrategy
             {
-                Action = GrokVisionTranscribeAction,
-                Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
+                Action = OcrEngineIdentity.VisionTranscribeAction,
+                Reason = $"Text quality is '{quality}'. Rebuilding with vision.",
                 ReadyForStage1 = false,
             };
         }
@@ -572,7 +579,7 @@ public sealed class BookPrepareService
         return new BookStrategy
         {
             Action = "need_xai_for_vision",
-            Reason = $"Text quality is '{quality}'. Set XAI_API_KEY for vision OCR.",
+            Reason = $"Text quality is '{quality}'. Configure vision for page OCR.",
             ReadyForStage1 = false,
             NeedsUser = true,
         };
@@ -827,7 +834,7 @@ public sealed class BookPrepareService
 
     /// <summary>
     /// Render PDF pages to PNG via PDFtoImage (PDFium). Used when embeds are missing
-    /// so Grok vision has plates to OCR.
+    /// so vision OCR has plates to read.
     /// Returns rows plus a human-readable error when rendering fails (e.g. missing libpdfium on Linux).
     /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -1224,7 +1231,7 @@ public sealed class BookPrepareService
                 ["notes"] = analysis.Notes,
                 ["text_source"] = analysis.TextEngine,
             },
-            ["vision"] = result.TextEngine == GrokVisionEngine
+            ["vision"] = OcrEngineIdentity.IsVisionEngine(result.TextEngine)
                 ? new Dictionary<string, object?>
                 {
                     ["ran"] = true,
@@ -1242,7 +1249,7 @@ public sealed class BookPrepareService
             ct).ConfigureAwait(false);
     }
 
-    private sealed class BookStrategy
+    internal sealed class BookStrategy
     {
         public string Action { get; set; } = "";
         public string Reason { get; set; } = "";
