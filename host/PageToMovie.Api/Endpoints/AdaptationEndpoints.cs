@@ -634,7 +634,7 @@ public static class AdaptationEndpoints
         await store.RequireProjectAsync(id, ct);
 
         var result = await ScreenplayService.TrimDraftAsync(
-            store, id, chat, ct: ct,
+            store, id, new ChatCall(chat, Progress: new ProgressCall(ct)),
             responses: responses, bookRegistry: books, bookFileSessions: bookFileSessions,
             useFakes: opts.Value.UseFakes);
         return await ApiEndpointHelpers.DraftEditResponseAsync(result, id, "ptm:stage=trim", store, user, ct);

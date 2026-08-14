@@ -276,7 +276,7 @@ public sealed class CastFromScreenplayService
         CancellationToken ct)
     {
         var parsed = await TryParseViaFilesAsync(
-            projectId, fountain, book, system, locationHints, model, onProgress, ct).ConfigureAwait(false);
+            projectId, fountain, book, system, locationHints, model, new ProgressCall(ct, onProgress)).ConfigureAwait(false);
         if (parsed is not null)
             return (parsed, null);
 
@@ -572,9 +572,10 @@ public sealed class CastFromScreenplayService
         string system,
         string? locationHints,
         string model,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        ProgressCall progress)
     {
+        var onProgress = progress.OnProgress;
+        var ct = progress.Ct;
         if (_responses is null) return null;
         try
         {

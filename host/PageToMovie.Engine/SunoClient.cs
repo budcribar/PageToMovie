@@ -77,7 +77,7 @@ public sealed class SunoClient : IAudioClient
     private Task<string?> SubmitToSunoAsync(
         Dictionary<string, object?> payload, string apiKey, Action<string>? onProgress, CancellationToken ct) =>
         MusicResellerHttp.SubmitAndPollAsync(
-            _http, "generate", payload, apiKey, _log, onProgress,
+            new HttpCall(_http, apiKey, _log, ct, onProgress), "generate", payload,
             "Submitting to Suno (sunoapi.org)…",
             "Suno (sunoapi.org) submit failed HTTP {Status}: {Body}",
             "Suno submit failed: HTTP ",
@@ -89,8 +89,7 @@ public sealed class SunoClient : IAudioClient
                 "Suno (sunoapi.org) poll HTTP {Status}: {Body}",
                 body => TryHandlePollBody(body, onProgress), pollCt),
             "Suno (sunoapi.org) generation timed out after {Timeout} for task {TaskId}",
-            "Suno generation timed out.",
-            ct);
+            "Suno generation timed out.");
 
     private static string? ReadSunoSubmitTaskId(JsonElement root) =>
         root.TryGetProperty("data", out var dataEl)

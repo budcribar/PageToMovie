@@ -25,9 +25,9 @@ public class FalHttpTests
         using var handler = new StubHandler(HttpStatusCode.OK, """{"request_id":"req-1"}""");
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://fal.run/") };
         using var posted = await FalHttp.TryPostJsonAsync(
-            http, NullLogger.Instance, "fal-ai/stable-audio", "test-key",
+            new HttpCall(http, "test-key", NullLogger.Instance), "fal-ai/stable-audio",
             new Dictionary<string, object?> { ["prompt"] = "theme" },
-            "audio gen", CancellationToken.None);
+            "audio gen");
 
         Assert.NotNull(posted);
         Assert.Equal("req-1", posted!.Root.GetProperty("request_id").GetString());
@@ -44,9 +44,9 @@ public class FalHttpTests
         using var handler = new StubHandler(HttpStatusCode.BadRequest, "nope");
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://fal.run/") };
         var posted = await FalHttp.TryPostJsonAsync(
-            http, NullLogger.Instance, "fal-ai/stable-audio", "k",
+            new HttpCall(http, "k", NullLogger.Instance), "fal-ai/stable-audio",
             new Dictionary<string, object?> { ["prompt"] = "x" },
-            "audio gen", CancellationToken.None);
+            "audio gen");
         Assert.Null(posted);
     }
 
@@ -57,9 +57,9 @@ public class FalHttpTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://fal.run/") };
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             FalHttp.PostJsonOrThrowAsync(
-                http, NullLogger.Instance, "fal-ai/flux/dev", "k",
+                new HttpCall(http, "k", NullLogger.Instance), "fal-ai/flux/dev",
                 new Dictionary<string, object?> { ["prompt"] = "x" },
-                "Flux image gen", "Fal.ai error", CancellationToken.None));
+                "Flux image gen", "Fal.ai error"));
         Assert.Equal("Fal.ai error BadGateway: gpu down", ex.Message);
     }
 

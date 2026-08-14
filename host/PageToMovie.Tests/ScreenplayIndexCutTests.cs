@@ -1,5 +1,6 @@
 using PageToMovie.Adaptation;
 using PageToMovie.Adaptation.Contracts;
+using PageToMovie.Core.Abstractions;
 using PageToMovie.Adaptation.Conversion;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
@@ -73,7 +74,7 @@ public sealed class ScreenplayIndexCutTests : IDisposable
         await FilmRuntime.SetTargetAsync(_store, ProjectId, 8);
 
         var chat = new NeverChat();
-        var result = await ScreenplayService.TrimDraftAsync(_store, ProjectId, chat, model: "grok-4.6");
+        var result = await ScreenplayService.TrimDraftAsync(_store, ProjectId, new ChatCall(chat, "grok-4.6"));
         Assert.True(result.Ok);
         Assert.True(result.Applied);
         Assert.Contains("sequences", result.Message ?? "", StringComparison.OrdinalIgnoreCase);

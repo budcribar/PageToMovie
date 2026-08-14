@@ -20,29 +20,25 @@ internal static class MusicResellerHttp
     /// logs + progress-invokes and returns null on a non-success status.
     /// </summary>
     public static async Task<string?> PostJsonOrNullAsync(
-        HttpClient http,
+        HttpCall call,
         string relativeUri,
         object payload,
-        string apiKey,
-        ILogger log,
-        Action<string>? onProgress,
         string submittingMessage,
         string failedLogTemplate,
-        string failedProgressPrefix,
-        CancellationToken ct)
+        string failedProgressPrefix)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, relativeUri);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", call.ApiKey);
         req.Content = JsonContent.Create(payload);
 
-        onProgress?.Invoke(submittingMessage);
-        using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        call.OnProgress?.Invoke(submittingMessage);
+        using var resp = await call.Http.SendAsync(req, call.Ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(call.Ct).ConfigureAwait(false);
         if (resp.IsSuccessStatusCode)
             return body;
 
-        log.LogError(failedLogTemplate, resp.StatusCode, body);
-        onProgress?.Invoke($"{failedProgressPrefix}{(int)resp.StatusCode}");
+        call.Log.LogError(failedLogTemplate, resp.StatusCode, body);
+        call.OnProgress?.Invoke($"{failedProgressPrefix}{(int)resp.StatusCode}");
         return null;
     }
 
@@ -105,12 +101,9 @@ internal static class MusicResellerHttp
     /// path, poll URI, and body interpretation stay at the call site.
     /// </summary>
     public static async Task<string?> SubmitAndPollAsync(
-        HttpClient http,
+        HttpCall call,
         string submitUri,
         object payload,
-        string apiKey,
-        ILogger log,
-        Action<string>? onProgress,
         string submittingMessage,
         string submitFailedLogTemplate,
         string submitFailedProgressPrefix,
@@ -119,25 +112,24 @@ internal static class MusicResellerHttp
         string missingIdLogTemplate,
         Func<string, CancellationToken, Task<(bool Done, string? AudioUrl)>> pollTick,
         string timeoutLogTemplate,
-        string timeoutProgress,
-        CancellationToken ct)
+        string timeoutProgress)
     {
         var body = await PostJsonOrNullAsync(
-            http, submitUri, payload, apiKey, log, onProgress,
-            submittingMessage, submitFailedLogTemplate, submitFailedProgressPrefix, ct)
+            call, submitUri, payload,
+            submittingMessage, submitFailedLogTemplate, submitFailedProgressPrefix)
             .ConfigureAwait(false);
         if (body is null)
             return null;
 
         var taskId = ReadTaskIdOrNull(
-            body, log, readTaskId, unparseableLogTemplate, missingIdLogTemplate);
+            body, call.Log, readTaskId, unparseableLogTemplate, missingIdLogTemplate);
         if (taskId is null)
             return null;
 
         return await PollUntilTimeoutAsync(
             DefaultPollInterval, DefaultPollTimeout,
             pollCt => pollTick(taskId, pollCt),
-            log, onProgress, timeoutLogTemplate, timeoutProgress, taskId, ct)
+            call.Log, call.OnProgress, timeoutLogTemplate, timeoutProgress, taskId, call.Ct)
             .ConfigureAwait(false);
     }
 

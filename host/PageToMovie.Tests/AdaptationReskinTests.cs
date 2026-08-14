@@ -18,7 +18,7 @@ public sealed class AdaptationReskinTests
         var chat = new FakeChat(_ => reskinned);
 
         var result = await AdaptationService.ReskinAsync(
-            input, "illustrated_picture_book", chat, model: "grok-4.5");
+            input, "illustrated_picture_book", new ChatCall(chat, "grok-4.5"));
 
         Assert.True(result.Ok);
         Assert.True(result.StructurePreserved);
@@ -36,7 +36,7 @@ public sealed class AdaptationReskinTests
         var chat = new FakeChat(_ => dropped);
 
         var result = await AdaptationService.ReskinAsync(
-            input, "photoreal_live_action", chat);
+            input, "photoreal_live_action", new ChatCall(chat));
 
         Assert.False(result.Ok);
         Assert.False(result.StructurePreserved);
@@ -53,7 +53,7 @@ public sealed class AdaptationReskinTests
         var fenced = "```fountain\n" + Fountain(scenes: 2, tag: "stylized 3D") + "\n```";
         var chat = new FakeChat(_ => fenced);
 
-        var result = await AdaptationService.ReskinAsync(input, "stylized_3d_animated", chat);
+        var result = await AdaptationService.ReskinAsync(input, "stylized_3d_animated", new ChatCall(chat));
 
         Assert.True(result.Ok);
         Assert.DoesNotContain("```", result.Fountain);
@@ -66,7 +66,7 @@ public sealed class AdaptationReskinTests
         var input = Fountain(scenes: 2, tag: "plain");
         var chat = new FakeChat(_ => "unused") { Configured = false };
 
-        var result = await AdaptationService.ReskinAsync(input, "photoreal_live_action", chat);
+        var result = await AdaptationService.ReskinAsync(input, "photoreal_live_action", new ChatCall(chat));
 
         Assert.False(result.Ok);
         Assert.Equal(input, result.Fountain);

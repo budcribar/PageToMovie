@@ -333,23 +333,24 @@ public sealed class ClipAutoReviewService
         var afterParts = new List<string>();
 
         foreach (var item in items)
-            ApplySuggestionItem(projectId, scene, clip, item, plan, profiles, beforeParts, afterParts);
+            ApplySuggestionItem(new ProjectClipRef(projectId, scene, clip), item, plan, profiles, beforeParts, afterParts);
 
         var draft = await StampDraftAppliedAsync(projectId, scene, clip, ct).ConfigureAwait(false);
-        await TryLogApplyAsync(projectId, scene, clip, items.Count, beforeParts, afterParts, draft, ct)
+        await TryLogApplyAsync(new ProjectClipRef(projectId, scene, clip), items.Count, beforeParts, afterParts, draft, ct)
             .ConfigureAwait(false);
     }
 
     private void ApplySuggestionItem(
-        string projectId,
-        int scene,
-        int clip,
+        ProjectClipRef clipRef,
         ClipAutoReviewApplyItem item,
         ClipPlan plan,
         IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
         List<string> beforeParts,
         List<string> afterParts)
     {
+        var projectId = clipRef.ProjectId;
+        var scene = clipRef.Scene;
+        var clip = clipRef.Clip;
         var layer = (item.Layer ?? "clip").Trim().ToLowerInvariant();
         var field = (item.Field ?? "").Trim().ToLowerInvariant();
         var value = item.Value ?? "";
@@ -432,15 +433,16 @@ public sealed class ClipAutoReviewService
     }
 
     private async Task TryLogApplyAsync(
-        string projectId,
-        int scene,
-        int clip,
+        ProjectClipRef clipRef,
         int suggestionCount,
         List<string> beforeParts,
         List<string> afterParts,
         ClipAutoReviewDraft? draft,
         CancellationToken ct)
     {
+        var projectId = clipRef.ProjectId;
+        var scene = clipRef.Scene;
+        var clip = clipRef.Clip;
         try
         {
             await _logs.AddAsync(

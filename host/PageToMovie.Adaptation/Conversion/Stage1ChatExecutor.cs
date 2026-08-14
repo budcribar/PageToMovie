@@ -152,8 +152,8 @@ internal static class Stage1ChatExecutor
         }
 
         return await CompleteWithTransientRetryAsync(
-            chat, request.SystemPrompt, request.UserPrompt, request.Model,
-            request.Temperature, request.Mode, request.ReasoningEffort, ct).ConfigureAwait(false);
+            new ChatCall(chat, request.Model, ct, temperature: request.Temperature, reasoningEffort: request.ReasoningEffort),
+            request.SystemPrompt, request.UserPrompt, request.Mode).ConfigureAwait(false);
     }
 
     private static async Task<string?> TryCompleteCorrectionAsync(
@@ -205,8 +205,8 @@ internal static class Stage1ChatExecutor
             }
 
             return await CompleteWithTransientRetryAsync(
-                chat, request.SystemPrompt, correctionUser, request.Model,
-                corrTemp, request.Mode + "_correction", request.ReasoningEffort, ct).ConfigureAwait(false);
+                new ChatCall(chat, request.Model, ct, temperature: corrTemp, reasoningEffort: request.ReasoningEffort),
+                request.SystemPrompt, correctionUser, request.Mode + "_correction").ConfigureAwait(false);
         }
         catch
         {
@@ -216,30 +216,26 @@ internal static class Stage1ChatExecutor
     }
 
     private static async Task<string> CompleteWithTransientRetryAsync(
-        IChatClient chat,
+        ChatCall chat,
         string system,
         string user,
-        string model,
-        double temperature,
         string mode,
-        string? reasoningEffort,
-        CancellationToken ct,
         int maxAttempts = 2)
     {
         Exception? last = null;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            ct.ThrowIfCancellationRequested();
+            chat.Ct.ThrowIfCancellationRequested();
             try
             {
-                return await chat.CompleteAsync(
-                    system, user, model, temperature, ct,
-                    mode: mode, reasoningEffort: reasoningEffort).ConfigureAwait(false);
+                return await chat.Chat.CompleteAsync(
+                    system, user, chat.Model, chat.Temperature, chat.Ct,
+                    mode: mode, reasoningEffort: chat.ReasoningEffort).ConfigureAwait(false);
             }
             catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex))
             {
                 last = ex;
-                await Task.Delay(200 * attempt * attempt, ct).ConfigureAwait(false);
+                await Task.Delay(200 * attempt * attempt, chat.Ct).ConfigureAwait(false);
             }
         }
 

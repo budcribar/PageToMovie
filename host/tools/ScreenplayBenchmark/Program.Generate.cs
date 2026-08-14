@@ -188,8 +188,7 @@ public static partial class Program
                     Temperature = samplingTemperature,
                     ReasoningEffort = reasoningEffort,
                 },
-                chat,
-                new Progress<string>(msg => Console.WriteLine($"    · {msg}")),
+                ChatCall.FromProgress(chat, modelId, new Progress<string>(msg => Console.WriteLine($"    · {msg}"))),
                 budgetOverride: budget);
             if (adaptResult.UsedHeuristicFallback)
                 generationFallbacks[modelId] = "adaptation_heuristic_fallback";

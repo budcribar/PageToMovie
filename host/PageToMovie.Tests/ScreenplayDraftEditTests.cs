@@ -69,7 +69,7 @@ public sealed class ScreenplayDraftEditTests : IDisposable
 
         // Trim to a shorter (3-scene) version.
         var chat = new StubChat(Fountain(3));
-        var result = await ScreenplayService.TrimDraftAsync(_store, ProjectId, chat, model: "grok-4.5");
+        var result = await ScreenplayService.TrimDraftAsync(_store, ProjectId, new ChatCall(chat, "grok-4.5"));
 
         Assert.True(result.Ok);
         Assert.True(result.Applied);

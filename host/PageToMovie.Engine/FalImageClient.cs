@@ -63,8 +63,8 @@ public sealed class FalImageClient : IImageClient
         };
 
         using var posted = await FalHttp.PostJsonOrThrowAsync(
-            _http, _log, model.TrimStart('/'), apiKey, payload,
-            "Flux image gen", "Fal.ai error", ct).ConfigureAwait(false);
+            new HttpCall(_http, apiKey, _log, ct), model.TrimStart('/'), payload,
+            "Flux image gen", "Fal.ai error").ConfigureAwait(false);
 
         var results = new List<byte[]>();
 

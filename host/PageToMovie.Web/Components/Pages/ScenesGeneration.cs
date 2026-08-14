@@ -744,7 +744,7 @@ public partial class Scenes
         S._message = "Rendering end-credits card…";
         await S.InvokeAsync(S.StateHasChanged);
         var (ok, err) = await S.Stitch.RenderAndStoreCreditsClipAsync(
-            S._projectId, sn, clip, durationSeconds, width, height, fps: 24);
+            new ProjectClipRef(S._projectId, sn, clip), durationSeconds, width, height, fps: 24);
         if (!ok)
             S._error = err ?? "Credits card render failed";
         else

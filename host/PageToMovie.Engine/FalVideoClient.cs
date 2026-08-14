@@ -80,8 +80,8 @@ public sealed class FalVideoClient : IVideoClient
             endpoint = await AttachInitImageAsync(payload, catalogEntry, endpoint, imagePath, ct).ConfigureAwait(false);
 
         using var posted = await FalHttp.PostJsonOrThrowAsync(
-            _http, _log, endpoint, apiKey, payload,
-            "HunyuanVideo submit", "Fal.ai HunyuanVideo error", ct).ConfigureAwait(false);
+            new HttpCall(_http, apiKey, _log, ct), endpoint, payload,
+            "HunyuanVideo submit", "Fal.ai HunyuanVideo error").ConfigureAwait(false);
 
         if (!posted.Root.TryGetProperty("request_id", out var reqIdEl) ||
             reqIdEl.GetString() is not { Length: > 0 } reqId)

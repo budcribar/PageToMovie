@@ -98,16 +98,12 @@ public sealed class AdaptationService
     public static Task<ScreenplayIndex> BuildIndexAsync(
         string title,
         string bookText,
-        IChatClient chat,
-        string model,
+        ChatCall chat,
         string? author = null,
-        IProgress<string>? progress = null,
-        IBookFileSession? bookSession = null,
-        CancellationToken ct = default)
+        IBookFileSession? bookSession = null)
     {
-        Action<string>? onProgress = progress is null ? null : s => progress.Report(s);
-        return BookToIndexConverter.BuildAsync(
-            title, bookText, chat, model, author, onProgress, bookSession, ct);
+        ArgumentNullException.ThrowIfNull(chat);
+        return BookToIndexConverter.BuildAsync(title, bookText, chat, author, bookSession);
     }
 
     /// <summary>Offline / test heuristic path (no chat).
@@ -144,9 +140,7 @@ public sealed class AdaptationService
     /// </summary>
     public static async Task<AdaptationResult> ConvertAsync(
         AdaptationRequest request,
-        IChatClient chat,
-        IProgress<string>? progress = null,
-        CancellationToken ct = default,
+        ChatCall chat,
         Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure = null,
         IBookFileSession? bookSession = null,
         IFountainFileSession? fountainSession = null,
@@ -154,6 +148,7 @@ public sealed class AdaptationService
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(chat);
+        var ct = chat.Ct;
 
         var analysis = AnalyzeBook(request.BookText);
         var runtime = ResolveTargetMinutes(request.BookText, request.TargetRuntimeMinutes);
@@ -166,7 +161,6 @@ public sealed class AdaptationService
             ? runtime.NaturalMinutes
             : NaturalRuntime.MinMinutes);
 
-        Action<string>? onProgress = progress is null ? null : s => progress.Report(s);
         var usedHeuristic = false;
 
         var defaults = AdaptationPromptTokens.Default(promptMinutes, request.VisualMedium);
@@ -202,15 +196,15 @@ public sealed class AdaptationService
             bookText: request.BookText,
             author: request.Author,
             totalRuntimeMinutes: promptMinutes,
-            chat: chat,
-            model: request.ModelId,
-            onProgress: onProgress,
-            ct: ct,
+            chat: new ChatCall(
+                chat.Chat,
+                request.ModelId,
+                chat.Progress,
+                request.Temperature,
+                request.ReasoningEffort),
             budgetOverride: budgetOverride,
             onHeuristicFallback: _ => usedHeuristic = true,
-            reasoningEffort: request.ReasoningEffort,
             onStructuralGateFailure: onStructuralGateFailure,
-            temperature: request.Temperature,
             bookSession: bookSession,
             fountainSession: fountainSession,
             visualMedium: request.VisualMedium,
@@ -298,23 +292,20 @@ public sealed class AdaptationService
     public static async Task<FountainEditResult> ReskinAsync(
         string fountain,
         string? visualMedium,
-        IChatClient chat,
-        string? model = null,
-        IProgress<string>? progress = null,
-        CancellationToken ct = default,
-        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null) =>
-        await ApplyDescriptiveEditAsync(
+        ChatCall chat,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
+    {
+        ArgumentNullException.ThrowIfNull(chat);
+        return await ApplyDescriptiveEditAsync(
             fountain,
-            await AdaptationPromptPack.BuildReskinSystemPromptAsync(visualMedium, ct).ConfigureAwait(false),
+            await AdaptationPromptPack.BuildReskinSystemPromptAsync(visualMedium, chat.Ct).ConfigureAwait(false),
             userContent: null,
             operation: "re-skin",
             mode: "fountain_reskin",
             chat: chat,
-            model: model,
-            progress: progress,
             progressMessage: "Applying look to the screenplay…",
-            ct: ct,
             completeViaFiles: completeViaFiles).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Enrich an existing Fountain screenplay's descriptive layer for the target medium — incorporating
@@ -324,13 +315,11 @@ public sealed class AdaptationService
     public static async Task<FountainEditResult> EmbellishAsync(
         string fountain,
         string? visualMedium,
-        IChatClient chat,
+        ChatCall chat,
         string? bookText = null,
-        string? model = null,
-        IProgress<string>? progress = null,
-        CancellationToken ct = default,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
+        ArgumentNullException.ThrowIfNull(chat);
         // Ground enrichment in the source when we have it (kept bounded to protect the prompt budget).
         var book = BoundBookExcerpt(bookText, maxChars: 40_000, skipBecauseFiles: completeViaFiles is not null);
         string? userContent = book is null
@@ -338,14 +327,14 @@ public sealed class AdaptationService
             : "ORIGINAL BOOK TEXT (for descriptive grounding — do not add plot from it):\n" +
               book + "\n\n---\n\nSCREENPLAY TO ENRICH:\n";
 
-        var system = await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, ct).ConfigureAwait(false);
+        var system = await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, chat.Ct).ConfigureAwait(false);
         var before = SafeSceneCount(fountain);
         // Feature-length drafts overflow one model pass (Odyssey: 28 → 15). Enrich scene-by-scene
         // so headings cannot collapse. Short drafts stay one call.
         if (before >= 8)
         {
             return await EmbellishPerSceneAsync(
-                fountain, system, bookText, chat, model, progress, ct, completeViaFiles).ConfigureAwait(false);
+                fountain, system, bookText, chat, completeViaFiles).ConfigureAwait(false);
         }
 
         return await ApplyDescriptiveEditAsync(
@@ -355,10 +344,7 @@ public sealed class AdaptationService
             operation: "enrichment",
             mode: "fountain_embellish",
             chat: chat,
-            model: model,
-            progress: progress,
             progressMessage: "Enriching the screenplay…",
-            ct: ct,
             completeViaFiles: completeViaFiles).ConfigureAwait(false);
     }
 
@@ -370,10 +356,7 @@ public sealed class AdaptationService
         string fountain,
         string system,
         string? bookText,
-        IChatClient chat,
-        string? model,
-        IProgress<string>? progress,
-        CancellationToken ct,
+        ChatCall chat,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
     {
         var (preamble, scenes) = BookToFountainConverter.SplitFountainByScenes(fountain);
@@ -381,13 +364,13 @@ public sealed class AdaptationService
         if (before == 0)
             return await ApplyDescriptiveEditAsync(
                 fountain, system, userContent: null, operation: "enrichment", mode: "fountain_embellish",
-                chat, model, progress, "Enriching the screenplay…", ct, completeViaFiles).ConfigureAwait(false);
+                chat, "Enriching the screenplay…", completeViaFiles).ConfigureAwait(false);
 
-        progress?.Report($"Enriching {before} scenes one at a time (keeps headings)…");
+        chat.Report($"Enriching {before} scenes one at a time (keeps headings)…");
         var sceneBook = BoundBookExcerpt(bookText, maxChars: 12_000, skipBecauseFiles: completeViaFiles is not null);
         var (outScenes, enriched, kept) = await EnrichScenesAsync(
-            scenes, system, sceneBook, chat, model, progress, ct, completeViaFiles).ConfigureAwait(false);
-        return FinishPerSceneEnrichment(fountain, preamble, outScenes, before, enriched, kept, progress);
+            scenes, system, sceneBook, chat, completeViaFiles).ConfigureAwait(false);
+        return FinishPerSceneEnrichment(fountain, preamble, outScenes, before, enriched, kept, chat.Progress);
     }
 
     static string? BoundBookExcerpt(string? bookText, int maxChars, bool skipBecauseFiles)
@@ -401,10 +384,7 @@ public sealed class AdaptationService
         IReadOnlyList<string> scenes,
         string system,
         string? sceneBook,
-        IChatClient chat,
-        string? model,
-        IProgress<string>? progress,
-        CancellationToken ct,
+        ChatCall chat,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
     {
         var before = scenes.Count;
@@ -413,17 +393,17 @@ public sealed class AdaptationService
         var kept = 0;
         for (var i = 0; i < before; i++)
         {
-            ct.ThrowIfCancellationRequested();
-            progress?.Report($"Enriching scene {i + 1}/{before}…");
+            chat.Ct.ThrowIfCancellationRequested();
+            chat.Report($"Enriching scene {i + 1}/{before}…");
             var (text, usedOriginal, warning) = await EnrichOneSceneAsync(
-                scenes[i], system, sceneBook, chat, model, i, before, ct, completeViaFiles)
+                scenes[i], system, sceneBook, chat, i, before, completeViaFiles)
                 .ConfigureAwait(false);
             outScenes.Add(text);
             if (usedOriginal)
             {
                 kept++;
                 if (!string.IsNullOrWhiteSpace(warning))
-                    progress?.Report($"Scene {i + 1}: kept original ({warning})");
+                    chat.Report($"Scene {i + 1}: kept original ({warning})");
             }
             else
             {
@@ -438,11 +418,9 @@ public sealed class AdaptationService
         string original,
         string system,
         string? sceneBook,
-        IChatClient chat,
-        string? model,
+        ChatCall chat,
         int index,
         int before,
-        CancellationToken ct,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
     {
         var userContent = sceneBook is null
@@ -455,11 +433,8 @@ public sealed class AdaptationService
             userContent: userContent,
             operation: "enrichment",
             mode: "fountain_embellish",
-            chat: chat,
-            model: model,
-            progress: null,
+            chat: chat with { Progress = default },
             progressMessage: $"Enriching scene {index + 1}/{before}…",
-            ct: ct,
             completeViaFiles: completeViaFiles).ConfigureAwait(false);
         var originalCount = SafeSceneCount(original);
         if (r.Ok && r.StructurePreserved && r.SceneCountAfter == originalCount &&
@@ -475,7 +450,7 @@ public sealed class AdaptationService
         int before,
         int enriched,
         int kept,
-        IProgress<string>? progress)
+        ProgressCall progress)
     {
         var assembled = preamble + string.Concat(outScenes);
         var after = SafeSceneCount(assembled);
@@ -487,7 +462,7 @@ public sealed class AdaptationService
             return new FountainEditResult(false, fountain, before, after, true,
                 "Every scene-level enrich was rejected; kept the original screenplay.");
 
-        progress?.Report($"Enriched {enriched}/{before} scenes" + (kept > 0 ? $" ({kept} kept original)." : "."));
+        progress.Report($"Enriched {enriched}/{before} scenes" + (kept > 0 ? $" ({kept} kept original)." : "."));
         return new FountainEditResult(true, assembled, before, after, true, null);
     }
 
@@ -501,11 +476,8 @@ public sealed class AdaptationService
         string? userContent,
         string operation,
         string mode,
-        IChatClient chat,
-        string? model,
-        IProgress<string>? progress,
+        ChatCall chat,
         string progressMessage,
-        CancellationToken ct,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
@@ -514,24 +486,24 @@ public sealed class AdaptationService
 
         if (string.IsNullOrWhiteSpace(fountain))
             return new FountainEditResult(false, fountain, before, before, true, $"No screenplay to {operation}.");
-        if (!chat.IsConfigured && completeViaFiles is null)
+        if (!chat.Chat.IsConfigured && completeViaFiles is null)
             return new FountainEditResult(false, fountain, before, before, true, "AI service not configured.");
 
-        progress?.Report(progressMessage);
+        chat.Report(progressMessage);
         string? raw = null;
         if (completeViaFiles is not null)
         {
-            raw = await completeViaFiles(system, fountain, ct).ConfigureAwait(false);
+            raw = await completeViaFiles(system, fountain, chat.Ct).ConfigureAwait(false);
         }
         if (string.IsNullOrWhiteSpace(raw))
         {
             var userPrompt = userContent is null ? fountain : userContent + fountain;
-            raw = await chat.CompleteAsync(
+            raw = await chat.Chat.CompleteAsync(
                 system,
                 userPrompt,
-                model ?? "",
+                chat.Model ?? "",
                 mode: mode,
-                ct: ct).ConfigureAwait(false);
+                ct: chat.Ct).ConfigureAwait(false);
         }
 
         var cleaned = BookToFountainConverter.StripFences(raw ?? "");
@@ -598,10 +570,7 @@ public sealed class AdaptationService
         string fountain,
         int targetMinutes,
         int naturalMinutes,
-        IChatClient chat,
-        string? model = null,
-        IProgress<string>? progress = null,
-        CancellationToken ct = default,
+        ChatCall chat,
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
@@ -610,19 +579,19 @@ public sealed class AdaptationService
 
         if (string.IsNullOrWhiteSpace(fountain))
             return new FountainEditResult(false, fountain, before, before, true, "No screenplay to trim.");
-        if (!chat.IsConfigured && completeViaFiles is null)
+        if (!chat.Chat.IsConfigured && completeViaFiles is null)
             return new FountainEditResult(false, fountain, before, before, true, "AI service not configured.");
 
-        progress?.Report($"Trimming the screenplay toward ~{Math.Max(1, targetMinutes)} min…");
-        var system = await AdaptationPromptPack.BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes, ct).ConfigureAwait(false);
+        chat.Report($"Trimming the screenplay toward ~{Math.Max(1, targetMinutes)} min…");
+        var system = await AdaptationPromptPack.BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes, chat.Ct).ConfigureAwait(false);
 
         string? raw = null;
         if (completeViaFiles is not null)
-            raw = await completeViaFiles(system, fountain, ct).ConfigureAwait(false);
+            raw = await completeViaFiles(system, fountain, chat.Ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(raw))
         {
-            raw = await chat.CompleteAsync(
-                system, fountain, model ?? "", mode: "fountain_trim", ct: ct).ConfigureAwait(false);
+            raw = await chat.Chat.CompleteAsync(
+                system, fountain, chat.Model ?? "", mode: "fountain_trim", ct: chat.Ct).ConfigureAwait(false);
         }
 
         var cleaned = BookToFountainConverter.StripFences(raw ?? "");

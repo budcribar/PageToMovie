@@ -76,7 +76,7 @@ public sealed class FalAudioClient : IAudioClient
         };
 
         using var posted = await FalHttp.TryPostJsonAsync(
-            _http, _log, model.TrimStart('/'), apiKey, payload, "audio gen", ct).ConfigureAwait(false);
+            new HttpCall(_http, apiKey, _log, ct), model.TrimStart('/'), payload, "audio gen").ConfigureAwait(false);
         if (posted is null) return null;
 
         // Parse standard Fal audio response shapes: audio_file.url, audio.url, or a bare url.
