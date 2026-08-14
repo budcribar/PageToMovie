@@ -652,7 +652,6 @@ public static class SceneClipEndpoints
         string id, int sceneNumber, int clipNumber,
         HttpRequest req,
         ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
-        XaiResponsesClient? xai,
         CancellationToken ct)
     {
         if (await AuthGate.RequireProjectOwnerAsync(id, user, store, opts, ct) is { } denied)
@@ -670,30 +669,11 @@ public static class SceneClipEndpoints
 
             await using var ms = new MemoryStream();
             await file.CopyToAsync(ms, ct);
-            var bytes = ms.ToArray();
             var dir = await store.GetProjectDirAsync(id, ct);
-            var hosted = "railway";
-            if (xai is not null)
-            {
-                try
-                {
-                    var up = await xai.UploadPermanentFileAsync(
-                        bytes, ClipForkFallback.Mp4FileName(sceneNumber, clipNumber), "video/mp4", ct);
-                    ClipForkFallback.WriteSidecarFileId(dir, sceneNumber, clipNumber, up.FileId);
-                    hosted = "xai";
-                }
-                catch
-                {
-                    ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, bytes);
-                }
-            }
-            else
-            {
-                ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, bytes);
-            }
-
+            // xAI Imagine file_ids are generate-only (read-only after). Railway is the fallback.
+            ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, ms.ToArray());
             ClipForkFallback.ClearNeeded(dir, sceneNumber, clipNumber);
-            return Results.Ok(new { ok = true, hosted });
+            return Results.Ok(new { ok = true, hosted = "railway" });
         }
         catch (Exception ex)
         {

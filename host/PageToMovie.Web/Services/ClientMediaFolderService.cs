@@ -879,7 +879,7 @@ public sealed class ClientMediaFolderService
         }
         if (sent > 0)
         {
-            LastStatus = $"Rehosted {sent} clip(s) a fork could not reach via file_id.";
+            LastStatus = $"Copied {sent} clip(s) to the server so forks can play them.";
             Changed?.Invoke();
         }
     }
