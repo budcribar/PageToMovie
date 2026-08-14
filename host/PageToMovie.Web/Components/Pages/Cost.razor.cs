@@ -607,9 +607,10 @@ public partial class Cost : IAsyncDisposable
             // I1: Editors generate scenes on Film, not whole movie from DecisionCard
             _preferPath = GeneratePath;
             await PersistPrefAsync(PreferPathKey, GeneratePath);
-            Nav.NavigateTo(ActiveProject.CanScenes
-                ? (ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes")
-                : "scenes");
+            if (ActiveProject.CanScenes && ActiveProject.IsSimpleVoice)
+                Nav.NavigateTo("scenes?simple=1");
+            else
+                Nav.NavigateTo("scenes");
             return;
         }
 

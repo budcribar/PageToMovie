@@ -44,13 +44,7 @@
             {
                 var pct = EffectivePercent();
                 var barHeight = Indeterminate || IsActive ? "0.85rem" : "0.5rem";
-                var barClasses = IsActive || Indeterminate
-                    ? "progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                    : string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase)
-                        ? "progress-bar bg-danger"
-                        : string.Equals(Status, "done", StringComparison.OrdinalIgnoreCase)
-                            ? "progress-bar bg-success"
-                            : "progress-bar bg-secondary";
+                var barClasses = ProgressBarClasses;
                 <div class="d-flex align-items-center gap-2 mt-2">
                     <div class="progress flex-grow-1 mb-0" style="height: @barHeight;">
                         <div class="@barClasses"

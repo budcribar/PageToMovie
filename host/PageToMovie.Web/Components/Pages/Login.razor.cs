@@ -34,11 +34,16 @@ public partial class Login : IDisposable
     internal bool _checkedSession;
     private Action<System.Globalization.CultureInfo>? _onCultureChanged;
 
-    private string PageTitleText =>
-        _resetTokenMode ? "Reset password"
-        : _forgotMode ? "Forgot password"
-        : _isSignup ? "Sign Up"
-        : "Sign In";
+    private string PageTitleText
+    {
+        get
+        {
+            if (_resetTokenMode) return "Reset password";
+            if (_forgotMode) return "Forgot password";
+            if (_isSignup) return "Sign Up";
+            return "Sign In";
+        }
+    }
 
     private void ToggleShowPassword() => _showPassword = !_showPassword;
 

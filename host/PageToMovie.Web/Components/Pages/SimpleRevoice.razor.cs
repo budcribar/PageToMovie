@@ -56,11 +56,15 @@ public partial class SimpleRevoice : IAsyncDisposable
             }
         }
 
-        public string SpeakerBadgeClass => WillRevoice
-            ? "text-bg-primary"
-            : string.IsNullOrWhiteSpace(Dialogue)
-                ? "text-bg-light text-dark border"
-                : "text-bg-secondary";
+        public string SpeakerBadgeClass
+        {
+            get
+            {
+                if (WillRevoice) return "text-bg-primary";
+                if (string.IsNullOrWhiteSpace(Dialogue)) return "text-bg-light text-dark border";
+                return "text-bg-secondary";
+            }
+        }
     }
 
     internal int _narratorClipCount => _clips.Count(c => c.WillRevoice);

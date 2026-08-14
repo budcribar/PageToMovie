@@ -116,9 +116,12 @@ public partial class Review : IAsyncDisposable
     internal (int Scene, int Clip)? _clipServerSrcKey;
 
 
-    internal static string FormatBytes(long n) =>
-        n >= 1_000_000 ? $"{n / 1_000_000.0:0.#} MB" :
-        n >= 1_000 ? $"{n / 1_000.0:0.#} KB" : $"{n} B";
+    internal static string FormatBytes(long n)
+    {
+        if (n >= 1_000_000) return $"{n / 1_000_000.0:0.#} MB";
+        if (n >= 1_000) return $"{n / 1_000.0:0.#} KB";
+        return $"{n} B";
+    }
 
 
     internal async Task ConfirmSaveAsync()

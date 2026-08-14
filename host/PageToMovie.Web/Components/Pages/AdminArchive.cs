@@ -528,11 +528,7 @@ public partial class Admin
                 {
                     var start = _enrichStarted ?? DateTimeOffset.UtcNow;
                     var e = DateTimeOffset.UtcNow - start;
-                    _enrichElapsed = e.TotalHours >= 1
-                        ? $"{(int)e.TotalHours}h {e.Minutes}m"
-                        : e.TotalMinutes >= 1
-                            ? $"{(int)e.TotalMinutes}m {e.Seconds:00}s"
-                            : $"{Math.Max(0, e.Seconds)}s";
+                    _enrichElapsed = FormatEnrichElapsed(e);
                     await S.NotifyChangedAsync();
                     await Task.Delay(1000, token);
                 }
@@ -541,6 +537,15 @@ public partial class Admin
             {
                 // Enrich timer cancelled with the job.
             }
+        }
+
+        private static string FormatEnrichElapsed(TimeSpan e)
+        {
+            if (e.TotalHours >= 1)
+                return $"{(int)e.TotalHours}h {e.Minutes}m";
+            if (e.TotalMinutes >= 1)
+                return $"{(int)e.TotalMinutes}m {e.Seconds:00}s";
+            return $"{Math.Max(0, e.Seconds)}s";
         }
 
         private async Task PollEnrichJobAsync(CancellationToken token)

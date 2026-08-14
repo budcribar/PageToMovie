@@ -292,8 +292,12 @@ public partial class AdaptationImport
 
         private static int JobProgressDenom(int tot) => tot > 0 ? tot : 10;
 
-        private static int ClampImportPct(int mapped, int lo, int hi) =>
-            mapped < lo ? lo : mapped > hi ? hi : mapped;
+        private static int ClampImportPct(int mapped, int lo, int hi)
+        {
+            if (mapped < lo) return lo;
+            if (mapped > hi) return hi;
+            return mapped;
+        }
 
         private bool? HandleJobPollStatus(
             JobSnapshot snap,

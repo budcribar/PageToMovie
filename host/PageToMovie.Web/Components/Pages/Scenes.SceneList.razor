@@ -88,7 +88,7 @@
                             data-testid="scenes-generate-batch"
                             class="btn batch-go @(Host.List._selected.Count > 0 && !Host.Gen.JobRunning && Host.List.CastReady ? "batch-go--ready" : "")"
                             disabled="@(Host._busy || Host.List._selected.Count == 0 || Host.Gen.JobRunning || !Host.List.CastReady || Host.List.SelectedLockedByOther)"
-                            title="@(!Host.List.CastReady ? Host.List.CastBlockedTitle : Host.List.SelectedLockedByOther ? "Selection includes scenes locked by another user" : null)"
+                            title="@Host.List.GenerateBatchTitle"
                             @onclick="Host.Gen.OpenGenerateConfirmAsync">
                         @if (Host.Gen.JobRunning)
                         {
@@ -99,7 +99,7 @@
                         {
                             <span class="batch-go__play" aria-hidden="true">▶</span>
                             <span>
-                                Generate @(Host.List._selected.Count > 0 ? $"{Host.List._selected.Count} scene{(Host.List._selected.Count == 1 ? "" : "s")}" : "Batch")
+                                Generate @Host.List.GenerateBatchNoun
                                 @if (Host.List._selected.Count > 0)
                                 {
                                     <span class="batch-go__meta">· ~@ClipSel.EstimateSelectedClips() clips</span>
@@ -128,11 +128,7 @@
                             data-testid="scenes-play-selected"
                             class="btn btn-outline-primary btn-sm"
                             disabled="@(Host._busy || Playback._clientStitching || !Playback.CanPlaySelected)"
-                            title="@(Playback.CanPlaySelected
-                                ? "Stitch selected scenes in the browser (composites or clips)"
-                                : Host.List._selected.Count == 0
-                                    ? "Select one or more scenes first"
-                                    : "Selected scenes have no clips or composites to play yet")"
+                            title="@PlaySelectedTitle"
                             @onclick="Playback.PlaySelectedAsync">
                         ▶ @L["ScenesPage.PlaySelected"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
@@ -143,11 +139,7 @@
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
                             disabled="@(Host._busy || Host.Gen.JobRunning || Dialogue._verifyingClip || !Dialogue.SelectedScenesHaveClipsToVerify)"
-                            title="@(Dialogue.SelectedScenesHaveClipsToVerify
-                                ? "Check the spoken words in each finished clip against the screenplay"
-                                : Host.List._selected.Count == 0
-                                    ? "Select one or more scenes with finished clips first"
-                                    : "Selected scenes have no finished clips to check yet")"
+                            title="@VerifyDialogueTitle"
                             @onclick="Dialogue.VerifySelectedScenesDialogueAsync">
                         🔍 @L["ScenesPage.VerifySceneDialogue"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
@@ -229,13 +221,13 @@
                                    @onchange="e => Host.List.ToggleSelectAllShown((bool)(e.Value ?? false))" />
                         </th>
                         <th style="width:7rem; cursor:pointer; user-select:none;" @onclick='() => Host.List.ToggleSort("number")' title="Click to sort by Scene Number">
-                            # @(Host.List._sortBy == "number" ? (Host.List._sortAscending ? "▲" : "▼") : "⇅")
+                            # @Host.List.SortArrow("number")
                         </th>
                         <th>@L["ScenesPage.Setting"]</th>
                         <th>@L["ScenesPage.CastLocation"]</th>
                         <th style="width:6rem;">@L["ReviewPage.Clips"]</th>
                         <th style="width:7.5rem; cursor:pointer; user-select:none;" @onclick='() => Host.List.ToggleSort("duration")' title="Click to sort by Duration">
-                            @L["ReviewPage.Dur"] @(Host.List._sortBy == "duration" ? (Host.List._sortAscending ? "▲" : "▼") : "⇅")
+                            @L["ReviewPage.Dur"] @Host.List.SortArrow("duration")
                         </th>
                         <th style="width:9rem;" title="Score background music for this scene">@L["ScenesPage.Music"]</th>
                     </tr>
@@ -309,7 +301,7 @@
                             <td @onclick="() => Host.List.OpenSceneAsync(sn)" class="text-nowrap">
                                 @{ var (pg, pgCls, pgTitle) = Scenes.ScenesListState.SceneProgressGlyph(s); }
                                 <span class="@pgCls me-1" title="@pgTitle" aria-label="@pgTitle">@pg</span>
-                                <span class="@(s.ClipsComplete ? "text-success" : s.ClipsOnDisk > 0 ? "text-warning" : "text-muted")">
+                                <span class="@Scenes.ScenesListState.ClipsCountClass(s)">
                                     @s.ClipsOnDisk/@s.ClipCount
                                 </span>
                             </td>

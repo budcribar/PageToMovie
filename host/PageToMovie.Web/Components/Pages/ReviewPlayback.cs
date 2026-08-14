@@ -99,12 +99,18 @@ public partial class Review
             || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
 
-        internal string WipPlayTitle =>
-            !_wipCanBuild && !_wipExists && string.IsNullOrEmpty(_clientWipUrl) && !S.MediaFolder.IsConnected && !S.MediaFolder.IsSyncing
-                ? "No scene videos were found"
-                : _wipStale || !_wipExists
-                    ? "Play full movie (combine scenes in browser)"
-                    : "Play full movie (up to date)";
+        internal string WipPlayTitle
+        {
+            get
+            {
+                if (!_wipCanBuild && !_wipExists && string.IsNullOrEmpty(_clientWipUrl)
+                    && !S.MediaFolder.IsConnected && !S.MediaFolder.IsSyncing)
+                    return "No scene videos were found";
+                if (_wipStale || !_wipExists)
+                    return "Play full movie (combine scenes in browser)";
+                return "Play full movie (up to date)";
+            }
+        }
 
 
         internal async Task LoadPreferredVideoEditorAsync()

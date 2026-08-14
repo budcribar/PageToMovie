@@ -40,9 +40,17 @@ public partial class Scenes
                 else if (!string.IsNullOrWhiteSpace(res.VideoUrl))
                 {
                     var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
-                    var fileName = sceneNumber is int sn
-                        ? (clipNumber is int cn ? $"{cleanPid}_S{sn:D2}C{cn:D2}.mp4" : $"{cleanPid}_S{sn:D2}_composite.mp4")
-                        : $"{cleanPid}_full.mp4";
+                    string fileName;
+                    if (sceneNumber is int sn)
+                    {
+                        fileName = clipNumber is int cn
+                            ? $"{cleanPid}_S{sn:D2}C{cn:D2}.mp4"
+                            : $"{cleanPid}_S{sn:D2}_composite.mp4";
+                    }
+                    else
+                    {
+                        fileName = $"{cleanPid}_full.mp4";
+                    }
                     S._message = $"🎬 Downloaded video to your PC — open {fileName} in {res.Editor ?? _preferredVideoEditor}.";
                     try
                     {
@@ -199,9 +207,11 @@ public partial class Scenes
             {
                 var status = await S.Engine.GetClipMediaStatusAsync(S._projectId, scene, clip);
                 if (status is { Ok: true })
-                    return status.OnServer ? status.ServerSizeBytes
-                        : status.OnClient ? status.ClientSizeBytes
-                        : null;
+                {
+                    if (status.OnServer) return status.ServerSizeBytes;
+                    if (status.OnClient) return status.ClientSizeBytes;
+                    return null;
+                }
             }
             catch { /* best effort — falls back to unconditional local trust */ }
             return null;

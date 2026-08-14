@@ -6,10 +6,7 @@
 @inject IAppLocalizer L
 
 @{
-    var pageTitle = !string.IsNullOrWhiteSpace(SignOff.StatusTitle) && SignOff.StatusTitle != "Untitled"
-        ? SignOff.StatusTitle
-        : !string.IsNullOrWhiteSpace(ProjectLabel) ? ProjectLabel
-        : L["Adaptation.Screenplay"];
+    var pageTitle = ScreenplayPageTitle;
 }
 
 <PageTitle>@pageTitle</PageTitle>

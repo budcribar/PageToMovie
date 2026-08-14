@@ -31,4 +31,17 @@ public partial class AdaptationShell
     private bool ShowNextBanner =>
         AdaptationPageBase.AdaptationStepUi.ShowNextStepBanner(
             Host.Status, Host.SuppressGuidanceBanners, Step ?? "");
+
+    private string ResolvePageTitle()
+    {
+        if (Step == "shots")
+            return L["ScenesPage.RebuildShotPlan"];
+        var filmTitle = Host.Status?.Screenplay?.Title?.Trim();
+        if (!string.IsNullOrEmpty(filmTitle))
+            return filmTitle;
+        var projectName = Host.ProjectLabel?.Trim();
+        if (!string.IsNullOrEmpty(projectName))
+            return projectName;
+        return L["Adaptation.BookAndScreenplay"];
+    }
 }

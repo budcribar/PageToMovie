@@ -7,7 +7,7 @@
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="fs-5">🤖</span>
                     <span class="fw-bold fs-6">Full Movie Executive AI Review</span>
-                    <span class="badge fs-6 @(Report.OverallScore >= 8 ? "bg-success" : Report.OverallScore >= 6 ? "bg-warning text-dark" : "bg-danger")">
+                    <span class="badge fs-6 @ScoreBadgeClass(Report.OverallScore)">
                         Overall Score: @Report.OverallScore / 10 — @Report.Verdict
                     </span>
                     <span class="badge bg-dark border border-secondary text-white-50">
@@ -32,7 +32,7 @@
                                 <div class="col-6 col-md-3">
                                     <div class="p-2 rounded bg-dark border border-secondary d-flex justify-content-between align-items-center">
                                         <span class="small text-truncate me-1 text-white-50" title="@cat.Key">@cat.Key</span>
-                                        <span class="badge @(cat.Value >= 8 ? "bg-success" : cat.Value >= 6 ? "bg-warning text-dark" : "bg-danger")">@cat.Value/10</span>
+                                        <span class="badge @ScoreBadgeClass(cat.Value)">@cat.Value/10</span>
                                     </div>
                                 </div>
                             }
@@ -69,7 +69,7 @@
                                             </span>
                                         }
                                     </div>
-                                    <span class="badge @(group.Score >= 8 ? "bg-success" : group.Score >= 6 ? "bg-warning text-dark" : "bg-danger")">
+                                    <span class="badge @ScoreBadgeClass(group.Score)">
                                         Score: @group.Score/10
                                     </span>
                                 </div>

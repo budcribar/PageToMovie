@@ -141,11 +141,7 @@
                                     }
                                 </div>
                                 <div class="loc-list-meta small">
-                                    @(isLocked
-                                        ? "Locked"
-                                        : loc.Variants.Any(v => v.Exists)
-                                            ? $"{loc.Variants.Count(v => v.Exists)} looks"
-                                            : "No plate")
+                                    @ListMeta(loc, isLocked)
                                 </div>
                             </div>
                         </button>

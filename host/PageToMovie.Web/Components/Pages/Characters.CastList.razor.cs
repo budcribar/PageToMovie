@@ -19,4 +19,10 @@ public partial class Characters_CastList
 
     [CascadingParameter] public Characters.CharactersLookPipeline? LookPipe { get; set; }
 
+    private string ItemTitle(CharacterSummary c)
+    {
+        if (List.CastListLocked) return "Wait until the current action finishes";
+        if (!c.UsedInPlan) return "Not in current shot plan — kept for later";
+        return c.DisplayName;
+    }
 }

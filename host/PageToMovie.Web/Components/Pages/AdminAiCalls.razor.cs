@@ -18,6 +18,13 @@ public partial class AdminAiCalls : ComponentBase
     internal bool _loading;
     internal string? _error;
 
+    private static string SuccessRateClass(double pct)
+    {
+        if (pct >= 95) return "text-success";
+        if (pct >= 80) return "text-warning";
+        return "text-danger";
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try { await Session.EnsureHydratedAsync(); } catch { /* session hydration is best-effort */ }

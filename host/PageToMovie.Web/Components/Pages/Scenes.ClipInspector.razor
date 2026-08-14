@@ -25,22 +25,14 @@
                     }
                     <button class="btn btn-sm btn-outline-warning"
                             disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || clipNeedsPrev)"
-                            title="@(!ListState.CastReady
-                                ? ListState.CastBlockedTitle
-                                : clipNeedsPrev
-                                ? $"Generate C{(ClipForm._clip.ClipNumber - 1):D2} first — continues from previous video"
-                                : "Force re-generate this clip (overwrites if present)")"
+                            title="@RegenClipTitle(clipNeedsPrev)"
                             @onclick="() => ClipRegen.RegenClipAsync(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber)">
                         Regen clip
                     </button>
                     <button class="btn btn-sm btn-outline-primary"
                             data-testid="clip-video-edit-open"
                             disabled="@(Host._busy || Gen.JobRunning || !ClipForm._clip.OnDisk || Scenes.ScenesClipRegen.ClipExceedsEditDurationCap(ClipForm._clip))"
-                            title="@(!ClipForm._clip.OnDisk
-                                ? "Generate this clip first"
-                                : Scenes.ScenesClipRegen.ClipExceedsEditDurationCap(ClipForm._clip)
-                                ? $"Clip is {(ClipForm._clip.ActualDurationSeconds ?? ClipForm._clip.DurationSeconds):0.#}s — Grok can only edit clips up to {Scenes.MaxVideoEditInputSeconds:0.#}s"
-                                : "Edit this clip with an AI text prompt (new take, spends provider credit)")"
+                            title="@VideoEditTitle"
                             @onclick="ClipRegen.OpenVideoEditPrompt">
                         ✂️ AI Edit
                     </button>
@@ -107,11 +99,7 @@
                             <div class="mt-2">
                                 <button class="btn btn-sm btn-warning"
                                         disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || ClipSel.PreviousClipMissing(ClipForm._clip.ClipNumber))"
-                                        title="@(!ListState.CastReady
-                                            ? ListState.CastBlockedTitle
-                                            : ClipSel.PreviousClipMissing(ClipForm._clip.ClipNumber)
-                                            ? $"Need C{(ClipForm._clip.ClipNumber - 1):D2} on disk"
-                                            : null)"
+                                        title="@GenerateThisClipTitle"
                                         @onclick="() => ClipRegen.RegenClipAsync(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber)">
                                     Generate this clip
                                 </button>

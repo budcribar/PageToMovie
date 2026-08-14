@@ -24,7 +24,7 @@
                             <th style="width:6rem; cursor:pointer; user-select:none;"
                                 @onclick="ClipSel.ToggleClipDurationSort"
                                 title="Click to sort by duration">
-                                Dur @(ClipSel._clipSortByDuration ? (ClipSel._clipSortAscending ? "▲" : "▼") : "⇅")
+                                Dur @ClipSel.DurationSortArrow
                             </th>
                             <th>Dialogue</th>
                             <th style="width:7rem;">Beat</th>
@@ -37,7 +37,7 @@
                             var active = ClipForm._selectedClip == c.ClipNumber;
                             var cn = c.ClipNumber;
                             var isChecked = ClipSel._selectedClips.Contains(cn);
-                            <tr class="@(active ? "table-primary" : isChecked ? "table-warning" : "")" style="cursor:pointer;"
+                            <tr class="@ClipRowClass(active, isChecked)" style="cursor:pointer;"
                                 @onclick="() => ClipForm.SelectClip(cn)">
                                 <td @onclick:stopPropagation="true">
                                     <input class="form-check-input" type="checkbox"
@@ -147,7 +147,7 @@
                                 </td>
                             
                                 <td class="small font-monospace text-muted" data-testid="@($"clip-beat-{cn}")" title="Stable beat id">
-                                    @(string.IsNullOrWhiteSpace(c.Stage1BeatId) ? "—" : (c.Stage1BeatId.Length > 14 ? c.Stage1BeatId[..12] + "…" : c.Stage1BeatId))
+                                    @BeatIdDisplay(c.Stage1BeatId)
                                 </td>
                                 <td>
                                     @if (!c.OnDisk)

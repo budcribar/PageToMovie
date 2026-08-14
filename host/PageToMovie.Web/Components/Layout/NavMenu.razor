@@ -196,11 +196,9 @@
                             <button type="button"
                                     class="nav-user-item"
                                     role="menuitem"
-                                    title="@(MediaFolder.IsConnected ? MediaFolder.FolderName : (MediaFolder.NeedsReconnect ? $"Re-grant access to {MediaFolder.PendingReconnectFolderName}" : "Store gen clips on your disk"))"
+                                    title="@MediaFolderTitle"
                                     @onclick="ConnectMediaFolderAsync">
-                                @(MediaFolder.IsConnected
-                                    ? $"Media: {MediaFolder.FolderName}"
-                                    : (MediaFolder.NeedsReconnect ? $"Reconnect {MediaFolder.PendingReconnectFolderName}…" : "Connect media folder…"))
+                                @MediaFolderLabel
                             </button>
                             <button type="button"
                                     class="nav-user-item nav-user-item--danger"

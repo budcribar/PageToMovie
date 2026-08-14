@@ -14,4 +14,11 @@ public partial class Review_MovieReport
 
     private bool IsSceneGroupExpanded(string rangeStr) =>
         IsGroupExpanded?.Invoke(rangeStr) ?? false;
+
+    private static string ScoreBadgeClass(int score)
+    {
+        if (score >= 8) return "bg-success";
+        if (score >= 6) return "bg-warning text-dark";
+        return "bg-danger";
+    }
 }

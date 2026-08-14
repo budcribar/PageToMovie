@@ -33,4 +33,25 @@ public partial class Scenes_SceneDetail
     [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
 
     [CascadingParameter] public Scenes.ScenesHistory? History { get; set; }
+
+    private string FinishedJobBorder
+    {
+        get
+        {
+            var st = Gen._job?.Status;
+            if (st == "error") return "danger";
+            if (st == "partial") return "warning";
+            return "secondary";
+        }
+    }
+
+    private string RegenSelectedTitle
+    {
+        get
+        {
+            if (!ListState.CastReady) return ListState.CastBlockedTitle;
+            if (Host.DetailLockedByOther) return $"Locked by {Host._detailLockOwner}";
+            return "Generate (or re-generate) every selected clip";
+        }
+    }
 }

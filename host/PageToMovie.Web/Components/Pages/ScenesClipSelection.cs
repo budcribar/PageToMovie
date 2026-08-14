@@ -23,6 +23,15 @@ public partial class Scenes
 
         internal bool _clipSortAscending = true;
 
+        internal string DurationSortArrow
+        {
+            get
+            {
+                if (!_clipSortByDuration) return "⇅";
+                return _clipSortAscending ? "▲" : "▼";
+            }
+        }
+
         /// <summary>Multi-select clip numbers within the currently open scene's clip table, for batch regen.</summary>
         internal readonly HashSet<int> _selectedClips = new();
 

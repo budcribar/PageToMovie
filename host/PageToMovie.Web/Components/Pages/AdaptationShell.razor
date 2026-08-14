@@ -10,13 +10,7 @@
 
 @{
     // One title: prefer the screenplay/film title, else the project name — never both.
-    var filmTitle = Host.Status?.Screenplay?.Title?.Trim();
-    var projectName = Host.ProjectLabel?.Trim();
-    var pageTitle = Step == "shots"
-        ? L["ScenesPage.RebuildShotPlan"]
-        : !string.IsNullOrEmpty(filmTitle) ? filmTitle
-        : !string.IsNullOrEmpty(projectName) ? projectName
-        : L["Adaptation.BookAndScreenplay"];
+    var pageTitle = ResolvePageTitle();
     // Screenplay owns its own compact 2-row chrome — skip the page header stack there.
     var compactScreenplay = Step == "screenplay";
 }

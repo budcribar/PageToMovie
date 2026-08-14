@@ -75,7 +75,7 @@ else
 {
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <button class="btn btn-primary btn-sm" disabled="@_busy" data-testid="dt-analyze" @onclick="AnalyzeAsync">
-            @(_busy ? "Analyzing…" : _current is null ? "Analyze scene (speech-to-text)" : "Re-analyze scene")
+            @AnalyzeButtonLabel
         </button>
         @if (_current is not null)
         {
@@ -107,9 +107,7 @@ else
             var scriptWords = SplitWords(row.ScriptText);
             var heardSet = TokenSet(row.HeardText);
             var scriptSet = TokenSet(row.ScriptText);
-            var rowClass = row.Reviewed ? "dt-row dt-ok"
-                : string.IsNullOrEmpty(row.ScriptText) ? "dt-row dt-extra"
-                : row.MatchScore >= 0.7 ? "dt-row" : "dt-row dt-warn";
+            var rowClass = TimingRowClass(row);
 
             <div class="@rowClass">
                 <div class="d-flex justify-content-between align-items-start mb-1">
@@ -155,7 +153,7 @@ else
                         {
                             @foreach (var wd in row.Words)
                             {
-                                var cls = scriptSet.Count == 0 ? "dt-w" : (scriptSet.Contains(NormTok(wd.Text)) ? "dt-w dt-hit" : "dt-w dt-extra-w");
+                                var cls = HeardWordClass(scriptSet, wd.Text);
                                 <span class="@cls" title="@wd.StartSec.ToString("0.00")–@wd.EndSec.ToString("0.00")s">@wd.Text</span><span class="dt-time">@wd.StartSec.ToString("0.0")</span><text> </text>
                             }
                         }

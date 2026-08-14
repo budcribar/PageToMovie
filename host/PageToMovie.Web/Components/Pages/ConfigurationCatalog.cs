@@ -217,11 +217,13 @@ public partial class Configuration
                     string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase));
             if (m is null)
             {
-                var cap = capability.Equals("video", StringComparison.OrdinalIgnoreCase)
-                    ? ModelCapability.Video
-                    : capability.Equals("image", StringComparison.OrdinalIgnoreCase)
-                        ? ModelCapability.Image
-                        : ModelCapability.Chat;
+                ModelCapability cap;
+                if (capability.Equals("video", StringComparison.OrdinalIgnoreCase))
+                    cap = ModelCapability.Video;
+                else if (capability.Equals("image", StringComparison.OrdinalIgnoreCase))
+                    cap = ModelCapability.Image;
+                else
+                    cap = ModelCapability.Chat;
                 return SupportedModelCatalog.ProviderIdFor(modelId, cap);
             }
             return string.IsNullOrWhiteSpace(m.ProviderId) ? m.Provider : m.ProviderId;

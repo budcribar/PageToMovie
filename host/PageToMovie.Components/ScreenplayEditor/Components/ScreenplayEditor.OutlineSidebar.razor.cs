@@ -75,6 +75,16 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
 
     public bool IsAllSelected => Scenes.Count > 0 && Scenes.All(s => s.IsSelected);
 
+    private string CompactTabLetter
+    {
+        get
+        {
+            if (OutlineTab == OutlineSidebarTab.Scenes) return "S";
+            if (OutlineTab == OutlineSidebarTab.Cast) return "C";
+            return "L";
+        }
+    }
+
     public void SetTab(OutlineSidebarTab tab) => OutlineTab = tab;
 
     public void ToggleOutlineTab() =>

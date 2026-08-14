@@ -116,7 +116,7 @@
         @* Cast is NOT on this strip — open via craft / Characters *@
         <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
            href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
-           title="@(ActiveProject.CanScenes ? "Watch and generate clips" : (ActiveProject.CanEstimate ? "Use Estimate → Generate movie first" : ActiveProject.ScenesBlockedReason))"
+           title="@FilmStepTitle"
            data-testid="studio-step-film"
            @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
             <span class="ptm-step__num">3</span>

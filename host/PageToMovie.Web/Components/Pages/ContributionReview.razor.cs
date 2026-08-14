@@ -98,7 +98,10 @@ public partial class ContributionReview
                 new { parentProjectId = OriginId });
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>();
             _messageOk = json.TryGetProperty("ok", out var o) && o.GetBoolean();
-            _message = json.TryGetProperty("message", out var m) ? m.GetString() : (_messageOk ? "Media synced." : "Failed.");
+            if (json.TryGetProperty("message", out var m))
+                _message = m.GetString();
+            else
+                _message = _messageOk ? "Media synced." : "Failed.";
             await LoadAsync();
         }
         catch (Exception ex) { _messageOk = false; _message = ex.Message; }
@@ -140,7 +143,10 @@ public partial class ContributionReview
         _autoResolvedCount = ReadJsonInt(json, "autoResolvedCount");
         _remainingConflictPaths = ReadRemainingConflictPaths(json);
         _messageOk = ok && !_hasConflicts;
-        _message = json.TryGetProperty("message", out var m) ? m.GetString() : (ok ? "Synced." : "Problems.");
+        if (json.TryGetProperty("message", out var m))
+            _message = m.GetString();
+        else
+            _message = ok ? "Synced." : "Problems.";
         if (_hasConflicts && string.IsNullOrWhiteSpace(strategy))
             _message += " Pick a strategy below to auto-resolve.";
     }

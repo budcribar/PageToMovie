@@ -71,9 +71,7 @@
                                 data-testid="shots-build"
                                 disabled="@(Busy || !Status.Stage2.Stage1Exists)"
                                 @onclick="Pipeline.RunShotsAsync">
-                            @(Status.Stage2.Stage2Ready
-                                ? (Status.Stage2.Stage2Stale ? "Update shot plan" : "Rebuild shot plan")
-                                : "Build shot plan")
+                            @ShotPlanButtonLabel
                         </button>
                         @if (Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                         {

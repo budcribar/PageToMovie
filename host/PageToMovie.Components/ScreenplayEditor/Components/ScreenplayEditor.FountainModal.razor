@@ -5,7 +5,7 @@
             <div class="modal-content bg-dark text-light border-secondary-subtle shadow-lg">
                 <div class="modal-header bg-dark-subtle border-bottom border-secondary-subtle">
                     <h5 class="modal-title fw-bold text-light">
-                        @(Mode == "import" ? "📥 Import Fountain Screenplay" : Mode == "export-pdf" ? "📤 Export Screenplay PDF" : "📤 Export Fountain Screenplay")
+                        @ModalTitle
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
                 </div>

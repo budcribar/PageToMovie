@@ -30,6 +30,16 @@ public partial class ScreenplayEditor_FountainModal
     public bool ShowCopyFeedback { get; set; } = false;
     public string SelectedFileName { get; set; } = "";
 
+    private string ModalTitle
+    {
+        get
+        {
+            if (Mode == "import") return "📥 Import Fountain Screenplay";
+            if (Mode == "export-pdf") return "📤 Export Screenplay PDF";
+            return "📤 Export Fountain Screenplay";
+        }
+    }
+
     public async Task Close()
     {
         IsOpen = false;

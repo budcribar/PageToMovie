@@ -99,6 +99,13 @@ public partial class AdminModelsCatalog
         internal static bool IsDeprecated(JsonObject m) =>
             m.TryGetPropertyValue(Deprecated, out var dep) && dep?.GetValue<bool>() == true;
 
+        internal static string RowClass(JsonObject m)
+        {
+            if (IsDeprecated(m)) return "table-dark opacity-75";
+            if (IsEnabled(m)) return "";
+            return "table-secondary";
+        }
+
         internal void ToggleModelDeprecated(JsonObject m)
         {
             var isDep = IsDeprecated(m);
