@@ -269,44 +269,84 @@ public static class CinematicCameraEnumExtensions
         ShotPlanExportTargetKind.CsvSheet => "csv_sheet",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static EnvironmentWeatherKind ParseEnvironmentWeatherKind(string? s, EnvironmentWeatherKind defaultValue = EnvironmentWeatherKind.Clear) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<EnvironmentWeatherKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static EnvironmentWeatherKind ParseEnvironmentWeatherKind(string? s, EnvironmentWeatherKind defaultValue = EnvironmentWeatherKind.Clear)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<EnvironmentWeatherKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static EnvironmentWeatherKind ToEnvironmentWeatherKind(this string? s, EnvironmentWeatherKind defaultValue = EnvironmentWeatherKind.Clear) => ParseEnvironmentWeatherKind(s, defaultValue);
 
-    public static AtmosphereLightingStyle ParseAtmosphereLightingStyle(string? s, AtmosphereLightingStyle defaultValue = AtmosphereLightingStyle.NaturalDaylight) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AtmosphereLightingStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AtmosphereLightingStyle ParseAtmosphereLightingStyle(string? s, AtmosphereLightingStyle defaultValue = AtmosphereLightingStyle.NaturalDaylight)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AtmosphereLightingStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AtmosphereLightingStyle ToAtmosphereLightingStyle(this string? s, AtmosphereLightingStyle defaultValue = AtmosphereLightingStyle.NaturalDaylight) => ParseAtmosphereLightingStyle(s, defaultValue);
 
-    public static ColorGradingTonePreset ParseColorGradingTonePreset(string? s, ColorGradingTonePreset defaultValue = ColorGradingTonePreset.Neutral) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ColorGradingTonePreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ColorGradingTonePreset ParseColorGradingTonePreset(string? s, ColorGradingTonePreset defaultValue = ColorGradingTonePreset.Neutral)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ColorGradingTonePreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ColorGradingTonePreset ToColorGradingTonePreset(this string? s, ColorGradingTonePreset defaultValue = ColorGradingTonePreset.Neutral) => ParseColorGradingTonePreset(s, defaultValue);
 
-    public static LensFocalLengthCategory ParseLensFocalLengthCategory(string? s, LensFocalLengthCategory defaultValue = LensFocalLengthCategory.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<LensFocalLengthCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static LensFocalLengthCategory ParseLensFocalLengthCategory(string? s, LensFocalLengthCategory defaultValue = LensFocalLengthCategory.Standard)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<LensFocalLengthCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static LensFocalLengthCategory ToLensFocalLengthCategory(this string? s, LensFocalLengthCategory defaultValue = LensFocalLengthCategory.Standard) => ParseLensFocalLengthCategory(s, defaultValue);
 
-    public static CinematicMoodTagKind ParseCinematicMoodTagKind(string? s, CinematicMoodTagKind defaultValue = CinematicMoodTagKind.Uplifting) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CinematicMoodTagKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static CinematicMoodTagKind ParseCinematicMoodTagKind(string? s, CinematicMoodTagKind defaultValue = CinematicMoodTagKind.Uplifting)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CinematicMoodTagKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CinematicMoodTagKind ToCinematicMoodTagKind(this string? s, CinematicMoodTagKind defaultValue = CinematicMoodTagKind.Uplifting) => ParseCinematicMoodTagKind(s, defaultValue);
 
-    public static ShotSequencePositionTag ParseShotSequencePositionTag(string? s, ShotSequencePositionTag defaultValue = ShotSequencePositionTag.Middle) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotSequencePositionTag>(s, true, out var r) ? r : defaultValue;
+    public static ShotSequencePositionTag ParseShotSequencePositionTag(string? s, ShotSequencePositionTag defaultValue = ShotSequencePositionTag.Middle)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotSequencePositionTag>(s, true, out var r) ? r : defaultValue;
+    }
     public static ShotSequencePositionTag ToShotSequencePositionTag(this string? s, ShotSequencePositionTag defaultValue = ShotSequencePositionTag.Middle) => ParseShotSequencePositionTag(s, defaultValue);
 
-    public static ClipDurationPresetKind ParseClipDurationPresetKind(string? s, ClipDurationPresetKind defaultValue = ClipDurationPresetKind.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ClipDurationPresetKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ClipDurationPresetKind ParseClipDurationPresetKind(string? s, ClipDurationPresetKind defaultValue = ClipDurationPresetKind.Standard)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ClipDurationPresetKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ClipDurationPresetKind ToClipDurationPresetKind(this string? s, ClipDurationPresetKind defaultValue = ClipDurationPresetKind.Standard) => ParseClipDurationPresetKind(s, defaultValue);
 
-    public static ShotPlanValidationGateType ParseShotPlanValidationGateType(string? s, ShotPlanValidationGateType defaultValue = ShotPlanValidationGateType.Unvalidated) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotPlanValidationGateType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ShotPlanValidationGateType ParseShotPlanValidationGateType(string? s, ShotPlanValidationGateType defaultValue = ShotPlanValidationGateType.Unvalidated)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotPlanValidationGateType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ShotPlanValidationGateType ToShotPlanValidationGateType(this string? s, ShotPlanValidationGateType defaultValue = ShotPlanValidationGateType.Unvalidated) => ParseShotPlanValidationGateType(s, defaultValue);
 
-    public static PromptLanguageStylePreset ParsePromptLanguageStylePreset(string? s, PromptLanguageStylePreset defaultValue = PromptLanguageStylePreset.NaturalLanguage) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PromptLanguageStylePreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static PromptLanguageStylePreset ParsePromptLanguageStylePreset(string? s, PromptLanguageStylePreset defaultValue = PromptLanguageStylePreset.NaturalLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PromptLanguageStylePreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static PromptLanguageStylePreset ToPromptLanguageStylePreset(this string? s, PromptLanguageStylePreset defaultValue = PromptLanguageStylePreset.NaturalLanguage) => ParsePromptLanguageStylePreset(s, defaultValue);
 
-    public static ShotPlanExportTargetKind ParseShotPlanExportTargetKind(string? s, ShotPlanExportTargetKind defaultValue = ShotPlanExportTargetKind.Json) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotPlanExportTargetKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ShotPlanExportTargetKind ParseShotPlanExportTargetKind(string? s, ShotPlanExportTargetKind defaultValue = ShotPlanExportTargetKind.Json)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotPlanExportTargetKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ShotPlanExportTargetKind ToShotPlanExportTargetKind(this string? s, ShotPlanExportTargetKind defaultValue = ShotPlanExportTargetKind.Json) => ParseShotPlanExportTargetKind(s, defaultValue);
 }
 

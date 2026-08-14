@@ -406,84 +406,164 @@ public static class PromptAndCameraEnumExtensions
         ShotPlanExportTarget.DaVinciResolve => "davinci_resolve",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static Stage2PlannerMode ParseStage2PlannerMode(string? s, Stage2PlannerMode defaultValue = Stage2PlannerMode.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<Stage2PlannerMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static Stage2PlannerMode ParseStage2PlannerMode(string? s, Stage2PlannerMode defaultValue = Stage2PlannerMode.Standard)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<Stage2PlannerMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static Stage2PlannerMode ToStage2PlannerMode(this string? s, Stage2PlannerMode defaultValue = Stage2PlannerMode.Standard) => ParseStage2PlannerMode(s, defaultValue);
 
-    public static PromptTemplateFamily ParsePromptTemplateFamily(string? s, PromptTemplateFamily defaultValue = PromptTemplateFamily.Default) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PromptTemplateFamily>(s, true, out var r) ? r : defaultValue;
+    public static PromptTemplateFamily ParsePromptTemplateFamily(string? s, PromptTemplateFamily defaultValue = PromptTemplateFamily.Default)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PromptTemplateFamily>(s, true, out var r) ? r : defaultValue;
+    }
     public static PromptTemplateFamily ToPromptTemplateFamily(this string? s, PromptTemplateFamily defaultValue = PromptTemplateFamily.Default) => ParsePromptTemplateFamily(s, defaultValue);
 
-    public static VisualMediumStyle ParseVisualMediumStyle(string? s, VisualMediumStyle defaultValue = VisualMediumStyle.LiveAction) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VisualMediumStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static VisualMediumStyle ParseVisualMediumStyle(string? s, VisualMediumStyle defaultValue = VisualMediumStyle.LiveAction)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VisualMediumStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VisualMediumStyle ToVisualMediumStyle(this string? s, VisualMediumStyle defaultValue = VisualMediumStyle.LiveAction) => ParseVisualMediumStyle(s, defaultValue);
 
-    public static CharacterVisualLockMode ParseCharacterVisualLockMode(string? s, CharacterVisualLockMode defaultValue = CharacterVisualLockMode.Strict) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CharacterVisualLockMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static CharacterVisualLockMode ParseCharacterVisualLockMode(string? s, CharacterVisualLockMode defaultValue = CharacterVisualLockMode.Strict)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CharacterVisualLockMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CharacterVisualLockMode ToCharacterVisualLockMode(this string? s, CharacterVisualLockMode defaultValue = CharacterVisualLockMode.Strict) => ParseCharacterVisualLockMode(s, defaultValue);
 
-    public static WardrobeConsistencyRule ParseWardrobeConsistencyRule(string? s, WardrobeConsistencyRule defaultValue = WardrobeConsistencyRule.LockPerScene) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<WardrobeConsistencyRule>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static WardrobeConsistencyRule ParseWardrobeConsistencyRule(string? s, WardrobeConsistencyRule defaultValue = WardrobeConsistencyRule.LockPerScene)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<WardrobeConsistencyRule>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static WardrobeConsistencyRule ToWardrobeConsistencyRule(this string? s, WardrobeConsistencyRule defaultValue = WardrobeConsistencyRule.LockPerScene) => ParseWardrobeConsistencyRule(s, defaultValue);
 
-    public static PromptScrubbingFilter ParsePromptScrubbingFilter(string? s, PromptScrubbingFilter defaultValue = PromptScrubbingFilter.None) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PromptScrubbingFilter>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static PromptScrubbingFilter ParsePromptScrubbingFilter(string? s, PromptScrubbingFilter defaultValue = PromptScrubbingFilter.None)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PromptScrubbingFilter>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static PromptScrubbingFilter ToPromptScrubbingFilter(this string? s, PromptScrubbingFilter defaultValue = PromptScrubbingFilter.None) => ParsePromptScrubbingFilter(s, defaultValue);
 
-    public static CameraFocusDistance ParseCameraFocusDistance(string? s, CameraFocusDistance defaultValue = CameraFocusDistance.Medium) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CameraFocusDistance>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static CameraFocusDistance ParseCameraFocusDistance(string? s, CameraFocusDistance defaultValue = CameraFocusDistance.Medium)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CameraFocusDistance>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CameraFocusDistance ToCameraFocusDistance(this string? s, CameraFocusDistance defaultValue = CameraFocusDistance.Medium) => ParseCameraFocusDistance(s, defaultValue);
 
-    public static DepthOfFieldPreset ParseDepthOfFieldPreset(string? s, DepthOfFieldPreset defaultValue = DepthOfFieldPreset.Medium) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DepthOfFieldPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static DepthOfFieldPreset ParseDepthOfFieldPreset(string? s, DepthOfFieldPreset defaultValue = DepthOfFieldPreset.Medium)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DepthOfFieldPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DepthOfFieldPreset ToDepthOfFieldPreset(this string? s, DepthOfFieldPreset defaultValue = DepthOfFieldPreset.Medium) => ParseDepthOfFieldPreset(s, defaultValue);
 
-    public static FramingComposition ParseFramingComposition(string? s, FramingComposition defaultValue = FramingComposition.RuleOfThirds) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FramingComposition>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static FramingComposition ParseFramingComposition(string? s, FramingComposition defaultValue = FramingComposition.RuleOfThirds)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FramingComposition>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FramingComposition ToFramingComposition(this string? s, FramingComposition defaultValue = FramingComposition.RuleOfThirds) => ParseFramingComposition(s, defaultValue);
 
-    public static SubjectMovementSpeed ParseSubjectMovementSpeed(string? s, SubjectMovementSpeed defaultValue = SubjectMovementSpeed.Moderate) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubjectMovementSpeed>(s, true, out var r) ? r : defaultValue;
+    public static SubjectMovementSpeed ParseSubjectMovementSpeed(string? s, SubjectMovementSpeed defaultValue = SubjectMovementSpeed.Moderate)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubjectMovementSpeed>(s, true, out var r) ? r : defaultValue;
+    }
     public static SubjectMovementSpeed ToSubjectMovementSpeed(this string? s, SubjectMovementSpeed defaultValue = SubjectMovementSpeed.Moderate) => ParseSubjectMovementSpeed(s, defaultValue);
 
-    public static EnvironmentWeather ParseEnvironmentWeather(string? s, EnvironmentWeather defaultValue = EnvironmentWeather.Clear) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<EnvironmentWeather>(s, true, out var r) ? r : defaultValue;
+    public static EnvironmentWeather ParseEnvironmentWeather(string? s, EnvironmentWeather defaultValue = EnvironmentWeather.Clear)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<EnvironmentWeather>(s, true, out var r) ? r : defaultValue;
+    }
     public static EnvironmentWeather ToEnvironmentWeather(this string? s, EnvironmentWeather defaultValue = EnvironmentWeather.Clear) => ParseEnvironmentWeather(s, defaultValue);
 
-    public static AtmosphereLighting ParseAtmosphereLighting(string? s, AtmosphereLighting defaultValue = AtmosphereLighting.NaturalDaylight) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AtmosphereLighting>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AtmosphereLighting ParseAtmosphereLighting(string? s, AtmosphereLighting defaultValue = AtmosphereLighting.NaturalDaylight)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AtmosphereLighting>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AtmosphereLighting ToAtmosphereLighting(this string? s, AtmosphereLighting defaultValue = AtmosphereLighting.NaturalDaylight) => ParseAtmosphereLighting(s, defaultValue);
 
-    public static ColorGradingTone ParseColorGradingTone(string? s, ColorGradingTone defaultValue = ColorGradingTone.Neutral) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ColorGradingTone>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ColorGradingTone ParseColorGradingTone(string? s, ColorGradingTone defaultValue = ColorGradingTone.Neutral)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ColorGradingTone>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ColorGradingTone ToColorGradingTone(this string? s, ColorGradingTone defaultValue = ColorGradingTone.Neutral) => ParseColorGradingTone(s, defaultValue);
 
-    public static LensFocalLengthGroup ParseLensFocalLengthGroup(string? s, LensFocalLengthGroup defaultValue = LensFocalLengthGroup.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<LensFocalLengthGroup>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static LensFocalLengthGroup ParseLensFocalLengthGroup(string? s, LensFocalLengthGroup defaultValue = LensFocalLengthGroup.Standard)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<LensFocalLengthGroup>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static LensFocalLengthGroup ToLensFocalLengthGroup(this string? s, LensFocalLengthGroup defaultValue = LensFocalLengthGroup.Standard) => ParseLensFocalLengthGroup(s, defaultValue);
 
-    public static CinematicMoodTag ParseCinematicMoodTag(string? s, CinematicMoodTag defaultValue = CinematicMoodTag.Uplifting) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CinematicMoodTag>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static CinematicMoodTag ParseCinematicMoodTag(string? s, CinematicMoodTag defaultValue = CinematicMoodTag.Uplifting)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CinematicMoodTag>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CinematicMoodTag ToCinematicMoodTag(this string? s, CinematicMoodTag defaultValue = CinematicMoodTag.Uplifting) => ParseCinematicMoodTag(s, defaultValue);
 
-    public static ShotSequencePosition ParseShotSequencePosition(string? s, ShotSequencePosition defaultValue = ShotSequencePosition.Middle) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotSequencePosition>(s, true, out var r) ? r : defaultValue;
+    public static ShotSequencePosition ParseShotSequencePosition(string? s, ShotSequencePosition defaultValue = ShotSequencePosition.Middle)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotSequencePosition>(s, true, out var r) ? r : defaultValue;
+    }
     public static ShotSequencePosition ToShotSequencePosition(this string? s, ShotSequencePosition defaultValue = ShotSequencePosition.Middle) => ParseShotSequencePosition(s, defaultValue);
 
-    public static ClipDurationPreset ParseClipDurationPreset(string? s, ClipDurationPreset defaultValue = ClipDurationPreset.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ClipDurationPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ClipDurationPreset ParseClipDurationPreset(string? s, ClipDurationPreset defaultValue = ClipDurationPreset.Standard)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ClipDurationPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ClipDurationPreset ToClipDurationPreset(this string? s, ClipDurationPreset defaultValue = ClipDurationPreset.Standard) => ParseClipDurationPreset(s, defaultValue);
 
-    public static ShotPlanValidationGate ParseShotPlanValidationGate(string? s, ShotPlanValidationGate defaultValue = ShotPlanValidationGate.Unvalidated) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotPlanValidationGate>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ShotPlanValidationGate ParseShotPlanValidationGate(string? s, ShotPlanValidationGate defaultValue = ShotPlanValidationGate.Unvalidated)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotPlanValidationGate>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ShotPlanValidationGate ToShotPlanValidationGate(this string? s, ShotPlanValidationGate defaultValue = ShotPlanValidationGate.Unvalidated) => ParseShotPlanValidationGate(s, defaultValue);
 
-    public static PromptLanguageStyle ParsePromptLanguageStyle(string? s, PromptLanguageStyle defaultValue = PromptLanguageStyle.NaturalLanguage) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PromptLanguageStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static PromptLanguageStyle ParsePromptLanguageStyle(string? s, PromptLanguageStyle defaultValue = PromptLanguageStyle.NaturalLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PromptLanguageStyle>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static PromptLanguageStyle ToPromptLanguageStyle(this string? s, PromptLanguageStyle defaultValue = PromptLanguageStyle.NaturalLanguage) => ParsePromptLanguageStyle(s, defaultValue);
 
-    public static ShotPlanExportTarget ParseShotPlanExportTarget(string? s, ShotPlanExportTarget defaultValue = ShotPlanExportTarget.Json) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotPlanExportTarget>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static ShotPlanExportTarget ParseShotPlanExportTarget(string? s, ShotPlanExportTarget defaultValue = ShotPlanExportTarget.Json)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotPlanExportTarget>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ShotPlanExportTarget ToShotPlanExportTarget(this string? s, ShotPlanExportTarget defaultValue = ShotPlanExportTarget.Json) => ParseShotPlanExportTarget(s, defaultValue);
 }
 

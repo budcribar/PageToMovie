@@ -507,22 +507,46 @@ public static class EngineLayerEnumExtensions
         }
 
     public static AudioCodecType ParseAudioCodecType(string? s, AudioCodecType defaultValue = AudioCodecType.Aac)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioCodecType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioCodecType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static AudioContainerType ParseAudioContainerType(string? s, AudioContainerType defaultValue = AudioContainerType.Mp3)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioContainerType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioContainerType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static AudioMixBalanceMode ParseAudioMixBalanceMode(string? s, AudioMixBalanceMode defaultValue = AudioMixBalanceMode.EqualBalanced)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioMixBalanceMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioMixBalanceMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static BeatActionCategory ParseBeatActionCategory(string? s, BeatActionCategory defaultValue = BeatActionCategory.Dialogue)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<BeatActionCategory>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<BeatActionCategory>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static CacheInvalidationTrigger ParseCacheInvalidationTrigger(string? s, CacheInvalidationTrigger defaultValue = CacheInvalidationTrigger.UserEdit)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheInvalidationTrigger>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheInvalidationTrigger>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static CacheStrategyType ParseCacheStrategyType(string? s, CacheStrategyType defaultValue = CacheStrategyType.Memory)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheStrategyType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheStrategyType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static CameraLensSpec ParseCameraLensSpec(string? s, CameraLensSpec defaultValue = CameraLensSpec.Lens35mm)
         {
@@ -555,64 +579,144 @@ public static class EngineLayerEnumExtensions
         }
 
     public static ClipDurationBudgetMode ParseClipDurationBudgetMode(string? s, ClipDurationBudgetMode defaultValue = ClipDurationBudgetMode.Dynamic)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ClipDurationBudgetMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ClipDurationBudgetMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ClipGenRetryStrategy ParseClipGenRetryStrategy(string? s, ClipGenRetryStrategy defaultValue = ClipGenRetryStrategy.RetrySamePrompt)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ClipGenRetryStrategy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ClipGenRetryStrategy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ColorPalettePreset ParseColorPalettePreset(string? s, ColorPalettePreset defaultValue = ColorPalettePreset.Natural)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ColorPalettePreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ColorPalettePreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ErrorSeverityLevel ParseErrorSeverityLevel(string? s, ErrorSeverityLevel defaultValue = ErrorSeverityLevel.Error)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ErrorSeverityLevel>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ErrorSeverityLevel>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ExportQualityLevel ParseExportQualityLevel(string? s, ExportQualityLevel defaultValue = ExportQualityLevel.High)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ExportQualityLevel>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ExportQualityLevel>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static JobPriorityLevel ParseJobPriorityLevel(string? s, JobPriorityLevel defaultValue = JobPriorityLevel.Normal)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<JobPriorityLevel>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<JobPriorityLevel>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static LightingStyleType ParseLightingStyleType(string? s, LightingStyleType defaultValue = LightingStyleType.Daylight)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<LightingStyleType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<LightingStyleType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static MediaAssetType ParseMediaAssetType(string? s, MediaAssetType defaultValue = MediaAssetType.Video)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MediaAssetType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MediaAssetType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static MusicGenrePreset ParseMusicGenrePreset(string? s, MusicGenrePreset defaultValue = MusicGenrePreset.Cinematic)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MusicGenrePreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MusicGenrePreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static MusicTempoCategory ParseMusicTempoCategory(string? s, MusicTempoCategory defaultValue = MusicTempoCategory.Medium)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MusicTempoCategory>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MusicTempoCategory>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static PacingMoodBand ParsePacingMoodBand(string? s, PacingMoodBand defaultValue = PacingMoodBand.Moderate)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PacingMoodBand>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PacingMoodBand>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static RetryPolicyStrategy ParseRetryPolicyStrategy(string? s, RetryPolicyStrategy defaultValue = RetryPolicyStrategy.ExponentialBackoff)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<RetryPolicyStrategy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<RetryPolicyStrategy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ShotAngleType ParseShotAngleType(string? s, ShotAngleType defaultValue = ShotAngleType.EyeLevel)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ShotAngleType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ShotAngleType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SilenceDetectorPreset ParseSilenceDetectorPreset(string? s, SilenceDetectorPreset defaultValue = SilenceDetectorPreset.Balanced)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SilenceDetectorPreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SilenceDetectorPreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SpeechSubstitutionScope ParseSpeechSubstitutionScope(string? s, SpeechSubstitutionScope defaultValue = SpeechSubstitutionScope.None)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SpeechSubstitutionScope>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SpeechSubstitutionScope>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static StorageTierKind ParseStorageTierKind(string? s, StorageTierKind defaultValue = StorageTierKind.Hot)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageTierKind>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageTierKind>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitleFormatPreset ParseSubtitleFormatPreset(string? s, SubtitleFormatPreset defaultValue = SubtitleFormatPreset.Srt)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFormatPreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleFormatPreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitlePositionPreset ParseSubtitlePositionPreset(string? s, SubtitlePositionPreset defaultValue = SubtitlePositionPreset.Bottom)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitlePositionPreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitlePositionPreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoCodecType ParseVideoCodecType(string? s, VideoCodecType defaultValue = VideoCodecType.H264)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoCodecType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoCodecType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoContainerKind ParseVideoContainerKind(string? s, VideoContainerKind defaultValue = VideoContainerKind.Mp4)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoContainerKind>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoContainerKind>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoFrameratePreset ParseVideoFrameratePreset(string? s, VideoFrameratePreset defaultValue = VideoFrameratePreset.Fps30)
         {
@@ -643,13 +747,25 @@ public static class EngineLayerEnumExtensions
         }
 
     public static VoiceAgeGroupFilter ParseVoiceAgeGroupFilter(string? s, VoiceAgeGroupFilter defaultValue = VoiceAgeGroupFilter.Adult)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceAgeGroupFilter>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceAgeGroupFilter>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VoiceGenderFilter ParseVoiceGenderFilter(string? s, VoiceGenderFilter defaultValue = VoiceGenderFilter.Unspecified)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceGenderFilter>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceGenderFilter>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VoiceProviderKind ParseVoiceProviderKind(string? s, VoiceProviderKind defaultValue = VoiceProviderKind.ElevenLabs)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceProviderKind>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceProviderKind>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static WorkerPoolName ParseWorkerPoolName(string? s, WorkerPoolName defaultValue = WorkerPoolName.GeneralWorkerPool)
         {
@@ -664,7 +780,11 @@ public static class EngineLayerEnumExtensions
         }
 
     public static WorkerPoolQueueStrategy ParseWorkerPoolQueueStrategy(string? s, WorkerPoolQueueStrategy defaultValue = WorkerPoolQueueStrategy.Fifo)
-            => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<WorkerPoolQueueStrategy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<WorkerPoolQueueStrategy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static string ToApiString(this JobPriorityLevel val) => val.ToString().ToLowerInvariant();
 

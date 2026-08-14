@@ -525,61 +525,137 @@ public static class VideoFfmpegEnumExtensions
     }
 
     public static VideoPixelFormat ParseVideoPixelFormat(string? s, VideoPixelFormat defaultValue = VideoPixelFormat.Yuv420p)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoPixelFormat>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoPixelFormat>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoColorSpace ParseVideoColorSpace(string? s, VideoColorSpace defaultValue = VideoColorSpace.Bt709)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoColorSpace>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoColorSpace>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoBitrateControlMode ParseVideoBitrateControlMode(string? s, VideoBitrateControlMode defaultValue = VideoBitrateControlMode.Crf)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoBitrateControlMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoBitrateControlMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoGopStructure ParseVideoGopStructure(string? s, VideoGopStructure defaultValue = VideoGopStructure.Auto)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoGopStructure>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoGopStructure>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static FfmpegPresetSpeed ParseFfmpegPresetSpeed(string? s, FfmpegPresetSpeed defaultValue = FfmpegPresetSpeed.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegPresetSpeed>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FfmpegPresetSpeed>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static FfmpegLogVerbosity ParseFfmpegLogVerbosity(string? s, FfmpegLogVerbosity defaultValue = FfmpegLogVerbosity.Info)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegLogVerbosity>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FfmpegLogVerbosity>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoScaleAlgorithm ParseVideoScaleAlgorithm(string? s, VideoScaleAlgorithm defaultValue = VideoScaleAlgorithm.Bicubic)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoScaleAlgorithm>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoScaleAlgorithm>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoAspectMode ParseVideoAspectMode(string? s, VideoAspectMode defaultValue = VideoAspectMode.Letterbox)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoAspectMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoAspectMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoWatermarkPosition ParseVideoWatermarkPosition(string? s, VideoWatermarkPosition defaultValue = VideoWatermarkPosition.BottomRight)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoWatermarkPosition>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoWatermarkPosition>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoTransitionType ParseVideoTransitionType(string? s, VideoTransitionType defaultValue = VideoTransitionType.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoTransitionType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoTransitionType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitleFontFamily ParseSubtitleFontFamily(string? s, SubtitleFontFamily defaultValue = SubtitleFontFamily.Inter)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontFamily>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleFontFamily>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitleFontSizeCategory ParseSubtitleFontSizeCategory(string? s, SubtitleFontSizeCategory defaultValue = SubtitleFontSizeCategory.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontSizeCategory>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleFontSizeCategory>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitleAlignmentPreset ParseSubtitleAlignmentPreset(string? s, SubtitleAlignmentPreset defaultValue = SubtitleAlignmentPreset.BottomCenter)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleAlignmentPreset>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleAlignmentPreset>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static SubtitleBorderMode ParseSubtitleBorderMode(string? s, SubtitleBorderMode defaultValue = SubtitleBorderMode.Outline)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleBorderMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleBorderMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static RemuxJobStage ParseRemuxJobStage(string? s, RemuxJobStage defaultValue = RemuxJobStage.Pending)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<RemuxJobStage>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<RemuxJobStage>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoHardwareAcceleration ParseVideoHardwareAcceleration(string? s, VideoHardwareAcceleration defaultValue = VideoHardwareAcceleration.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoHardwareAcceleration>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoHardwareAcceleration>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoFrameInterpolation ParseVideoFrameInterpolation(string? s, VideoFrameInterpolation defaultValue = VideoFrameInterpolation.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoFrameInterpolation>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoFrameInterpolation>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static VideoThumbnailTimeRef ParseVideoThumbnailTimeRef(string? s, VideoThumbnailTimeRef defaultValue = VideoThumbnailTimeRef.FirstKeyframe)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoThumbnailTimeRef>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoThumbnailTimeRef>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ExportFileNamingPattern ParseExportFileNamingPattern(string? s, ExportFileNamingPattern defaultValue = ExportFileNamingPattern.ProjectAndTimestamp)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ExportFileNamingPattern>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ExportFileNamingPattern>(s, true, out var r) ? r : defaultValue;
+    }
 
 }
 
