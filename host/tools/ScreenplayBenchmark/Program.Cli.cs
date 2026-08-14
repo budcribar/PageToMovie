@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
 
 namespace ScreenplayBenchmark;
@@ -26,7 +27,7 @@ public static partial class Program
         public bool RetryFailed;
         public bool SyntaxOnly;
         public bool AdaptationSessionPilot;
-        public string AdaptationModel = "grok-4.5";
+        public string AdaptationModel = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat);
         public int? TargetRuntimeMinutesOverride;
         public string? JudgeModel;
         public string? JudgeModel2;
@@ -235,7 +236,11 @@ public static partial class Program
         if (!o.ReviewPrompt) return null;
         var models = o.ReviewModels is { Count: > 0 }
             ? o.ReviewModels
-            : new List<string> { "gpt-5.6-terra", "grok-4.5" };
+            : new List<string>
+            {
+                "gpt-5.6-terra",
+                SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat)
+            };
         return await PromptImprovementReview.RunAsync(workspaceRoot, chat, models);
     }
 
@@ -247,7 +252,11 @@ public static partial class Program
             Console.Error.WriteLine("--sidecar-pilot requires --book <path/to/book.txt>.");
             return 1;
         }
-        return await SidecarPlanningPilot.RunAsync(workspaceRoot, o.BookPath, o.SidecarPilotModel ?? "grok-4.5", chat);
+        return await SidecarPlanningPilot.RunAsync(
+            workspaceRoot,
+            o.BookPath,
+            o.SidecarPilotModel ?? SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat),
+            chat);
     }
 
     private static async Task<int?> TryValidateSidecarAsync(CliOptions o)

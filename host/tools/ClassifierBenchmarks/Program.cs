@@ -1,12 +1,13 @@
 using System.Text.Json;
 using ClassifierBenchmarks;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 
 // ClassifierBenchmarks — durable AI vs baseline scorer with model/prompt matrix + history.
 //
 // Usage:
 //   ClassifierBenchmarks run [--project The_Jungle_Book] [--tasks ambient_sfx,onscreen_cast,silent_beat_action]
-//                            [--models grok-4.5] [--prompts v1_product,v2_grounded]
+//                            [--models <catalog-chat-default>] [--prompts v1_product,v2_grounded]
 //                            [--temp 0] [--temps 0,0.2] [--note "after prompt tweak"]
 //   silent_beat_action gold is multi-book under gold/_all_books/ (project flag ignored for gold path).
 //   ClassifierBenchmarks report          # rebuild LATEST.md + history.html from history/index.json
@@ -125,7 +126,10 @@ static async Task<int> CmdRunAsync(BenchPaths paths, string[] args)
             .ToList();
 
         if (requestedModels.Count == 0)
-            requestedModels = new List<string> { "grok-4.5" };
+            requestedModels = new List<string>
+            {
+                SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat)
+            };
     }
 
     var cfg = new RunConfig
@@ -343,7 +347,9 @@ static async Task<int> CmdThroughputAsync(BenchPaths paths, string[] args)
     var tasks = SplitCsv(flags.GetValueOrDefault("tasks"));
     if (tasks.Count == 0)
         tasks = new List<string> { "ambient_sfx", "onscreen_cast", "silent_beat_action", "extend_cut", "species_kind", "plate_rank" };
-    var model = flags.GetValueOrDefault("model") ?? flags.GetValueOrDefault("models") ?? "grok-4.5";
+    var model = flags.GetValueOrDefault("model")
+        ?? flags.GetValueOrDefault("models")
+        ?? SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat);
     var count = int.TryParse(flags.GetValueOrDefault("count"), out var c) ? c : 12;
 
     var xaiKey = Environment.GetEnvironmentVariable("XAI_API_KEY");

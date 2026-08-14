@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using PageToMovie.Fountain;
 
@@ -90,7 +91,7 @@ var payload = sample.Select(b =>
 using var http = new HttpClient { BaseAddress = new Uri("https://api.x.ai/v1/"), Timeout = TimeSpan.FromMinutes(4) };
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 var body = new Dictionary<string, object?> {
-    ["model"] = "grok-4.5", ["temperature"] = 0,
+    ["model"] = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat), ["temperature"] = 0,
     ["messages"] = new object[] {
         new Dictionary<string,object?>{["role"]="system",["content"]=OnScreenCastClassifier.SystemPrompt()},
         new Dictionary<string,object?>{["role"]="user",["content"]="Pick on-screen Character_* keys from the closed cast. JSON only.\n"+JsonSerializer.Serialize(new{cast_keys=castKeys,beats=payload})}

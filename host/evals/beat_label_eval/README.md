@@ -13,7 +13,7 @@ Offline harness + gold labels for duration budgeting classes:
 - **Policy:** AI preferred → retry on flake → **baseline** `InferActionClass` fallback only if no valid label
 - **Config:**
   - `PageToMovie__ClassifySilentBeatsWithChat` (default true)
-  - `PageToMovie__SilentBeatClassifyModel` (default `grok-4.5`)
+  - `PageToMovie__SilentBeatClassifyModel` (empty = project Script & planning model)
   - `PageToMovie__SilentBeatClassifyTemperature` (default `0`)
   - `PageToMovie__SilentBeatClassifyMaxAttempts` (default `3`)
 

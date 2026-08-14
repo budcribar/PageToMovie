@@ -148,6 +148,9 @@ public class SupportedModelCatalogTests
     {
         Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
         Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
+        Assert.Equal(
+            SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat),
+            SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat));
     }
 
     [Fact]

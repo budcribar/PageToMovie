@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
@@ -596,7 +597,7 @@ Updated: {DateTimeOffset.UtcNow:u}
     {
         var body = new
         {
-            model = "grok-4.5",
+            model = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat),
             temperature = 0.0,
             messages = new object[]
             {
