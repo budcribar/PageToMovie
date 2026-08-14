@@ -574,7 +574,7 @@ public sealed class AttachCharacterPlatesResult
     /// <summary>After this call, character plates are sorted in scenes.json.</summary>
     public bool SortedByCharacter { get; set; }
     public string? SortedAt { get; set; }
-    /// <summary>grok_vision | heuristic | heuristic_after_grok_empty | none</summary>
+    /// <summary>vision | heuristic | heuristic_after_grok_empty | none (legacy: grok_vision)</summary>
     public string? Method { get; set; }
     public int ImagesClassified { get; set; }
     public int ImagesSkippedText { get; set; }
@@ -591,7 +591,7 @@ public sealed class CharacterPlatesState
     public string? SortedAt { get; set; }
     public string Source { get; set; } = "scenes.json#character_seed_tokens.design_reference_images";
     public int CharactersUpdated { get; set; }
-    /// <summary>grok_vision | heuristic | …</summary>
+    /// <summary>vision | heuristic | … (legacy: grok_vision)</summary>
     public string? Method { get; set; }
 }
 

@@ -14,8 +14,31 @@ public enum RuntimeMode
 public enum TextEngineKind
 {
     PdfPig,
+    /// <summary>Legacy persisted name for catalog Vision OCR. Prefer <see cref="Vision"/>.</summary>
     PdfPigGrok,
-    Text
+    Text,
+    /// <summary>Catalog Vision capability (page OCR / transcribe).</summary>
+    Vision
+}
+
+public static class TextEngineKindExtensions
+{
+    /// <summary>
+    /// Parse extract_meta <c>text_engine</c>. Capability label <c>vision</c> plus
+    /// legacy <c>grok_vision</c> / <c>PdfPigGrok</c> map to <see cref="TextEngineKind.Vision"/>.
+    /// </summary>
+    public static TextEngineKind? TryParse(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.Length == 0) return null;
+        if (v.Equals("vision", StringComparison.OrdinalIgnoreCase)
+            || v.Equals("grok_vision", StringComparison.OrdinalIgnoreCase)
+            || v.Equals("grok", StringComparison.OrdinalIgnoreCase))
+            return TextEngineKind.Vision;
+        if (!Enum.TryParse<TextEngineKind>(v, ignoreCase: true, out var parsed))
+            return null;
+        return parsed == TextEngineKind.PdfPigGrok ? TextEngineKind.Vision : parsed;
+    }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

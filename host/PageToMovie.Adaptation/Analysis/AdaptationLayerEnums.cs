@@ -48,13 +48,16 @@ public enum BookImportSourceType
 
 /// <summary>
 /// Engine or method used to perform OCR / text extraction on source pages.
+/// Values are capability-based (Vision vs extract/heuristic). Persisted
+/// <c>grok_vision</c> is a legacy alias for <see cref="Vision"/>, not a vendor route.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OcrEngineType
 {
     None = 0,
     PdfPig = 1,
-    GrokVision = 2,
+    /// <summary>Catalog Vision capability (OCR / transcribe). Numeric 2 matches legacy GrokVision.</summary>
+    Vision = 2,
     Tesseract = 3,
     BuiltIn = 4
 }
@@ -129,7 +132,8 @@ public static class AdaptationLayerEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "pdfpig" => OcrEngineType.PdfPig,
-                "grok_vision" or "grok" or "vision" => OcrEngineType.GrokVision,
+                // Capability label plus legacy vendor aliases from extract_meta / older jobs.
+                "vision" or "grok_vision" or "grok" or "grokvision" => OcrEngineType.Vision,
                 "tesseract" => OcrEngineType.Tesseract,
                 "builtin" => OcrEngineType.BuiltIn,
                 _ => OcrEngineType.None
@@ -172,7 +176,7 @@ public static class AdaptationLayerEnumExtensions
     public static string ToApiString(this OcrEngineType ocrType) => ocrType switch
         {
             OcrEngineType.PdfPig => "pdfpig",
-            OcrEngineType.GrokVision => "grok_vision",
+            OcrEngineType.Vision => OcrEngineIdentity.VisionEngine,
             OcrEngineType.Tesseract => "tesseract",
             OcrEngineType.BuiltIn => "builtin",
             _ => "none"

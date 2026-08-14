@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
+using PageToMovie.Adaptation;
 
 using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
@@ -306,8 +307,8 @@ public sealed class CharacterBookPlateService
         CancellationToken ct)
     {
         method = string.IsNullOrEmpty(method) || method == "heuristic"
-            ? "grok_vision"
-            : method + "+grok_vision";
+            ? OcrEngineIdentity.VisionEngine
+            : method + "+" + OcrEngineIdentity.VisionEngine;
         var toScan = BuildVisionScanList(inventory, scores, seeds, ocrPages, Math.Clamp(maxImages, 4, 64));
         onProgress?.Invoke(
             $"Grok vision: classifying up to {toScan.Count} book image(s) for {cast.Count} character(s) (OCR shortlist first)…");

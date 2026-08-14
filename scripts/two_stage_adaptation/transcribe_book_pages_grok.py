@@ -328,7 +328,7 @@ def transcribe_book_pages(
         "text_chars": len(full),
         "text_words": len(full.split()),
         "model": model,
-        "method": "grok_vision",
+        "method": "vision",
         "page_results": page_results,
         "failed_pages": sum(1 for r in page_results if r.get("error")),
     }
@@ -336,10 +336,23 @@ def transcribe_book_pages(
     return summary
 
 
+def _catalog_vision_default() -> Optional[str]:
+    catalog = ROOT / "host" / "PageToMovie.Core" / "config" / "models_catalog.json"
+    try:
+        data = json.loads(catalog.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    for cap in data.get("capabilities") or []:
+        if str(cap.get("id") or "").lower() == "vision":
+            mid = str(cap.get("defaultModelId") or "").strip()
+            return mid or None
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", default=None)
-    ap.add_argument("--model", default=os.environ.get("STAGE1_MODEL", "grok-4.5"))
+    ap.add_argument("--model", default=os.environ.get("STAGE1_MODEL") or _catalog_vision_default())
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--max-pages", type=int, default=0)
     args = ap.parse_args()

@@ -6738,9 +6738,8 @@ public sealed partial class ProjectStore
         if (root.TryGetProperty("book_kind", out var bk) && bk.ValueKind == JsonValueKind.String &&
             Enum.TryParse<SourceDocumentType>(bk.GetString(), ignoreCase: true, out var parsedKind))
             status.BookKind = parsedKind;
-        status.TextEngine = root.TryGetProperty("text_engine", out var te) &&
-            Enum.TryParse<TextEngineKind>(te.GetString(), true, out var parsedTe)
-            ? parsedTe
+        status.TextEngine = root.TryGetProperty("text_engine", out var te)
+            ? TextEngineKindExtensions.TryParse(te.GetString())
             : null;
         if (root.TryGetProperty("runtime_mode", out var rmode) && rmode.ValueKind == JsonValueKind.String &&
             Enum.TryParse<RuntimeMode>(rmode.GetString(), true, out var parsedRm))
