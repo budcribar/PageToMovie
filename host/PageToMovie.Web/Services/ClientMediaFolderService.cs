@@ -878,11 +878,8 @@ public sealed class ClientMediaFolderService
         catch { return; }
 
         var total = 0;
-        foreach (var p in projects)
-        {
-            if (string.IsNullOrWhiteSpace(p.Id)) continue;
-            total += await PushDeadFileIdClipsAsync(p.Id);
-        }
+        foreach (var id in projects.Select(p => p.Id).Where(id => !string.IsNullOrWhiteSpace(id)))
+            total += await PushDeadFileIdClipsAsync(id);
         if (total > 0)
         {
             LastStatus = $"Copied {total} clip(s) to the server so forks can play them.";

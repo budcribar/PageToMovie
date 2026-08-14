@@ -13,14 +13,11 @@ public partial class AdaptationShots
 
     public override string StepKey => "shots";
 
-    private string ShotPlanButtonLabel
+    private static string ShotPlanButtonLabel(Stage2PlanStatus stage2)
     {
-        get
-        {
-            if (!Status.Stage2.Stage2Ready)
-                return "Build shot plan";
-            return Status.Stage2.Stage2Stale ? "Update shot plan" : "Rebuild shot plan";
-        }
+        if (!stage2.Stage2Ready)
+            return "Build shot plan";
+        return stage2.Stage2Stale ? "Update shot plan" : "Rebuild shot plan";
     }
 
     /// <summary>Landed from Estimate DecisionCard Generate path (?from=decision).</summary>

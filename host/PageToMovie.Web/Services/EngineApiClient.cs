@@ -4523,7 +4523,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class ForkFallbackNeededDto
     {
         public bool Ok { get; set; }
-        public List<ForkFallbackClipDto>? Clips { get; set; }
+        public List<ForkFallbackClipDto>? Clips { get; set; } = [];
     }
 
     private sealed class ForkFallbackClipDto
