@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
@@ -21,7 +22,7 @@ internal static class Program
 
         string? projectId = null;
         string? projectDir = null;
-        string model = "grok-4.5";
+        string model = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat);
 
         for (int i = 0; i < args.Length; i++)
         {

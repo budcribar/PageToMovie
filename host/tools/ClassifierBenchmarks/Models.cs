@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using PageToMovie.Core.Models;
 
 namespace ClassifierBenchmarks;
 
@@ -6,7 +7,10 @@ public sealed class RunConfig
 {
     public string ProjectId { get; set; } = "The_Jungle_Book";
     public List<string> Tasks { get; set; } = new() { "ambient_sfx" };
-    public List<string> Models { get; set; } = new() { "grok-4.5" };
+    public List<string> Models { get; set; } = new()
+    {
+        SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat)
+    };
     public List<string> Prompts { get; set; } = new() { "v1_product" };
     /// <summary>One or more temperatures to matrix (default 0).</summary>
     public List<double> Temperatures { get; set; } = new() { 0 };

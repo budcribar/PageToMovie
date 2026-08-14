@@ -2,7 +2,10 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
+using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 
 var repo = FindRepo();
@@ -62,7 +65,7 @@ using var http = new HttpClient { BaseAddress = new Uri("https://api.x.ai/v1/"),
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 var bodyObj = new Dictionary<string, object?>
 {
-    ["model"] = "grok-4.5",
+    ["model"] = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat),
     ["temperature"] = 0,
     ["messages"] = new object[]
     {
@@ -84,7 +87,6 @@ if (!resp.IsSuccessStatusCode)
     return 1;
 }
 using var doc = JsonDocument.Parse(respText);
-using PageToMovie.Core.Utils;
 var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = AmbientSfxClassifier.ParseLabels(content);
 

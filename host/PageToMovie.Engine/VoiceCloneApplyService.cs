@@ -146,10 +146,7 @@ public sealed class VoiceCloneApplyService
             return new VoiceApplyResult { Ok = false, Error = "providerVoiceId required" };
 
         var label = string.IsNullOrWhiteSpace(displayName) ? "Catalog voice" : displayName.Trim();
-        var speakModel = SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)
-                         ?? SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                             .FirstOrDefault(m => !m.IsVoiceCloneStep
-                                                  && m.Provider == ModelProviderFamily.ElevenLabs);
+        var speakModel = SupportedModelCatalog.FirstEnabledSpeakModel("elevenlabs");
         var providerId = speakModel?.ProviderId
                          ?? SupportedModelCatalog.CatalogProviderId(speakModel?.Id, "tts")
                          ?? "";

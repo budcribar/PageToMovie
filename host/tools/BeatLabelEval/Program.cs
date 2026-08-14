@@ -2,7 +2,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
+using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 
 // Beat-label eval: score HEURISTIC and AI against GROUND TRUTH (not each other).
@@ -119,7 +122,6 @@ Console.WriteLine($"Mode: {(exportAnnotate ? "export-annotate" : scoreGt ? "scor
 Console.WriteLine($"Books: {selected.Count}  prompt={promptVer}  aiFrom={aiFrom ?? "(chat)"}  fresh={fresh}");
 
 using var http = new HttpClient { BaseAddress = new Uri("https://api.x.ai/v1/") };
-using PageToMovie.Core.Utils;
 if (!string.IsNullOrWhiteSpace(key))
     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 http.Timeout = TimeSpan.FromMinutes(4);
@@ -677,7 +679,8 @@ static async Task<(Dictionary<string, string> Labels, string Raw)> FetchAiLabels
     var user =
         "Label each silent beat for duration budgeting. Return JSON only.\n\n" +
         JsonSerializer.Serialize(new { beats = payloadBeats }, Pretty());
-    var raw = await ChatAsync(http, systemPrompt, user, "grok-4.5", 0.1);
+    var raw = await ChatAsync(http, systemPrompt, user,
+        SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat), 0.1);
     return (ParseLabels(raw), raw);
 }
 

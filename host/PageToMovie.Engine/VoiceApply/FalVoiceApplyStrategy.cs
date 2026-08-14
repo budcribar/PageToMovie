@@ -86,7 +86,7 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
         string? previewUrl = null;
         var ttsText = VoicePreviewStore.DefaultPreviewText(ctx.PreviewText);
         var speakModelId = ctx.SpeakModel?.Id
-                           ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
+                           ?? SupportedModelCatalog.FirstEnabledSpeakModelId(providerId)
                            ?? "";
         var speakProvider = ctx.SpeakModel?.ProviderId
                             ?? SupportedModelCatalog.CatalogProviderId(speakModelId, "tts")

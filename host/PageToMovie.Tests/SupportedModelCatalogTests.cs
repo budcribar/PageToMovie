@@ -148,6 +148,25 @@ public class SupportedModelCatalogTests
     {
         Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
         Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
+        Assert.Equal(
+            SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat),
+            SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat));
+    }
+
+    [Fact]
+    public void FirstEnabledSpeakModel_is_enabled_voice_tts_not_a_clone_step()
+    {
+        var any = SupportedModelCatalog.FirstEnabledSpeakModel();
+        Assert.NotNull(any);
+        Assert.Equal(ModelCapability.Voice, any!.Capability);
+        Assert.True(any.Enabled);
+        Assert.False(any.IsVoiceCloneStep);
+        Assert.Equal(any.Id, SupportedModelCatalog.RequireFirstEnabledSpeakModelId());
+
+        var eleven = SupportedModelCatalog.FirstEnabledSpeakModel("elevenlabs");
+        Assert.NotNull(eleven);
+        Assert.False(eleven!.IsVoiceCloneStep);
+        Assert.Equal("elevenlabs", SupportedModelCatalog.NormalizeProviderId(eleven.ProviderId));
     }
 
     [Fact]

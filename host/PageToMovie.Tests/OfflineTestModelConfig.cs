@@ -7,12 +7,10 @@ namespace PageToMovie.Tests;
 internal static class OfflineTestModelConfig
 {
     public static string Required(ModelCapability capability) =>
-        SupportedModelCatalog.DefaultModelIdForCapability(capability)
-        ?? throw new InvalidOperationException($"The test model catalog has no enabled default for '{capability}'.");
+        SupportedModelCatalog.RequireDefaultModelIdForCapability(capability);
 
     public static string Required(string capability) =>
-        SupportedModelCatalog.DefaultModelIdForCapability(capability)
-        ?? throw new InvalidOperationException($"The test model catalog has no enabled default for '{capability}'.");
+        SupportedModelCatalog.RequireDefaultModelIdForCapability(capability);
 
     public static Task ApplyAsync(ProjectStore store, string projectId) =>
         store.SaveConfigAsync(projectId, JsonSerializer.SerializeToElement(new

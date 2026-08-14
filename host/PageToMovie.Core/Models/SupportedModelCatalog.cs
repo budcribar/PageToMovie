@@ -1026,6 +1026,25 @@ public static class SupportedModelCatalog
         DefaultModelIdForCapability(capability.ToString());
 
     /// <summary>
+    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
+    /// </summary>
+    public static string RequireDefaultModelIdForCapability(ModelCapability capability) =>
+        RequireDefaultModelIdForCapability(capability.ToString());
+
+    /// <summary>
+    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
+    /// </summary>
+    public static string RequireDefaultModelIdForCapability(string capabilityId)
+    {
+        var id = DefaultModelIdForCapability(capabilityId);
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException(
+                $"No default model is configured in the product catalog for capability '{capabilityId}'. " +
+                "Set capabilities[].defaultModelId in models_catalog.json.");
+        return id;
+    }
+
+    /// <summary>
     /// Default model id for a capability from catalog <c>capabilities[].defaultModelId</c>,
     /// else first enabled model with that capability. Null if catalog has none.
     /// </summary>
@@ -1083,6 +1102,48 @@ public static class SupportedModelCatalog
         try { EnsureLoaded(); } catch { return null; }
         return Entries.FirstOrDefault(e => e.Enabled && !e.Deprecated && e.Capability == ModelCapability.Voice && e.IsVoiceCloneStep)?.Id
                ?? ForCapability(ModelCapability.Voice).FirstOrDefault()?.Id;
+    }
+
+    /// <summary>
+    /// First enabled Voice catalog row that is speak/TTS (not a clone step).
+    /// Optional <paramref name="providerId"/> restricts to that catalog provider (aliases accepted).
+    /// </summary>
+    public static SupportedModelEntry? FirstEnabledSpeakModel(string? providerId = null)
+    {
+        try { EnsureLoaded(); } catch { return null; }
+        var want = string.IsNullOrWhiteSpace(providerId) ? null : NormalizeProviderId(providerId);
+        return ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => !m.IsVoiceCloneStep
+                && (want is null
+                    || string.Equals(NormalizeProviderId(m.ProviderId), want, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public static string? FirstEnabledSpeakModelId(string? providerId = null) =>
+        FirstEnabledSpeakModel(providerId)?.Id;
+
+    /// <summary>Speak/TTS catalog id, or throw. Product code must not invent a speak-model id.</summary>
+    public static string RequireFirstEnabledSpeakModelId(string? providerId = null)
+    {
+        var id = FirstEnabledSpeakModelId(providerId);
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(providerId)
+                    ? "No enabled speak/TTS model is configured in the product catalog for capability Voice."
+                    : $"No enabled speak/TTS model is configured in the product catalog for provider '{providerId}'.");
+        return id;
+    }
+
+    /// <summary>
+    /// Speak/TTS model id: selected catalog row, else first enabled speak model for the provider,
+    /// else an explicit caller id, else throw. Never invents a model id.
+    /// </summary>
+    public static string ResolveSpeakModelId(string? selectedId, string? providerId, string? explicitModel = null)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedId)) return selectedId.Trim();
+        var fromCatalog = FirstEnabledSpeakModelId(providerId);
+        if (!string.IsNullOrWhiteSpace(fromCatalog)) return fromCatalog;
+        if (!string.IsNullOrWhiteSpace(explicitModel)) return explicitModel.Trim();
+        return RequireFirstEnabledSpeakModelId(providerId);
     }
 
     public static IReadOnlyList<string> MissingEnvKeys(SupportedModelEntry model)
