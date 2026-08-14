@@ -6,7 +6,7 @@ Decides the best path so the user does not have to:
   1) Extract PDF text + images (if PDF present)
   2) Score text quality
   3) If good → keep embedded text
-  4) If sparse/poor → vision OCR on page images (when a vision key is set)
+  4) If sparse/poor → Grok vision on page images (when XAI_API_KEY set)
      else try Tesseract OCR via extract, else leave text + clear needs
   5) Write extract_meta.json with suggested Stage 1 runtime/chunks
   6) Mark ready_for_stage1
@@ -27,25 +27,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
-SCRIPTS = ROOT / "scripts"
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
 
 import extract_book_source as extract_mod  # noqa: E402
 import transcribe_book_pages_grok as vision_mod  # noqa: E402
-from catalog_defaults import catalog_default_model_id, require_catalog_default_model_id  # noqa: E402
-
-# Capability-based labels (match Adaptation OcrEngineIdentity). Legacy grok_* are read aliases.
-VISION_TRANSCRIBE_ACTION = "vision_transcribe"
-LEGACY_VISION_TRANSCRIBE_ACTION = "grok_vision_transcribe"
-VISION_ENGINE = "vision"
-
-
-def is_vision_transcribe_action(action: Optional[str]) -> bool:
-    v = (action or "").strip().lower()
-    return v in {VISION_TRANSCRIBE_ACTION, LEGACY_VISION_TRANSCRIBE_ACTION}
 
 
 def _project_dir(project_id: Optional[str]) -> Path:
@@ -71,9 +57,9 @@ def decide_text_strategy(
     """
     Pure decision: what to do with book text before Stage 1.
 
-    Picture books with page images: prefer vision OCR whenever a vision client
-    is configured — embedded PDF text is often OCR soup that invents wrong
-    character names.
+    Picture books with page images: prefer Grok vision whenever the API key is
+    set — embedded PDF text is often OCR soup that invents wrong character names
+    (e.g. "Duster" instead of "Buster").
     """
     quality = str(analysis.get("text_quality") or "unknown")
     density = str(analysis.get("text_density") or "normal")
@@ -88,10 +74,10 @@ def decide_text_strategy(
     )
     if picture and has_images and has_xai and not text_clearly_clean:
         return {
-            "action": VISION_TRANSCRIBE_ACTION,
+            "action": "grok_vision_transcribe",
             "reason": (
                 f"Picture book / sparse text (quality={quality}, garbage={garbage:.2f}). "
-                "Rebuilding book_full.txt with vision from page images so character "
+                "Rebuilding book_full.txt with Grok vision from page images so character "
                 "names and dialogue match the art."
             ),
             "ready_for_stage1": False,
@@ -139,11 +125,11 @@ def decide_text_strategy(
 
     if has_images and has_xai:
         return {
-            "action": VISION_TRANSCRIBE_ACTION,
+            "action": "grok_vision_transcribe",
             "reason": (
                 f"Text quality is '{quality}' ({kind}). "
-                "Page images exist and vision is configured — "
-                "will rebuild book_full.txt with vision."
+                "Page images exist and XAI_API_KEY is set — "
+                "will rebuild book_full.txt with Grok vision."
             ),
             "ready_for_stage1": False,
             "needs_user": False,
@@ -184,19 +170,13 @@ def prepare_book_source(
     force_extract: bool = True,
     force_vision: bool = False,
     render_pages: str = "cover,sparse",
-    vision_model: Optional[str] = None,
+    vision_model: str = "grok-4.5",
     auto_vision: bool = True,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Full auto pipeline. Returns summary for UI/CLI.
     """
-    vision_model = (
-        (vision_model or "").strip()
-        or (os.environ.get("STAGE1_MODEL") or "").strip()
-        or require_catalog_default_model_id("vision", "chat")
-    )
-
     def progress(event: str, **kwargs: Any) -> None:
         if progress_cb:
             progress_cb({"event": event, **kwargs})
@@ -287,12 +267,12 @@ def prepare_book_source(
     strategy = decide_text_strategy(analysis, has_images=has_images, has_xai=has_xai)
     if force_vision and has_images and has_xai:
         strategy = {
-            "action": VISION_TRANSCRIBE_ACTION,
-            "reason": "Forced vision transcription.",
+            "action": "grok_vision_transcribe",
+            "reason": "Forced Grok vision transcription.",
             "ready_for_stage1": False,
             "needs_user": False,
         }
-    if not auto_vision and is_vision_transcribe_action(strategy["action"]):
+    if not auto_vision and strategy["action"] == "grok_vision_transcribe":
         strategy = {
             "action": "vision_skipped",
             "reason": "Auto vision disabled; keeping extract text (may be garbled).",
@@ -307,10 +287,10 @@ def prepare_book_source(
 
     # --- Step 2: vision if needed ---
     vision_summary: Optional[Dict[str, Any]] = None
-    if is_vision_transcribe_action(strategy["action"]):
+    if strategy["action"] == "grok_vision_transcribe":
         progress(
             "vision_start",
-            message=f"Vision on {len(page_images)} page(s)…",
+            message=f"Grok vision on {len(page_images)} page(s)…",
             chunk=2,
             total=3,
         )
@@ -322,7 +302,7 @@ def prepare_book_source(
         )
         steps.append(
             {
-                "step": "vision",
+                "step": "grok_vision",
                 "ok": bool(vision_summary.get("ok")),
                 "pages": vision_summary.get("pages"),
                 "text_chars": vision_summary.get("text_chars"),
@@ -342,7 +322,7 @@ def prepare_book_source(
         if failed >= total_p:
             strategy = {
                 "action": "vision_failed",
-                "reason": "Vision failed on all pages.",
+                "reason": "Grok vision failed on all pages.",
                 "ready_for_stage1": False,
                 "needs_user": True,
                 "user_hint": "Check XAI_API_KEY / model, or paste book text manually.",
@@ -351,11 +331,11 @@ def prepare_book_source(
             analysis["text_quality"] = (
                 "good" if failed == 0 else analysis.get("text_quality") or "sparse"
             )
-            analysis["text_source"] = VISION_ENGINE
+            analysis["text_source"] = "grok_vision"
             strategy = {
-                "action": "vision_done",
+                "action": "grok_vision_done",
                 "reason": (
-                    f"Rebuilt book_full.txt via vision "
+                    f"Rebuilt book_full.txt via Grok vision "
                     f"({vision_summary.get('text_words')} words, "
                     f"{failed} page error(s))."
                 ),
@@ -433,14 +413,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", default=None)
     ap.add_argument("--force", action="store_true", help="Force re-extract PDF")
-    ap.add_argument("--force-vision", action="store_true", help="Always run vision OCR")
+    ap.add_argument("--force-vision", action="store_true", help="Always run Grok vision")
     ap.add_argument("--no-auto-vision", action="store_true")
     ap.add_argument("--render-pages", default="cover,sparse")
-    ap.add_argument(
-        "--model",
-        default=os.environ.get("STAGE1_MODEL") or catalog_default_model_id("vision", "chat"),
-        help="Vision model id (default: STAGE1_MODEL or catalog Vision, then Chat)",
-    )
+    ap.add_argument("--model", default=os.environ.get("STAGE1_MODEL", "grok-4.5"))
     args = ap.parse_args()
 
     summary = prepare_book_source(

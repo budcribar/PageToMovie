@@ -18,7 +18,6 @@ import json
 import mimetypes
 import os
 import re
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -26,11 +25,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[2]
-_SCRIPTS = ROOT / "scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
-from catalog_defaults import catalog_default_model_id, require_catalog_default_model_id  # noqa: E402
-
 XAI_API_BASE = "https://api.x.ai/v1"
 
 TRANSCRIBE_PROMPT = """You are transcribing a children's / illustrated book page.
@@ -232,21 +226,15 @@ def transcribe_page(
 def transcribe_book_pages(
     *,
     project_id: Optional[str] = None,
-    model: Optional[str] = None,
+    model: str = "grok-4.5",
     force: bool = False,
     max_pages: int = 0,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
-    Write source/book_full.txt from page images via vision OCR.
+    Write source/book_full.txt from page images via Grok vision.
     Backs up previous book_full.txt when replacing.
     """
-    model = (
-        (model or "").strip()
-        or (os.environ.get("STAGE1_MODEL") or "").strip()
-        or require_catalog_default_model_id("vision", "chat")
-    )
-
     def progress(event: str, **kwargs: Any) -> None:
         if progress_cb:
             progress_cb({"event": event, **kwargs})
@@ -266,7 +254,7 @@ def transcribe_book_pages(
 
     progress(
         "start",
-        message=f"Vision transcription: {len(pages)} page image(s), model={model}",
+        message=f"Grok vision transcription: {len(pages)} page image(s), model={model}",
         chunk=0,
         total=len(pages),
     )
@@ -340,7 +328,7 @@ def transcribe_book_pages(
         "text_chars": len(full),
         "text_words": len(full.split()),
         "model": model,
-        "method": "vision",
+        "method": "grok_vision",
         "page_results": page_results,
         "failed_pages": sum(1 for r in page_results if r.get("error")),
     }
@@ -351,11 +339,7 @@ def transcribe_book_pages(
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", default=None)
-    ap.add_argument(
-        "--model",
-        default=os.environ.get("STAGE1_MODEL") or catalog_default_model_id("vision", "chat"),
-        help="Vision model id (default: STAGE1_MODEL or catalog Vision, then Chat)",
-    )
+    ap.add_argument("--model", default=os.environ.get("STAGE1_MODEL", "grok-4.5"))
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--max-pages", type=int, default=0)
     args = ap.parse_args()
