@@ -154,6 +154,22 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
+    public void FirstEnabledSpeakModel_is_enabled_voice_tts_not_a_clone_step()
+    {
+        var any = SupportedModelCatalog.FirstEnabledSpeakModel();
+        Assert.NotNull(any);
+        Assert.Equal(ModelCapability.Voice, any!.Capability);
+        Assert.True(any.Enabled);
+        Assert.False(any.IsVoiceCloneStep);
+        Assert.Equal(any.Id, SupportedModelCatalog.RequireFirstEnabledSpeakModelId());
+
+        var eleven = SupportedModelCatalog.FirstEnabledSpeakModel("elevenlabs");
+        Assert.NotNull(eleven);
+        Assert.False(eleven!.IsVoiceCloneStep);
+        Assert.Equal("elevenlabs", SupportedModelCatalog.NormalizeProviderId(eleven.ProviderId));
+    }
+
+    [Fact]
     public void Enabled_video_models_are_nonempty()
     {
         var list = SupportedModelCatalog.ForCapability(ModelCapability.Video);

@@ -3991,15 +3991,11 @@ public sealed class FilmJobService
     }
 
     private static SupportedModelEntry? FirstEnabledSpeakModelForProvider(string? providerId) =>
-        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+        SupportedModelCatalog.FirstEnabledSpeakModel(providerId);
 
     private static SupportedModelEntry? FirstEnabledSpeakModelForSeed(string seedProvider) =>
-        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                (string.IsNullOrWhiteSpace(seedProvider) ||
-                 string.Equals(m.ProviderId, seedProvider, StringComparison.OrdinalIgnoreCase)));
+        SupportedModelCatalog.FirstEnabledSpeakModel(
+            string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider);
 
     private (SpeakContext? Ctx, string? Error) TryBuildSpeakContext(
         string voiceId, SupportedModelEntry? entry, string seedProvider, string? model)
@@ -4015,7 +4011,7 @@ public sealed class FilmJobService
         if (configError is not null)
             return (null, configError);
 
-        var speakModelId = ResolveSpeakModelId(useEleven, entry, model);
+        var speakModelId = SupportedModelCatalog.ResolveSpeakModelId(entry?.Id, providerId, model);
         if (entry?.MaxPromptLength is not int maxLen)
             return (null, $"Model '{entry?.Id ?? "(null)"}' has no maxPromptLength in models_catalog.json.");
 
@@ -4038,15 +4034,6 @@ public sealed class FilmJobService
             return "Voice provider (Fal) is not configured.";
         return null;
     }
-
-    private static string ResolveSpeakModelId(bool useEleven, SupportedModelEntry? entry, string? model) =>
-        useEleven
-            ? (entry?.Id
-               ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
-               ?? model ?? "eleven_multilingual_v2")
-            : (entry?.Id
-               ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
-               ?? model ?? "");
 
     /// <summary>
     /// Synthesize one line of cloned-voice speech (ElevenLabs bytes or Fal url→download) and log the

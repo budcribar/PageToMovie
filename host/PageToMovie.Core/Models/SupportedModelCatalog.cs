@@ -1104,6 +1104,48 @@ public static class SupportedModelCatalog
                ?? ForCapability(ModelCapability.Voice).FirstOrDefault()?.Id;
     }
 
+    /// <summary>
+    /// First enabled Voice catalog row that is speak/TTS (not a clone step).
+    /// Optional <paramref name="providerId"/> restricts to that catalog provider (aliases accepted).
+    /// </summary>
+    public static SupportedModelEntry? FirstEnabledSpeakModel(string? providerId = null)
+    {
+        try { EnsureLoaded(); } catch { return null; }
+        var want = string.IsNullOrWhiteSpace(providerId) ? null : NormalizeProviderId(providerId);
+        return ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => !m.IsVoiceCloneStep
+                && (want is null
+                    || string.Equals(NormalizeProviderId(m.ProviderId), want, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public static string? FirstEnabledSpeakModelId(string? providerId = null) =>
+        FirstEnabledSpeakModel(providerId)?.Id;
+
+    /// <summary>Speak/TTS catalog id, or throw. Product code must not invent a speak-model id.</summary>
+    public static string RequireFirstEnabledSpeakModelId(string? providerId = null)
+    {
+        var id = FirstEnabledSpeakModelId(providerId);
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(providerId)
+                    ? "No enabled speak/TTS model is configured in the product catalog for capability Voice."
+                    : $"No enabled speak/TTS model is configured in the product catalog for provider '{providerId}'.");
+        return id;
+    }
+
+    /// <summary>
+    /// Speak/TTS model id: selected catalog row, else first enabled speak model for the provider,
+    /// else an explicit caller id, else throw. Never invents a model id.
+    /// </summary>
+    public static string ResolveSpeakModelId(string? selectedId, string? providerId, string? explicitModel = null)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedId)) return selectedId.Trim();
+        var fromCatalog = FirstEnabledSpeakModelId(providerId);
+        if (!string.IsNullOrWhiteSpace(fromCatalog)) return fromCatalog;
+        if (!string.IsNullOrWhiteSpace(explicitModel)) return explicitModel.Trim();
+        return RequireFirstEnabledSpeakModelId(providerId);
+    }
+
     public static IReadOnlyList<string> MissingEnvKeys(SupportedModelEntry model)
     {
         return model.RequiredEnvKeys

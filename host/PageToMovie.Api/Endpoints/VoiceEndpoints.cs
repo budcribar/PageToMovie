@@ -354,8 +354,8 @@ public static class VoiceEndpoints
                         || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
         var synth = useEleven
-            ? await SpeakWithElevenLabsAsync(runtime.VoiceClient, voiceId, text, entry, model, ct)
-            : await SpeakWithFalAsync(runtime, voiceId, text, entry, model, ct);
+            ? await SpeakWithElevenLabsAsync(runtime.VoiceClient, voiceId, text, entry, model, providerId, ct)
+            : await SpeakWithFalAsync(runtime, voiceId, text, entry, model, providerId, ct);
         if (synth.EarlyError is not null)
             return synth.EarlyError;
 
@@ -429,15 +429,11 @@ public static class VoiceEndpoints
     }
 
     private static SupportedModelEntry? FindEnabledSpeakModel(string? providerId, bool matchAnyIfNoProvider = false) =>
-        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                (matchAnyIfNoProvider
-                    ? string.IsNullOrWhiteSpace(providerId) ||
-                      string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)
-                    : string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)));
+        SupportedModelCatalog.FirstEnabledSpeakModel(
+            matchAnyIfNoProvider && string.IsNullOrWhiteSpace(providerId) ? null : providerId);
 
     private static async Task<SpeakSynthResult> SpeakWithElevenLabsAsync(
-        IVoiceClient voiceClient, string voiceId, string text, SupportedModelEntry? entry, string? model, CancellationToken ct)
+        IVoiceClient voiceClient, string voiceId, string text, SupportedModelEntry? entry, string? model, string? providerId, CancellationToken ct)
     {
         var result = new SpeakSynthResult();
         if (!voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
@@ -445,10 +441,7 @@ public static class VoiceEndpoints
             result.EarlyError = Results.BadRequest(new { ok = false, error = "ElevenLabs key is not configured. Open Settings → Voice." });
             return result;
         }
-        var speakModelId = entry?.Id
-                           ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
-                           ?? model
-                           ?? "eleven_multilingual_v2";
+        var speakModelId = SupportedModelCatalog.ResolveSpeakModelId(entry?.Id, entry?.ProviderId ?? providerId, model);
         var tts = await voiceClient.TextToSpeechAsync(voiceId, text, speakModelId, ct);
         if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
         {
@@ -468,6 +461,7 @@ public static class VoiceEndpoints
         string text,
         SupportedModelEntry? entry,
         string? model,
+        string? providerId,
         CancellationToken ct)
     {
         var result = new SpeakSynthResult();
@@ -476,9 +470,7 @@ public static class VoiceEndpoints
             result.EarlyError = Results.BadRequest(new { ok = false, error = "Connect a voice service (Fal) in Settings for MiniMax speech." });
             return result;
         }
-        var speakModelId = entry?.Id
-                           ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
-                           ?? model;
+        var speakModelId = SupportedModelCatalog.ResolveSpeakModelId(entry?.Id, entry?.ProviderId ?? providerId, model);
         var audioUrl = await runtime.VoiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
         if (string.IsNullOrWhiteSpace(audioUrl))
         {

@@ -87,7 +87,7 @@ public sealed class ElevenLabsVoiceApplyStrategy : IVoiceApplyStrategy
         string? previewUrl = null;
         var ttsText = VoicePreviewStore.DefaultPreviewText(ctx.PreviewText);
         var ttsModel = ctx.SpeakModel?.Id
-                       ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
+                       ?? SupportedModelCatalog.FirstEnabledSpeakModelId("elevenlabs")
                        ?? modelId;
         var ttsProvider = ctx.SpeakModel?.ProviderId
                           ?? SupportedModelCatalog.CatalogProviderId(ttsModel, "tts")

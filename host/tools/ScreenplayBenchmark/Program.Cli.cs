@@ -236,12 +236,23 @@ public static partial class Program
         if (!o.ReviewPrompt) return null;
         var models = o.ReviewModels is { Count: > 0 }
             ? o.ReviewModels
-            : new List<string>
-            {
-                "gpt-5.6-terra",
-                SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat)
-            };
+            : DefaultPromptReviewModels();
         return await PromptImprovementReview.RunAsync(workspaceRoot, chat, models);
+    }
+
+    /// <summary>
+    /// Catalog chat default first, then every other enabled chat model so a catalog bump
+    /// cannot leave this review on a stale id.
+    /// </summary>
+    private static List<string> DefaultPromptReviewModels()
+    {
+        var chatDefault = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat);
+        return SupportedModelCatalog.ForCapability(ModelCapability.Chat)
+            .Select(e => e.Id)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(id => id.Equals(chatDefault, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToList();
     }
 
     private static async Task<int?> TryRunSidecarPilotAsync(CliOptions o, IChatClient chat, string workspaceRoot)
