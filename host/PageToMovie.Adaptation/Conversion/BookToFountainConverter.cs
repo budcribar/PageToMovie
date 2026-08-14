@@ -513,11 +513,7 @@ public static class BookToFountainConverter
         string bookText,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         // In case a repair path re-introduced a trailer (should not), strip again.
         var lateVision = TrailerScan.Scan(text, VisionMetaBegin, VisionMetaEnd);
         var lateReport = TrailerScan.Scan(
@@ -566,11 +562,7 @@ public static class BookToFountainConverter
             string bookText,
             ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         if (vision is not null)
             return (fountainOnly, vision, report);
 
@@ -646,11 +638,8 @@ public static class BookToFountainConverter
         string bookText,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
         var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         if (!chat.Chat.IsConfigured)
             return fountain;
 
@@ -1014,11 +1003,7 @@ promptVersion: "stage1-vision-meta-repair-v2",
         string fountain,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var bad = FindVagueLocationHeadings(fountain);
         if (bad.Count == 0 || !chat.Chat.IsConfigured)
             return fountain;
@@ -1141,11 +1126,7 @@ promptVersion: "stage1-location-heading-repair-v1",
         string fountain,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var groups = FindLocationDriftCandidateGroups(fountain);
         if (groups.Count == 0 || !chat.Chat.IsConfigured)
             return fountain;
@@ -1331,11 +1312,7 @@ promptVersion: "stage1-location-heading-repair-v1",
         string fountain,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var bad = FindGenericNumberedSpeakers(fountain);
         if (bad.Count == 0 || !chat.Chat.IsConfigured)
             return fountain;
@@ -1569,11 +1546,7 @@ promptVersion: "stage1-generic-speaker-repair-v1",
         string fountain,
         ChatCall chat)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var groups = FindNameDriftCandidateGroups(fountain);
         if (groups.Count == 0 || !chat.Chat.IsConfigured)
             return fountain;
@@ -1902,8 +1875,6 @@ promptVersion: "stage1-generic-speaker-repair-v1",
         var model = chat.Model;
         var onProgress = chat.OnProgress;
         var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         const string operationName = "stage1_narration_split_repair";
         const string promptVersion = "stage1-narration-split-repair-v1";
 
@@ -2779,11 +2750,8 @@ promptVersion: promptVersion,
         ChatCall chat,
         PromptBudget budget)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
         var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         // Bound the primary call so a hung provider cannot sit forever. File_id novels
         // (Odyssey-scale) routinely need 15–20+ min on Grok 4.6; 8 and 15 both cancelled
         // a still-writing single pass. Keep this under the Responses HttpClient (30 min).
@@ -2838,11 +2806,6 @@ promptVersion: promptVersion,
         int bookMaxChars = DefaultSingleShotBookMaxChars,
         string? extraUserSuffix = null)
     {
-        var model = chat.Model;
-        var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         // Happy path: full book. Trim only if somehow over the call budget (prefer multi-chunk instead).
         var bookForPrompt = bookText.Length <= bookMaxChars
             ? bookText
@@ -2884,11 +2847,8 @@ promptVersion: "stage1-book-to-fountain-v2",
         int softMaxChars = DefaultFallbackChunkSoftMaxChars,
         int maxChunks = MaxAdaptChunks)
     {
-        var model = chat.Model;
         var onProgress = chat.OnProgress;
         var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var chunks = ChunkBookForAdaptation(bookText, maxChunks, softMaxChars);
         onProgress?.Invoke($"Book split into {chunks.Count} chunk(s) for adaptation…");
 
@@ -2964,11 +2924,6 @@ promptVersion: "stage1-book-chunk-v2",
         string stitched,
         ChatCall chat)
     {
-        var model = chat.Model;
-        var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        var reasoningEffort = chat.ReasoningEffort;
-        var temperature = chat.Temperature;
         var header = new StringBuilder();
         header.AppendLine("MULTI-CHUNK MERGE TASK");
         header.AppendLine($"Project title hint: {title}");
