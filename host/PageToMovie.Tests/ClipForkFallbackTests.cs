@@ -1,0 +1,61 @@
+using PageToMovie.Engine;
+using Xunit;
+
+namespace PageToMovie.Tests;
+
+public sealed class ClipForkFallbackTests
+{
+    [Fact]
+    public void MarkNeeded_lists_and_clears()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm_fork_fb_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            ClipForkFallback.MarkNeeded(dir, 3, 2);
+            ClipForkFallback.MarkNeeded(dir, 3, 2);
+            var need = ClipForkFallback.ListNeeded(dir);
+            Assert.Single(need);
+            Assert.Equal((3, 2), need[0]);
+            ClipForkFallback.ClearNeeded(dir, 3, 2);
+            Assert.Empty(ClipForkFallback.ListNeeded(dir));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void WriteProtectedMp4_is_skipped_by_prune_guard()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm_fork_fb_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bytes = new byte[2048];
+            ClipForkFallback.WriteProtectedMp4(dir, 1, 1, bytes);
+            var mp4 = Path.Combine(dir, "assets", "video", "scene_01_clip_01.mp4");
+            Assert.True(File.Exists(mp4));
+            Assert.True(ClipForkFallback.IsProtectedFromPrune(mp4));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void WriteSidecarFileId_drops_expiry()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm_fork_fb_" + Guid.NewGuid().ToString("N"));
+        var video = Path.Combine(dir, "assets", "video");
+        Directory.CreateDirectory(video);
+        File.WriteAllText(Path.Combine(video, "scene_01_clip_01.clip.json"),
+            """{"source_file_id":"old","source_file_expires_at":1}""");
+        ClipForkFallback.WriteSidecarFileId(dir, 1, 1, "file_new");
+        var json = File.ReadAllText(Path.Combine(video, "scene_01_clip_01.clip.json"));
+        Assert.Contains("file_new", json);
+        Assert.DoesNotContain("source_file_expires_at", json);
+    }
+}

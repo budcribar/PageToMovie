@@ -54,6 +54,9 @@ public static class SceneClipEndpoints
         app.MapGet("/api/projects/{id}/scenes", GetProjectsIdScenes);
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}", GetProjectsIdScenesSceneNumber);
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/video", GetProjectsIdScenesSceneNumberClipsClipNumberVideo);
+        app.MapGet("/api/projects/{id}/clips/fork-fallback-needed", GetProjectsIdClipsForkFallbackNeeded);
+        app.MapPost("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/fork-fallback", PostProjectsIdScenesClipForkFallback);
+
         // <summary>Archived prompt (+ paired video, if the client's media folder still has it) versions for one clip.</summary>
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/prompt-history", GetProjectsIdScenesSceneNumberClipsClipNumberPromptHistory);
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/composite", GetProjectsIdScenesSceneNumberComposite);
@@ -588,7 +591,10 @@ public static class SceneClipEndpoints
         var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
             ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
         if (string.IsNullOrWhiteSpace(fileId) || xai is null)
+        {
+            await MarkForkFallbackNeededAsync(store, id, parentId, sceneNumber, clipNumber, ct);
             return Results.NotFound(new { ok = false, error = "clip video not found" });
+        }
         try
         {
             var stream = await xai.OpenFileContentStreamAsync(fileId, ct);
@@ -596,6 +602,7 @@ public static class SceneClipEndpoints
         }
         catch
         {
+            await MarkForkFallbackNeededAsync(store, id, parentId, sceneNumber, clipNumber, ct);
             return Results.NotFound(new { ok = false, error = "clip video not found" });
         }
     }
@@ -604,6 +611,95 @@ public static class SceneClipEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task MarkForkFallbackNeededAsync(
+        ProjectStore store, string projectId, string? parentId, int scene, int clip, CancellationToken ct)
+    {
+        try
+        {
+            var dir = await store.GetProjectDirAsync(projectId, ct);
+            ClipForkFallback.MarkNeeded(dir, scene, clip);
+            if (!string.IsNullOrWhiteSpace(parentId)
+                && !string.Equals(parentId, projectId, StringComparison.OrdinalIgnoreCase))
+            {
+                var parentDir = await store.GetProjectDirAsync(parentId, ct);
+                ClipForkFallback.MarkNeeded(parentDir, scene, clip);
+            }
+        }
+        catch { /* never fail playback on a marker write */ }
+    }
+
+    private static async Task<IResult> GetProjectsIdClipsForkFallbackNeeded(
+        string id, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
+    {
+        if (await AuthGate.RequireProjectOwnerAsync(id, user, store, opts, ct) is { } denied)
+            return denied;
+        try
+        {
+            var dir = await store.GetProjectDirAsync(id, ct);
+            var items = ClipForkFallback.ListNeeded(dir)
+                .Select(x => new { scene = x.Scene, clip = x.Clip })
+                .ToList();
+            return Results.Ok(new { ok = true, clips = items });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> PostProjectsIdScenesClipForkFallback(
+        string id, int sceneNumber, int clipNumber,
+        HttpRequest req,
+        ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
+        XaiResponsesClient? xai,
+        CancellationToken ct)
+    {
+        if (await AuthGate.RequireProjectOwnerAsync(id, user, store, opts, ct) is { } denied)
+            return denied;
+        try
+        {
+            if (!req.HasFormContentType)
+                return Results.BadRequest(new { ok = false, error = "multipart form required (field: file)" });
+            var form = await req.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            if (file is null || file.Length < 1024)
+                return Results.BadRequest(new { ok = false, error = "clip file required" });
+            if (file.Length > 80L * 1024 * 1024)
+                return Results.BadRequest(new { ok = false, error = "clip too large (max 80 MB)" });
+
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            var bytes = ms.ToArray();
+            var dir = await store.GetProjectDirAsync(id, ct);
+            var hosted = "railway";
+            if (xai is not null)
+            {
+                try
+                {
+                    var up = await xai.UploadPermanentFileAsync(
+                        bytes, ClipForkFallback.Mp4FileName(sceneNumber, clipNumber), "video/mp4", ct);
+                    ClipForkFallback.WriteSidecarFileId(dir, sceneNumber, clipNumber, up.FileId);
+                    hosted = "xai";
+                }
+                catch
+                {
+                    ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, bytes);
+                }
+            }
+            else
+            {
+                ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, bytes);
+            }
+
+            ClipForkFallback.ClearNeeded(dir, sceneNumber, clipNumber);
+            return Results.Ok(new { ok = true, hosted });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
 
     private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberPromptHistory(string id, int sceneNumber, int clipNumber, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
     {

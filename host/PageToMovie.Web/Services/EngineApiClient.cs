@@ -4481,6 +4481,56 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         }
     }
 
+    public async Task<List<(int Scene, int Clip)>> GetForkFallbackNeededAsync(
+        string projectId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(projectId)) return new();
+        try
+        {
+            using var resp = await _http.GetAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId.Trim())}/clips/fork-fallback-needed", ct);
+            if (!resp.IsSuccessStatusCode) return new();
+            var dto = await resp.Content.ReadFromJsonAsync<ForkFallbackNeededDto>(JsonOpts, ct);
+            return dto?.Clips?.Select(c => (c.Scene, c.Clip)).ToList() ?? new();
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    public async Task<bool> UploadForkFallbackClipAsync(
+        string projectId, int scene, int clip, byte[] bytes, CancellationToken ct = default)
+    {
+        if (bytes is null || bytes.Length < 1024) return false;
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            var content = new ByteArrayContent(bytes);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
+            form.Add(content, "file", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+            using var resp = await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/fork-fallback",
+                form, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private sealed class ForkFallbackNeededDto
+    {
+        public bool Ok { get; set; }
+        public List<ForkFallbackClipDto>? Clips { get; set; }
+    }
+
+    private sealed class ForkFallbackClipDto
+    {
+        public int Scene { get; set; }
+        public int Clip { get; set; }
+    }
 
     public async Task<byte[]?> GetCharacterImageAsync(string projectId, string characterKey, string? imageKind = null, CancellationToken ct = default)
     {

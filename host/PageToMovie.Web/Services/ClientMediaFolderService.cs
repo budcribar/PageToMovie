@@ -825,6 +825,7 @@ public sealed class ClientMediaFolderService
             {
                 LastStatus = "No media files to sync.";
                 Changed?.Invoke();
+                await PushDeadFileIdClipsAsync(projectId);
                 return 0;
             }
 
@@ -833,10 +834,13 @@ public sealed class ClientMediaFolderService
             {
                 LastStatus = "All project media files are already up-to-date on local disk.";
                 Changed?.Invoke();
+                await PushDeadFileIdClipsAsync(projectId);
                 return 0;
             }
 
-            return await DownloadOutOfDateMediaAsync(projectId, outOfDateFiles);
+            var n = await DownloadOutOfDateMediaAsync(projectId, outOfDateFiles);
+            await PushDeadFileIdClipsAsync(projectId);
+            return n;
         }
         catch (Exception ex)
         {
@@ -848,6 +852,34 @@ public sealed class ClientMediaFolderService
         {
             IsSyncing = false;
             SyncCurrentFile = null;
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// If a fork already failed to pull a clip via file_id, push our local copy so they can play.
+    /// Only those marked-needed clips — never a bulk dump onto Railway.
+    /// </summary>
+    internal async Task PushDeadFileIdClipsAsync(string projectId)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId)) return;
+        List<(int Scene, int Clip)> needed;
+        try { needed = await _api.GetForkFallbackNeededAsync(projectId); }
+        catch { return; }
+        if (needed.Count == 0) return;
+
+        var sent = 0;
+        foreach (var (scene, clip) in needed)
+        {
+            var rel = $"{projectId}/assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var bytes = await ReadLocalBytesAsync(rel, minBytes: 1024);
+            if (bytes is null || bytes.Length < 1024) continue;
+            if (await _api.UploadForkFallbackClipAsync(projectId, scene, clip, bytes))
+                sent++;
+        }
+        if (sent > 0)
+        {
+            LastStatus = $"Rehosted {sent} clip(s) a fork could not reach via file_id.";
             Changed?.Invoke();
         }
     }

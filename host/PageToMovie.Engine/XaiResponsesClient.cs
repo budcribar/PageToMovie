@@ -110,6 +110,38 @@ public sealed class XaiResponsesClient
         return new UploadResult(fileId, filename, bytes, expiresAt);
     }
 
+    /// <summary>Upload bytes with no expiry (xAI keeps the file until we delete it).</summary>
+    public async Task<UploadResult> UploadPermanentFileAsync(
+        byte[] fileBytes,
+        string filename,
+        string contentType = "video/mp4",
+        CancellationToken ct = default)
+    {
+        if (fileBytes is null || fileBytes.Length == 0)
+            throw new ArgumentException("file required", nameof(fileBytes));
+        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
+        using var form = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(fileBytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(
+            string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        var name = string.IsNullOrWhiteSpace(filename) ? "clip.mp4" : filename;
+        form.Add(fileContent, "file", name);
+        form.Add(new StringContent("assistants"), "purpose");
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/files") { Content = form };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"xAI file upload HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
+
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        var fileId = root.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("xAI file upload response had no id.");
+        return new UploadResult(fileId, name, fileBytes.LongLength, expiresAtUnixSeconds: null);
+    }
+
     /// <summary>First turn with optional system instructions (Responses instructions field).</summary>
     public Task<SessionTurnResult> StartSessionWithSystemAsync(
         string model,

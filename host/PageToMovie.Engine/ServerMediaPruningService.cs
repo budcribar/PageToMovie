@@ -212,6 +212,9 @@ namespace PageToMovie.Engine
         {
             var relativePath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
 
+            if (ClipForkFallback.IsProtectedFromPrune(file))
+                return;
+
             MediaObjectDto? registered;
             try
             {
