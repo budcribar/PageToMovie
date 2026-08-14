@@ -399,9 +399,10 @@ public partial class VoiceCaptureStep
             StateHasChanged();
             var apply = await Engine.ApplyVoiceCloneAsync(_projectId, CharKey);
             _done = true;
-            _status = apply.Ok
-                ? (apply.UsedMock ? "Demo voice applied. You can make the movie." : "Voice applied. You can make the movie.")
-                : ("Takes saved. " + (apply.Error ?? apply.Message ?? "Could not apply the voice."));
+            if (apply.Ok)
+                _status = apply.UsedMock ? "Demo voice applied. You can make the movie." : "Voice applied. You can make the movie.";
+            else
+                _status = "Takes saved. " + (apply.Error ?? apply.Message ?? "Could not apply the voice.");
             StateHasChanged();
             if (apply.Ok)
                 await OnComplete.InvokeAsync();
@@ -427,7 +428,10 @@ public partial class VoiceCaptureStep
     {
         if (_recording || _regions is not { Count: > 0 } r) return "";
         var m = r[Math.Min(wordIndex, r.Count - 1)];
-        var (rr, gg, bb) = m >= 0.7 ? (52, 199, 89) : m >= 0.5 ? (255, 204, 0) : (255, 59, 48);
+        int rr, gg, bb;
+        if (m >= 0.7) { rr = 52; gg = 199; bb = 89; }
+        else if (m >= 0.5) { rr = 255; gg = 204; bb = 0; }
+        else { rr = 255; gg = 59; bb = 48; }
         return $"background: rgba({rr},{gg},{bb},.32); border-radius:4px; padding:0 3px;";
     }
 
@@ -442,8 +446,32 @@ public partial class VoiceCaptureStep
         return bare.Replace('_', ' ') + "'s";
     }
 
-    internal static string ScoreLabel(int s) => s >= 80 ? "Great match!" : s >= 60 ? "Nice!" : s >= 40 ? "Good — try the rhythm again" : "Give it another go";
-    internal static string ScoreClass(int s) => s >= 60 ? "text-success" : s >= 40 ? "text-warning" : "text-muted";
+    internal string LightPrompt
+    {
+        get
+        {
+            if (_light == 1) return "Get ready…";
+            if (_light == 2) return "Set…";
+            if (_light == 3) return "Go — read it!";
+            if (_listening) return "This is how the narrator reads it — watch the words";
+            return "● Read the word at the line";
+        }
+    }
+
+    internal static string ScoreLabel(int s)
+    {
+        if (s >= 80) return "Great match!";
+        if (s >= 60) return "Nice!";
+        if (s >= 40) return "Good — try the rhythm again";
+        return "Give it another go";
+    }
+
+    internal static string ScoreClass(int s)
+    {
+        if (s >= 60) return "text-success";
+        if (s >= 40) return "text-warning";
+        return "text-muted";
+    }
 
     private sealed class ExtractUrlResult { public bool Success { get; set; } public string? Url { get; set; } public string? Error { get; set; } }
     private sealed class RhythmResult { public bool Success { get; set; } public int Score { get; set; } public List<double>? Regions { get; set; } public string? Error { get; set; } }

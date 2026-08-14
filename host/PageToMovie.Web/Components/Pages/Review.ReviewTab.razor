@@ -92,11 +92,11 @@
                             <thead>
                                 <tr>
                                     <th style="cursor:pointer; user-select:none;" @onclick='() => List.ToggleSceneSort("number")' title="Sort by scene number">
-                                        @L["ReviewPage.Scene"] @(List._sceneSortBy == "number" ? (List._sceneSortAsc ? "▲" : "▼") : "⇅")
+                                        @L["ReviewPage.Scene"] @List.SortArrow("number")
                                     </th>
                                     <th>@L["ReviewPage.Clips"]</th>
                                     <th style="cursor:pointer; user-select:none;" @onclick='() => List.ToggleSceneSort("duration")' title="Sort by duration">
-                                        @L["ReviewPage.Dur"] @(List._sceneSortBy == "duration" ? (List._sceneSortAsc ? "▲" : "▼") : "⇅")
+                                        @L["ReviewPage.Dur"] @List.SortArrow("duration")
                                     </th>
                                     <th>@L["ReviewPage.Composite"]</th>
                                     <th></th>
@@ -241,7 +241,7 @@
                                             disabled="@(Host._busy || !onDisk || Jobs.JobRunning || autoBusy || !Caps.VideoReviewReady)"
                                             title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : StudioCapabilityState.VideoReviewBlockedReason)"
                                             @onclick="() => AutoReview.StartAutoReviewAsync(sel, cn)">
-                                        @(autoBusy ? "Reviewing…" : draft is not null && !editing ? "Review again" : "Review")
+                                        @ReviewButtonLabel(autoBusy, draft is not null, editing)
                                     </button>
                                     @if (draft is not null && !editing && !autoBusy)
                                     {

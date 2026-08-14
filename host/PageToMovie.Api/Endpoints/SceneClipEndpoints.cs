@@ -433,11 +433,13 @@ public static class SceneClipEndpoints
     // "extend-source": the client's tail-trimmed continuation input for video-extend (see
     // FilmJobService.GenerateOneClipAsync) — fixed name, ignores any client-supplied filename so
     // the server always finds it at the exact path it expects.
-    var fileName = string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase)
-        ? $"_extend_src_s{scene:D2}c{clip:D2}.mp4"
-        : !string.IsNullOrWhiteSpace(file.FileName) && file.FileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetFileName(file.FileName)
-            : $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4";
+    string fileName;
+    if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
+        fileName = $"_extend_src_s{scene:D2}c{clip:D2}.mp4";
+    else if (!string.IsNullOrWhiteSpace(file.FileName) && file.FileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+        fileName = Path.GetFileName(file.FileName);
+    else
+        fileName = $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4";
     var destPath = Path.Combine(destDir, fileName);
 
     using (var stream = File.Create(destPath))

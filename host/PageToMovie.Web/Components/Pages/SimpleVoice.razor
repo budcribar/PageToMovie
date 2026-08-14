@@ -25,7 +25,7 @@
     </div>
 }
 
-<StudioProcessStrip Active="@(_phase == Phase.Movie ? "film" : _phase is Phase.Record or Phase.Done ? "cast" : "book")" SimpleMode="true" />
+<StudioProcessStrip Active="@StripActive" SimpleMode="true" />
 
 <InlineAlert Message="@_error" data-testid="simple-voice-error" />
 @if (string.IsNullOrEmpty(_error))

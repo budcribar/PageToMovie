@@ -134,13 +134,25 @@ public partial class StudioProcessStrip
         (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
             ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason);
 
-    private (string? Href, string Label, string? BlockedReason) NextFromEstimateOrCast() =>
-        (ActiveProject.CanScenes ? "scenes" : null, "Film",
-            ActiveProject.CanScenes
-                ? null
-                : (ActiveProject.CanEstimate
-                    ? "Generate movie on Estimate first"
-                    : ActiveProject.ScenesBlockedReason));
+    private string FilmStepTitle
+    {
+        get
+        {
+            if (ActiveProject.CanScenes) return "Watch and generate clips";
+            if (ActiveProject.CanEstimate) return "Use Estimate → Generate movie first";
+            return ActiveProject.ScenesBlockedReason;
+        }
+    }
+
+    private (string? Href, string Label, string? BlockedReason) NextFromEstimateOrCast()
+    {
+        if (ActiveProject.CanScenes)
+            return ("scenes", "Film", null);
+        var reason = ActiveProject.CanEstimate
+            ? "Generate movie on Estimate first"
+            : ActiveProject.ScenesBlockedReason;
+        return (null, "Film", reason);
+    }
 
     private (string? Href, string Label, string? BlockedReason) NextFromFilm() =>
         (ActiveProject.CanReview ? ReviewStep : null, "Review",

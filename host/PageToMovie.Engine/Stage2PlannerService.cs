@@ -2138,9 +2138,14 @@ public sealed class Stage2PlannerService
     private static string? ReadBeatAudioField(
         Dictionary<string, object?> beat,
         Dictionary<string, object?>? nested,
-        string key) =>
-        CoerceString(nested?.TryGetValue(key, out var n) == true ? n
-            : beat.TryGetValue(key, out var b) ? b : null);
+        string key)
+    {
+        if (nested?.TryGetValue(key, out var n) == true)
+            return CoerceString(n);
+        if (beat.TryGetValue(key, out var b))
+            return CoerceString(b);
+        return CoerceString(null);
+    }
 
     private static Dictionary<string, object?> BuildAudioPayload(
         Dictionary<string, object?> beat,

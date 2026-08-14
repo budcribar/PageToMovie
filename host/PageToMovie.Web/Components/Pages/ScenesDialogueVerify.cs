@@ -207,12 +207,14 @@ public partial class Scenes
         }
     }
 
-    private string EmptyVerifyTargetsMessage() =>
-        S.List._detail is not null
-            ? "All clips verified. Tick specific clip boxes in the first column to force a re-check."
-            : S.List._selected.Count == 0
-                ? "Select one or more scenes with finished clips to verify."
-                : "Selected scenes have no finished clips to verify yet.";
+    private string EmptyVerifyTargetsMessage()
+    {
+        if (S.List._detail is not null)
+            return "All clips verified. Tick specific clip boxes in the first column to force a re-check.";
+        if (S.List._selected.Count == 0)
+            return "Select one or more scenes with finished clips to verify.";
+        return "Selected scenes have no finished clips to verify yet.";
+    }
 
     private async Task RunDialogueVerificationAsync(List<(int Scene, int Clip)> targets)
     {

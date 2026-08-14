@@ -27,7 +27,13 @@ public static class BookTextAnalyzer
     {
         text = GutenbergCleaner.StripHeaderAndFooter(text ?? "");
         var bodies = PageBodies(text);
-        var pages = pagesHint is > 0 ? pagesHint.Value : (bodies.Count > 0 ? bodies.Count : 1);
+        int pages;
+        if (pagesHint is > 0)
+            pages = pagesHint.Value;
+        else if (bodies.Count > 0)
+            pages = bodies.Count;
+        else
+            pages = 1;
         if (bodies.Count == 0 && !string.IsNullOrWhiteSpace(text))
             bodies = new List<string> { text.Trim() };
 
@@ -135,9 +141,13 @@ public static class BookTextAnalyzer
         double sparseRatio, double avgChars, int pages, int words)
     {
         var textDensity = sparseRatio > 0.45 || avgChars < 200 ? TextDensity.Sparse : TextDensity.Normal;
-        var bookKind = pages <= 40 && (textDensity == TextDensity.Sparse || words < 800)
-            ? BookKind.PictureBook
-            : words < 15000 ? BookKind.Short : BookKind.Novel;
+        BookKind bookKind;
+        if (pages <= 40 && (textDensity == TextDensity.Sparse || words < 800))
+            bookKind = BookKind.PictureBook;
+        else if (words < 15000)
+            bookKind = BookKind.Short;
+        else
+            bookKind = BookKind.Novel;
         return (textDensity, bookKind);
     }
 

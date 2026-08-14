@@ -411,11 +411,14 @@ public partial class Scenes
         {
             foreach (var v in S.ClipVer._clipVersions)
             {
-                map[v.VersionId] = v.ClientOnly && !string.IsNullOrEmpty(v.RelativePath)
-                    ? await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, v.RelativePath)
-                    : v.IsCurrent
-                        ? S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber)
-                        : S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+                string? url;
+                if (v.ClientOnly && !string.IsNullOrEmpty(v.RelativePath))
+                    url = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, v.RelativePath);
+                else if (v.IsCurrent)
+                    url = S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+                else
+                    url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+                map[v.VersionId] = url;
             }
         }
         _compareVideoUrls = map;

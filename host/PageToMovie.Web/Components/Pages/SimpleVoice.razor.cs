@@ -16,6 +16,16 @@ public partial class SimpleVoice
 {
     internal enum Phase { Pick, Record, Done, Movie }
 
+    private string StripActive
+    {
+        get
+        {
+            if (_phase == Phase.Movie) return "film";
+            if (_phase is Phase.Record or Phase.Done) return "cast";
+            return "book";
+        }
+    }
+
     internal Phase _phase = Phase.Pick;
     internal List<ForkableStoryDto> _forkableStories = new();
     internal bool _storiesLoading = true;

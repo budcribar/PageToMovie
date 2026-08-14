@@ -29,4 +29,28 @@ public partial class Scenes_SceneList
     [CascadingParameter] public Scenes.ScenesHistory? History { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
+
+    private string PlaySelectedTitle
+    {
+        get
+        {
+            if (Playback.CanPlaySelected)
+                return "Stitch selected scenes in the browser (composites or clips)";
+            if (Host.List._selected.Count == 0)
+                return "Select one or more scenes first";
+            return "Selected scenes have no clips or composites to play yet";
+        }
+    }
+
+    private string VerifyDialogueTitle
+    {
+        get
+        {
+            if (Dialogue.SelectedScenesHaveClipsToVerify)
+                return "Check the spoken words in each finished clip against the screenplay";
+            if (Host.List._selected.Count == 0)
+                return "Select one or more scenes with finished clips first";
+            return "Selected scenes have no finished clips to check yet";
+        }
+    }
 }

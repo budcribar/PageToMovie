@@ -109,12 +109,14 @@ public sealed class FalVideoClient : IVideoClient
         }
     }
 
-    private static string? ResolveInitImagePath(string? startFrameImagePath, IReadOnlyList<string>? referenceImagePaths) =>
-        !string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath)
-            ? startFrameImagePath
-            : referenceImagePaths is { Count: > 0 } && File.Exists(referenceImagePaths[0])
-                ? referenceImagePaths[0]
-                : null;
+    private static string? ResolveInitImagePath(string? startFrameImagePath, IReadOnlyList<string>? referenceImagePaths)
+    {
+        if (!string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath))
+            return startFrameImagePath;
+        if (referenceImagePaths is { Count: > 0 } && File.Exists(referenceImagePaths[0]))
+            return referenceImagePaths[0];
+        return null;
+    }
 
     private static async Task<string> AttachInitImageAsync(
         Dictionary<string, object?> payload,

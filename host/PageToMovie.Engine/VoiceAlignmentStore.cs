@@ -208,9 +208,11 @@ public sealed class VoiceAlignmentStore
             .ToList();
 
         // Fallback span: whole clip when duration known, else the detected envelope.
-        var clipEnd = clipDurationSeconds > 0.01
-            ? clipDurationSeconds
-            : (windows.Count > 0 ? windows[^1].End : lines.Count);
+        double clipEnd;
+        if (clipDurationSeconds > 0.01)
+            clipEnd = clipDurationSeconds;
+        else
+            clipEnd = windows.Count > 0 ? windows[^1].End : lines.Count;
 
         if (windows.Count == lines.Count)
         {

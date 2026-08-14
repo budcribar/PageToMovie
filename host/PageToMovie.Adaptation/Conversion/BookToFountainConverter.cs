@@ -2325,7 +2325,12 @@ promptVersion: promptVersion,
         }
         else
         {
-            minScenes = bookLength > 50_000 ? 8 : (bookLength > 20_000 ? 3 : 1);
+            if (bookLength > 50_000)
+                minScenes = 8;
+            else if (bookLength > 20_000)
+                minScenes = 3;
+            else
+                minScenes = 1;
         }
         if (bookLength < 8_000)
             minScenes = Math.Min(minScenes, 2);

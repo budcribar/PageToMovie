@@ -155,7 +155,7 @@
                                 var enriching = Archive._archiveAction == "enrich"
                                     || string.Equals(ej?.Status, "running", StringComparison.OrdinalIgnoreCase)
                                     || string.Equals(ej?.Status, "queued", StringComparison.OrdinalIgnoreCase);
-                                var sceneTotal = ej?.Total > 4 ? ej.Total : (ej?.Total > 0 && (ej.Index > 0) ? ej.Total : 0);
+                                var sceneTotal = EnrichSceneTotal(ej);
                                 <JobProgressCard Status="@(ej?.Status ?? (enriching ? "running" : ""))"
                                                  Message="@(ej?.Message ?? Archive._archiveMsg ?? "Starting enrich…")"
                                                  DetailMessage="Scene-by-scene. The bar moves 1/28, 2/28… If Admin Jobs shows 0, this card is stale — refresh."

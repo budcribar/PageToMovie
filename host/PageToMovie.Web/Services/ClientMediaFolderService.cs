@@ -506,7 +506,7 @@ public sealed class ClientMediaFolderService
             RelativePath = rel,
             Sha256 = sha256,
             SizeBytes = saved.SizeBytes,
-            Kind = isCredits ? "credits" : isMusic ? "music" : isSpeakBatch ? "audio" : "clip",
+            Kind = MediaKind(isCredits, isMusic, isSpeakBatch),
             Scene = snap.Scene,
             Clip = snap.Clip,
         });
@@ -520,6 +520,14 @@ public sealed class ClientMediaFolderService
 
         lock (_savingKeys)
             _savedKeys.Add(key);
+    }
+
+    private static string MediaKind(bool isCredits, bool isMusic, bool isSpeakBatch)
+    {
+        if (isCredits) return "credits";
+        if (isMusic) return "music";
+        if (isSpeakBatch) return "audio";
+        return "clip";
     }
 
     private async Task RevokeBlobIfAnyAsync(string? blobUrl)

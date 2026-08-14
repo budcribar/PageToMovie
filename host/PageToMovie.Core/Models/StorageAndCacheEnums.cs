@@ -482,58 +482,130 @@ public static class StorageAndCacheEnumExtensions
     };
 
     public static StorageProviderType ParseStorageProviderType(string? s, StorageProviderType defaultValue = StorageProviderType.LocalStorage)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageProviderType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageProviderType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ProjectFileKind ParseProjectFileKind(string? s, ProjectFileKind defaultValue = ProjectFileKind.ProjectMetadata)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectFileKind>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectFileKind>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static FileAccessMode ParseFileAccessMode(string? s, FileAccessMode defaultValue = FileAccessMode.ReadWrite)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileAccessMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileAccessMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static DatabaseMigrationStatus ParseDatabaseMigrationStatus(string? s, DatabaseMigrationStatus defaultValue = DatabaseMigrationStatus.NotStarted)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseMigrationStatus>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseMigrationStatus>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ProjectBackupType ParseProjectBackupType(string? s, ProjectBackupType defaultValue = ProjectBackupType.Full)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectBackupType>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectBackupType>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static StorageCleanupStrategy ParseStorageCleanupStrategy(string? s, StorageCleanupStrategy defaultValue = StorageCleanupStrategy.Scheduled)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageCleanupStrategy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageCleanupStrategy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static DiskSpaceAlertLevel ParseDiskSpaceAlertLevel(string? s, DiskSpaceAlertLevel defaultValue = DiskSpaceAlertLevel.Normal)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DiskSpaceAlertLevel>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DiskSpaceAlertLevel>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static CacheStorageBackend ParseCacheStorageBackend(string? s, CacheStorageBackend defaultValue = CacheStorageBackend.InMemory)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheStorageBackend>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheStorageBackend>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static CacheEvictionPolicy ParseCacheEvictionPolicy(string? s, CacheEvictionPolicy defaultValue = CacheEvictionPolicy.Lru)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheEvictionPolicy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheEvictionPolicy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static FileCompressionAlgorithm ParseFileCompressionAlgorithm(string? s, FileCompressionAlgorithm defaultValue = FileCompressionAlgorithm.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileCompressionAlgorithm>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileCompressionAlgorithm>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ProjectLockState ParseProjectLockState(string? s, ProjectLockState defaultValue = ProjectLockState.Unlocked)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectLockState>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectLockState>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static DatabaseIndexingMode ParseDatabaseIndexingMode(string? s, DatabaseIndexingMode defaultValue = DatabaseIndexingMode.Automatic)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseIndexingMode>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseIndexingMode>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static AssetValidationResult ParseAssetValidationResult(string? s, AssetValidationResult defaultValue = AssetValidationResult.Valid)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AssetValidationResult>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AssetValidationResult>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static StorageTierPolicy ParseStorageTierPolicy(string? s, StorageTierPolicy defaultValue = StorageTierPolicy.Hot)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageTierPolicy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageTierPolicy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static DirectoryStructurePattern ParseDirectoryStructurePattern(string? s, DirectoryStructurePattern defaultValue = DirectoryStructurePattern.ByAssetType)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DirectoryStructurePattern>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DirectoryStructurePattern>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static FileHashAlgorithm ParseFileHashAlgorithm(string? s, FileHashAlgorithm defaultValue = FileHashAlgorithm.Sha256)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileHashAlgorithm>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileHashAlgorithm>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static DataExportFormat ParseDataExportFormat(string? s, DataExportFormat defaultValue = DataExportFormat.Json)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DataExportFormat>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DataExportFormat>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static ProjectImportConflictStrategy ParseProjectImportConflictStrategy(string? s, ProjectImportConflictStrategy defaultValue = ProjectImportConflictStrategy.PromptUser)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectImportConflictStrategy>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectImportConflictStrategy>(s, true, out var r) ? r : defaultValue;
+    }
 
     public static StorageRetentionPeriod ParseStorageRetentionPeriod(string? s, StorageRetentionPeriod defaultValue = StorageRetentionPeriod.Indefinite)
     {
@@ -549,7 +621,11 @@ public static class StorageAndCacheEnumExtensions
     }
 
     public static DatabaseTransactionIsolation ParseDatabaseTransactionIsolation(string? s, DatabaseTransactionIsolation defaultValue = DatabaseTransactionIsolation.ReadCommitted)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseTransactionIsolation>(s, true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseTransactionIsolation>(s, true, out var r) ? r : defaultValue;
+    }
 
 }
 

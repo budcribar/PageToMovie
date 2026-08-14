@@ -53,6 +53,12 @@ public partial class Review
             }
         }
 
+        internal string SortArrow(string column)
+        {
+            if (_sceneSortBy != column) return "⇅";
+            return _sceneSortAsc ? "▲" : "▼";
+        }
+
 
         internal async Task ToggleTabAsync(ReviewTab tab)
         {

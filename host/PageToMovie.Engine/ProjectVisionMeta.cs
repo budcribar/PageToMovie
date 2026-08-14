@@ -172,9 +172,12 @@ public static class ProjectVisionMeta
     }
 
     private static string ResolveExtractDecidedBy(string? source) =>
-        source is Adaptation or "adaptation_llm" ? Adaptation
-        : source is "cast_extract" ? "cast_extract"
-        : "import";
+        source switch
+        {
+            Adaptation or "adaptation_llm" => Adaptation,
+            "cast_extract" => "cast_extract",
+            _ => "import",
+        };
 
     public static void Write(string projectDir, Document doc)
     {

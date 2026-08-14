@@ -105,5 +105,10 @@ public sealed class AiCallAnalyticsService
         return outp;
     }
 
-    private static string Trim(string? s, int max) => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max] + "…");
+    private static string Trim(string? s, int max)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= max ? s : s[..max] + "…";
+    }
 }

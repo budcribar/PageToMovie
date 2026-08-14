@@ -57,7 +57,7 @@
                     class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "") @(!c.UsedInPlan ? "opacity-75" : "")"
                     style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
                     disabled="@List.CastListLocked"
-                    title="@(List.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : c.DisplayName))"
+                    title="@ItemTitle(c)"
                     @onclick="() => List.SelectAsync(c.Key)">
                 @if (c.VoiceOnly)
                 {

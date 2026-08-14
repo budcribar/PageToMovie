@@ -21,11 +21,7 @@
                 @foreach (var d in Host.Costs._publicDemos.Take(4))
                 {
                     var yt = YouTubeVideoId.Extract(d.YoutubeId) ?? YouTubeVideoId.Extract(d.YoutubeUrl);
-                    var href = yt is not null
-                        ? YouTubeVideoId.WatchUrl(yt)
-                        : (!string.IsNullOrWhiteSpace(d.YoutubeUrl) && Uri.TryCreate(d.YoutubeUrl.Trim(), UriKind.Absolute, out _)
-                            ? d.YoutubeUrl.Trim()
-                            : "/demo");
+                    var href = DemoHref(yt, d);
                     var thumb = yt is not null
                         ? YouTubeVideoId.ThumbnailUrl(yt, "mqdefault")
                         : null;

@@ -123,8 +123,13 @@ JSON: {"ranked":["page_03.png","cover.png","embedded_p02.jpg"]}
 
     private static void TryAddRankedName(List<string> list, HashSet<string> allowed, JsonElement el)
     {
-        var name = el.ValueKind == JsonValueKind.String ? el.GetString()
-            : el.TryGetProperty("name", out var n) ? n.GetString() : null;
+        string? name;
+        if (el.ValueKind == JsonValueKind.String)
+            name = el.GetString();
+        else if (el.TryGetProperty("name", out var n))
+            name = n.GetString();
+        else
+            name = null;
         if (string.IsNullOrWhiteSpace(name)) return;
         var hit = allowed.FirstOrDefault(a =>
             a.Equals(name, StringComparison.OrdinalIgnoreCase) ||

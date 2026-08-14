@@ -123,13 +123,57 @@ public partial class Scenes
 
 
 
-    internal string CastBlockedTitle =>
-        _castMissing.Count > 0
-            ? $"Approve voice first: {string.Join(", ", _castMissing.Take(4))}{(_castMissing.Count > 4 ? "…" : "")}"
-                + (ProductionModes.IsDraft(_costReport?.ProductionMode) ? " (draft: plates optional)" : " (+ locked image)")
-            : ProductionModes.IsDraft(_costReport?.ProductionMode)
-                ? "Approve voice for speaking cast before generating (draft: plates optional)"
-                : "Approve voice + locked image for every character before generating video";
+    internal string CastBlockedTitle
+    {
+        get
+        {
+            if (_castMissing.Count > 0)
+            {
+                var ellipsis = _castMissing.Count > 4 ? "…" : "";
+                var suffix = ProductionModes.IsDraft(_costReport?.ProductionMode)
+                    ? " (draft: plates optional)"
+                    : " (+ locked image)";
+                return $"Approve voice first: {string.Join(", ", _castMissing.Take(4))}{ellipsis}{suffix}";
+            }
+            if (ProductionModes.IsDraft(_costReport?.ProductionMode))
+                return "Approve voice for speaking cast before generating (draft: plates optional)";
+            return "Approve voice + locked image for every character before generating video";
+        }
+    }
+
+    internal string? GenerateBatchTitle
+    {
+        get
+        {
+            if (!CastReady) return CastBlockedTitle;
+            if (SelectedLockedByOther) return "Selection includes scenes locked by another user";
+            return null;
+        }
+    }
+
+    internal string GenerateBatchNoun
+    {
+        get
+        {
+            var n = _selected.Count;
+            if (n <= 0) return "Batch";
+            var suffix = n == 1 ? "" : "s";
+            return $"{n} scene{suffix}";
+        }
+    }
+
+    internal string SortArrow(string column)
+    {
+        if (_sortBy != column) return "⇅";
+        return _sortAscending ? "▲" : "▼";
+    }
+
+    internal static string ClipsCountClass(SceneSummary s)
+    {
+        if (s.ClipsComplete) return "text-success";
+        if (s.ClipsOnDisk > 0) return "text-warning";
+        return "text-muted";
+    }
 
 
 

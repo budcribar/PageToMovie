@@ -199,9 +199,10 @@ public static class CastPackageCrossCheck
         foreach (var key in report.MatchedKeys)
             points += 5.0 + Math.Min(5.0, DetailPoints(report.Quality[key]));
 
-        report.Score = maxPoints <= 0
-            ? (report.Failures.Count == 0 ? 100 : 0)
-            : Math.Round(100.0 * points / maxPoints, 1);
+        if (maxPoints <= 0)
+            report.Score = report.Failures.Count == 0 ? 100 : 0;
+        else
+            report.Score = Math.Round(100.0 * points / maxPoints, 1);
 
         var memberOk = report.RequiredSpeakers.Count == 0
             ? 100.0

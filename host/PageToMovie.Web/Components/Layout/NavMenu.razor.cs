@@ -35,6 +35,28 @@ public partial class NavMenu : IDisposable
             }
         }
 
+        private string MediaFolderTitle
+        {
+            get
+            {
+                if (MediaFolder.IsConnected) return MediaFolder.FolderName;
+                if (MediaFolder.NeedsReconnect)
+                    return $"Re-grant access to {MediaFolder.PendingReconnectFolderName}";
+                return "Store gen clips on your disk";
+            }
+        }
+
+        private string MediaFolderLabel
+        {
+            get
+            {
+                if (MediaFolder.IsConnected) return $"Media: {MediaFolder.FolderName}";
+                if (MediaFolder.NeedsReconnect)
+                    return $"Reconnect {MediaFolder.PendingReconnectFolderName}…";
+                return "Connect media folder…";
+            }
+        }
+
         private void ToggleUserMenu() => _userMenuOpen = !_userMenuOpen;
 
         private void CloseUserMenu() => _userMenuOpen = false;

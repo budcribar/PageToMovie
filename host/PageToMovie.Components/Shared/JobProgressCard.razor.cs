@@ -57,12 +57,17 @@ public sealed partial class JobProgressCard : IDisposable
 
     bool IsError => string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase);
 
-    string? DisplayElapsed =>
-        !string.IsNullOrWhiteSpace(Elapsed)
-            ? Elapsed
-            : IsActive && StartedAt is DateTimeOffset started
-                ? ElapsedClock.FormatSince(started)
-                : null;
+    string? DisplayElapsed
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Elapsed))
+                return Elapsed;
+            if (IsActive && StartedAt is DateTimeOffset started)
+                return ElapsedClock.FormatSince(started);
+            return null;
+        }
+    }
 
     /// <summary>
     /// Active jobs always get a bar. Successful done: hide by default (message is enough).
@@ -83,11 +88,30 @@ public sealed partial class JobProgressCard : IDisposable
         }
     }
 
-    string BorderClass =>
-        IsError ? "border-danger"
-        : IsActive ? "border-primary"
-        : IsDone ? "border-success"
-        : "border-secondary";
+    string BorderClass
+    {
+        get
+        {
+            if (IsError) return "border-danger";
+            if (IsActive) return "border-primary";
+            if (IsDone) return "border-success";
+            return "border-secondary";
+        }
+    }
+
+    string ProgressBarClasses
+    {
+        get
+        {
+            if (IsActive || Indeterminate)
+                return "progress-bar progress-bar-striped progress-bar-animated bg-primary";
+            if (string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase))
+                return "progress-bar bg-danger";
+            if (string.Equals(Status, "done", StringComparison.OrdinalIgnoreCase))
+                return "progress-bar bg-success";
+            return "progress-bar bg-secondary";
+        }
+    }
 
     protected override void OnParametersSet() => SyncElapsedTimer();
 

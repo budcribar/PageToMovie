@@ -23,11 +23,7 @@
         </div>
     </div>
     <div class="small mb-3 @(Host._listening ? "text-info" : "text-danger")">
-        @(Host._light == 1 ? "Get ready…"
-            : Host._light == 2 ? "Set…"
-            : Host._light == 3 ? "Go — read it!"
-            : Host._listening ? "This is how the narrator reads it — watch the words"
-            : "● Read the word at the line")
+        @Host.LightPrompt
     </div>
 }
 else

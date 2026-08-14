@@ -17,4 +17,12 @@ public partial class Admin_ArchiveSection
     [CascadingParameter] public required Admin Host { get; set; }
     [CascadingParameter] public Admin.AdminArchive? Archive { get; set; }
     [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
+
+    private static int EnrichSceneTotal(JobSnapshot? ej)
+    {
+        if (ej is null) return 0;
+        if (ej.Total > 4) return ej.Total;
+        if (ej.Total > 0 && ej.Index > 0) return ej.Total;
+        return 0;
+    }
 }

@@ -34,6 +34,37 @@ public partial class Scenes_ClipInspector
 
     [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
 
+    private string RegenClipTitle(bool clipNeedsPrev)
+    {
+        if (!ListState.CastReady) return ListState.CastBlockedTitle;
+        if (clipNeedsPrev)
+            return $"Generate C{(ClipForm._clip.ClipNumber - 1):D2} first — continues from previous video";
+        return "Force re-generate this clip (overwrites if present)";
+    }
+
+    private string VideoEditTitle
+    {
+        get
+        {
+            var clip = ClipForm._clip;
+            if (!clip.OnDisk) return "Generate this clip first";
+            if (Scenes.ScenesClipRegen.ClipExceedsEditDurationCap(clip))
+                return $"Clip is {(clip.ActualDurationSeconds ?? clip.DurationSeconds):0.#}s — Grok can only edit clips up to {Scenes.MaxVideoEditInputSeconds:0.#}s";
+            return "Edit this clip with an AI text prompt (new take, spends provider credit)";
+        }
+    }
+
+    private string? GenerateThisClipTitle
+    {
+        get
+        {
+            if (!ListState.CastReady) return ListState.CastBlockedTitle;
+            if (ClipSel.PreviousClipMissing(ClipForm._clip.ClipNumber))
+                return $"Need C{(ClipForm._clip.ClipNumber - 1):D2} on disk";
+            return null;
+        }
+    }
+
     private void DismissTakeReason()
     {
         if (Gen is null) return;

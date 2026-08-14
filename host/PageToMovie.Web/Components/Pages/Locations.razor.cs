@@ -28,6 +28,14 @@ public partial class Locations : IDisposable
     private int NeedPlateCount =>
         LocationsForUi.Count(l => !l.Locked && !l.HasPreferred);
 
+    private static string ListMeta(LocationSummary loc, bool isLocked)
+    {
+        if (isLocked) return "Locked";
+        var n = loc.Variants.Count(v => v.Exists);
+        if (n > 0) return $"{n} looks";
+        return "No plate";
+    }
+
     private string? ListThumbUrl(LocationSummary loc)
     {
         if (loc.HasPreferred || loc.Locked)

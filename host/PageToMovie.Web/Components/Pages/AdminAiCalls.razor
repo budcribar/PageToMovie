@@ -55,7 +55,7 @@
                 <div class="col-6 col-md-3">
                     <div class="card h-100"><div class="card-body py-2">
                         <div class="text-muted small text-uppercase">Success</div>
-                        <div class="fs-4 fw-semibold @(_data.SuccessRatePct >= 95 ? "text-success" : _data.SuccessRatePct >= 80 ? "text-warning" : "text-danger")">@_data.SuccessRatePct%</div>
+                        <div class="fs-4 fw-semibold @SuccessRateClass(_data.SuccessRatePct)">@_data.SuccessRatePct%</div>
                         <div class="small text-muted">@_data.RetriedCalls.ToString("N0") after retry</div>
                     </div></div>
                 </div>

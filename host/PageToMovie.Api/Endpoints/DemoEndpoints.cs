@@ -688,8 +688,17 @@ public static class DemoEndpoints
     private static void QueueYouTubePublish(DemoYouTubePublisherService youTubePublisher, string demoId) =>
         _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, CancellationToken.None));
 
-    private static IResult BuildPublishDemoResult(DemoCatalogService.DemoEntry entry, bool replacedExisting) =>
-        Results.Ok(new
+    private static IResult BuildPublishDemoResult(DemoCatalogService.DemoEntry entry, bool replacedExisting)
+    {
+        string message;
+        if (replacedExisting)
+            message = "Updated cut — uploading to YouTube. Gallery shows it when the upload finishes.";
+        else if (string.IsNullOrWhiteSpace(entry.YoutubeId))
+            message = "Publishing to YouTube… It appears in the gallery when the upload finishes.";
+        else
+            message = "Film is live on YouTube and in the gallery.";
+
+        return Results.Ok(new
         {
             ok = true,
             // No admin review queue — YouTube upload is the gate for the public wall.
@@ -697,14 +706,11 @@ public static class DemoEndpoints
             awaitingYouTube = string.IsNullOrWhiteSpace(entry.YoutubeId),
             autoPublic = true,
             replacedExisting,
-            message = replacedExisting
-                ? "Updated cut — uploading to YouTube. Gallery shows it when the upload finishes."
-                : string.IsNullOrWhiteSpace(entry.YoutubeId)
-                    ? "Publishing to YouTube… It appears in the gallery when the upload finishes."
-                    : "Film is live on YouTube and in the gallery.",
+            message,
             demo = ApiEndpointHelpers.DemoPublicDto(entry),
             pagePath = "/demo",
         });
+    }
 
     private static async Task<IResult> PostDemosDemoIdReport(string demoId,
     DemoReportRequest? body,

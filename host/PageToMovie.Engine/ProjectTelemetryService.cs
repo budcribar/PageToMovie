@@ -56,12 +56,17 @@ public sealed class ProjectTelemetryService
         return new ScopePop(() => ScopedProjectId.Value = prev);
     }
 
-    public string? CurrentProjectId =>
-        !string.IsNullOrWhiteSpace(ScopedProjectId.Value)
-            ? ScopedProjectId.Value
-            : string.IsNullOrWhiteSpace(_projects.ActiveProjectId)
+    public string? CurrentProjectId
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(ScopedProjectId.Value))
+                return ScopedProjectId.Value;
+            return string.IsNullOrWhiteSpace(_projects.ActiveProjectId)
                 ? null
                 : _projects.ActiveProjectId;
+        }
+    }
 
     public async Task<string> TelemetryDirAsync(string projectId, CancellationToken ct = default) =>
         Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "telemetry");

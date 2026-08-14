@@ -474,97 +474,173 @@ public static class VideoFfmpegExtendedEnumExtensions
         => ParseVideoCodecNameKind(s, defaultValue);
 
     public static VideoPixelFormatKind ParseVideoPixelFormatKind(string? s, VideoPixelFormatKind defaultValue = VideoPixelFormatKind.Yuv420p)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoPixelFormatKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoPixelFormatKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoPixelFormatKind ToVideoPixelFormatKind(this string? s, VideoPixelFormatKind defaultValue = VideoPixelFormatKind.Yuv420p)
         => ParseVideoPixelFormatKind(s, defaultValue);
 
     public static VideoColorSpaceKind ParseVideoColorSpaceKind(string? s, VideoColorSpaceKind defaultValue = VideoColorSpaceKind.Bt709)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoColorSpaceKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoColorSpaceKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoColorSpaceKind ToVideoColorSpaceKind(this string? s, VideoColorSpaceKind defaultValue = VideoColorSpaceKind.Bt709)
         => ParseVideoColorSpaceKind(s, defaultValue);
 
     public static VideoBitrateControlKind ParseVideoBitrateControlKind(string? s, VideoBitrateControlKind defaultValue = VideoBitrateControlKind.Crf)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoBitrateControlKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoBitrateControlKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoBitrateControlKind ToVideoBitrateControlKind(this string? s, VideoBitrateControlKind defaultValue = VideoBitrateControlKind.Crf)
         => ParseVideoBitrateControlKind(s, defaultValue);
 
     public static VideoGopStructureKind ParseVideoGopStructureKind(string? s, VideoGopStructureKind defaultValue = VideoGopStructureKind.Auto)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoGopStructureKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoGopStructureKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoGopStructureKind ToVideoGopStructureKind(this string? s, VideoGopStructureKind defaultValue = VideoGopStructureKind.Auto)
         => ParseVideoGopStructureKind(s, defaultValue);
 
     public static FfmpegPresetSpeedKind ParseFfmpegPresetSpeedKind(string? s, FfmpegPresetSpeedKind defaultValue = FfmpegPresetSpeedKind.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegPresetSpeedKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FfmpegPresetSpeedKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FfmpegPresetSpeedKind ToFfmpegPresetSpeedKind(this string? s, FfmpegPresetSpeedKind defaultValue = FfmpegPresetSpeedKind.Medium)
         => ParseFfmpegPresetSpeedKind(s, defaultValue);
 
     public static FfmpegLogVerbosityKind ParseFfmpegLogVerbosityKind(string? s, FfmpegLogVerbosityKind defaultValue = FfmpegLogVerbosityKind.Info)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegLogVerbosityKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FfmpegLogVerbosityKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FfmpegLogVerbosityKind ToFfmpegLogVerbosityKind(this string? s, FfmpegLogVerbosityKind defaultValue = FfmpegLogVerbosityKind.Info)
         => ParseFfmpegLogVerbosityKind(s, defaultValue);
 
     public static VideoScaleAlgorithmKind ParseVideoScaleAlgorithmKind(string? s, VideoScaleAlgorithmKind defaultValue = VideoScaleAlgorithmKind.Bicubic)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoScaleAlgorithmKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoScaleAlgorithmKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoScaleAlgorithmKind ToVideoScaleAlgorithmKind(this string? s, VideoScaleAlgorithmKind defaultValue = VideoScaleAlgorithmKind.Bicubic)
         => ParseVideoScaleAlgorithmKind(s, defaultValue);
 
     public static VideoAspectModeKind ParseVideoAspectModeKind(string? s, VideoAspectModeKind defaultValue = VideoAspectModeKind.Fit)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoAspectModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoAspectModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoAspectModeKind ToVideoAspectModeKind(this string? s, VideoAspectModeKind defaultValue = VideoAspectModeKind.Fit)
         => ParseVideoAspectModeKind(s, defaultValue);
 
     public static VideoWatermarkPositionKind ParseVideoWatermarkPositionKind(string? s, VideoWatermarkPositionKind defaultValue = VideoWatermarkPositionKind.BottomRight)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoWatermarkPositionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoWatermarkPositionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoWatermarkPositionKind ToVideoWatermarkPositionKind(this string? s, VideoWatermarkPositionKind defaultValue = VideoWatermarkPositionKind.BottomRight)
         => ParseVideoWatermarkPositionKind(s, defaultValue);
 
     public static VideoTransitionTypeKind ParseVideoTransitionTypeKind(string? s, VideoTransitionTypeKind defaultValue = VideoTransitionTypeKind.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoTransitionTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoTransitionTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoTransitionTypeKind ToVideoTransitionTypeKind(this string? s, VideoTransitionTypeKind defaultValue = VideoTransitionTypeKind.None)
         => ParseVideoTransitionTypeKind(s, defaultValue);
 
     public static SubtitleFontFamilyKind ParseSubtitleFontFamilyKind(string? s, SubtitleFontFamilyKind defaultValue = SubtitleFontFamilyKind.Arial)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontFamilyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleFontFamilyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SubtitleFontFamilyKind ToSubtitleFontFamilyKind(this string? s, SubtitleFontFamilyKind defaultValue = SubtitleFontFamilyKind.Arial)
         => ParseSubtitleFontFamilyKind(s, defaultValue);
 
     public static SubtitleFontSizeKind ParseSubtitleFontSizeKind(string? s, SubtitleFontSizeKind defaultValue = SubtitleFontSizeKind.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontSizeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleFontSizeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SubtitleFontSizeKind ToSubtitleFontSizeKind(this string? s, SubtitleFontSizeKind defaultValue = SubtitleFontSizeKind.Medium)
         => ParseSubtitleFontSizeKind(s, defaultValue);
 
     public static SubtitleAlignmentKind ParseSubtitleAlignmentKind(string? s, SubtitleAlignmentKind defaultValue = SubtitleAlignmentKind.BottomCenter)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleAlignmentKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleAlignmentKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SubtitleAlignmentKind ToSubtitleAlignmentKind(this string? s, SubtitleAlignmentKind defaultValue = SubtitleAlignmentKind.BottomCenter)
         => ParseSubtitleAlignmentKind(s, defaultValue);
 
     public static SubtitleBorderModeKind ParseSubtitleBorderModeKind(string? s, SubtitleBorderModeKind defaultValue = SubtitleBorderModeKind.Outline)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleBorderModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SubtitleBorderModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SubtitleBorderModeKind ToSubtitleBorderModeKind(this string? s, SubtitleBorderModeKind defaultValue = SubtitleBorderModeKind.Outline)
         => ParseSubtitleBorderModeKind(s, defaultValue);
 
     public static RemuxJobStageKind ParseRemuxJobStageKind(string? s, RemuxJobStageKind defaultValue = RemuxJobStageKind.Pending)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<RemuxJobStageKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<RemuxJobStageKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static RemuxJobStageKind ToRemuxJobStageKind(this string? s, RemuxJobStageKind defaultValue = RemuxJobStageKind.Pending)
         => ParseRemuxJobStageKind(s, defaultValue);
 
     public static VideoHardwareAccelKind ParseVideoHardwareAccelKind(string? s, VideoHardwareAccelKind defaultValue = VideoHardwareAccelKind.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoHardwareAccelKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoHardwareAccelKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoHardwareAccelKind ToVideoHardwareAccelKind(this string? s, VideoHardwareAccelKind defaultValue = VideoHardwareAccelKind.None)
         => ParseVideoHardwareAccelKind(s, defaultValue);
 
     public static VideoFrameInterpolationKind ParseVideoFrameInterpolationKind(string? s, VideoFrameInterpolationKind defaultValue = VideoFrameInterpolationKind.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoFrameInterpolationKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoFrameInterpolationKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoFrameInterpolationKind ToVideoFrameInterpolationKind(this string? s, VideoFrameInterpolationKind defaultValue = VideoFrameInterpolationKind.None)
         => ParseVideoFrameInterpolationKind(s, defaultValue);
 
     public static VideoThumbnailTimeKind ParseVideoThumbnailTimeKind(string? s, VideoThumbnailTimeKind defaultValue = VideoThumbnailTimeKind.FirstKeyframe)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoThumbnailTimeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VideoThumbnailTimeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VideoThumbnailTimeKind ToVideoThumbnailTimeKind(this string? s, VideoThumbnailTimeKind defaultValue = VideoThumbnailTimeKind.FirstKeyframe)
         => ParseVideoThumbnailTimeKind(s, defaultValue);
 
     public static ExportFileNamingPatternKind ParseExportFileNamingPatternKind(string? s, ExportFileNamingPatternKind defaultValue = ExportFileNamingPatternKind.ProjectAndTimestamp)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ExportFileNamingPatternKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ExportFileNamingPatternKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ExportFileNamingPatternKind ToExportFileNamingPatternKind(this string? s, ExportFileNamingPatternKind defaultValue = ExportFileNamingPatternKind.ProjectAndTimestamp)
         => ParseExportFileNamingPatternKind(s, defaultValue);
 }

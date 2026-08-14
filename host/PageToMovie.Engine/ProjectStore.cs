@@ -2530,7 +2530,12 @@ public sealed partial class ProjectStore
         ApplyPlanUsageToCharacters(projectId, rows);
 
         return rows
-            .OrderBy(r => r.Key.EndsWith("_Young") ? 1 : r.Key.EndsWith("_Teen") ? 2 : 0)
+            .OrderBy(r =>
+            {
+                if (r.Key.EndsWith("_Young")) return 1;
+                if (r.Key.EndsWith("_Teen")) return 2;
+                return 0;
+            })
             .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -2555,8 +2560,12 @@ public sealed partial class ProjectStore
         return Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null;
     }
 
-    private static string CastKindLabel(bool voiceOnly, bool isGroup) =>
-        voiceOnly ? "voice_only" : isGroup ? "group" : "individual";
+    private static string CastKindLabel(bool voiceOnly, bool isGroup)
+    {
+        if (voiceOnly)
+            return "voice_only";
+        return isGroup ? "group" : "individual";
+    }
 
     private static bool CharacterSpeaks(HashSet<string> speakerTokens, string key, string display) =>
         speakerTokens.Contains(CastKindClassifier.NormalizeToken(key))
@@ -6931,9 +6940,12 @@ public sealed partial class ProjectStore
     {
         if (root.TryGetProperty("stage2_meta", out var meta) && meta.ValueKind == JsonValueKind.Object)
         {
-            status.LastCompletedAt = meta.TryGetProperty("completed_at", out var ca)
-                ? ca.GetString()
-                : meta.TryGetProperty("last_partial_at", out var lp) ? lp.GetString() : null;
+            if (meta.TryGetProperty("completed_at", out var ca))
+                status.LastCompletedAt = ca.GetString();
+            else if (meta.TryGetProperty("last_partial_at", out var lp))
+                status.LastCompletedAt = lp.GetString();
+            else
+                status.LastCompletedAt = null;
             status.LastRunMessage = meta.TryGetProperty("last_run_message", out var lm)
                 ? lm.GetString()
                 : null;

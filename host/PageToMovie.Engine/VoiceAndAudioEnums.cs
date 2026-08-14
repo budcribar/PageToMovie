@@ -402,68 +402,131 @@ public static class VoiceAndAudioEnumExtensions
         _ => val.ToString().ToLowerInvariant()
     };
     public static string ToApiString(this AudioFileExtension val) => val.ToString().ToLowerInvariant();
-    public static VoiceCloneStatusState ParseVoiceCloneStatusState(string? s, VoiceCloneStatusState defaultValue = VoiceCloneStatusState.Draft) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceCloneStatusState>(s, true, out var r) ? r : defaultValue;
+    public static VoiceCloneStatusState ParseVoiceCloneStatusState(string? s, VoiceCloneStatusState defaultValue = VoiceCloneStatusState.Draft)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceCloneStatusState>(s, true, out var r) ? r : defaultValue;
+    }
     public static VoiceCloneStatusState ToVoiceCloneStatusState(this string? s, VoiceCloneStatusState defaultValue = VoiceCloneStatusState.Draft) => ParseVoiceCloneStatusState(s, defaultValue);
 
-    public static VoiceGenderType ParseVoiceGenderType(string? s, VoiceGenderType defaultValue = VoiceGenderType.Neutral) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceGenderType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static VoiceGenderType ParseVoiceGenderType(string? s, VoiceGenderType defaultValue = VoiceGenderType.Neutral)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceGenderType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VoiceGenderType ToVoiceGenderType(this string? s, VoiceGenderType defaultValue = VoiceGenderType.Neutral) => ParseVoiceGenderType(s, defaultValue);
 
-    public static VoiceAgeBandType ParseVoiceAgeBandType(string? s, VoiceAgeBandType defaultValue = VoiceAgeBandType.Adult) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceAgeBandType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static VoiceAgeBandType ParseVoiceAgeBandType(string? s, VoiceAgeBandType defaultValue = VoiceAgeBandType.Adult)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceAgeBandType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VoiceAgeBandType ToVoiceAgeBandType(this string? s, VoiceAgeBandType defaultValue = VoiceAgeBandType.Adult) => ParseVoiceAgeBandType(s, defaultValue);
 
-    public static VoiceAccentPreset ParseVoiceAccentPreset(string? s, VoiceAccentPreset defaultValue = VoiceAccentPreset.NeutralAmerican) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceAccentPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static VoiceAccentPreset ParseVoiceAccentPreset(string? s, VoiceAccentPreset defaultValue = VoiceAccentPreset.NeutralAmerican)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceAccentPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static VoiceAccentPreset ToVoiceAccentPreset(this string? s, VoiceAccentPreset defaultValue = VoiceAccentPreset.NeutralAmerican) => ParseVoiceAccentPreset(s, defaultValue);
 
-    public static VoiceEmotionStyle ParseVoiceEmotionStyle(string? s, VoiceEmotionStyle defaultValue = VoiceEmotionStyle.Neutral) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VoiceEmotionStyle>(s, true, out var r) ? r : defaultValue;
+    public static VoiceEmotionStyle ParseVoiceEmotionStyle(string? s, VoiceEmotionStyle defaultValue = VoiceEmotionStyle.Neutral)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<VoiceEmotionStyle>(s, true, out var r) ? r : defaultValue;
+    }
     public static VoiceEmotionStyle ToVoiceEmotionStyle(this string? s, VoiceEmotionStyle defaultValue = VoiceEmotionStyle.Neutral) => ParseVoiceEmotionStyle(s, defaultValue);
 
-    public static SpeechRateCategory ParseSpeechRateCategory(string? s, SpeechRateCategory defaultValue = SpeechRateCategory.Normal) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SpeechRateCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static SpeechRateCategory ParseSpeechRateCategory(string? s, SpeechRateCategory defaultValue = SpeechRateCategory.Normal)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SpeechRateCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SpeechRateCategory ToSpeechRateCategory(this string? s, SpeechRateCategory defaultValue = SpeechRateCategory.Normal) => ParseSpeechRateCategory(s, defaultValue);
 
-    public static SpeechPitchCategory ParseSpeechPitchCategory(string? s, SpeechPitchCategory defaultValue = SpeechPitchCategory.Normal) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SpeechPitchCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static SpeechPitchCategory ParseSpeechPitchCategory(string? s, SpeechPitchCategory defaultValue = SpeechPitchCategory.Normal)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SpeechPitchCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SpeechPitchCategory ToSpeechPitchCategory(this string? s, SpeechPitchCategory defaultValue = SpeechPitchCategory.Normal) => ParseSpeechPitchCategory(s, defaultValue);
 
-    public static AudioBitratePreset ParseAudioBitratePreset(string? s, AudioBitratePreset defaultValue = AudioBitratePreset.Kbps192) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioBitratePreset>(s.Replace("k", "Kbps").Replace("K", "Kbps"), true, out var r) ? r : defaultValue;
+    public static AudioBitratePreset ParseAudioBitratePreset(string? s, AudioBitratePreset defaultValue = AudioBitratePreset.Kbps192)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioBitratePreset>(s.Replace("k", "Kbps").Replace("K", "Kbps"), true, out var r) ? r : defaultValue;
+    }
     public static AudioBitratePreset ToAudioBitratePreset(this string? s, AudioBitratePreset defaultValue = AudioBitratePreset.Kbps192) => ParseAudioBitratePreset(s, defaultValue);
 
-    public static AudioSampleRatePreset ParseAudioSampleRatePreset(string? s, AudioSampleRatePreset defaultValue = AudioSampleRatePreset.Hz44100) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioSampleRatePreset>(s.Replace("hz", "").Replace("Hz", "Hz"), true, out var r) ? r : defaultValue;
+    public static AudioSampleRatePreset ParseAudioSampleRatePreset(string? s, AudioSampleRatePreset defaultValue = AudioSampleRatePreset.Hz44100)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioSampleRatePreset>(s.Replace("hz", "").Replace("Hz", "Hz"), true, out var r) ? r : defaultValue;
+    }
     public static AudioSampleRatePreset ToAudioSampleRatePreset(this string? s, AudioSampleRatePreset defaultValue = AudioSampleRatePreset.Hz44100) => ParseAudioSampleRatePreset(s, defaultValue);
 
-    public static AudioChannelMode ParseAudioChannelMode(string? s, AudioChannelMode defaultValue = AudioChannelMode.Stereo) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioChannelMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AudioChannelMode ParseAudioChannelMode(string? s, AudioChannelMode defaultValue = AudioChannelMode.Stereo)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioChannelMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AudioChannelMode ToAudioChannelMode(this string? s, AudioChannelMode defaultValue = AudioChannelMode.Stereo) => ParseAudioChannelMode(s, defaultValue);
 
-    public static AudioFilterEffect ParseAudioFilterEffect(string? s, AudioFilterEffect defaultValue = AudioFilterEffect.None) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioFilterEffect>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AudioFilterEffect ParseAudioFilterEffect(string? s, AudioFilterEffect defaultValue = AudioFilterEffect.None)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioFilterEffect>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AudioFilterEffect ToAudioFilterEffect(this string? s, AudioFilterEffect defaultValue = AudioFilterEffect.None) => ParseAudioFilterEffect(s, defaultValue);
 
-    public static AudioCrossfadeType ParseAudioCrossfadeType(string? s, AudioCrossfadeType defaultValue = AudioCrossfadeType.Linear) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioCrossfadeType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AudioCrossfadeType ParseAudioCrossfadeType(string? s, AudioCrossfadeType defaultValue = AudioCrossfadeType.Linear)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioCrossfadeType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AudioCrossfadeType ToAudioCrossfadeType(this string? s, AudioCrossfadeType defaultValue = AudioCrossfadeType.Linear) => ParseAudioCrossfadeType(s, defaultValue);
 
-    public static SilenceCutMode ParseSilenceCutMode(string? s, SilenceCutMode defaultValue = SilenceCutMode.Off) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SilenceCutMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static SilenceCutMode ParseSilenceCutMode(string? s, SilenceCutMode defaultValue = SilenceCutMode.Off)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SilenceCutMode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SilenceCutMode ToSilenceCutMode(this string? s, SilenceCutMode defaultValue = SilenceCutMode.Off) => ParseSilenceCutMode(s, defaultValue);
 
-    public static MusicArrangementPreset ParseMusicArrangementPreset(string? s, MusicArrangementPreset defaultValue = MusicArrangementPreset.CinematicOrchestral) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MusicArrangementPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static MusicArrangementPreset ParseMusicArrangementPreset(string? s, MusicArrangementPreset defaultValue = MusicArrangementPreset.CinematicOrchestral)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MusicArrangementPreset>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static MusicArrangementPreset ToMusicArrangementPreset(this string? s, MusicArrangementPreset defaultValue = MusicArrangementPreset.CinematicOrchestral) => ParseMusicArrangementPreset(s, defaultValue);
 
-    public static MusicKeySignature ParseMusicKeySignature(string? s, MusicKeySignature defaultValue = MusicKeySignature.CMajor) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MusicKeySignature>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static MusicKeySignature ParseMusicKeySignature(string? s, MusicKeySignature defaultValue = MusicKeySignature.CMajor)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MusicKeySignature>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static MusicKeySignature ToMusicKeySignature(this string? s, MusicKeySignature defaultValue = MusicKeySignature.CMajor) => ParseMusicKeySignature(s, defaultValue);
 
-    public static MusicTimeSignature ParseMusicTimeSignature(string? s, MusicTimeSignature defaultValue = MusicTimeSignature.FourFour) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : s.Trim() switch
+    public static MusicTimeSignature ParseMusicTimeSignature(string? s, MusicTimeSignature defaultValue = MusicTimeSignature.FourFour)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return s.Trim() switch
         {
             "4/4" or "four_four" => MusicTimeSignature.FourFour,
             "3/4" or "three_four" => MusicTimeSignature.ThreeFour,
@@ -472,22 +535,39 @@ public static class VoiceAndAudioEnumExtensions
             "5/4" or "five_four" => MusicTimeSignature.FiveFour,
             _ => Enum.TryParse<MusicTimeSignature>(s.Replace("_", ""), true, out var r) ? r : defaultValue
         };
+    }
     public static MusicTimeSignature ToMusicTimeSignature(this string? s, MusicTimeSignature defaultValue = MusicTimeSignature.FourFour) => ParseMusicTimeSignature(s, defaultValue);
 
-    public static MusicStemType ParseMusicStemType(string? s, MusicStemType defaultValue = MusicStemType.FullMix) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<MusicStemType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static MusicStemType ParseMusicStemType(string? s, MusicStemType defaultValue = MusicStemType.FullMix)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<MusicStemType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static MusicStemType ToMusicStemType(this string? s, MusicStemType defaultValue = MusicStemType.FullMix) => ParseMusicStemType(s, defaultValue);
 
-    public static AudioMixDuckingLevel ParseAudioMixDuckingLevel(string? s, AudioMixDuckingLevel defaultValue = AudioMixDuckingLevel.Moderate) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioMixDuckingLevel>(s, true, out var r) ? r : defaultValue;
+    public static AudioMixDuckingLevel ParseAudioMixDuckingLevel(string? s, AudioMixDuckingLevel defaultValue = AudioMixDuckingLevel.Moderate)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioMixDuckingLevel>(s, true, out var r) ? r : defaultValue;
+    }
     public static AudioMixDuckingLevel ToAudioMixDuckingLevel(this string? s, AudioMixDuckingLevel defaultValue = AudioMixDuckingLevel.Moderate) => ParseAudioMixDuckingLevel(s, defaultValue);
 
-    public static AudioLoudnessStandard ParseAudioLoudnessStandard(string? s, AudioLoudnessStandard defaultValue = AudioLoudnessStandard.EbuR128) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioLoudnessStandard>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    public static AudioLoudnessStandard ParseAudioLoudnessStandard(string? s, AudioLoudnessStandard defaultValue = AudioLoudnessStandard.EbuR128)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioLoudnessStandard>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AudioLoudnessStandard ToAudioLoudnessStandard(this string? s, AudioLoudnessStandard defaultValue = AudioLoudnessStandard.EbuR128) => ParseAudioLoudnessStandard(s, defaultValue);
 
-    public static AudioFileExtension ParseAudioFileExtension(string? s, AudioFileExtension defaultValue = AudioFileExtension.Mp3) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AudioFileExtension>(s.TrimStart('.'), true, out var r) ? r : defaultValue;
+    public static AudioFileExtension ParseAudioFileExtension(string? s, AudioFileExtension defaultValue = AudioFileExtension.Mp3)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AudioFileExtension>(s.TrimStart('.'), true, out var r) ? r : defaultValue;
+    }
     public static AudioFileExtension ToAudioFileExtension(this string? s, AudioFileExtension defaultValue = AudioFileExtension.Mp3) => ParseAudioFileExtension(s, defaultValue);
 }
 

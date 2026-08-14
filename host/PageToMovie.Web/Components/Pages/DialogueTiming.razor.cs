@@ -33,6 +33,30 @@ public partial class DialogueTiming
 
     private readonly Dictionary<int, string> _sceneUrls = new();
 
+    private string AnalyzeButtonLabel
+    {
+        get
+        {
+            if (_busy) return "Analyzing…";
+            if (_current is null) return "Analyze scene (speech-to-text)";
+            return "Re-analyze scene";
+        }
+    }
+
+    private static string TimingRowClass(DialogueTimingRow row)
+    {
+        if (row.Reviewed) return "dt-row dt-ok";
+        if (string.IsNullOrEmpty(row.ScriptText)) return "dt-row dt-extra";
+        if (row.MatchScore >= 0.7) return "dt-row";
+        return "dt-row dt-warn";
+    }
+
+    private static string HeardWordClass(HashSet<string> scriptSet, string text)
+    {
+        if (scriptSet.Count == 0) return "dt-w";
+        return scriptSet.Contains(NormTok(text)) ? "dt-w dt-hit" : "dt-w dt-extra-w";
+    }
+
     protected override async Task OnInitializedAsync()
     {
         (_projects, _projectId, _error) = await ScenePlaybackSupport.ResolveProjectSelectionAsync(Session, Engine, ActiveProject);

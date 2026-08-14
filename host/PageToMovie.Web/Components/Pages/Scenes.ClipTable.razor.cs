@@ -25,4 +25,18 @@ public partial class Scenes_ClipTable
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipVersions? ClipVer { get; set; }
+
+    private static string ClipRowClass(bool active, bool isChecked)
+    {
+        if (active) return "table-primary";
+        if (isChecked) return "table-warning";
+        return "";
+    }
+
+    private static string BeatIdDisplay(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return "—";
+        if (id.Length > 14) return id[..12] + "…";
+        return id;
+    }
 }

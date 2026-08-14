@@ -331,8 +331,13 @@ public static class MediaEndpoints
         byte[] dataBytes;
         try { dataBytes = Convert.FromBase64String(url[(comma + 1)..]); }
         catch { return Results.BadRequest(new { ok = false, error = "Malformed data URL" }); }
-        var ext = dataCtype.Contains("mpeg", StringComparison.OrdinalIgnoreCase) ? ".mp3"
-            : dataCtype.Contains("wav", StringComparison.OrdinalIgnoreCase) ? ".wav" : ".bin";
+        string ext;
+        if (dataCtype.Contains("mpeg", StringComparison.OrdinalIgnoreCase))
+            ext = ".mp3";
+        else if (dataCtype.Contains("wav", StringComparison.OrdinalIgnoreCase))
+            ext = ".wav";
+        else
+            ext = ".bin";
         return Results.Bytes(dataBytes, contentType: dataCtype, fileDownloadName: "track" + ext);
     }
 

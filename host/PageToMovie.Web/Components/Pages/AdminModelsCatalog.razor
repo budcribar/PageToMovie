@@ -430,7 +430,7 @@
                                     var prov = m["provider"]?.ToString() ?? "";
                                     var verified = m["lastVerifiedAt"]?.ToString() ?? "—";
                                     var priced = m["pricingLastReviewedAt"]?.ToString() ?? "—";
-                                    <tr class="@(AdminModelsList.IsDeprecated(m) ? "table-dark opacity-75" : AdminModelsList.IsEnabled(m) ? "" : "table-secondary")">
+                                    <tr class="@AdminModelsList.RowClass(m)">
                                         <td>
                                             @if (AdminModelsList.IsDeprecated(m))
                                             {

@@ -16,4 +16,13 @@ public partial class Home_DemoFilmsCard
 {
     [CascadingParameter] public Home Host { get; set; } = default;
     [CascadingParameter] public Home.HomeCosts? Costs { get; set; }
+
+    private static string DemoHref(string? yt, DemoListItem d)
+    {
+        if (yt is not null)
+            return YouTubeVideoId.WatchUrl(yt);
+        if (!string.IsNullOrWhiteSpace(d.YoutubeUrl) && Uri.TryCreate(d.YoutubeUrl.Trim(), UriKind.Absolute, out _))
+            return d.YoutubeUrl.Trim();
+        return "/demo";
+    }
 }

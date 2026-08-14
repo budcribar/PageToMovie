@@ -23,4 +23,10 @@ public partial class Review_ReviewTab
 
     [CascadingParameter] public Review.ReviewAutoReview? AutoReview { get; set; }
 
+    private static string ReviewButtonLabel(bool autoBusy, bool hasDraft, bool editing)
+    {
+        if (autoBusy) return "Reviewing…";
+        if (hasDraft && !editing) return "Review again";
+        return "Review";
+    }
 }

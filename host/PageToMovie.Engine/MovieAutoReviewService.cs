@@ -150,7 +150,12 @@ public sealed class MovieAutoReviewService
         var avgMusic = (int)Math.Round(groupFeedbacks.Average(g => g.MusicScore));
 
         report.OverallScore = Math.Clamp(avgScore, 1, 10);
-        report.Verdict = report.OverallScore >= 8 ? "Pass — Strong Continuity" : report.OverallScore >= 6 ? "Needs Polish" : "Continuity Fixes Needed";
+        report.Verdict = report.OverallScore switch
+        {
+            >= 8 => "Pass — Strong Continuity",
+            >= 6 => "Needs Polish",
+            _ => "Continuity Fixes Needed",
+        };
 
         report.CategoryScores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
@@ -492,7 +497,12 @@ Return valid JSON with non-generic, specific observations:
         sb.AppendLine("## Category Scores");
         foreach (var (cat, score) in report.CategoryScores)
         {
-            var badge = score >= 8 ? "PASSED" : score >= 6 ? "POLISH" : "ACTION REQUIRED";
+            var badge = score switch
+            {
+                >= 8 => "PASSED",
+                >= 6 => "POLISH",
+                _ => "ACTION REQUIRED",
+            };
             sb.AppendLine($"- **{cat}**: {score}/10 [{badge}]");
         }
         sb.AppendLine("\n## Synthesis & Key Notes");

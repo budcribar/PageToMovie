@@ -963,8 +963,12 @@ public sealed class ClipAutoReviewService
         return p.ValueKind == JsonValueKind.String ? (p.GetString() ?? fallback) : fallback;
     }
 
-    private static string Trim(string s, int n) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n];
+    private static string Trim(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= n ? s : s[..n];
+    }
 
     private sealed class ClipPlan
     {

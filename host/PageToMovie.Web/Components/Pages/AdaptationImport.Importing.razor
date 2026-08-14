@@ -11,7 +11,7 @@ else
     <p class="text-muted small mb-3">Hang tight — the pipeline is running on the server (safe if you closed the browser).</p>
 }
 
-<JobProgressCard Status="@(Host.Jobs.JobRunning ? (Host.Jobs.Job?.Status ?? "running") : (Host.Drop._importing ? "running" : "idle"))"
+<JobProgressCard Status="@ImportJobStatus"
                  Message="@(Host.Drop._importStatus.Length > 0 ? Host.Drop._importStatus : (Host.Jobs.Job?.Message ?? "Working…"))"
                  DetailMessage="@(AdaptationPageBase.AdaptationStepUi.LongAdaptHint(Host.Jobs.Job, Host.Jobs.JobRunning || Host.Drop._importing))"
                  Index="@(Host.Jobs.Job?.Index ?? Host.Jobs.ProgressIndex)"

@@ -339,16 +339,20 @@ public sealed class GrokImageClient : IImageClient
                 : "");
     }
 
-    private static string BuildEditVariantTail(bool illustratedMedium, int i, int n) =>
-        illustratedMedium
-            ? (n > 1
+    private static string BuildEditVariantTail(bool illustratedMedium, int i, int n)
+    {
+        if (illustratedMedium)
+        {
+            return n > 1
                 ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
                   "same identity, markings, and illustrated medium as the book references. "
-                : " Single refined continuity portrait in the book’s illustration style. ")
-            : (n > 1
-                ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
-                  "same identity, markings, and photoreal medium as the reference(s). "
-                : " Single refined photoreal continuity portrait matching the reference(s). ");
+                : " Single refined continuity portrait in the book’s illustration style. ";
+        }
+        return n > 1
+            ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
+              "same identity, markings, and photoreal medium as the reference(s). "
+            : " Single refined photoreal continuity portrait matching the reference(s). ";
+    }
 
     private async Task<byte[]> EditOneVariantAsync(
         int i,

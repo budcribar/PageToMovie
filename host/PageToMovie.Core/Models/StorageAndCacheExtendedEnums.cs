@@ -654,152 +654,272 @@ public static class StorageAndCacheExtendedEnumExtensions
         _ => val.ToString().ToLowerInvariant()
     };
     public static StorageProviderTypeKind ParseStorageProviderTypeKind(string? s, StorageProviderTypeKind defaultValue = StorageProviderTypeKind.LocalStorage)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageProviderTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageProviderTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static StorageProviderTypeKind ToStorageProviderTypeKind(this string? s, StorageProviderTypeKind defaultValue = StorageProviderTypeKind.LocalStorage)
         => ParseStorageProviderTypeKind(s, defaultValue);
 
     public static ProjectFileKindType ParseProjectFileKindType(string? s, ProjectFileKindType defaultValue = ProjectFileKindType.ProjectMetadata)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectFileKindType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectFileKindType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ProjectFileKindType ToProjectFileKindType(this string? s, ProjectFileKindType defaultValue = ProjectFileKindType.ProjectMetadata)
         => ParseProjectFileKindType(s, defaultValue);
 
     public static FileAccessModeKind ParseFileAccessModeKind(string? s, FileAccessModeKind defaultValue = FileAccessModeKind.ReadOnly)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileAccessModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileAccessModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FileAccessModeKind ToFileAccessModeKind(this string? s, FileAccessModeKind defaultValue = FileAccessModeKind.ReadOnly)
         => ParseFileAccessModeKind(s, defaultValue);
 
     public static DatabaseMigrationStatusKind ParseDatabaseMigrationStatusKind(string? s, DatabaseMigrationStatusKind defaultValue = DatabaseMigrationStatusKind.NotStarted)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseMigrationStatusKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseMigrationStatusKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DatabaseMigrationStatusKind ToDatabaseMigrationStatusKind(this string? s, DatabaseMigrationStatusKind defaultValue = DatabaseMigrationStatusKind.NotStarted)
         => ParseDatabaseMigrationStatusKind(s, defaultValue);
 
     public static ProjectBackupTypeKind ParseProjectBackupTypeKind(string? s, ProjectBackupTypeKind defaultValue = ProjectBackupTypeKind.Full)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectBackupTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectBackupTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ProjectBackupTypeKind ToProjectBackupTypeKind(this string? s, ProjectBackupTypeKind defaultValue = ProjectBackupTypeKind.Full)
         => ParseProjectBackupTypeKind(s, defaultValue);
 
     public static StorageCleanupStrategyKind ParseStorageCleanupStrategyKind(string? s, StorageCleanupStrategyKind defaultValue = StorageCleanupStrategyKind.Scheduled)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageCleanupStrategyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageCleanupStrategyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static StorageCleanupStrategyKind ToStorageCleanupStrategyKind(this string? s, StorageCleanupStrategyKind defaultValue = StorageCleanupStrategyKind.Scheduled)
         => ParseStorageCleanupStrategyKind(s, defaultValue);
 
     public static DiskSpaceAlertLevelKind ParseDiskSpaceAlertLevelKind(string? s, DiskSpaceAlertLevelKind defaultValue = DiskSpaceAlertLevelKind.Normal)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DiskSpaceAlertLevelKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DiskSpaceAlertLevelKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DiskSpaceAlertLevelKind ToDiskSpaceAlertLevelKind(this string? s, DiskSpaceAlertLevelKind defaultValue = DiskSpaceAlertLevelKind.Normal)
         => ParseDiskSpaceAlertLevelKind(s, defaultValue);
 
     public static CacheStorageBackendKind ParseCacheStorageBackendKind(string? s, CacheStorageBackendKind defaultValue = CacheStorageBackendKind.InMemory)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheStorageBackendKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheStorageBackendKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CacheStorageBackendKind ToCacheStorageBackendKind(this string? s, CacheStorageBackendKind defaultValue = CacheStorageBackendKind.InMemory)
         => ParseCacheStorageBackendKind(s, defaultValue);
 
     public static CacheEvictionPolicyKind ParseCacheEvictionPolicyKind(string? s, CacheEvictionPolicyKind defaultValue = CacheEvictionPolicyKind.Lru)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<CacheEvictionPolicyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<CacheEvictionPolicyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static CacheEvictionPolicyKind ToCacheEvictionPolicyKind(this string? s, CacheEvictionPolicyKind defaultValue = CacheEvictionPolicyKind.Lru)
         => ParseCacheEvictionPolicyKind(s, defaultValue);
 
     public static FileCompressionKind ParseFileCompressionKind(string? s, FileCompressionKind defaultValue = FileCompressionKind.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileCompressionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileCompressionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FileCompressionKind ToFileCompressionKind(this string? s, FileCompressionKind defaultValue = FileCompressionKind.None)
         => ParseFileCompressionKind(s, defaultValue);
 
     public static ProjectLockStateKind ParseProjectLockStateKind(string? s, ProjectLockStateKind defaultValue = ProjectLockStateKind.Unlocked)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectLockStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectLockStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ProjectLockStateKind ToProjectLockStateKind(this string? s, ProjectLockStateKind defaultValue = ProjectLockStateKind.Unlocked)
         => ParseProjectLockStateKind(s, defaultValue);
 
     public static DatabaseIndexingModeKind ParseDatabaseIndexingModeKind(string? s, DatabaseIndexingModeKind defaultValue = DatabaseIndexingModeKind.Automatic)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseIndexingModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseIndexingModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DatabaseIndexingModeKind ToDatabaseIndexingModeKind(this string? s, DatabaseIndexingModeKind defaultValue = DatabaseIndexingModeKind.Automatic)
         => ParseDatabaseIndexingModeKind(s, defaultValue);
 
     public static AssetValidationResultKind ParseAssetValidationResultKind(string? s, AssetValidationResultKind defaultValue = AssetValidationResultKind.Valid)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AssetValidationResultKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AssetValidationResultKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AssetValidationResultKind ToAssetValidationResultKind(this string? s, AssetValidationResultKind defaultValue = AssetValidationResultKind.Valid)
         => ParseAssetValidationResultKind(s, defaultValue);
 
     public static StorageTierPolicyKind ParseStorageTierPolicyKind(string? s, StorageTierPolicyKind defaultValue = StorageTierPolicyKind.Hot)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageTierPolicyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageTierPolicyKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static StorageTierPolicyKind ToStorageTierPolicyKind(this string? s, StorageTierPolicyKind defaultValue = StorageTierPolicyKind.Hot)
         => ParseStorageTierPolicyKind(s, defaultValue);
 
     public static DirectoryStructurePatternKind ParseDirectoryStructurePatternKind(string? s, DirectoryStructurePatternKind defaultValue = DirectoryStructurePatternKind.Flat)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DirectoryStructurePatternKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DirectoryStructurePatternKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DirectoryStructurePatternKind ToDirectoryStructurePatternKind(this string? s, DirectoryStructurePatternKind defaultValue = DirectoryStructurePatternKind.Flat)
         => ParseDirectoryStructurePatternKind(s, defaultValue);
 
     public static FileHashAlgorithmKind ParseFileHashAlgorithmKind(string? s, FileHashAlgorithmKind defaultValue = FileHashAlgorithmKind.Sha256)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FileHashAlgorithmKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FileHashAlgorithmKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FileHashAlgorithmKind ToFileHashAlgorithmKind(this string? s, FileHashAlgorithmKind defaultValue = FileHashAlgorithmKind.Sha256)
         => ParseFileHashAlgorithmKind(s, defaultValue);
 
     public static DataExportFormatKind ParseDataExportFormatKind(string? s, DataExportFormatKind defaultValue = DataExportFormatKind.Json)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DataExportFormatKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DataExportFormatKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DataExportFormatKind ToDataExportFormatKind(this string? s, DataExportFormatKind defaultValue = DataExportFormatKind.Json)
         => ParseDataExportFormatKind(s, defaultValue);
 
     public static ProjectImportConflictKind ParseProjectImportConflictKind(string? s, ProjectImportConflictKind defaultValue = ProjectImportConflictKind.Overwrite)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProjectImportConflictKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ProjectImportConflictKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ProjectImportConflictKind ToProjectImportConflictKind(this string? s, ProjectImportConflictKind defaultValue = ProjectImportConflictKind.Overwrite)
         => ParseProjectImportConflictKind(s, defaultValue);
 
     public static StorageRetentionPeriodKind ParseStorageRetentionPeriodKind(string? s, StorageRetentionPeriodKind defaultValue = StorageRetentionPeriodKind.Indefinite)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StorageRetentionPeriodKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<StorageRetentionPeriodKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static StorageRetentionPeriodKind ToStorageRetentionPeriodKind(this string? s, StorageRetentionPeriodKind defaultValue = StorageRetentionPeriodKind.Indefinite)
         => ParseStorageRetentionPeriodKind(s, defaultValue);
 
     public static DatabaseTransactionKind ParseDatabaseTransactionKind(string? s, DatabaseTransactionKind defaultValue = DatabaseTransactionKind.ReadCommitted)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<DatabaseTransactionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<DatabaseTransactionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static DatabaseTransactionKind ToDatabaseTransactionKind(this string? s, DatabaseTransactionKind defaultValue = DatabaseTransactionKind.ReadCommitted)
         => ParseDatabaseTransactionKind(s, defaultValue);
 
     public static PageNavigationRouteKind ParsePageNavigationRouteKind(string? s, PageNavigationRouteKind defaultValue = PageNavigationRouteKind.Home)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PageNavigationRouteKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PageNavigationRouteKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static PageNavigationRouteKind ToPageNavigationRouteKind(this string? s, PageNavigationRouteKind defaultValue = PageNavigationRouteKind.Home)
         => ParsePageNavigationRouteKind(s, defaultValue);
 
     public static LayoutContainerWidthKind ParseLayoutContainerWidthKind(string? s, LayoutContainerWidthKind defaultValue = LayoutContainerWidthKind.Fluid)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<LayoutContainerWidthKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<LayoutContainerWidthKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static LayoutContainerWidthKind ToLayoutContainerWidthKind(this string? s, LayoutContainerWidthKind defaultValue = LayoutContainerWidthKind.Fluid)
         => ParseLayoutContainerWidthKind(s, defaultValue);
 
     public static SidebarCollapseModeKind ParseSidebarCollapseModeKind(string? s, SidebarCollapseModeKind defaultValue = SidebarCollapseModeKind.Expanded)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SidebarCollapseModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<SidebarCollapseModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static SidebarCollapseModeKind ToSidebarCollapseModeKind(this string? s, SidebarCollapseModeKind defaultValue = SidebarCollapseModeKind.Expanded)
         => ParseSidebarCollapseModeKind(s, defaultValue);
 
     public static ComponentDisplayStateKind ParseComponentDisplayStateKind(string? s, ComponentDisplayStateKind defaultValue = ComponentDisplayStateKind.Default)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ComponentDisplayStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ComponentDisplayStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ComponentDisplayStateKind ToComponentDisplayStateKind(this string? s, ComponentDisplayStateKind defaultValue = ComponentDisplayStateKind.Default)
         => ParseComponentDisplayStateKind(s, defaultValue);
 
     public static TableSortDirectionKind ParseTableSortDirectionKind(string? s, TableSortDirectionKind defaultValue = TableSortDirectionKind.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<TableSortDirectionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<TableSortDirectionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static TableSortDirectionKind ToTableSortDirectionKind(this string? s, TableSortDirectionKind defaultValue = TableSortDirectionKind.None)
         => ParseTableSortDirectionKind(s, defaultValue);
 
     public static PaginationModeKind ParsePaginationModeKind(string? s, PaginationModeKind defaultValue = PaginationModeKind.PageNumbers)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<PaginationModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<PaginationModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static PaginationModeKind ToPaginationModeKind(this string? s, PaginationModeKind defaultValue = PaginationModeKind.PageNumbers)
         => ParsePaginationModeKind(s, defaultValue);
 
     public static FormInputTypeKind ParseFormInputTypeKind(string? s, FormInputTypeKind defaultValue = FormInputTypeKind.Text)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FormInputTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FormInputTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FormInputTypeKind ToFormInputTypeKind(this string? s, FormInputTypeKind defaultValue = FormInputTypeKind.Text)
         => ParseFormInputTypeKind(s, defaultValue);
 
     public static FormValidationStateKind ParseFormValidationStateKind(string? s, FormValidationStateKind defaultValue = FormValidationStateKind.Unvalidated)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FormValidationStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<FormValidationStateKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static FormValidationStateKind ToFormValidationStateKind(this string? s, FormValidationStateKind defaultValue = FormValidationStateKind.Unvalidated)
         => ParseFormValidationStateKind(s, defaultValue);
 
     public static ToastPositionKind ParseToastPositionKind(string? s, ToastPositionKind defaultValue = ToastPositionKind.BottomRight)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ToastPositionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<ToastPositionKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static ToastPositionKind ToToastPositionKind(this string? s, ToastPositionKind defaultValue = ToastPositionKind.BottomRight)
         => ParseToastPositionKind(s, defaultValue);
 
     public static AlertDismissBehaviorKind ParseAlertDismissBehaviorKind(string? s, AlertDismissBehaviorKind defaultValue = AlertDismissBehaviorKind.AutoDismiss)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AlertDismissBehaviorKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    {
+        if (string.IsNullOrWhiteSpace(s))
+            return defaultValue;
+        return Enum.TryParse<AlertDismissBehaviorKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+    }
     public static AlertDismissBehaviorKind ToAlertDismissBehaviorKind(this string? s, AlertDismissBehaviorKind defaultValue = AlertDismissBehaviorKind.AutoDismiss)
         => ParseAlertDismissBehaviorKind(s, defaultValue);
 }

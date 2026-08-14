@@ -9,6 +9,18 @@ public partial class AdaptationScreenplay
 {
     public override string StepKey => "screenplay";
 
+    private string ScreenplayPageTitle
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(SignOff.StatusTitle) && SignOff.StatusTitle != "Untitled")
+                return SignOff.StatusTitle;
+            if (!string.IsNullOrWhiteSpace(ProjectLabel))
+                return ProjectLabel;
+            return L["Adaptation.Screenplay"];
+        }
+    }
+
     private ScreenplayEditor? _editorDomain;
     internal ScreenplayEditor Editor => _editorDomain ??= new ScreenplayEditor(this);
     private ScreenplaySave? _saveDomain;

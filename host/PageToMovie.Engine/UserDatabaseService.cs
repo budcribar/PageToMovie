@@ -2450,7 +2450,12 @@ public class UserDatabaseService
             cmd.Parameters.AddWithValue("@promptChars", (object?)rec.PromptChars ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@responseChars", (object?)rec.ResponseChars ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@requestId", (object?)rec.RequestId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@error", string.IsNullOrWhiteSpace(rec.Error) ? DBNull.Value : (rec.Error.Length > 500 ? rec.Error[..500] : rec.Error));
+            object errorValue;
+            if (string.IsNullOrWhiteSpace(rec.Error))
+                errorValue = DBNull.Value;
+            else
+                errorValue = rec.Error.Length > 500 ? rec.Error[..500] : rec.Error;
+            cmd.Parameters.AddWithValue("@error", errorValue);
             cmd.Parameters.AddWithValue("@purpose", purpose ?? "");
             cmd.Parameters.AddWithValue("@fakes", rec.Fakes ? 1 : 0);
             cmd.Parameters.AddWithValue("@attempt", (object?)rec.Attempt ?? DBNull.Value);
@@ -2662,7 +2667,12 @@ public class UserDatabaseService
                     @errorType, @errorMessage, @httpStatus, @requestedCount, @returnedCount,
                     @missingIdsJson, @attempt, @resolved, @requestSummary, @responseSummary)";
             var ts = (rec.Ts ?? DateTimeOffset.UtcNow).ToString("o");
-            static string? Trunc500(string? s) => string.IsNullOrEmpty(s) ? s : (s.Length > 500 ? s[..500] : s);
+            static string? Trunc500(string? s)
+            {
+                if (string.IsNullOrEmpty(s))
+                    return s;
+                return s.Length > 500 ? s[..500] : s;
+            }
             cmd.Parameters.AddWithValue("@ts", ts);
             cmd.Parameters.AddWithValue(SqlLit.ParamUserId, (object?)rec.UserId ?? DBNull.Value);
             cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, (object?)rec.ProjectId ?? DBNull.Value);
@@ -3384,6 +3394,12 @@ public class UserDatabaseService
         if (supportsImageVision) caps.Add("Image Vision / OCR");
         if (caps.Count == 0) caps.Add("—");
 
+        string activeSource;
+        if (hasPersonal)
+            activeSource = "personal";
+        else
+            activeSource = hasServer ? "server" : "none";
+
         return new ProviderKeyStatusDto
         {
             ProviderId = providerId,
@@ -3392,7 +3408,7 @@ public class UserDatabaseService
             HasPersonalKey = hasPersonal,
             MaskedPersonalKey = MaskKey(personal),
             HasServerKey = hasServer,
-            ActiveSource = hasPersonal ? "personal" : hasServer ? "server" : "none",
+            ActiveSource = activeSource,
             CapabilitiesSummary = string.Join(", ", caps),
             SupportsVideo = supportsVideoGen || supportsVideoReview,
             SupportsImage = supportsImageGen,
