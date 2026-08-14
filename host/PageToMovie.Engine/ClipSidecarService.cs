@@ -28,27 +28,29 @@ public sealed class ClipSidecarService
     /// <paramref name="take"/> key is inserted immediately after <c>clip</c> (only when provided)
     /// to preserve the on-disk key order. Callers append any extra fields (e.g. source_url) after.
     /// </summary>
-    private static Dictionary<string, object?> BuildSidecar(
-        string projectId, int scene, int clip, int? take,
-        string prompt, string scriptText, string model, string resolution,
-        double durationSeconds, string sha256, long sizeBytes, DateTime createdUtc)
+    private sealed record SidecarCore(
+        string ProjectId, int Scene, int Clip, int? Take,
+        string Prompt, string ScriptText, string Model, string Resolution,
+        double DurationSeconds, string Sha256, long SizeBytes, DateTime CreatedUtc);
+
+    private static Dictionary<string, object?> BuildSidecar(SidecarCore core)
     {
         var sidecar = new Dictionary<string, object?>
         {
             ["schema_version"] = "clip_sidecar.v1",
-            ["project_id"] = projectId,
-            ["scene"] = scene,
-            ["clip"] = clip,
+            ["project_id"] = core.ProjectId,
+            ["scene"] = core.Scene,
+            ["clip"] = core.Clip,
         };
-        if (take is { } t) sidecar["take"] = t;
-        sidecar["script_text"] = scriptText ?? "";
-        sidecar["visual_prompt"] = prompt ?? "";
-        sidecar["model"] = model ?? "";
-        sidecar["resolution"] = resolution ?? "";
-        sidecar["duration_seconds"] = Math.Round(durationSeconds, 2);
-        sidecar["sha256"] = MediaRegistryService.NormalizeSha256(sha256);
-        sidecar["size_bytes"] = sizeBytes;
-        sidecar["created_at_utc"] = createdUtc.ToString("o");
+        if (core.Take is { } t) sidecar["take"] = t;
+        sidecar["script_text"] = core.ScriptText ?? "";
+        sidecar["visual_prompt"] = core.Prompt ?? "";
+        sidecar["model"] = core.Model ?? "";
+        sidecar["resolution"] = core.Resolution ?? "";
+        sidecar["duration_seconds"] = Math.Round(core.DurationSeconds, 2);
+        sidecar["sha256"] = MediaRegistryService.NormalizeSha256(core.Sha256);
+        sidecar["size_bytes"] = core.SizeBytes;
+        sidecar["created_at_utc"] = core.CreatedUtc.ToString("o");
         return sidecar;
     }
     private readonly ProjectAutoGitService? _autoGit;
@@ -96,10 +98,10 @@ public sealed class ClipSidecarService
 
         var projectId = Path.GetFileName(projectDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
-        var sidecar = BuildSidecar(
-            projectId, scene, clip, take: null,
+        var sidecar = BuildSidecar(new SidecarCore(
+            projectId, scene, clip, Take: null,
             prompt, scriptText, model, resolution,
-            durationSeconds, sha256, sizeBytes, DateTime.UtcNow);
+            durationSeconds, sha256, sizeBytes, DateTime.UtcNow));
 
         // Provider-hosted source URL (e.g. xAI keeps generated videos for a long time). Persisting it
         // lets a project export carry a re-downloadable pointer so a DIFFERENT user who imports the
@@ -156,10 +158,10 @@ public sealed class ClipSidecarService
 
         var projectId = Path.GetFileName(projectDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
-        var sidecar = BuildSidecar(
+        var sidecar = BuildSidecar(new SidecarCore(
             projectId, scene, clip, take,
             prompt, scriptText, model, resolution,
-            durationSeconds, sha256, sizeBytes, createdUtc ?? DateTime.UtcNow);
+            durationSeconds, sha256, sizeBytes, createdUtc ?? DateTime.UtcNow));
 
         // Provenance for an AI-edited take: which prior take it was derived from, so the Takes
         // compare UI can show "edited from Take N" instead of an indistinguishable flat entry.

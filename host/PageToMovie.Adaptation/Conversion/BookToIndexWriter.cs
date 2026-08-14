@@ -53,9 +53,9 @@ public static class BookToIndexWriter
                 $"Writing sequence {batch.Number}/{batch.Total} — {batch.Title}…");
 
             var instruction = BuildInstruction(title, author, batch, prevTail, i == 0, !string.IsNullOrWhiteSpace(indexFileId));
-            var part = await WriteBatchAsync(
-                    chat, writeSystem, instruction, model, temperature,
-                    bookSession, indexFileId, batch, onProgress, ct)
+            var call = new IndexWriteCall(
+                chat, writeSystem, model, temperature, bookSession, indexFileId, onProgress, ct);
+            var part = await WriteBatchAsync(call, instruction, batch)
                 .ConfigureAwait(false);
             part = BookToFountainConverter.StripBookPageTags(
                 BookToFountainConverter.StripFences(part));
@@ -75,34 +75,34 @@ public static class BookToIndexWriter
     public static bool HeadingCountInRange(int headings, int cards) =>
         cards <= 0 || headings >= Math.Max(1, (int)Math.Ceiling(cards * 0.80));
 
+    private sealed record IndexWriteCall(
+        IChatClient Chat,
+        string System,
+        string Model,
+        double Temperature,
+        IBookFileSession? BookSession,
+        string? IndexFileId,
+        Action<string>? OnProgress,
+        CancellationToken Ct);
+
     private static async Task<string> WriteBatchAsync(
-        IChatClient chat,
-        string system,
+        IndexWriteCall call,
         string instruction,
-        string model,
-        double temperature,
-        IBookFileSession? bookSession,
-        string? indexFileId,
-        ScreenplayIndexPlanner.Batch batch,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        ScreenplayIndexPlanner.Batch batch)
     {
-        var raw = await CompleteBatchAsync(
-                chat, system, instruction, model, temperature, bookSession, indexFileId, onProgress, ct)
-            .ConfigureAwait(false);
+        var raw = await CompleteBatchAsync(call, instruction).ConfigureAwait(false);
         var cleaned = BookToFountainConverter.StripBookPageTags(
             BookToFountainConverter.StripFences(raw ?? ""));
         if (HeadingCountInRange(BookToFountainConverter.CountSceneHeadings(cleaned), batch.Cards.Count) &&
             BookToFountainConverter.LooksLikeGoodFountain(cleaned, requirePageTags: false))
             return cleaned;
 
-        onProgress?.Invoke(
+        call.OnProgress?.Invoke(
             $"Sequence {batch.Number} looked thin — rewriting that batch only…");
         var retryInstruction = instruction +
             "\n\nREWRITE: Every listed card must appear as its own scene heading. Do not skip cards.";
         var retry = await CompleteBatchAsync(
-                chat, system, retryInstruction, model, Math.Min(temperature, 0.15),
-                bookSession, indexFileId, onProgress, ct)
+                call with { Temperature = Math.Min(call.Temperature, 0.15) }, retryInstruction)
             .ConfigureAwait(false);
         var retryClean = BookToFountainConverter.StripBookPageTags(
             BookToFountainConverter.StripFences(retry ?? ""));
@@ -113,29 +113,20 @@ public static class BookToIndexWriter
         return cleaned;
     }
 
-    private static async Task<string?> CompleteBatchAsync(
-        IChatClient chat,
-        string system,
-        string instruction,
-        string model,
-        double temperature,
-        IBookFileSession? bookSession,
-        string? indexFileId,
-        Action<string>? onProgress,
-        CancellationToken ct)
+    private static async Task<string?> CompleteBatchAsync(IndexWriteCall call, string instruction)
     {
-        using var heartbeat = Stage1ProgressHeartbeat.Start(onProgress, "Writing sequence");
-        if (bookSession is { IsAvailable: true })
+        using var heartbeat = Stage1ProgressHeartbeat.Start(call.OnProgress, "Writing sequence");
+        if (call.BookSession is { IsAvailable: true })
         {
-            var extras = string.IsNullOrWhiteSpace(indexFileId)
+            var extras = string.IsNullOrWhiteSpace(call.IndexFileId)
                 ? Array.Empty<string>()
-                : new[] { indexFileId };
-            return await bookSession.CompleteWithFilesAsync(
-                system, instruction, extras, model, temperature, ct).ConfigureAwait(false);
+                : new[] { call.IndexFileId };
+            return await call.BookSession.CompleteWithFilesAsync(
+                call.System, instruction, extras, call.Model, call.Temperature, call.Ct).ConfigureAwait(false);
         }
 
-        return await chat.CompleteAsync(
-            system, instruction, model, temperature, ct, ChatCallModes.BookToFountainIndex)
+        return await call.Chat.CompleteAsync(
+            call.System, instruction, call.Model, call.Temperature, call.Ct, ChatCallModes.BookToFountainIndex)
             .ConfigureAwait(false);
     }
 

@@ -201,10 +201,11 @@ public sealed class Stage2PlannerService
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
 
+        var seeds = new ScenePlanSeeds(locSeeds, charSeeds, styleLock);
+        var bounds = new ClipDurationBounds(
+            durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
         var planned = await PlanScenesInParallelAsync(
-                scenesIn, locSeeds, charSeeds, styleLock,
-                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
-                planningModel, onProgress, ct)
+                scenesIn, seeds, bounds, planningModel, onProgress, ct)
             .ConfigureAwait(false);
 
         if (planned.Count == 0)
@@ -217,14 +218,16 @@ public sealed class Stage2PlannerService
         // Single source of truth for the auto-inserted credits scene's content (title + author + creator site).
         var creditsVisualPrompt = _projects.BuildCreditsVisualPrompt(projectId);
 
-        var plan = await LoadOrBuildPlanAsync(
-                want, outPath, planned, stage1, gpv, sourceLabel, resolution, scenes,
-                classifyMeta, enrichMeta, creditsVisualPrompt, onProgress, ct)
+        var stamp = new Stage2PlanStamp(
+            sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+        var source = new Stage2SourcePlan(stage1, gpv, planned);
+        var plan = await LoadOrBuildPlanAsync(want, outPath, source, stamp, onProgress, ct)
             .ConfigureAwait(false);
 
         return await FinalizeAndWritePlanAsync(
-                plan, stage1, projectId, projectDir, outPath, videoModelId, planningModel,
-                sourceLabel, resolution, scenes, enrichMeta, operationTrace, onProgress, ct)
+                plan, stage1,
+                new Stage2WriteContext(projectId, projectDir, outPath, videoModelId, planningModel),
+                stamp, operationTrace, onProgress, ct)
             .ConfigureAwait(false);
     }
 
@@ -295,14 +298,8 @@ public sealed class Stage2PlannerService
     /// </summary>
     private async Task<List<Dictionary<string, object?>>> PlanScenesInParallelAsync(
         List<Dictionary<string, object?>> scenesIn,
-        Dictionary<string, object?> locSeeds,
-        Dictionary<string, object?> charSeeds,
-        string? styleLock,
-        int durMinSeconds,
-        int durMaxSeconds,
-        int durAbsMaxSeconds,
-        int durExtensionMaxSeconds,
-        int maxSpeakersPerClip,
+        ScenePlanSeeds seeds,
+        ClipDurationBounds bounds,
         string planningModel,
         Action<string>? onProgress,
         CancellationToken ct)
@@ -318,9 +315,7 @@ public sealed class Stage2PlannerService
         using (fanout.SceneGate)
         {
             var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
-                    s, locSeeds, charSeeds, styleLock,
-                    durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
-                    planningModel, fanout, ct))
+                    s, seeds, bounds, planningModel, fanout, ct))
                 .ToArray();
             await Task.WhenAll(sceneTasks).ConfigureAwait(false);
         }
@@ -333,14 +328,8 @@ public sealed class Stage2PlannerService
 
     private async Task PlanOneSceneAsync(
         Dictionary<string, object?> s,
-        Dictionary<string, object?> locSeeds,
-        Dictionary<string, object?> charSeeds,
-        string? styleLock,
-        int durMinSeconds,
-        int durMaxSeconds,
-        int durAbsMaxSeconds,
-        int durExtensionMaxSeconds,
-        int maxSpeakersPerClip,
+        ScenePlanSeeds seeds,
+        ClipDurationBounds bounds,
         string planningModel,
         SceneFanoutState fanout,
         CancellationToken ct)
@@ -351,16 +340,17 @@ public sealed class Stage2PlannerService
         try
         {
             fanout.Report($"Scene {sn} of {fanout.TotalScenes}…");
-            var tasks = StartSceneClassifierTasks(s, sn, durMaxSeconds, planningModel, fanout, ct);
+            var tasks = StartSceneClassifierTasks(s, sn, bounds.MaxSeconds, planningModel, fanout, ct);
             await Task.WhenAll(
                 tasks.Pacing, tasks.Lighting, tasks.Camera, tasks.Negative, tasks.Wardrobe,
                 tasks.Emotion, tasks.Sound, tasks.Dof, tasks.Color).ConfigureAwait(false);
 
             var plannedScene = PlanScene(
-                s, locSeeds, charSeeds, styleLock,
-                tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
-                tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result,
-                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
+                s, seeds,
+                new SceneAiDirectives(
+                    tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
+                    tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result),
+                bounds);
             // Skip transition-only phantoms (e.g. FADE IN before first heading)
             if (plannedScene is null)
             {
@@ -445,15 +435,8 @@ public sealed class Stage2PlannerService
     private static async Task<Dictionary<string, object?>> LoadOrBuildPlanAsync(
         HashSet<int>? want,
         string outPath,
-        List<Dictionary<string, object?>> planned,
-        Dictionary<string, object?> stage1,
-        Dictionary<string, object?> gpv,
-        string sourceLabel,
-        string resolution,
-        string scenes,
-        SilentBeatClassifyResult? classifyMeta,
-        Dictionary<string, object?> enrichMeta,
-        string? creditsVisualPrompt,
+        Stage2SourcePlan source,
+        Stage2PlanStamp stamp,
         Action<string>? onProgress,
         CancellationToken ct)
     {
@@ -463,31 +446,24 @@ public sealed class Stage2PlannerService
             {
                 var existingText = await File.ReadAllTextAsync(outPath, ct).ConfigureAwait(false);
                 var existing = GrokChatClient.ParseJsonObject(existingText);
-                var merged = MergePlannedScenes(existing, planned, stage1, gpv, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+                var merged = MergePlannedScenes(existing, source, stamp);
                 onProgress?.Invoke("Merged planned scenes into existing blueprint");
                 return merged;
             }
             catch
             {
-                return BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+                return BuildFullPlan(source, stamp);
             }
         }
 
-        return BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+        return BuildFullPlan(source, stamp);
     }
 
     private async Task<Stage2PlanResult> FinalizeAndWritePlanAsync(
         Dictionary<string, object?> plan,
         Dictionary<string, object?> stage1,
-        string projectId,
-        string projectDir,
-        string outPath,
-        string videoModelId,
-        string planningModel,
-        string sourceLabel,
-        string resolution,
-        string scenes,
-        Dictionary<string, object?> enrichMeta,
+        Stage2WriteContext write,
+        Stage2PlanStamp stamp,
         ModelOperationTraceScope operationTrace,
         Action<string>? onProgress,
         CancellationToken ct)
@@ -507,19 +483,20 @@ public sealed class Stage2PlannerService
             onProgress?.Invoke(
                 $"Dialogue coverage: {coverage.CoveredLines}/{coverage.ExpectedLines} screenplay lines reach a clip " +
                 $"({coverage.Gaps.Count} not spoken in the shot plan).");
-            await LogDialogueCoverageGapsAsync(coverage, videoModelId, planningModel, ct).ConfigureAwait(false);
+            await LogDialogueCoverageGapsAsync(coverage, write.VideoModelId, write.PlanningModel, ct).ConfigureAwait(false);
         }
 
         var planIssues = StructuredOperationArtifacts.RequireJsonProperties(plan, Keys.Stage2Meta, Keys.Scenes)
             .Concat(Stage2AggregateValidator.Validate(plan))
             .Concat(coverage.Issues)
             .ToArray();
-        var classifierProvenance = Stage2AggregateValidator.BuildClassifierProvenance(enrichMeta);
+        var classifierProvenance = Stage2AggregateValidator.BuildClassifierProvenance(stamp.EnrichMeta);
         await StructuredOperationArtifacts.WriteAsync(
-            projectDir, "stage2_shot_plan", videoModelId,
-            new { projectId, sourceLabel, resolution, scenes }, plan, planIssues, ct).ConfigureAwait(false);
+            write.ProjectDir, "stage2_shot_plan", write.VideoModelId,
+            new { projectId = write.ProjectId, sourceLabel = stamp.SourceLabel, resolution = stamp.Resolution, scenes = stamp.ScenesFilter },
+            plan, planIssues, ct).ConfigureAwait(false);
         await Stage2AggregateValidator.WriteManifestAsync(
-            projectDir, classifierProvenance, operationTrace.Snapshot(), planIssues, ct).ConfigureAwait(false);
+            write.ProjectDir, classifierProvenance, operationTrace.Snapshot(), planIssues, ct).ConfigureAwait(false);
         if (planIssues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", planIssues.Select(i => i.Message)));
 
@@ -529,20 +506,20 @@ public sealed class Stage2PlannerService
         var planJson = JsonSerializer.Serialize(plan, JsonWrite);
         ThrowIfDuplicateClipNumbers(planJson);
 
-        await File.WriteAllTextAsync(outPath, planJson + "\n", ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(write.OutPath, planJson + "\n", ct).ConfigureAwait(false);
         var meta = GetDict(plan, Keys.Stage2Meta);
         var totalClips = ToInt(meta.TryGetValue("total_clips", out var tc) ? tc : 0);
         var sceneCount = GetList(plan, Keys.Scenes).Count;
         var totalDur = ToInt(meta.TryGetValue("total_duration_seconds", out var td) ? td : 0);
         onProgress?.Invoke(
-            $"Wrote {Path.GetFileName(outPath)} · {sceneCount} scenes · {totalClips} clips");
+            $"Wrote {Path.GetFileName(write.OutPath)} · {sceneCount} scenes · {totalClips} clips");
 
-        _projects.TriggerAutoGitCommit(projectId, "Stage: Stage 2 blueprint written");
+        _projects.TriggerAutoGitCommit(write.ProjectId, "Stage: Stage 2 blueprint written");
 
         return new Stage2PlanResult
         {
             Ok = true,
-            OutPath = outPath,
+            OutPath = write.OutPath,
             SceneCount = sceneCount,
             ClipCount = totalClips,
             DurationSeconds = totalDur,
@@ -589,54 +566,38 @@ public sealed class Stage2PlannerService
         }, ct).ConfigureAwait(false);
     }
 
-    private static Dictionary<string, object?> BuildFullPlan(
-        Dictionary<string, object?> stage1,
-        Dictionary<string, object?> gpv,
-        List<Dictionary<string, object?>> planned,
-        string sourceLabel,
-        string resolution,
-        string scenesFilter,
-        SilentBeatClassifyResult? classifyMeta,
-        Dictionary<string, object?>? enrichMeta,
-        string? creditsVisualPrompt = null)
+    private static Dictionary<string, object?> BuildFullPlan(Stage2SourcePlan source, Stage2PlanStamp stamp)
     {
-        EnsureEndCreditsScene(planned, creditsVisualPrompt);
+        EnsureEndCreditsScene(source.Planned, stamp.CreditsVisualPrompt);
         return new()
         {
             ["schema_version"] = "stage2.v1",
-            [JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt : null,
-            [Keys.SourceBookTitle] = stage1.TryGetValue(Keys.SourceBookTitle, out var sbt) ? sbt : null,
-            [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(stage1),
-            [Keys.GlobalProductionVariables] = gpv,
-            [Keys.Scenes] = planned.Cast<object?>().ToList(),
-            [Keys.Stage2Meta] = MakeMeta(stage1, planned, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta),
+            [JsonKeys.MovieTitle] = source.Stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt : null,
+            [Keys.SourceBookTitle] = source.Stage1.TryGetValue(Keys.SourceBookTitle, out var sbt) ? sbt : null,
+            [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(source.Stage1),
+            [Keys.GlobalProductionVariables] = source.Gpv,
+            [Keys.Scenes] = source.Planned.Cast<object?>().ToList(),
+            [Keys.Stage2Meta] = MakeMeta(source.Stage1, source.Planned, stamp),
         };
     }
 
     private static Dictionary<string, object?> MergePlannedScenes(
         Dictionary<string, object?> existing,
-        List<Dictionary<string, object?>> planned,
-        Dictionary<string, object?> stage1,
-        Dictionary<string, object?> gpv,
-        string sourceLabel,
-        string resolution,
-        string scenesFilter,
-        SilentBeatClassifyResult? classifyMeta,
-        Dictionary<string, object?>? enrichMeta,
-        string? creditsVisualPrompt = null)
+        Stage2SourcePlan source,
+        Stage2PlanStamp stamp)
     {
         var byN = new Dictionary<int, Dictionary<string, object?>>();
         AbsorbScenesByNumber(byN, GetList(existing, Keys.Scenes).OfType<Dictionary<string, object?>>());
-        AbsorbScenesByNumber(byN, planned);
+        AbsorbScenesByNumber(byN, source.Planned);
         var all = byN.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
-        EnsureEndCreditsScene(all, creditsVisualPrompt);
+        EnsureEndCreditsScene(all, stamp.CreditsVisualPrompt);
         existing["schema_version"] = "stage2.v1";
-        existing[JsonKeys.MovieTitle] = CoalesceStage1OrExisting(stage1, existing, JsonKeys.MovieTitle);
-        existing[Keys.SourceBookTitle] = CoalesceStage1OrExisting(stage1, existing, Keys.SourceBookTitle);
-        existing[Keys.VideoProviderProfile] = ResolveVideoProviderProfile(stage1);
-        existing[Keys.GlobalProductionVariables] = gpv;
+        existing[JsonKeys.MovieTitle] = CoalesceStage1OrExisting(source.Stage1, existing, JsonKeys.MovieTitle);
+        existing[Keys.SourceBookTitle] = CoalesceStage1OrExisting(source.Stage1, existing, Keys.SourceBookTitle);
+        existing[Keys.VideoProviderProfile] = ResolveVideoProviderProfile(source.Stage1);
+        existing[Keys.GlobalProductionVariables] = source.Gpv;
         existing[Keys.Scenes] = all.Cast<object?>().ToList();
-        existing[Keys.Stage2Meta] = MakeMeta(stage1, all, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta);
+        existing[Keys.Stage2Meta] = MakeMeta(source.Stage1, all, stamp);
         return existing;
     }
 
@@ -722,18 +683,14 @@ public sealed class Stage2PlannerService
     private static Dictionary<string, object?> MakeMeta(
         Dictionary<string, object?> stage1,
         List<Dictionary<string, object?>> planned,
-        string sourceLabel,
-        string resolution,
-        string scenesFilter,
-        SilentBeatClassifyResult? classifyMeta,
-        Dictionary<string, object?>? enrichMeta)
+        Stage2PlanStamp stamp)
     {
         var meta = new Dictionary<string, object?>
         {
-            ["source_screenplay"] = sourceLabel,
-            ["source_stage1"] = sourceLabel,
-            ["resolution"] = resolution,
-            ["scene_filter"] = scenesFilter,
+            ["source_screenplay"] = stamp.SourceLabel,
+            ["source_stage1"] = stamp.SourceLabel,
+            ["resolution"] = stamp.Resolution,
+            ["scene_filter"] = stamp.ScenesFilter,
             ["planner"] = "Stage2PlannerService (C# Fountain)",
             ["prompt_truncates"] = false,
             ["prompt_length_policy"] = "full_then_api_retry_shorten",
@@ -744,10 +701,10 @@ public sealed class Stage2PlannerService
                 ToInt(s.TryGetValue("total_estimated_duration_seconds", out var d) ? d : 0)),
             ["total_clips"] = planned.Sum(s => GetList(s, Keys.VeoClips).Count),
         };
-        if (classifyMeta is not null)
-            meta["silent_beat_classify"] = classifyMeta.ToMetaDict();
-        if (enrichMeta is { Count: > 0 })
-            meta["ai_enrichments"] = enrichMeta;
+        if (stamp.ClassifyMeta is not null)
+            meta["silent_beat_classify"] = stamp.ClassifyMeta.ToMetaDict();
+        if (stamp.EnrichMeta is { Count: > 0 })
+            meta["ai_enrichments"] = stamp.EnrichMeta;
         return meta;
     }
 
@@ -821,25 +778,27 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static Dictionary<string, object?>? PlanScene(
         Dictionary<string, object?> scene,
-        Dictionary<string, object?> locSeeds,
-        Dictionary<string, object?> charSeeds,
-        string? styleLock,
-        Dictionary<string, int>? aiPacing = null,
-        string? aiLighting = null,
-        Dictionary<string, CameraDirective>? aiCamera = null,
-        string? aiNegative = null,
-        Dictionary<string, string>? aiWardrobe = null,
-        Dictionary<string, EmotionDirective>? aiEmotion = null,
-        Dictionary<string, SoundDesignDirective>? aiSound = null,
-        Dictionary<string, DepthOfFieldDirective>? aiDof = null,
-        ColorGradingDirective? aiColor = null,
-        int minSeconds = ClipDurationEstimator.MinSeconds,
-        int maxSeconds = ClipDurationEstimator.MaxSeconds,
-        int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds,
-        int? extensionMaxSeconds = null,
-        int maxSpeakersPerClip = 1)
+        ScenePlanSeeds seeds,
+        SceneAiDirectives ai,
+        ClipDurationBounds bounds)
     {
-        var effectiveExtensionMax = extensionMaxSeconds ?? maxSeconds;
+        var locSeeds = seeds.Locations;
+        var charSeeds = seeds.Characters;
+        var styleLock = seeds.StyleLock;
+        var aiPacing = ai.Pacing;
+        var aiLighting = ai.Lighting;
+        var aiCamera = ai.Camera;
+        var aiNegative = ai.Negative;
+        var aiWardrobe = ai.Wardrobe;
+        var aiEmotion = ai.Emotion;
+        var aiSound = ai.Sound;
+        var aiDof = ai.Dof;
+        var aiColor = ai.Color;
+        var minSeconds = bounds.MinSeconds;
+        var maxSeconds = bounds.MaxSeconds;
+        var absMaxSeconds = bounds.AbsMaxSeconds;
+        var maxSpeakersPerClip = bounds.MaxSpeakersPerClip;
+        var effectiveExtensionMax = bounds.ExtensionMaxSeconds;
         var sceneInput = new Dictionary<string, object?>(scene);
         if (!string.IsNullOrWhiteSpace(aiLighting))
         {
@@ -2741,6 +2700,49 @@ public sealed class Stage2PlannerService
                 OnProgress?.Invoke(line);
         }
     }
+
+    private sealed record ScenePlanSeeds(
+        Dictionary<string, object?> Locations,
+        Dictionary<string, object?> Characters,
+        string? StyleLock);
+
+    private sealed record ClipDurationBounds(
+        int MinSeconds,
+        int MaxSeconds,
+        int AbsMaxSeconds,
+        int ExtensionMaxSeconds,
+        int MaxSpeakersPerClip);
+
+    private sealed record SceneAiDirectives(
+        Dictionary<string, int>? Pacing,
+        string? Lighting,
+        Dictionary<string, CameraDirective>? Camera,
+        string? Negative,
+        Dictionary<string, string>? Wardrobe,
+        Dictionary<string, EmotionDirective>? Emotion,
+        Dictionary<string, SoundDesignDirective>? Sound,
+        Dictionary<string, DepthOfFieldDirective>? Dof,
+        ColorGradingDirective? Color);
+
+    private sealed record Stage2PlanStamp(
+        string SourceLabel,
+        string Resolution,
+        string ScenesFilter,
+        SilentBeatClassifyResult? ClassifyMeta,
+        Dictionary<string, object?>? EnrichMeta,
+        string? CreditsVisualPrompt = null);
+
+    private sealed record Stage2SourcePlan(
+        Dictionary<string, object?> Stage1,
+        Dictionary<string, object?> Gpv,
+        List<Dictionary<string, object?>> Planned);
+
+    private sealed record Stage2WriteContext(
+        string ProjectId,
+        string ProjectDir,
+        string OutPath,
+        string VideoModelId,
+        string PlanningModel);
 
     private sealed record SceneClassifierTasks(
         Task<Dictionary<string, int>?> Pacing,

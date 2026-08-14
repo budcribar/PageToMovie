@@ -289,7 +289,8 @@ public sealed class DemoCatalogService
             if (fi.Length < MinUploadBytes)
                 throw new InvalidOperationException("Movie file is too small");
 
-            ApplyAttachMovieMetadata(entry, fi, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags);
+            ApplyAttachMovieMetadata(entry, fi, new DemoMovieMetadata(
+                title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags));
 
             await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             _log.LogInformation(
@@ -670,30 +671,33 @@ public sealed class DemoCatalogService
         return (await SetStatusAsync(id, DemoStatuses.Removed, requesterUserId, "Removed by publisher", ct).ConfigureAwait(false)) is not null;
     }
 
+    private sealed record DemoMovieMetadata(
+        string? Title,
+        string? Description,
+        bool? MadeForKids,
+        bool? IsAiSyntheticContent,
+        string? PrivacyStatus,
+        List<string>? Tags);
+
     private static void ApplyAttachMovieMetadata(
         DemoEntry entry,
         FileInfo fi,
-        string? title,
-        string? description,
-        bool? madeForKids,
-        bool? isAiSyntheticContent,
-        string? privacyStatus,
-        List<string>? tags)
+        DemoMovieMetadata meta)
     {
         entry.SizeBytes = fi.Length;
         entry.ContentType = "video/mp4";
-        if (!string.IsNullOrWhiteSpace(title))
-            entry.Title = title.Trim();
-        if (description is not null)
-            entry.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
-        if (madeForKids is bool mfk)
+        if (!string.IsNullOrWhiteSpace(meta.Title))
+            entry.Title = meta.Title.Trim();
+        if (meta.Description is not null)
+            entry.Description = string.IsNullOrWhiteSpace(meta.Description) ? null : meta.Description.Trim();
+        if (meta.MadeForKids is bool mfk)
             entry.MadeForKids = mfk;
-        if (isAiSyntheticContent is bool ai)
+        if (meta.IsAiSyntheticContent is bool ai)
             entry.IsAiSyntheticContent = ai;
-        if (privacyStatus is DemoStatuses.Public or "unlisted" or "private")
-            entry.PrivacyStatus = privacyStatus;
-        if (tags is not null)
-            entry.Tags = tags.Count > 0 ? tags : null;
+        if (meta.PrivacyStatus is DemoStatuses.Public or "unlisted" or "private")
+            entry.PrivacyStatus = meta.PrivacyStatus;
+        if (meta.Tags is not null)
+            entry.Tags = meta.Tags.Count > 0 ? meta.Tags : null;
         // New bytes on disk — YouTube pointer is stale until V2 publish finishes.
         entry.YoutubeUploadStatus = string.IsNullOrWhiteSpace(entry.YoutubeId) ? "none" : "pending_replace";
         entry.YoutubeUploadError = null;

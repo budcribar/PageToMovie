@@ -50,5 +50,15 @@ public sealed class CinematicLightingClassifier
         """;
 
     public Task<string?> ClassifySceneLightingAsync(Dictionary<string, object?> scene, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) =>
-        ClassifierTextDirectiveRunner.ClassifyAsync(IsEnabled, onProgress, $"AI Cinematic Lighting: Analyzing lighting & mood for Scene {scene.GetValueOrDefault("scene_number")}…", _chat, _log, scene, SystemPrompt(), () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE LOCK", includeSampleBeats: true), model, _opts.CinematicLightingClassifyModel, "cinematic_lighting", PromptVersion, "lighting_token", ChatCallModes.CinematicLightingClassify, "cinematic lighting", ct);
+        ClassifierTextDirectiveRunner.ClassifyAsync(
+            IsEnabled, onProgress,
+            $"AI Cinematic Lighting: Analyzing lighting & mood for Scene {scene.GetValueOrDefault("scene_number")}…",
+            new ClassifierDirectiveRun(
+                _chat, _log, scene,
+                new ClassifierDirectiveSpec(
+                    SystemPrompt(),
+                    () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE LOCK", includeSampleBeats: true),
+                    model, _opts.CinematicLightingClassifyModel, "cinematic_lighting", PromptVersion,
+                    "lighting_token", ChatCallModes.CinematicLightingClassify, "cinematic lighting"),
+                ct));
 }

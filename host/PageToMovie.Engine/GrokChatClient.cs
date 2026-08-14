@@ -113,9 +113,9 @@ public sealed class GrokChatClient : IChatClient
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
-                state.Stopwatch.ElapsedMilliseconds, state.SystemPrompt, state.UserPrompt,
-                attempt: null, ct);
+                new ChatCallContext(_telemetry, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
+                    state.SystemPrompt, state.UserPrompt),
+                ex, state.Stopwatch.ElapsedMilliseconds, ct);
             throw;
         }
     }
@@ -165,11 +165,11 @@ public sealed class GrokChatClient : IChatClient
                 continue;
 
             return await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
-                errorModel: null, state.Stopwatch.ElapsedMilliseconds,
-                state.SystemPrompt, state.UserPrompt,
-                (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
-                attemptNum, ExtractMessageText, "Chat", state.Ct);
+                new ChatCallContext(_telemetry, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
+                    state.SystemPrompt, state.UserPrompt),
+                new ChatHttpFinish(resp, body, state.Stopwatch.ElapsedMilliseconds, attemptNum,
+                    (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
+                    ExtractMessageText, "Chat", state.Ct));
         }
 
         throw new InvalidOperationException("Chat parameter retry loop exhausted.");

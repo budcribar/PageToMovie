@@ -890,9 +890,9 @@ public static class SupportedModelCatalog
         var supportsAudio = group.Any(m => m.Capability == ModelCapability.Audio);
         var supportsVoice = group.Any(m => m.Capability == ModelCapability.Voice);
         var supportsLipSync = group.Any(m => m.Capability == ModelCapability.LipSync);
-        var caps = ProviderCapabilityLabels(
+        var caps = ProviderCapabilityLabels(new ProviderCapabilityFlags(
             supportsVideoGen, supportsVideoReview, supportsImageGen, supportsScriptPlanning,
-            supportsImageVision, supportsAudio, supportsVoice, supportsLipSync);
+            supportsImageVision, supportsAudio, supportsVoice, supportsLipSync));
 
         return new ProviderKeyStatusDto
         {
@@ -916,19 +916,21 @@ public static class SupportedModelCatalog
         };
     }
 
-    private static List<string> ProviderCapabilityLabels(
-        bool videoGen, bool videoReview, bool imageGen, bool scriptPlanning,
-        bool imageVision, bool audio, bool voice, bool lipSync)
+    private readonly record struct ProviderCapabilityFlags(
+        bool VideoGen, bool VideoReview, bool ImageGen, bool ScriptPlanning,
+        bool ImageVision, bool Audio, bool Voice, bool LipSync);
+
+    private static List<string> ProviderCapabilityLabels(ProviderCapabilityFlags flags)
     {
         var caps = new List<string>();
-        if (videoGen) caps.Add("Video Gen");
-        if (videoReview) caps.Add("Video Review");
-        if (imageGen) caps.Add("Image Gen");
-        if (scriptPlanning) caps.Add("Script & Planning");
-        if (imageVision) caps.Add("Image Vision / OCR");
-        if (audio) caps.Add("Audio / Music");
-        if (voice) caps.Add("Voice clone / TTS");
-        if (lipSync) caps.Add("Lip-sync");
+        if (flags.VideoGen) caps.Add("Video Gen");
+        if (flags.VideoReview) caps.Add("Video Review");
+        if (flags.ImageGen) caps.Add("Image Gen");
+        if (flags.ScriptPlanning) caps.Add("Script & Planning");
+        if (flags.ImageVision) caps.Add("Image Vision / OCR");
+        if (flags.Audio) caps.Add("Audio / Music");
+        if (flags.Voice) caps.Add("Voice clone / TTS");
+        if (flags.LipSync) caps.Add("Lip-sync");
         return caps;
     }
 

@@ -51,5 +51,15 @@ public sealed class NegativePromptClassifier
         """;
 
     public Task<string?> ClassifySceneNegativeAsync(Dictionary<string, object?> scene, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) =>
-        ClassifierTextDirectiveRunner.ClassifyAsync(IsEnabled, onProgress, $"AI Period Guard: Generating anachronism negatives for Scene {scene.GetValueOrDefault("scene_number")}…", _chat, _log, scene, SystemPrompt, () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE / PERIOD LOCK", includeSampleBeats: false), model, _opts.NegativePromptClassifyModel, "negative_prompt", PromptVersion, "negative_tokens", ChatCallModes.NegativePromptClassify, "negative prompt", ct);
+        ClassifierTextDirectiveRunner.ClassifyAsync(
+            IsEnabled, onProgress,
+            $"AI Period Guard: Generating anachronism negatives for Scene {scene.GetValueOrDefault("scene_number")}…",
+            new ClassifierDirectiveRun(
+                _chat, _log, scene,
+                new ClassifierDirectiveSpec(
+                    SystemPrompt,
+                    () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE / PERIOD LOCK", includeSampleBeats: false),
+                    model, _opts.NegativePromptClassifyModel, "negative_prompt", PromptVersion,
+                    "negative_tokens", ChatCallModes.NegativePromptClassify, "negative prompt"),
+                ct));
 }

@@ -192,18 +192,18 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
             }
 
             var text = await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, kind, modeTag, endpoint, model,
-                errorModel: targetModel, sw.ElapsedMilliseconds,
-                promptForLog, userPromptForLog, promptChars, attemptNum,
-                ExtractMessageText, $"Gemini {endpoint}", ct).ConfigureAwait(false);
+                new ChatCallContext(_telemetry, kind, modeTag, endpoint, model, promptForLog, userPromptForLog),
+                new ChatHttpFinish(resp, body, sw.ElapsedMilliseconds, attemptNum, promptChars,
+                    ExtractMessageText, $"Gemini {endpoint}", ct),
+                errorModel: targetModel).ConfigureAwait(false);
             _lastResolvedModel.Value = targetModel;
             return text;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, kind, modeTag, endpoint, model,
-                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                new ChatCallContext(_telemetry, kind, modeTag, endpoint, model, promptForLog, userPromptForLog),
+                ex, sw.ElapsedMilliseconds, ct, attemptNum)
                 .ConfigureAwait(false);
             throw;
         }

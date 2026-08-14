@@ -40,34 +40,40 @@ public sealed class MusicSidecarService
         var musicDir = Path.Combine(projectDir, "assets", "music");
         Directory.CreateDirectory(musicDir);
         var sidecarPath = Path.Combine(musicDir, $"scene_{scene:D2}.meta.json");
-        await WriteSidecarAsync(sidecarPath, projectDir, scene, takeId, model, isVocal, prompt, lyrics, segmentFileNames, ct).ConfigureAwait(false);
+        await WriteSidecarAsync(
+            sidecarPath,
+            new MusicSidecarCore(projectDir, scene, takeId, model, isVocal, prompt, lyrics, segmentFileNames),
+            ct).ConfigureAwait(false);
         _log.LogInformation("Written music sidecar manifest → {Path}", sidecarPath);
     }
 
+    private sealed record MusicSidecarCore(
+        string ProjectDir,
+        int Scene,
+        string TakeId,
+        string Model,
+        bool IsVocal,
+        string Prompt,
+        string? Lyrics,
+        IReadOnlyList<string> SegmentFileNames);
+
     private static async Task WriteSidecarAsync(
         string sidecarPath,
-        string projectDir,
-        int scene,
-        string takeId,
-        string model,
-        bool isVocal,
-        string prompt,
-        string? lyrics,
-        IReadOnlyList<string> segmentFileNames,
+        MusicSidecarCore core,
         CancellationToken ct)
     {
-        var projectId = Path.GetFileName(projectDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var projectId = Path.GetFileName(core.ProjectDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var sidecar = new Dictionary<string, object?>
         {
             ["schema_version"] = "music_sidecar.v1",
             ["project_id"] = projectId,
-            ["scene"] = scene,
-            ["take_id"] = takeId,
-            ["model"] = model ?? "",
-            ["is_vocal"] = isVocal,
-            ["prompt"] = prompt ?? "",
-            ["lyrics"] = lyrics,
-            ["segment_file_names"] = segmentFileNames,
+            ["scene"] = core.Scene,
+            ["take_id"] = core.TakeId,
+            ["model"] = core.Model ?? "",
+            ["is_vocal"] = core.IsVocal,
+            ["prompt"] = core.Prompt ?? "",
+            ["lyrics"] = core.Lyrics,
+            ["segment_file_names"] = core.SegmentFileNames,
             ["created_at_utc"] = DateTime.UtcNow.ToString("o"),
         };
 

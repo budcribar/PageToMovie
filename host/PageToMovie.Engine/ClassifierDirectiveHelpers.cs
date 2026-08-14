@@ -90,40 +90,46 @@ internal static class ClassifierDirectiveJson
 /// Shared ValidatedModelOperation pipeline for the scene-level text-token classifiers
 /// (cinematic lighting, negative prompt).
 /// </summary>
+internal sealed record ClassifierDirectiveSpec(
+    string SystemPrompt,
+    Func<string> BuildUserPrompt,
+    string? Model,
+    string DefaultModel,
+    string OperationName,
+    string PromptVersion,
+    string JsonProperty,
+    string ChatMode,
+    string ClassifierNoun);
+
+internal sealed record ClassifierDirectiveRun(
+    IChatClient Chat,
+    ILogger Log,
+    Dictionary<string, object?> Scene,
+    ClassifierDirectiveSpec Spec,
+    CancellationToken Ct);
+
 internal static class ClassifierTextDirectiveRunner
 {
-    public static async Task<string?> ExecuteAsync(
-        IChatClient chat,
-        ILogger log,
-        Dictionary<string, object?> scene,
-        string systemPrompt,
-        Func<string> buildUserPrompt,
-        string? model,
-        string defaultModel,
-        string operationName,
-        string promptVersion,
-        string jsonProperty,
-        string chatMode,
-        string classifierNoun,
-        CancellationToken ct)
+    public static async Task<string?> ExecuteAsync(ClassifierDirectiveRun run)
     {
+        var spec = run.Spec;
         try
         {
-            var userPrompt = buildUserPrompt();
-            var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : defaultModel;
+            var userPrompt = spec.BuildUserPrompt();
+            var effectiveModel = !string.IsNullOrWhiteSpace(spec.Model) ? spec.Model : spec.DefaultModel;
             var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, TextDirective>(
-                new Stage2DirectiveOperation(chat, operationName, promptVersion),
-                new JsonTextDirectiveParser(jsonProperty),
-                new TextDirectiveValidator(jsonProperty),
+                new Stage2DirectiveOperation(run.Chat, spec.OperationName, spec.PromptVersion),
+                new JsonTextDirectiveParser(spec.JsonProperty),
+                new TextDirectiveValidator(spec.JsonProperty),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(),
                 new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
             var result = await pipeline.ExecuteAsync(
-                new(systemPrompt, userPrompt, effectiveModel, chatMode), ct).ConfigureAwait(false);
+                new(spec.SystemPrompt, userPrompt, effectiveModel, spec.ChatMode), run.Ct).ConfigureAwait(false);
             return result.Value?.Value;
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Failed to run AI {Classifier} classification for scene {Scene}", classifierNoun, scene.GetValueOrDefault("scene_number"));
+            run.Log.LogWarning(ex, "Failed to run AI {Classifier} classification for scene {Scene}", spec.ClassifierNoun, run.Scene.GetValueOrDefault("scene_number"));
             return null;
         }
     }
@@ -133,24 +139,10 @@ internal static class ClassifierTextDirectiveRunner
         bool isEnabled,
         Action<string>? onProgress,
         string progressMessage,
-        IChatClient chat,
-        ILogger log,
-        Dictionary<string, object?> scene,
-        string systemPrompt,
-        Func<string> buildUserPrompt,
-        string? model,
-        string defaultModel,
-        string operationName,
-        string promptVersion,
-        string jsonProperty,
-        string chatMode,
-        string classifierNoun,
-        CancellationToken ct)
+        ClassifierDirectiveRun run)
     {
         if (!isEnabled) return Task.FromResult<string?>(null);
         onProgress?.Invoke(progressMessage);
-        return ExecuteAsync(
-            chat, log, scene, systemPrompt, buildUserPrompt, model, defaultModel,
-            operationName, promptVersion, jsonProperty, chatMode, classifierNoun, ct);
+        return ExecuteAsync(run);
     }
 }

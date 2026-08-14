@@ -151,9 +151,7 @@ internal static class Stage1ChatExecutor
                 request.Temperature, ct, request.Mode, request.ReasoningEffort).ConfigureAwait(false);
         }
 
-        return await CompleteWithTransientRetryAsync(
-            chat, request.SystemPrompt, request.UserPrompt, request.Model,
-            request.Temperature, request.Mode, request.ReasoningEffort, ct).ConfigureAwait(false);
+        return await CompleteWithTransientRetryAsync(chat, request, ct).ConfigureAwait(false);
     }
 
     private static async Task<string?> TryCompleteCorrectionAsync(
@@ -205,8 +203,14 @@ internal static class Stage1ChatExecutor
             }
 
             return await CompleteWithTransientRetryAsync(
-                chat, request.SystemPrompt, correctionUser, request.Model,
-                corrTemp, request.Mode + "_correction", request.ReasoningEffort, ct).ConfigureAwait(false);
+                chat,
+                request with
+                {
+                    UserPrompt = correctionUser,
+                    Temperature = corrTemp,
+                    Mode = request.Mode + "_correction",
+                },
+                ct).ConfigureAwait(false);
         }
         catch
         {
@@ -217,12 +221,7 @@ internal static class Stage1ChatExecutor
 
     private static async Task<string> CompleteWithTransientRetryAsync(
         IChatClient chat,
-        string system,
-        string user,
-        string model,
-        double temperature,
-        string mode,
-        string? reasoningEffort,
+        Request request,
         CancellationToken ct,
         int maxAttempts = 2)
     {
@@ -233,8 +232,8 @@ internal static class Stage1ChatExecutor
             try
             {
                 return await chat.CompleteAsync(
-                    system, user, model, temperature, ct,
-                    mode: mode, reasoningEffort: reasoningEffort).ConfigureAwait(false);
+                    request.SystemPrompt, request.UserPrompt, request.Model, request.Temperature, ct,
+                    mode: request.Mode, reasoningEffort: request.ReasoningEffort).ConfigureAwait(false);
             }
             catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex))
             {

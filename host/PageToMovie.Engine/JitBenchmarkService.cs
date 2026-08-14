@@ -117,9 +117,11 @@ public sealed class JitBenchmarkService
             actionDescription, estimation.MatchCategoryId, estimation.ConfidenceScore);
 
         return await RecordNonLiveEstimateAsync(
-            concurrency, camOverhead, targetModel, evaluatorId, estimation,
-            isHit: true, idPrefix: "idx",
-            sourceDescription: $"Confident index match ({estimation.Explanation}).").ConfigureAwait(false);
+            new NonLiveEstimate(
+                concurrency, camOverhead, targetModel, evaluatorId, estimation,
+                IsHit: true, IdPrefix: "idx",
+                SourceDescription: $"Confident index match ({estimation.Explanation})."))
+            .ConfigureAwait(false);
     }
 
     private async Task<JitCalibrationResult?> TryLiveBenchmarkAsync(
@@ -338,8 +340,9 @@ public sealed class JitBenchmarkService
         if (_repository is null) return;
         await _repository.RecordCacheLookupAsync(isHit: false, lookupKey: categoryId).ConfigureAwait(false);
         await _repository.RecordTelemetryAsync(BuildEstimatorTelemetry(
-            "jit", targetModel, evaluatorId, concurrency, categoryId,
-            camOverhead, measuredActionOverheadSec, measuredTotalClipSec)).ConfigureAwait(false);
+            new EstimatorTelemetry(
+                "jit", targetModel, evaluatorId, concurrency, categoryId,
+                camOverhead, measuredActionOverheadSec, measuredTotalClipSec))).ConfigureAwait(false);
     }
 
     private async Task<JitCalibrationResult> RecordFallback(
@@ -355,62 +358,69 @@ public sealed class JitBenchmarkService
             actionDescription, estimation.ConfidenceScore);
 
         return await RecordNonLiveEstimateAsync(
-            concurrency, camOverhead, targetModel, evaluatorId, estimation,
-            isHit: false, idPrefix: "clf",
-            sourceDescription: $"Low-confidence AI Similarity Classifier estimate, no live measurement available ({estimation.Explanation}).").ConfigureAwait(false);
+            new NonLiveEstimate(
+                concurrency, camOverhead, targetModel, evaluatorId, estimation,
+                IsHit: false, IdPrefix: "clf",
+                SourceDescription: $"Low-confidence AI Similarity Classifier estimate, no live measurement available ({estimation.Explanation})."))
+            .ConfigureAwait(false);
     }
 
-    private async Task<JitCalibrationResult> RecordNonLiveEstimateAsync(
-        ActionConcurrencyResult concurrency,
-        double camOverhead,
-        string? targetModel,
-        string evaluatorId,
-        ActionClassifierEstimation estimation,
-        bool isHit,
-        string idPrefix,
-        string sourceDescription)
+    private sealed record NonLiveEstimate(
+        ActionConcurrencyResult Concurrency,
+        double CamOverhead,
+        string? TargetModel,
+        string EvaluatorId,
+        ActionClassifierEstimation Estimation,
+        bool IsHit,
+        string IdPrefix,
+        string SourceDescription);
+
+    private async Task<JitCalibrationResult> RecordNonLiveEstimateAsync(NonLiveEstimate estimate)
     {
         if (_repository is not null)
         {
-            await _repository.RecordCacheLookupAsync(isHit, lookupKey: estimation.MatchCategoryId).ConfigureAwait(false);
+            await _repository.RecordCacheLookupAsync(estimate.IsHit, lookupKey: estimate.Estimation.MatchCategoryId).ConfigureAwait(false);
             await _repository.RecordTelemetryAsync(BuildEstimatorTelemetry(
-                idPrefix, targetModel, evaluatorId, concurrency,
-                estimation.MatchCategoryId, camOverhead, estimation.EstimatedOverheadSec,
-                clipDurationSec: estimation.EstimatedOverheadSec + camOverhead)).ConfigureAwait(false);
+                new EstimatorTelemetry(
+                    estimate.IdPrefix, estimate.TargetModel, estimate.EvaluatorId, estimate.Concurrency,
+                    estimate.Estimation.MatchCategoryId, estimate.CamOverhead, estimate.Estimation.EstimatedOverheadSec,
+                    ClipDurationSec: estimate.Estimation.EstimatedOverheadSec + estimate.CamOverhead))).ConfigureAwait(false);
         }
 
         return new JitCalibrationResult(
-            CategoryId: estimation.MatchCategoryId,
-            MeasuredOverheadSec: estimation.EstimatedOverheadSec,
-            OverlapRatioGamma: concurrency.OverlapRatioGamma,
+            CategoryId: estimate.Estimation.MatchCategoryId,
+            MeasuredOverheadSec: estimate.Estimation.EstimatedOverheadSec,
+            OverlapRatioGamma: estimate.Concurrency.OverlapRatioGamma,
             IsLiveJitBenchmark: false,
-            SourceDescription: sourceDescription);
+            SourceDescription: estimate.SourceDescription);
     }
 
-    private static TimingTelemetryRecord BuildEstimatorTelemetry(
-        string idPrefix,
-        string? targetModel,
-        string evaluatorId,
-        ActionConcurrencyResult concurrency,
-        string actionCategory,
-        double camOverhead,
-        double actionOverheadSec,
-        double clipDurationSec) =>
+    private sealed record EstimatorTelemetry(
+        string IdPrefix,
+        string? TargetModel,
+        string EvaluatorId,
+        ActionConcurrencyResult Concurrency,
+        string ActionCategory,
+        double CamOverhead,
+        double ActionOverheadSec,
+        double ClipDurationSec);
+
+    private static TimingTelemetryRecord BuildEstimatorTelemetry(EstimatorTelemetry tel) =>
         new(
-            Id: $"{idPrefix}_{Guid.NewGuid():N}",
+            Id: $"{tel.IdPrefix}_{Guid.NewGuid():N}",
             ProjectId: "global",
             SceneNumber: 0,
-            VideoModelId: targetModel ?? "",
+            VideoModelId: tel.TargetModel ?? "",
             VideoModelVersion: "v1",
-            EvaluatorModelId: evaluatorId,
+            EvaluatorModelId: tel.EvaluatorId,
             EvaluatorModelVersion: "v1",
-            CameraCategory: concurrency.CameraId,
-            ActionCategory: actionCategory,
+            CameraCategory: tel.Concurrency.CameraId,
+            ActionCategory: tel.ActionCategory,
             WordCount: 0,
-            EstimatedDurationSec: camOverhead + actionOverheadSec,
-            ClipDurationSec: clipDurationSec,
-            MeasuredCamOverheadSec: camOverhead,
-            MeasuredActionOverheadSec: actionOverheadSec,
+            EstimatedDurationSec: tel.CamOverhead + tel.ActionOverheadSec,
+            ClipDurationSec: tel.ClipDurationSec,
+            MeasuredCamOverheadSec: tel.CamOverhead,
+            MeasuredActionOverheadSec: tel.ActionOverheadSec,
             DialogueTruncated: false,
             CreatedAt: DateTime.UtcNow.ToString("o"));
 }

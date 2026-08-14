@@ -222,16 +222,15 @@ public sealed class AnthropicChatClient : ChatProviderWithoutBookVision, IChatCl
             }
 
             return await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, kind, modeTag, endpoint, model,
-                errorModel: null, sw.ElapsedMilliseconds,
-                promptForLog, userPromptForLog, promptChars, attemptNum,
-                ExtractMessageText, $"Anthropic {endpoint}", ct).ConfigureAwait(false);
+                new ChatCallContext(_telemetry, kind, modeTag, endpoint, model, promptForLog, userPromptForLog),
+                new ChatHttpFinish(resp, body, sw.ElapsedMilliseconds, attemptNum, promptChars,
+                    ExtractMessageText, $"Anthropic {endpoint}", ct)).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, kind, modeTag, endpoint, model,
-                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                new ChatCallContext(_telemetry, kind, modeTag, endpoint, model, promptForLog, userPromptForLog),
+                ex, sw.ElapsedMilliseconds, ct, attemptNum)
                 .ConfigureAwait(false);
             throw;
         }

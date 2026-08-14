@@ -7,6 +7,25 @@ namespace PageToMovie.Engine;
 /// Shared chat-client HTTP finish/telemetry and the Grok-routed vision stubs used by
 /// Anthropic/Gemini. Provider request shapes and 400 self-heal stay in each client.
 /// </summary>
+internal sealed record ChatCallContext(
+    ProjectTelemetryService Telemetry,
+    string Kind,
+    string? Mode,
+    string Endpoint,
+    string Model,
+    string? SystemPrompt,
+    string? UserPrompt);
+
+internal sealed record ChatHttpFinish(
+    HttpResponseMessage Response,
+    string Body,
+    long DurationMs,
+    int Attempt,
+    int PromptChars,
+    Func<JsonElement, string> ExtractText,
+    string HttpErrorPrefix,
+    CancellationToken Ct);
+
 internal static class ChatClientHelpers
 {
     public const int TelemetryErrorTrim = 800;
@@ -26,86 +45,67 @@ internal static class ChatClientHelpers
     /// normalized id there and the caller-supplied id on success); null uses <paramref name="model"/>.
     /// </summary>
     public static async Task<string> FinishChatResponseAsync(
-        ProjectTelemetryService telemetry,
-        HttpResponseMessage resp,
-        string body,
-        string kind,
-        string? mode,
-        string endpoint,
-        string model,
-        string? errorModel,
-        long durationMs,
-        string? systemPrompt,
-        string? userPrompt,
-        int promptChars,
-        int attempt,
-        Func<JsonElement, string> extractText,
-        string httpErrorPrefix,
-        CancellationToken ct)
+        ChatCallContext ctx,
+        ChatHttpFinish http,
+        string? errorModel = null)
     {
-        if (!resp.IsSuccessStatusCode)
+        if (!http.Response.IsSuccessStatusCode)
         {
-            await telemetry.LogApiCallAsync(new ApiCallTelemetry
+            await ctx.Telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = kind,
-                Mode = mode,
-                Endpoint = endpoint,
-                Model = errorModel ?? model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = durationMs,
-                SystemPrompt = systemPrompt,
-                UserPrompt = userPrompt,
-                PromptChars = promptChars,
-                Attempt = attempt,
-                Error = ProviderHttpHelpers.Trim(body, TelemetryErrorTrim),
+                Kind = ctx.Kind,
+                Mode = ctx.Mode,
+                Endpoint = ctx.Endpoint,
+                Model = errorModel ?? ctx.Model,
+                HttpStatus = (int)http.Response.StatusCode,
+                DurationMs = http.DurationMs,
+                SystemPrompt = ctx.SystemPrompt,
+                UserPrompt = ctx.UserPrompt,
+                PromptChars = http.PromptChars,
+                Attempt = http.Attempt,
+                Error = ProviderHttpHelpers.Trim(http.Body, TelemetryErrorTrim),
                 Ok = false,
-            }, ct).ConfigureAwait(false);
-            throw ChatHttpStatusException.FromResponse(resp,
-                $"{httpErrorPrefix} HTTP {(int)resp.StatusCode}: {ProviderHttpHelpers.Trim(body, TelemetryErrorTrim)}");
+            }, http.Ct).ConfigureAwait(false);
+            throw ChatHttpStatusException.FromResponse(http.Response,
+                $"{http.HttpErrorPrefix} HTTP {(int)http.Response.StatusCode}: {ProviderHttpHelpers.Trim(http.Body, TelemetryErrorTrim)}");
         }
 
-        using var doc = JsonDocument.Parse(body);
-        var text = extractText(doc.RootElement);
-        await telemetry.LogApiCallAsync(new ApiCallTelemetry
+        using var doc = JsonDocument.Parse(http.Body);
+        var text = http.ExtractText(doc.RootElement);
+        await ctx.Telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
-            Kind = kind,
-            Mode = mode,
-            Endpoint = endpoint,
-            Model = model,
-            HttpStatus = (int)resp.StatusCode,
-            DurationMs = durationMs,
-            SystemPrompt = systemPrompt,
-            UserPrompt = userPrompt,
-            PromptChars = promptChars,
-            Attempt = attempt,
+            Kind = ctx.Kind,
+            Mode = ctx.Mode,
+            Endpoint = ctx.Endpoint,
+            Model = ctx.Model,
+            HttpStatus = (int)http.Response.StatusCode,
+            DurationMs = http.DurationMs,
+            SystemPrompt = ctx.SystemPrompt,
+            UserPrompt = ctx.UserPrompt,
+            PromptChars = http.PromptChars,
+            Attempt = http.Attempt,
             ResponsePreview = ProviderHttpHelpers.Trim(text, ResponsePreviewMax),
             ResponseChars = text.Length,
             Ok = true,
-        }, ct).ConfigureAwait(false);
+        }, http.Ct).ConfigureAwait(false);
         return text;
     }
 
     public static Task LogChatExceptionAsync(
-        ProjectTelemetryService telemetry,
+        ChatCallContext ctx,
         Exception ex,
-        string kind,
-        string? mode,
-        string endpoint,
-        string model,
         long durationMs,
-        string? systemPrompt,
-        string? userPrompt,
-        int? attempt,
-        CancellationToken ct) =>
-        telemetry.LogApiCallAsync(new ApiCallTelemetry
+        CancellationToken ct,
+        int? attempt = null) =>
+        ctx.Telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
-            Kind = kind,
-            Mode = mode,
-            Endpoint = endpoint,
-            Model = model,
+            Kind = ctx.Kind,
+            Mode = ctx.Mode,
+            Endpoint = ctx.Endpoint,
+            Model = ctx.Model,
             DurationMs = durationMs,
-            SystemPrompt = systemPrompt,
-            UserPrompt = userPrompt,
+            SystemPrompt = ctx.SystemPrompt,
+            UserPrompt = ctx.UserPrompt,
             Attempt = attempt,
             Error = ex.Message,
             Ok = false,
