@@ -58,5 +58,5 @@ Phase A does **not** auto-run Stage 1/2 LLMs; UI shows a cascade checklist.
 
 - **Scenes** → choose feedback layer on Fail / Regen / Log.
 - **Edit Log** → apply to layer prompts, shared rules, LEARNINGS, or script notes.
-- **Scripts:** `scripts/two_stage_adaptation/` — historical/ad-hoc Python helpers, not required to run Film Studio (see `scripts/README.md`). The product path is native: Stage 1 in `PageToMovie.Adaptation`, Stage 2 in `PageToMovie.Engine`'s `Stage2PlannerService`.
+- **Scripts:** `scripts/two_stage_adaptation/` was removed; the product path is native Adaptation/Engine (see `scripts/README.md`).
 
