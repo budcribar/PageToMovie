@@ -22,13 +22,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from catalog_defaults import require_catalog_default_model_id  # noqa: E402
+
 PROMPT_PATH = ROOT / "prompts" / "book_to_fountain.txt"
 OUT_DIR = ROOT / "projects" / "_prompt_eval"
 FOUNTAIN_DIR = OUT_DIR / "fountain"
 LOG_DIR = OUT_DIR / "logs"
 XAI_API_BASE = "https://api.x.ai/v1"
-MODEL = "grok-4.5"
 MAX_BOOK_CHARS = 28_000  # production trims ~32k; leave room for system prompt
+
+
+def _eval_model() -> str:
+    return (os.environ.get("STAGE1_MODEL") or "").strip() or require_catalog_default_model_id("chat")
 
 BOOKS = [
     {
@@ -189,7 +197,7 @@ def xai_chat(system: str, user: str, temperature: float = 0.2, timeout: int = 60
     if not api_key:
         raise RuntimeError("XAI_API_KEY is not set")
     payload = {
-        "model": MODEL,
+        "model": _eval_model(),
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system},
@@ -378,7 +386,7 @@ def run_one(book: Dict[str, Any], force: bool = False) -> Dict[str, Any]:
         print(f"  using cached {out_path.name}", flush=True)
     else:
         t0 = time.time()
-        print(f"  calling {MODEL}…", flush=True)
+        print(f"  calling {_eval_model()}…", flush=True)
         try:
             fountain = strip_fences(xai_chat(system, user, temperature=0.2))
         except Exception as e:
@@ -453,7 +461,7 @@ def main() -> int:
 
     summary = {
         "prompt": str(PROMPT_PATH),
-        "model": MODEL,
+        "model": _eval_model(),
         "results": [
             {
                 "id": r.get("id"),

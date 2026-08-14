@@ -27,11 +27,15 @@ from typing import Any, Callable, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+SCRIPTS = ROOT / "scripts"
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 import extract_book_source as extract_mod  # noqa: E402
 import transcribe_book_pages_grok as vision_mod  # noqa: E402
+from catalog_defaults import catalog_default_model_id, require_catalog_default_model_id  # noqa: E402
 
 # Capability-based labels (match Adaptation OcrEngineIdentity). Legacy grok_* are read aliases.
 VISION_TRANSCRIBE_ACTION = "vision_transcribe"
@@ -180,13 +184,19 @@ def prepare_book_source(
     force_extract: bool = True,
     force_vision: bool = False,
     render_pages: str = "cover,sparse",
-    vision_model: str = "grok-4.5",
+    vision_model: Optional[str] = None,
     auto_vision: bool = True,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Full auto pipeline. Returns summary for UI/CLI.
     """
+    vision_model = (
+        (vision_model or "").strip()
+        or (os.environ.get("STAGE1_MODEL") or "").strip()
+        or require_catalog_default_model_id("vision", "chat")
+    )
+
     def progress(event: str, **kwargs: Any) -> None:
         if progress_cb:
             progress_cb({"event": event, **kwargs})
@@ -426,7 +436,11 @@ def main() -> int:
     ap.add_argument("--force-vision", action="store_true", help="Always run vision OCR")
     ap.add_argument("--no-auto-vision", action="store_true")
     ap.add_argument("--render-pages", default="cover,sparse")
-    ap.add_argument("--model", default=os.environ.get("STAGE1_MODEL", "grok-4.5"))
+    ap.add_argument(
+        "--model",
+        default=os.environ.get("STAGE1_MODEL") or catalog_default_model_id("vision", "chat"),
+        help="Vision model id (default: STAGE1_MODEL or catalog Vision, then Chat)",
+    )
     args = ap.parse_args()
 
     summary = prepare_book_source(
