@@ -1026,25 +1026,6 @@ public static class SupportedModelCatalog
         DefaultModelIdForCapability(capability.ToString());
 
     /// <summary>
-    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
-    /// </summary>
-    public static string RequireDefaultModelIdForCapability(ModelCapability capability) =>
-        RequireDefaultModelIdForCapability(capability.ToString());
-
-    /// <summary>
-    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
-    /// </summary>
-    public static string RequireDefaultModelIdForCapability(string capabilityId)
-    {
-        var id = DefaultModelIdForCapability(capabilityId);
-        if (string.IsNullOrWhiteSpace(id))
-            throw new InvalidOperationException(
-                $"No default model is configured in the product catalog for capability '{capabilityId}'. " +
-                "Set capabilities[].defaultModelId in models_catalog.json.");
-        return id;
-    }
-
-    /// <summary>
     /// Default model id for a capability from catalog <c>capabilities[].defaultModelId</c>,
     /// else first enabled model with that capability. Null if catalog has none.
     /// </summary>
@@ -1067,6 +1048,25 @@ public static class SupportedModelCatalog
             return reviewId;
 
         return ForCapability(cap).FirstOrDefault()?.Id;
+    }
+
+    /// <summary>
+    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
+    /// </summary>
+    public static string RequireDefaultModelIdForCapability(ModelCapability capability) =>
+        RequireDefaultModelIdForCapability(capability.ToString());
+
+    /// <summary>
+    /// Catalog default for a capability, or throw. Tools and tests must not invent a model id.
+    /// </summary>
+    public static string RequireDefaultModelIdForCapability(string capabilityId)
+    {
+        var id = DefaultModelIdForCapability(capabilityId);
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException(
+                $"No default model is configured in the product catalog for capability '{capabilityId}'. " +
+                "Set capabilities[].defaultModelId in models_catalog.json.");
+        return id;
     }
 
     private static ModelCapability ParseCapabilityId(string capabilityId)
