@@ -202,8 +202,13 @@ JSON: {"labels":[{"id":"s1_b3","class":"extend"}]}
     private static (string? id, string? cls) TryParseLabelElement(JsonElement el)
     {
         var id = el.GetProperty("id").GetString();
-        var cls = el.TryGetProperty("class", out var c) ? c.GetString()
-            : el.TryGetProperty("decision", out var d) ? d.GetString() : null;
+        string? cls;
+        if (el.TryGetProperty("class", out var c))
+            cls = c.GetString();
+        else if (el.TryGetProperty("decision", out var d))
+            cls = d.GetString();
+        else
+            cls = null;
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return (id, null);
         cls = cls.Trim().ToLowerInvariant().Replace(' ', '_');
         if (cls is HardCut or "hardcut" or "cut" or "none") cls = HardCut;

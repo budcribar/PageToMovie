@@ -222,9 +222,15 @@ public sealed class EditLogService
         };
         await SaveStateAsync(statePath, state, ct).ConfigureAwait(false);
 
+        var reviewEntryType = status switch
+        {
+            "pass" => "clip_pass",
+            "fail" => "clip_fail",
+            _ => ClipReviewKey,
+        };
         await AddAsync(
             projectId,
-            status == "pass" ? "clip_pass" : status == "fail" ? "clip_fail" : ClipReviewKey,
+            reviewEntryType,
             note is { Length: > 0 } ? note : status,
             scene: scene,
             clip: clip,
@@ -366,12 +372,27 @@ public sealed class EditLogService
             if (!File.Exists(path)) return ("", "", "");
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
             var root = doc.RootElement;
-            var suggestion = root.TryGetProperty("suggestion", out var s) ? s.GetString() ?? ""
-                : root.TryGetProperty("Suggestion", out var s2) ? s2.GetString() ?? "" : "";
-            var category = root.TryGetProperty("category", out var c) ? c.GetString() ?? ""
-                : root.TryGetProperty("Category", out var c2) ? c2.GetString() ?? "" : "";
-            var note = root.TryGetProperty("note", out var n) ? n.GetString() ?? ""
-                : root.TryGetProperty("Note", out var n2) ? n2.GetString() ?? "" : "";
+            string suggestion;
+            if (root.TryGetProperty("suggestion", out var s))
+                suggestion = s.GetString() ?? "";
+            else if (root.TryGetProperty("Suggestion", out var s2))
+                suggestion = s2.GetString() ?? "";
+            else
+                suggestion = "";
+            string category;
+            if (root.TryGetProperty("category", out var c))
+                category = c.GetString() ?? "";
+            else if (root.TryGetProperty("Category", out var c2))
+                category = c2.GetString() ?? "";
+            else
+                category = "";
+            string note;
+            if (root.TryGetProperty("note", out var n))
+                note = n.GetString() ?? "";
+            else if (root.TryGetProperty("Note", out var n2))
+                note = n2.GetString() ?? "";
+            else
+                note = "";
             return (suggestion, category, note);
         }
         catch
@@ -586,9 +607,11 @@ public sealed class EditLogService
         int? clip,
         string? character)
     {
-        var loc = scene is int s
-            ? (clip is int c ? $"S{s:D2}C{c}" : $"S{s:D2}")
-            : character is { Length: > 0 } ? $"character {character}" : "general";
+        string loc;
+        if (scene is int s)
+            loc = clip is int c ? $"S{s:D2}C{c}" : $"S{s:D2}";
+        else
+            loc = character is { Length: > 0 } ? $"character {character}" : "general";
         if (entryType.Contains("fail", StringComparison.OrdinalIgnoreCase))
             return $"Review fail at {loc}: {(note ?? "").Trim()}".Trim();
         if (entryType.Contains("pass", StringComparison.OrdinalIgnoreCase))

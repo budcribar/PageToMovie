@@ -134,6 +134,10 @@ public sealed class ElevenLabsScribeClient
             _ => "application/octet-stream",
         };
 
-    private static string Trunc(string? s, int max = 240) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max] + "…";
+    private static string Trunc(string? s, int max = 240)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= max ? s : s[..max] + "…";
+    }
 }

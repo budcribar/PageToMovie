@@ -331,11 +331,13 @@ public sealed class ProjectArchiveService
         string? forceOwnerUserId,
         ref string? targetUserId)
     {
-        var rawId = !string.IsNullOrWhiteSpace(preferredId)
-            ? preferredId.Trim()
-            : !string.IsNullOrWhiteSpace(idFromMeta)
-                ? idFromMeta
-                : idFromFolder;
+        string rawId;
+        if (!string.IsNullOrWhiteSpace(preferredId))
+            rawId = preferredId.Trim();
+        else if (!string.IsNullOrWhiteSpace(idFromMeta))
+            rawId = idFromMeta;
+        else
+            rawId = idFromFolder;
 
         // User-mode / rename import: land the project in the importer's own namespace, taking only
         // the slug (last path segment) from the zip's id and prefixing the forced owner. Stops one

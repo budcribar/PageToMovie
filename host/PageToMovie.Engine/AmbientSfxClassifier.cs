@@ -232,8 +232,13 @@ JSON only:
         {
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
-            var arr = root.ValueKind == JsonValueKind.Array ? root
-                : root.TryGetProperty("labels", out var l) ? l : default;
+            JsonElement arr;
+            if (root.ValueKind == JsonValueKind.Array)
+                arr = root;
+            else if (root.TryGetProperty("labels", out var l))
+                arr = l;
+            else
+                arr = default;
             if (arr.ValueKind != JsonValueKind.Array) return map;
             foreach (var el in arr.EnumerateArray())
             {
@@ -313,8 +318,12 @@ JSON only:
 
     // Token-accurate now (was raw character count) — see PromptTokenizer.
     private static string Trunc(string s, int maxTokens) => PromptTokenizer.TruncateToTokens(s, maxTokens);
-    private static string Trim(string s, int n) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n] + "…";
+    private static string Trim(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= n ? s : s[..n] + "…";
+    }
 
     private sealed class Target
     {

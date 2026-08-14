@@ -616,8 +616,13 @@ Use only the four class strings above.
     private static void TryAddSilentBeatLabel(JsonElement el, Dictionary<string, string> map)
     {
         var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-        var cls = el.TryGetProperty("class", out var cEl) ? cEl.GetString()
-            : el.TryGetProperty("action_class", out var aEl) ? aEl.GetString() : null;
+        string? cls;
+        if (el.TryGetProperty("class", out var cEl))
+            cls = cEl.GetString();
+        else if (el.TryGetProperty("action_class", out var aEl))
+            cls = aEl.GetString();
+        else
+            cls = null;
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return;
         var n = NormalizeClass(cls);
         if (n is null) return;
@@ -689,8 +694,12 @@ Use only the four class strings above.
     // Token-accurate now (was raw character count) — see PromptTokenizer.
     private static string Trunc(string s, int maxTokens) => PromptTokenizer.TruncateToTokens(s, maxTokens);
 
-    private static string Trim(string s, int n) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n] + "…";
+    private static string Trim(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= n ? s : s[..n] + "…";
+    }
 
     internal sealed class SilentTarget
     {

@@ -150,11 +150,17 @@ public static class Stage2AggregateValidator
         var ai = NullableInt(meta, "ai_labels");
         var fallback = NullableInt(meta, "heuristic_fallback");
         var enabled = Value(meta, "enabled") is true;
-        var source = !enabled ? "disabled"
-            : ai > 0 && fallback > 0 ? "mixed"
-            : ai > 0 ? "model"
-            : fallback > 0 ? "deterministic_fallback"
-            : "no_targets";
+        string source;
+        if (!enabled)
+            source = "disabled";
+        else if (ai > 0 && fallback > 0)
+            source = "mixed";
+        else if (ai > 0)
+            source = "model";
+        else if (fallback > 0)
+            source = "deterministic_fallback";
+        else
+            source = "no_targets";
         return new(name, source, NullableInt(meta, "attempts"), ai, fallback, Text(Value(meta, "model")));
     }
 

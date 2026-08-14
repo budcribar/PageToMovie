@@ -487,9 +487,11 @@ public sealed class CharacterDesignService
 
     private static string FormatEditSuccessMode(bool alreadyLocked, int primaryCount, bool wardrobeLocked)
     {
-        var mode = alreadyLocked
-            ? (primaryCount > 1 ? "preferred_multi" : "preferred_locked")
-            : (primaryCount > 1 ? "preferred_or_book_multi" : "preferred_or_book");
+        string mode;
+        if (alreadyLocked)
+            mode = primaryCount > 1 ? "preferred_multi" : "preferred_locked";
+        else
+            mode = primaryCount > 1 ? "preferred_or_book_multi" : "preferred_or_book";
         if (wardrobeLocked) mode += "_wardrobe_locked";
         return mode;
     }

@@ -313,6 +313,11 @@ public sealed class ReviewEventStore
 
         var humanPass = HumanReviewPassed(humanEv);
         var aiPass = AiReviewPassed(aiEv);
+        int aiScore;
+        if (int.TryParse(aiEv.Confidence, out var sc))
+            aiScore = sc;
+        else
+            aiScore = aiPass ? 8 : 4;
         return new HumanVsAiComparisonItem
         {
             ProjectId = g.Key.ProjectId ?? "",
@@ -321,7 +326,7 @@ public sealed class ReviewEventStore
             HumanVerdict = humanPass ? "pass" : "fail",
             Note = humanEv.Note ?? "",
             AiVerdict = aiPass ? "pass" : "fail",
-            AiScore = int.TryParse(aiEv.Confidence, out var sc) ? sc : (aiPass ? 8 : 4),
+            AiScore = aiScore,
             AiReasoning = aiEv.Note ?? "",
             DiscrepancyType = ClassifyDiscrepancy(humanPass, aiPass),
             Ts = humanEv.Ts > aiEv.Ts ? humanEv.Ts : aiEv.Ts,

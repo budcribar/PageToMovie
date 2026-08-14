@@ -120,10 +120,15 @@ public sealed class GrokChatClient : IChatClient
         }
     }
 
-    private static string ResolveChatTargetUrl(SupportedModelEntry? entry) =>
-        entry is not null && !string.IsNullOrWhiteSpace(entry.ApiBase)
-            ? CombineApiUrl(entry.ApiBase, string.IsNullOrWhiteSpace(entry.EndpointPath) ? ChatCompletionsPath : entry.EndpointPath)
-            : CombineApiUrl(ApiBase, ChatCompletionsPath);
+    private static string ResolveChatTargetUrl(SupportedModelEntry? entry)
+    {
+        if (entry is not null && !string.IsNullOrWhiteSpace(entry.ApiBase))
+        {
+            var path = string.IsNullOrWhiteSpace(entry.EndpointPath) ? ChatCompletionsPath : entry.EndpointPath;
+            return CombineApiUrl(entry.ApiBase, path);
+        }
+        return CombineApiUrl(ApiBase, ChatCompletionsPath);
+    }
 
     private static Dictionary<string, object?> BuildChatPayload(ChatCompletionState state)
     {

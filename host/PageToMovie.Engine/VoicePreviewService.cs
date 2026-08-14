@@ -68,12 +68,18 @@ public sealed class VoicePreviewService
         string? displayName,
         string? sampleText)
     {
-        var sample = !string.IsNullOrWhiteSpace(sampleText)
-            ? sampleText.Trim()
-            : BuildSampleDialogue(
-                !string.IsNullOrWhiteSpace(displayName)
-                    ? displayName
-                    : charKey.Replace("Character_", "", StringComparison.OrdinalIgnoreCase).Replace('_', ' '));
+        string sample;
+        if (!string.IsNullOrWhiteSpace(sampleText))
+        {
+            sample = sampleText.Trim();
+        }
+        else
+        {
+            var name = !string.IsNullOrWhiteSpace(displayName)
+                ? displayName
+                : charKey.Replace("Character_", "", StringComparison.OrdinalIgnoreCase).Replace('_', ' ');
+            sample = BuildSampleDialogue(name);
+        }
         return ComputeFingerprint(charKey, voiceProfile, voiceLabel, sample);
     }
 

@@ -239,10 +239,12 @@ public static class ClipVideoPromptBuilder
     private static bool HasExistingMedia(string? path) =>
         !string.IsNullOrWhiteSpace(path) && File.Exists(path);
 
-    private static string ResolveGenerationMode(bool hasPrevVideo, bool hasStartFrame) =>
-        hasPrevVideo ? ModeVideoExtend
-            : hasStartFrame ? ModeContinue
-            : "fresh";
+    private static string ResolveGenerationMode(bool hasPrevVideo, bool hasStartFrame)
+    {
+        if (hasPrevVideo)
+            return ModeVideoExtend;
+        return hasStartFrame ? ModeContinue : "fresh";
+    }
 
     private static string ReadVisualPrompt(JsonElement clipEl) =>
         clipEl.TryGetProperty("visual_prompt", out var vp)
@@ -389,14 +391,21 @@ public static class ClipVideoPromptBuilder
         string? locationKey,
         string? startFrameImagePath,
         int promptLength,
-        string? previousClipVideoPath) =>
-        $"mode={mode} chars={allKeysCount} onScreen={onScreenCount} " +
-        $"refs={attachedCount} loc={(locationRefAttached ? locationKey : locationKey is null ? "none" : "unlocked")} " +
+        string? previousClipVideoPath)
+    {
+        string? locLabel;
+        if (locationRefAttached)
+            locLabel = locationKey;
+        else
+            locLabel = locationKey is null ? "none" : "unlocked";
+        return $"mode={mode} chars={allKeysCount} onScreen={onScreenCount} " +
+        $"refs={attachedCount} loc={locLabel} " +
         $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
         $"promptLen={promptLength}" +
         (previousClipVideoPath is { Length: > 0 }
             ? $" prevVideo={Path.GetFileName(previousClipVideoPath)}"
             : "");
+    }
 
     private static string AppendPromptSections(
         string style,

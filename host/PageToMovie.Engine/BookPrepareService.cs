@@ -102,8 +102,12 @@ public sealed class BookPrepareService
         return result;
     }
 
-    private static string? SourceDisplayName(string? pdf, string? epub) =>
-        pdf is not null ? Path.GetFileName(pdf) : (epub is not null ? Path.GetFileName(epub) : null);
+    private static string? SourceDisplayName(string? pdf, string? epub)
+    {
+        if (pdf is not null)
+            return Path.GetFileName(pdf);
+        return epub is not null ? Path.GetFileName(epub) : null;
+    }
 
     private static string ReadyForStage1Progress(BookPrepareResult result) =>
         result.ReadyForStage1

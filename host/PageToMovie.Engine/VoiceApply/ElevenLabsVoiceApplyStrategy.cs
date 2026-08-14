@@ -70,9 +70,11 @@ public sealed class ElevenLabsVoiceApplyStrategy : IVoiceApplyStrategy
             }, ct).ConfigureAwait(false);
         }
 
-        var label = string.IsNullOrWhiteSpace(ctx.VoiceLabel)
-            ? (clone.UsedMock ? "Personal clone (demo)" : "Personal clone")
-            : ctx.VoiceLabel.Trim();
+        string label;
+        if (string.IsNullOrWhiteSpace(ctx.VoiceLabel))
+            label = clone.UsedMock ? "Personal clone (demo)" : "Personal clone";
+        else
+            label = ctx.VoiceLabel.Trim();
         var profile =
             $"Provider voice ({providerId}:{clone.ProviderVoiceId}). " +
             (clone.UsedMock

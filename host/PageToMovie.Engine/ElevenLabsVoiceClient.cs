@@ -337,8 +337,12 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
             _ => "application/octet-stream",
         };
 
-    private static string Trunc(string? s, int max = 240) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max] + "…";
+    private static string Trunc(string? s, int max = 240)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= max ? s : s[..max] + "…";
+    }
 }
 
 /// <summary>Tiny PCM WAV generator for mock TTS / sample seed audio.</summary>

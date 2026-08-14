@@ -147,8 +147,13 @@ JSON: {"labels":[{"key":"Character_Narrator","class":"human"}]}
     public static Dictionary<string, string> ParseLabels(string raw) =>
         ClassifierLabelParser.Parse(raw, el =>
         {
-            var key = el.TryGetProperty("key", out var k) ? k.GetString()
-                : el.TryGetProperty("id", out var id) ? id.GetString() : null;
+            string? key;
+            if (el.TryGetProperty("key", out var k))
+                key = k.GetString();
+            else if (el.TryGetProperty("id", out var id))
+                key = id.GetString();
+            else
+                key = null;
             var cls = el.TryGetProperty("class", out var c) ? c.GetString() : null;
             if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(cls)) return (key, null);
             cls = cls.Trim().ToLowerInvariant();

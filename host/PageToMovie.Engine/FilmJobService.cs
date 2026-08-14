@@ -2652,8 +2652,12 @@ public sealed class FilmJobService
             ? $"Tweaking portrait for {req.CharKey}…"
             : $"Generating portraits for {req.CharKey}…";
 
-    private static int CharacterVariantJobTotal(StartCharacterVariantsRequest req) =>
-        req.Count > 0 ? req.Count : (req.IterativeEdit ? 1 : 3);
+    private static int CharacterVariantJobTotal(StartCharacterVariantsRequest req)
+    {
+        if (req.Count > 0)
+            return req.Count;
+        return req.IterativeEdit ? 1 : 3;
+    }
 
     private static string FormatCharacterVariantFilesLog(CharacterDesignResult result) =>
         $"mode={result.Mode} · {result.Paths.Count} file(s)" +

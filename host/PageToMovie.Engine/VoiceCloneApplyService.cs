@@ -249,12 +249,14 @@ public sealed class VoiceCloneApplyService
                        ?? SupportedModelCatalog.Find(configured);
         }
 
-        SupportedModelEntry? clone = selected is { IsVoiceCloneStep: true }
-            ? selected
-            : selected is not null
-                ? SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                    .FirstOrDefault(m => m.IsVoiceCloneStep && m.Provider == selected.Provider)
-                : null;
+        SupportedModelEntry? clone;
+        if (selected is { IsVoiceCloneStep: true })
+            clone = selected;
+        else if (selected is not null)
+            clone = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+                .FirstOrDefault(m => m.IsVoiceCloneStep && m.Provider == selected.Provider);
+        else
+            clone = null;
 
         if (clone is null)
         {

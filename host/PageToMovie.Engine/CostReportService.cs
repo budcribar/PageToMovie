@@ -648,10 +648,12 @@ public sealed class CostReportService
         ApplyTakesCalibration(takesLearning, p, expectedTakes);
     }
 
-    private static TakesTelemetryStats? PickTakesBlendSource(TakesTelemetryStats projectTakes, TakesTelemetryStats globalTakes) =>
-        projectTakes.SufficientForBlend ? projectTakes
-            : globalTakes.SufficientForBlend ? globalTakes
-            : null;
+    private static TakesTelemetryStats? PickTakesBlendSource(TakesTelemetryStats projectTakes, TakesTelemetryStats globalTakes)
+    {
+        if (projectTakes.SufficientForBlend)
+            return projectTakes;
+        return globalTakes.SufficientForBlend ? globalTakes : null;
+    }
 
     private static void ApplyTakesRange(
         CostTakesLearning takesLearning,
@@ -681,9 +683,14 @@ public sealed class CostReportService
         if (p.ClipSampleCount > 0 && expectedTakes > 0)
         {
             var delta = p.MeanTakesPerClip - expectedTakes;
+            string calSuffix;
+            if (Math.Abs(delta) < 0.05)
+                calSuffix = " (on track).";
+            else
+                calSuffix = delta > 0 ? " (running hotter)." : " (running cooler).";
             takesLearning.CalibrationLabel =
                 $"This project ~{p.MeanTakesPerClip:0.##} takes/clip actual vs ~{expectedTakes:0.##} in estimate" +
-                (Math.Abs(delta) < 0.05 ? " (on track)." : delta > 0 ? " (running hotter)." : " (running cooler).");
+                calSuffix;
         }
     }
 
@@ -731,12 +738,14 @@ public sealed class CostReportService
         double costPoint,
         bool showRange,
         double costLow,
-        double costHigh) =>
-        estimateBasis == "none" || costPoint <= 0
-            ? "—"
-            : showRange
-                ? $"~${costLow:0.##}–${costHigh:0.##}"
-                : $"~${costPoint:0.##}";
+        double costHigh)
+    {
+        if (estimateBasis == "none" || costPoint <= 0)
+            return "—";
+        return showRange
+            ? $"~${costLow:0.##}–${costHigh:0.##}"
+            : $"~${costPoint:0.##}";
+    }
 
     private static string BuildRemainingLabel(
         int clipsOnDisk,
@@ -1720,10 +1729,12 @@ public sealed class CostReportService
             ? el.GetBoolean()
             : null;
 
-    private static string? GetTakeKindOrTrigger(JsonElement e) =>
-        e.TryGetProperty("take_kind", out var tk)
-            ? tk.GetString()
-            : e.TryGetProperty("trigger", out var tr) ? tr.GetString() : null;
+    private static string? GetTakeKindOrTrigger(JsonElement e)
+    {
+        if (e.TryGetProperty("take_kind", out var tk)) return tk.GetString();
+        if (e.TryGetProperty("trigger", out var tr)) return tr.GetString();
+        return null;
+    }
 
     private Task<List<JsonElement>> GetCostLedgerRawAsync(
         string projectId,
@@ -2160,10 +2171,12 @@ public sealed class CostReportService
             $"Image model '{imagePrimary.Id}' has no imageCostPerImage in models_catalog.json.");
     }
 
-    private static string ResolveExtendCostSource(SupportedModelEntry video, double? extendCostReal) =>
-        extendCostReal is not null
-            ? Keys.ModelCatalog
-            : (video.SupportsVideoContinue ? Keys.MissingCatalog : "not_applicable");
+    private static string ResolveExtendCostSource(SupportedModelEntry video, double? extendCostReal)
+    {
+        if (extendCostReal is not null)
+            return Keys.ModelCatalog;
+        return video.SupportsVideoContinue ? Keys.MissingCatalog : "not_applicable";
+    }
 
     private static bool IsVideoPricingFullyReal(
         SupportedModelEntry video,
@@ -2182,25 +2195,32 @@ public sealed class CostReportService
                 $"Video model '{video.Id}' has no videoReferenceImageCost in models_catalog.json "
                 + "(use 0 if no separate ref fee; cite pricingNotes)."));
 
-    private static double ResolveVideoExtendCost(SupportedModelEntry video, double? extendCostReal) =>
-        extendCostReal
-        ?? (video.SupportsVideoContinue
-            ? (video.LabMode
-                ? 0.0
-                : throw new InvalidOperationException(
-                    $"Video model '{video.Id}' supports continue but has no videoExtendCostPerSecond "
-                    + "in models_catalog.json."))
-            : 0.0);
+    private static double ResolveVideoExtendCost(SupportedModelEntry video, double? extendCostReal)
+    {
+        if (extendCostReal is not null)
+            return extendCostReal.Value;
+        if (!video.SupportsVideoContinue)
+            return 0.0;
+        if (video.LabMode)
+            return 0.0;
+        throw new InvalidOperationException(
+            $"Video model '{video.Id}' supports continue but has no videoExtendCostPerSecond "
+            + "in models_catalog.json.");
+    }
 
-    private static string ResolveVideoPricingSourceLabel(SupportedModelEntry video, bool videoPricingFullyReal) =>
-        video.LabMode
-            ? "lab_mode"
-            : (videoPricingFullyReal ? Keys.ModelCatalog : Keys.MissingCatalog);
+    private static string ResolveVideoPricingSourceLabel(SupportedModelEntry video, bool videoPricingFullyReal)
+    {
+        if (video.LabMode)
+            return "lab_mode";
+        return videoPricingFullyReal ? Keys.ModelCatalog : Keys.MissingCatalog;
+    }
 
-    private static string ResolveImagePricingSourceLabel(SupportedModelEntry imagePrimary, bool imagePricingIsEstimated) =>
-        imagePrimary.LabMode
-            ? "lab_mode"
-            : (imagePricingIsEstimated ? Keys.MissingCatalog : Keys.ModelCatalog);
+    private static string ResolveImagePricingSourceLabel(SupportedModelEntry imagePrimary, bool imagePricingIsEstimated)
+    {
+        if (imagePrimary.LabMode)
+            return "lab_mode";
+        return imagePricingIsEstimated ? Keys.MissingCatalog : Keys.ModelCatalog;
+    }
 
     private static Dictionary<string, object?> BuildCatalogRateTable(
         SupportedModelEntry video,

@@ -118,8 +118,13 @@ public sealed class ElevenLabsMusicClient : IAudioClient
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.TryGetProperty("detail", out var d))
             {
-                var msg = d.ValueKind == JsonValueKind.String ? d.GetString()
-                    : d.TryGetProperty("message", out var m) ? m.GetString() : null;
+                string? msg;
+                if (d.ValueKind == JsonValueKind.String)
+                    msg = d.GetString();
+                else if (d.TryGetProperty("message", out var m))
+                    msg = m.GetString();
+                else
+                    msg = null;
                 if (!string.IsNullOrWhiteSpace(msg)) return Trunc(msg, 160);
             }
         }
@@ -134,6 +139,10 @@ public sealed class ElevenLabsMusicClient : IAudioClient
         };
     }
 
-    private static string Trunc(string? s, int max = 240) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max] + "…";
+    private static string Trunc(string? s, int max = 240)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= max ? s : s[..max] + "…";
+    }
 }

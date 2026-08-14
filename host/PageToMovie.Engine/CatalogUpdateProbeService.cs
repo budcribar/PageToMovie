@@ -556,8 +556,12 @@ public sealed class CatalogUpdateProbeService
         return XaiDocsModelsBase + Uri.EscapeDataString(entry.Id);
     }
 
-    private static string Truncate(string s, int max) =>
-        string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max] + "…");
+    private static string Truncate(string s, int max)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Length <= max ? s : s[..max] + "…";
+    }
 
     private async Task ProbeXaiVideoAsync(SupportedModelEntry entry, CatalogModelProbeResult row, CancellationToken ct)
     {
@@ -840,16 +844,25 @@ public sealed class CatalogUpdateProbeService
         }
 
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        var added = AddDiscoveredModels(body, known, result.NewModels, (id, _) => new CatalogNewModelHint
+        var added = AddDiscoveredModels(body, known, result.NewModels, (id, _) =>
         {
-            Id = id,
-            Provider = "Xai",
-            ProviderId = ProviderXai,
-            SuggestedCapability = id.Contains("video", StringComparison.OrdinalIgnoreCase) ? "Video"
-                : id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase) ? CapabilityImage : "Chat",
-            Source = "xAI GET /v1/models",
-            LabMode = true,
-            LabNotes = "Discovered via xAI models list — add as lab and fill limits/costs before production.",
+            string suggestedCapability;
+            if (id.Contains("video", StringComparison.OrdinalIgnoreCase))
+                suggestedCapability = "Video";
+            else if (id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase))
+                suggestedCapability = CapabilityImage;
+            else
+                suggestedCapability = "Chat";
+            return new CatalogNewModelHint
+            {
+                Id = id,
+                Provider = "Xai",
+                ProviderId = ProviderXai,
+                SuggestedCapability = suggestedCapability,
+                Source = "xAI GET /v1/models",
+                LabMode = true,
+                LabNotes = "Discovered via xAI models list — add as lab and fill limits/costs before production.",
+            };
         });
         result.DiscoveryNotes.Add($"xAI: {added} candidate model(s) not in catalog.");
     }

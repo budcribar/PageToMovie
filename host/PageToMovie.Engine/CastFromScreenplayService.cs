@@ -858,8 +858,12 @@ public sealed class CastFromScreenplayService
             tokens = new List<string> { tokens[0] }; // "X the Y" → X
         // keep "Queen of Hearts", "Count Dracula", "Bob Cratchit", "The Creature"
 
-        static string Pascal(string p) =>
-            p.Length == 0 ? "" : char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..].ToLowerInvariant() : "");
+        static string Pascal(string p)
+        {
+            if (p.Length == 0)
+                return "";
+            return char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..].ToLowerInvariant() : "");
+        }
 
         var body = string.Join("_", tokens.Select(Pascal));
         if (string.IsNullOrWhiteSpace(body))
