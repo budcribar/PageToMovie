@@ -46,8 +46,14 @@ public sealed class ClientMediaFolderService
     {
         if (AutoSyncOnLogin && IsConnected && !IsSyncing && !string.IsNullOrWhiteSpace(_activeProject.ProjectId))
         {
-            _ = SyncProjectMediaToClientAsync(_activeProject.ProjectId);
+            _ = SyncThenPushForkFallbacksAsync(_activeProject.ProjectId);
         }
+    }
+
+    private async Task SyncThenPushForkFallbacksAsync(string projectId)
+    {
+        await SyncProjectMediaToClientAsync(projectId);
+        await PushDeadFileIdClipsForOwnedProjectsAsync();
     }
 
     public string? FolderName { get; private set; }
@@ -857,16 +863,43 @@ public sealed class ClientMediaFolderService
     }
 
     /// <summary>
-    /// If a fork already failed to pull a clip via file_id, push our local copy so they can play.
-    /// Only those marked-needed clips — never a bulk dump onto Railway.
+    /// If a fork already failed to pull a clip via file_id, copy our local .mp4 to Railway.
+    /// Scans every owned project that has a .need-fork marker — not only the active one.
     /// </summary>
-    internal async Task PushDeadFileIdClipsAsync(string projectId)
+    internal async Task PushDeadFileIdClipsForOwnedProjectsAsync()
     {
-        if (!IsConnected || string.IsNullOrWhiteSpace(projectId)) return;
+        if (!IsConnected) return;
+        IReadOnlyList<ProjectInfo> projects;
+        try
+        {
+            var dto = await _api.GetProjectsAsync();
+            projects = dto?.Projects ?? new List<ProjectInfo>();
+        }
+        catch { return; }
+
+        var total = 0;
+        foreach (var p in projects)
+        {
+            if (string.IsNullOrWhiteSpace(p.Id)) continue;
+            total += await PushDeadFileIdClipsAsync(p.Id);
+        }
+        if (total > 0)
+        {
+            LastStatus = $"Copied {total} clip(s) to the server so forks can play them.";
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Push local copies for clips marked .need-fork on this project. Returns how many uploaded.
+    /// </summary>
+    internal async Task<int> PushDeadFileIdClipsAsync(string projectId)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId)) return 0;
         List<(int Scene, int Clip)> needed;
         try { needed = await _api.GetForkFallbackNeededAsync(projectId); }
-        catch { return; }
-        if (needed.Count == 0) return;
+        catch { return 0; }
+        if (needed.Count == 0) return 0;
 
         var sent = 0;
         foreach (var (scene, clip) in needed)
@@ -877,11 +910,7 @@ public sealed class ClientMediaFolderService
             if (await _api.UploadForkFallbackClipAsync(projectId, scene, clip, bytes))
                 sent++;
         }
-        if (sent > 0)
-        {
-            LastStatus = $"Copied {sent} clip(s) to the server so forks can play them.";
-            Changed?.Invoke();
-        }
+        return sent;
     }
 
     private async Task<bool> EnsureConnectedForSyncAsync()
