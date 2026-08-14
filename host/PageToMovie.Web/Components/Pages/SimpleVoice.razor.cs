@@ -28,6 +28,7 @@ public partial class SimpleVoice
     internal string? _projectId;
     internal string? _projectLabel;
     internal string _narratorKey = "Character_Narrator";
+    internal string _voiceCharacterLabel = "Narrator";
     /// <summary>True when the story has no character confidently identified as the narrator — the
     /// user must pick which speaking character to voice instead of us silently guessing one.</summary>
     internal bool _needsCharacterPick;
@@ -232,6 +233,9 @@ public partial class SimpleVoice
             if (!string.IsNullOrEmpty(confident?.Key))
             {
                 _narratorKey = confident.Key;
+                _voiceCharacterLabel = string.IsNullOrWhiteSpace(confident.DisplayName)
+                    ? CastKindClassifier.StripPrefix(confident.Key)
+                    : confident.DisplayName;
                 return;
             }
 
@@ -256,6 +260,9 @@ public partial class SimpleVoice
     {
         if (string.IsNullOrEmpty(c.Key)) return;
         _narratorKey = c.Key;
+        _voiceCharacterLabel = string.IsNullOrWhiteSpace(c.DisplayName)
+            ? CastKindClassifier.StripPrefix(c.Key)
+            : c.DisplayName;
         _needsCharacterPick = false;
         _error = null;
         await EnsureVoiceModelAsync();

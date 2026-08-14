@@ -93,6 +93,20 @@ public static class CastKindClassifier
         return t.ToUpperInvariant();
     }
 
+    /// <summary>
+    /// True when two keys name the same character: <c>Character_Teacher</c>, <c>Teacher</c>,
+    /// and <c>TEACHER</c> all match. Used so Easy Start / voice capture honor a user pick even
+    /// when the shot plan speaker spelling differs from the cast list key.
+    /// </summary>
+    public static bool SameCharacter(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        if (string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase)) return true;
+        var na = NormalizeToken(a);
+        var nb = NormalizeToken(b);
+        return na.Length > 0 && string.Equals(na, nb, StringComparison.Ordinal);
+    }
+
     private static bool TokenIsGroup(string? raw)
     {
         var t = NormalizeToken(raw);

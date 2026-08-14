@@ -817,7 +817,7 @@ public static class VoiceEndpoints
         if (string.IsNullOrWhiteSpace(spk)) return false;
         // Explicit character key: exact match — this is a deliberate user pick, not a guess.
         if (targetKey is not null)
-            return string.Equals(spk.Trim(), targetKey, StringComparison.OrdinalIgnoreCase);
+            return CastKindClassifier.SameCharacter(spk, targetKey);
         // Default (no key given): the original narrator heuristic.
         return string.Equals(spk.Trim(), "Character_Narrator", StringComparison.OrdinalIgnoreCase) ||
                spk.Contains("narrator", StringComparison.OrdinalIgnoreCase);

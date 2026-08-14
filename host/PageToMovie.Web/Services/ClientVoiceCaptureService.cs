@@ -31,11 +31,12 @@ public sealed class ClientVoiceCaptureService
 
     /// <summary>
     /// Run the verification pass and save the phrase cache. Returns the built set (also persisted).
-    /// Solo scenes only for the target character (default: narrator) — mixed scenes keep original
-    /// audio and aren't capture material.
+    /// Scans every scene that has this character's lines, including mixed scenes. STT keeps only
+    /// windows that match those lines — other speakers stay unmatched. Solo-only skipped Teacher
+    /// in first-person stories (kids in every scene).
     /// </summary>
     /// <param name="charKey">Which character to build phrases for. Null/omitted defaults to the
-    /// narrator, matching the original behavior.</param>
+    /// narrator.</param>
     public async Task<VoiceCapturePhrases?> BuildPhrasesAsync(
         string projectId, Action<string>? onProgress = null, string? charKey = null, CancellationToken ct = default)
     {
@@ -52,7 +53,7 @@ public sealed class ClientVoiceCaptureService
             CharKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim(),
         };
 
-        foreach (var sc in SoloScenesOrdered(scenes))
+        foreach (var sc in ScenesWithTargetLines(scenes))
             await ProcessSoloSceneAsync(phrases, sc, onProgress, ct);
 
         RankConfidentPhrases(phrases);
@@ -242,17 +243,18 @@ public sealed class ClientVoiceCaptureService
         return mergedWords;
     }
 
-    private static List<EngineApiClient.NarratorSceneLinesDto> SoloScenesOrdered(
+    /// <summary>Every scene that has at least one target line — mixed scenes included.</summary>
+    internal static List<EngineApiClient.NarratorSceneLinesDto> ScenesWithTargetLines(
         List<EngineApiClient.NarratorSceneLinesDto> scenes)
     {
-        var solo = new List<EngineApiClient.NarratorSceneLinesDto>();
+        var list = new List<EngineApiClient.NarratorSceneLinesDto>();
         foreach (var s in scenes)
         {
-            if (!s.HasOtherSpeakers)
-                solo.Add(s);
+            if (s.Lines.Exists(l => !string.IsNullOrWhiteSpace(l)))
+                list.Add(s);
         }
-        solo.Sort(CompareSceneNumber);
-        return solo;
+        list.Sort(CompareSceneNumber);
+        return list;
     }
 
     private static int CompareSceneNumber(

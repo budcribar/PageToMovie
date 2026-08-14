@@ -38,6 +38,19 @@ public sealed class CastKindClassifierTests
         Assert.Equal(expected, CastKindClassifier.IsVoiceOnlyPolicy(policy));
     }
 
+    [Theory]
+    [InlineData("Character_Teacher", "Teacher", true)]
+    [InlineData("Character_Teacher", "TEACHER", true)]
+    [InlineData("Teacher", "Character_Teacher", true)]
+    [InlineData("Character_Teacher", "Character_Mary", false)]
+    [InlineData("Character_Narrator", "Narrator", true)]
+    [InlineData(null, "Teacher", false)]
+    [InlineData("Teacher", "", false)]
+    public void SameCharacter_matches_prefix_and_case(string? a, string? b, bool expected)
+    {
+        Assert.Equal(expected, CastKindClassifier.SameCharacter(a, b));
+    }
+
     [Fact]
     public void Cast_judge_flags_group_keys_on_Mary_style_package()
     {

@@ -188,12 +188,13 @@ public sealed class ClientVoiceSubstitutionService
         if (stitchError is not null)
             return new PreparedScene(sv.Scene) { Error = stitchError };
 
-        // Mixed scene (mom baked in) or nothing to voice → passthrough with original audio kept.
+        // Nothing to voice → keep original audio. Mixed scenes still overlay this character's
+        // windows only; other speakers stay on the original track.
         var lines = sv.Lines
             .Where(l => !string.IsNullOrWhiteSpace(l.VoiceAudioRelativePath))
             .OrderBy(l => l.Index)
             .ToList();
-        if (sv.HasOtherSpeakers || lines.Count == 0)
+        if (lines.Count == 0)
             return new PreparedScene(sv.Scene) { SceneVideoUrl = sceneVideoUrl, Passthrough = true };
 
         var detect = await _js.InvokeAsync<JsSpeechDetectResult>(

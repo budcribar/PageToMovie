@@ -49,7 +49,7 @@ else if (string.IsNullOrEmpty(_projectId))
 else if (_phrases.Count == 0)
 {
     <div class="text-center py-2">
-        <p class="text-muted mb-3">We just need to find your dialogue first — a one-time step (about a minute).</p>
+        <p class="text-muted mb-3">We just need to find @(string.IsNullOrWhiteSpace(CharacterLabel) ? "your" : CharacterLabel + "'s") dialogue first — a one-time step.</p>
         <button class="btn btn-primary" disabled="@_busy" data-testid="voice-capture-prepare" @onclick="PreparePhrasesAsync">
             @(_busy ? "Preparing…" : "Prepare phrases")
         </button>

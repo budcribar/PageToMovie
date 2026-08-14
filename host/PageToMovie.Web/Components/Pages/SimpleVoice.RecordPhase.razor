@@ -41,7 +41,7 @@
         else if (!Host._voiceReady)
         {
             @* The good "read along in your voice" recorder, shared with anywhere else that needs it. *@
-            <VoiceCaptureStep ProjectId="@Host._projectId" CharKey="@Host._narratorKey" OnComplete="Host.OnVoiceReadyAsync" />
+            <VoiceCaptureStep ProjectId="@Host._projectId" CharKey="@Host._narratorKey" CharacterLabel="@Host._voiceCharacterLabel" OnComplete="Host.OnVoiceReadyAsync" />
         }
         else
         {

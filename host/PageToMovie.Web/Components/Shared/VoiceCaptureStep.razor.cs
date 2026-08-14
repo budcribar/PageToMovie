@@ -16,6 +16,9 @@ public partial class VoiceCaptureStep
     /// has no narrator and the user picked a speaking character instead).</summary>
     [Parameter] public string CharKey { get; set; } = "Character_Narrator";
 
+    /// <summary>Optional label for empty-state copy ("Teacher" not "Character_Teacher").</summary>
+    [Parameter] public string? CharacterLabel { get; set; }
+
     /// <summary>Fired once the cloned voice has been built and applied — host advances to the next step.</summary>
     [Parameter] public EventCallback OnComplete { get; set; }
 
@@ -95,14 +98,16 @@ public partial class VoiceCaptureStep
     internal async Task PreparePhrasesAsync()
     {
         if (string.IsNullOrEmpty(_projectId)) return;
-        _busy = true; _error = null; _status = "Finding your dialogue…";
+        _busy = true; _error = null; _status = $"Finding {Who()} dialogue…";
         StateHasChanged();
         try
         {
             var built = await Capture.BuildPhrasesAsync(_projectId, s => { _status = s; _ = InvokeAsync(StateHasChanged); }, CharKey);
             _phrases = SelectPool(built?.Phrases);
             if (_phrases.Count == 0)
-                _status = "Couldn't find clear narrator dialogue to match — make sure the clips are generated.";
+                _status = string.IsNullOrWhiteSpace(_status)
+                    ? $"Couldn't find {Who()} dialogue to match — make sure this movie's clips are in your media folder."
+                    : _status;
             else { _i = 0; await PreparePhraseAsync(); }
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -424,6 +429,17 @@ public partial class VoiceCaptureStep
         var m = r[Math.Min(wordIndex, r.Count - 1)];
         var (rr, gg, bb) = m >= 0.7 ? (52, 199, 89) : m >= 0.5 ? (255, 204, 0) : (255, 59, 48);
         return $"background: rgba({rr},{gg},{bb},.32); border-radius:4px; padding:0 3px;";
+    }
+
+    internal string Who()
+    {
+        if (!string.IsNullOrWhiteSpace(CharacterLabel))
+            return CharacterLabel.Trim() + "'s";
+        var bare = CastKindClassifier.StripPrefix(CharKey);
+        if (string.IsNullOrWhiteSpace(bare) ||
+            bare.Contains("narrator", StringComparison.OrdinalIgnoreCase))
+            return "this character's";
+        return bare.Replace('_', ' ') + "'s";
     }
 
     internal static string ScoreLabel(int s) => s >= 80 ? "Great match!" : s >= 60 ? "Nice!" : s >= 40 ? "Good — try the rhythm again" : "Give it another go";

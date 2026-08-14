@@ -4236,7 +4236,7 @@ public sealed class FilmJobService
         }
 
         Func<string, bool>? filter = req.NarratorOnly
-            ? spk => IsNarratorSpeaker(spk, charKey)
+            ? spk => CastKindClassifier.SameCharacter(spk, charKey)
             : null;
         var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
         if (clipLines.Count == 0)
@@ -4247,7 +4247,7 @@ public sealed class FilmJobService
 
         var scenesWithOtherSpeakers = req.NarratorOnly
             ? VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null)
-                .Where(cl => cl.Lines.Any(l => !IsNarratorSpeaker(l.CharacterKey, charKey)))
+                .Where(cl => cl.Lines.Any(l => !CastKindClassifier.SameCharacter(l.CharacterKey, charKey)))
                 .Select(cl => cl.Scene)
                 .ToHashSet()
             : new HashSet<int>();
