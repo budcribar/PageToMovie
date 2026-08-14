@@ -75,7 +75,7 @@ public sealed class AiMusicApiClient : IAudioClient
     private Task<string?> SubmitToAiMusicApiAsync(
         Dictionary<string, object?> payload, string apiKey, Action<string>? onProgress, CancellationToken ct) =>
         MusicResellerHttp.SubmitAndPollAsync(
-            _http, "suno/create", payload, apiKey, _log, onProgress,
+            new HttpCall(_http, apiKey, _log, ct, onProgress), "suno/create", payload,
             "Submitting to AIMusicAPI (aimusicapi.ai)…",
             "AIMusicAPI submit failed HTTP {Status}: {Body}",
             "AIMusicAPI submit failed: HTTP ",
@@ -87,8 +87,7 @@ public sealed class AiMusicApiClient : IAudioClient
                 "AIMusicAPI poll HTTP {Status}: {Body}",
                 body => TryHandlePollBody(body, onProgress), pollCt),
             "AIMusicAPI generation timed out after {Timeout} for task {TaskId}",
-            "AIMusicAPI generation timed out.",
-            ct);
+            "AIMusicAPI generation timed out.");
 
     private (bool Done, string? AudioUrl) TryHandlePollBody(string body, Action<string>? onProgress)
     {

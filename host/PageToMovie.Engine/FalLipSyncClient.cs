@@ -73,7 +73,7 @@ public sealed class FalLipSyncClient : ILipSyncClient
         };
 
         using var posted = await FalHttp.TryPostJsonAsync(
-            _http, _log, endpoint, apiKey, payload, "lip-sync submit", ct).ConfigureAwait(false);
+            new HttpCall(_http, apiKey, _log, ct), endpoint, payload, "lip-sync submit").ConfigureAwait(false);
         if (posted is null) return null;
 
         if (!posted.Root.TryGetProperty("request_id", out var reqIdEl) ||

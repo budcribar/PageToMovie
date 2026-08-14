@@ -26,11 +26,7 @@ public static class BookToIndexWriter
         string? author,
         ScreenplayIndex index,
         string? indexFileId,
-        IChatClient chat,
-        string model,
-        Action<string>? onProgress,
-        CancellationToken ct,
-        double temperature = 0.2,
+        ChatCall chat,
         IBookFileSession? bookSession = null)
     {
         var batches = ScreenplayIndexPlanner.PlanBatches(index);
@@ -38,7 +34,7 @@ public static class BookToIndexWriter
             throw new InvalidOperationException("Index has no scene cards to write.");
 
         var expected = ScreenplayIndexParser.EnumerateCards(index).Count();
-        onProgress?.Invoke(
+        chat.Report(
             $"Writing from index — {expected} cards in {batches.Count} sequence batch(es)…");
 
         var writeSystem = system + IndexWriteModeSuffix;
@@ -47,15 +43,13 @@ public static class BookToIndexWriter
 
         for (var i = 0; i < batches.Count; i++)
         {
-            ct.ThrowIfCancellationRequested();
+            chat.Ct.ThrowIfCancellationRequested();
             var batch = batches[i];
-            onProgress?.Invoke(
+            chat.Report(
                 $"Writing sequence {batch.Number}/{batch.Total} — {batch.Title}…");
 
             var instruction = BuildInstruction(title, author, batch, prevTail, i == 0, !string.IsNullOrWhiteSpace(indexFileId));
-            var part = await WriteBatchAsync(
-                    chat, writeSystem, instruction, model, temperature,
-                    bookSession, indexFileId, batch, onProgress, ct)
+            var part = await WriteBatchAsync(writeSystem, instruction, chat, bookSession, indexFileId, batch)
                 .ConfigureAwait(false);
             part = BookToFountainConverter.StripBookPageTags(
                 BookToFountainConverter.StripFences(part));
@@ -63,9 +57,9 @@ public static class BookToIndexWriter
             prevTail = TailLines(part, 20);
         }
 
-        onProgress?.Invoke("Stitching master…");
+        chat.Report("Stitching master…");
         var stitched = BookToFountainConverter.StitchFountainParts(parts);
-        WarnHeadingRatio(stitched, expected, onProgress);
+        WarnHeadingRatio(stitched, expected, chat.OnProgress);
         if (!BookToFountainConverter.LooksLikeGoodFountain(stitched))
             throw new InvalidOperationException(
                 "Indexed write did not produce a usable Fountain screenplay.");
@@ -76,19 +70,14 @@ public static class BookToIndexWriter
         cards <= 0 || headings >= Math.Max(1, (int)Math.Ceiling(cards * 0.80));
 
     private static async Task<string> WriteBatchAsync(
-        IChatClient chat,
         string system,
         string instruction,
-        string model,
-        double temperature,
+        ChatCall chat,
         IBookFileSession? bookSession,
         string? indexFileId,
-        ScreenplayIndexPlanner.Batch batch,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        ScreenplayIndexPlanner.Batch batch)
     {
-        var raw = await CompleteBatchAsync(
-                chat, system, instruction, model, temperature, bookSession, indexFileId, onProgress, ct)
+        var raw = await CompleteBatchAsync(system, instruction, chat, bookSession, indexFileId)
             .ConfigureAwait(false);
         var cleaned = BookToFountainConverter.StripBookPageTags(
             BookToFountainConverter.StripFences(raw ?? ""));
@@ -96,13 +85,14 @@ public static class BookToIndexWriter
             BookToFountainConverter.LooksLikeGoodFountain(cleaned, requirePageTags: false))
             return cleaned;
 
-        onProgress?.Invoke(
+        chat.Report(
             $"Sequence {batch.Number} looked thin — rewriting that batch only…");
         var retryInstruction = instruction +
             "\n\nREWRITE: Every listed card must appear as its own scene heading. Do not skip cards.";
         var retry = await CompleteBatchAsync(
-                chat, system, retryInstruction, model, Math.Min(temperature, 0.15),
-                bookSession, indexFileId, onProgress, ct)
+                system, retryInstruction,
+                chat with { Temperature = Math.Min(chat.Temperature, 0.15) },
+                bookSession, indexFileId)
             .ConfigureAwait(false);
         var retryClean = BookToFountainConverter.StripBookPageTags(
             BookToFountainConverter.StripFences(retry ?? ""));
@@ -114,28 +104,24 @@ public static class BookToIndexWriter
     }
 
     private static async Task<string?> CompleteBatchAsync(
-        IChatClient chat,
         string system,
         string instruction,
-        string model,
-        double temperature,
+        ChatCall chat,
         IBookFileSession? bookSession,
-        string? indexFileId,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        string? indexFileId)
     {
-        using var heartbeat = Stage1ProgressHeartbeat.Start(onProgress, "Writing sequence");
+        using var heartbeat = Stage1ProgressHeartbeat.Start(chat.OnProgress, "Writing sequence");
         if (bookSession is { IsAvailable: true })
         {
             var extras = string.IsNullOrWhiteSpace(indexFileId)
                 ? Array.Empty<string>()
                 : new[] { indexFileId };
             return await bookSession.CompleteWithFilesAsync(
-                system, instruction, extras, model, temperature, ct).ConfigureAwait(false);
+                system, instruction, extras, chat.Model, chat.Temperature, chat.Ct).ConfigureAwait(false);
         }
 
-        return await chat.CompleteAsync(
-            system, instruction, model, temperature, ct, ChatCallModes.BookToFountainIndex)
+        return await chat.Chat.CompleteAsync(
+            system, instruction, chat.Model, chat.Temperature, chat.Ct, ChatCallModes.BookToFountainIndex)
             .ConfigureAwait(false);
     }
 

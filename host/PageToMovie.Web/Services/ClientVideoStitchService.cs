@@ -534,9 +534,12 @@ public sealed class ClientVideoStitchService
     /// a normal on-disk clip the stitch concatenates — no video-gen call, no hallucinated text.
     /// </summary>
     public async Task<(bool Ok, string? Error)> RenderAndStoreCreditsClipAsync(
-        string projectId, int scene, int clip, double durationSeconds,
+        ProjectClipRef clipRef, double durationSeconds,
         int width, int height, int fps, CancellationToken ct = default)
     {
+        var projectId = clipRef.ProjectId;
+        var scene = clipRef.Scene;
+        var clip = clipRef.Clip;
         try
         {
             var content = await _engine.GetCreditsContentAsync(projectId, ct).ConfigureAwait(false);

@@ -574,15 +574,15 @@ public static string NormalizeText(string text)
     public static async Task<DraftEditResult> TrimDraftAsync(
         ProjectStore store,
         string projectId,
-        PageToMovie.Core.Abstractions.IChatClient chat,
-        string model = "",
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
+        ChatCall chat,
         XaiResponsesClient? responses = null,
         BookTextRegistryService? bookRegistry = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
         bool useFakes = false)
     {
+        var model = chat.Model;
+        var onProgress = chat.OnProgress;
+        var ct = chat.Ct;
         // Establish / read the full-length base to trim from (never the already-trimmed working draft).
         var basePath = GetMaxBasePath(store, projectId);
         string baseFountain;
@@ -631,7 +631,9 @@ public static string NormalizeText(string text)
             responses, bookRegistry, bookFileSessions, useFakes,
             projectId, projectDir, baseFountain, bookText: null, model, onProgress,
             ScreenplayEnrichFiles.TrimInstruction(target, natural), attachBook: false, label: "Fit length");
-        var result = await AdaptationService.TrimAsync(baseFountain, target, natural, chat, model, progress, ct, viaFiles)
+        var result = await AdaptationService.TrimAsync(
+                baseFountain, target, natural,
+                ChatCall.FromProgress(chat.Chat, model, progress, ct), viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -739,8 +741,8 @@ public static string NormalizeText(string text)
         Func<string, string, CancellationToken, Task<string?>>? viaFiles,
         CancellationToken ct) =>
         kind == DescriptiveEditKind.Look
-            ? AdaptationService.ReskinAsync(current, visualMedium, chat, model, progress, ct, viaFiles)
-            : AdaptationService.EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct, viaFiles);
+            ? AdaptationService.ReskinAsync(current, visualMedium, ChatCall.FromProgress(chat, model, progress, ct), viaFiles)
+            : AdaptationService.EmbellishAsync(current, visualMedium, ChatCall.FromProgress(chat, model, progress, ct), bookText, viaFiles);
 
     static Func<string, string, CancellationToken, Task<string?>>? FilesCompleter(
         XaiResponsesClient? responses,
@@ -1168,9 +1170,7 @@ public static string NormalizeText(string text)
                 Index = index,
                 IndexFileId = indexFileId,
             },
-            chat,
-            progressAdapter,
-            ct,
+            ChatCall.FromProgress(chat, model, progressAdapter, ct),
             onStructuralGateFailure: onGate,
             bookSession: bookSession,
             fountainSession: fountainSession).ConfigureAwait(false);
@@ -1280,7 +1280,7 @@ public static string NormalizeText(string text)
 
             IProgress<string>? progress = onProgress is null ? null : new Progress<string>(onProgress);
             var index = await AdaptationService.BuildIndexAsync(
-                    title, book, chat, model, author, progress, bookSession, ct)
+                    title, book, ChatCall.FromProgress(chat, model, progress, ct), author, bookSession)
                 .ConfigureAwait(false);
             await ProjectScreenplayIndex.WriteAsync(projectDir, index, ct).ConfigureAwait(false);
             await TryUploadIndexFileAsync(projectDir, responses, onProgress, ct).ConfigureAwait(false);
@@ -1455,10 +1455,7 @@ public static string NormalizeText(string text)
                     title,
                     book,
                     fountain,
-                    chat,
-                    model,
-                    onProgress,
-                    ct).ConfigureAwait(false);
+                    new ChatCall(chat, model, ct, onProgress)).ConfigureAwait(false);
             }
         }
         catch (Exception metaEx)

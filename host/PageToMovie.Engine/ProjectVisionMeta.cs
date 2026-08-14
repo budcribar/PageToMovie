@@ -337,12 +337,9 @@ public static class ProjectVisionMeta
         string title,
         string bookText,
         string fountainText,
-        IChatClient chat,
-        string model,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default)
+        ChatCall chat)
     {
-        onProgress?.Invoke("Deciding film visual medium (structured metadata)…");
+        chat.Report("Deciding film visual medium (structured metadata)…");
 
         var bookSample = bookText.Length > 6_000 ? bookText[..6_000] + "\n[[truncated]]" : bookText;
         var fountainSample = fountainText.Length > 4_000 ? fountainText[..4_000] + "\n[[truncated]]" : fountainText;
@@ -364,11 +361,11 @@ public static class ProjectVisionMeta
         var user =
             $"Title: {title}\n\n--- BOOK (sample) ---\n{bookSample}\n\n--- SCREENPLAY (sample) ---\n{fountainSample}\n";
 
-        var raw = await chat.CompleteAsync(
+        var raw = await chat.Chat.CompleteAsync(
             system,
             user,
-            model: model,
-            ct: ct,
+            model: chat.Model,
+            ct: chat.Ct,
             mode: ChatCallModes.VisionMetaAdaptation).ConfigureAwait(false);
 
         var doc = ParseModelJson(raw) ?? new Document
@@ -379,7 +376,7 @@ public static class ProjectVisionMeta
         };
         doc.DecidedBy = Adaptation;
         Write(projectDir, doc);
-        onProgress?.Invoke($"Visual medium: {doc.VisualMedium}");
+        chat.Report($"Visual medium: {doc.VisualMedium}");
         return doc;
     }
 

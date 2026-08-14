@@ -3,6 +3,7 @@ using PageToMovie.Adaptation;
 using PageToMovie.Adaptation.Conversion;
 using AdaptationFountain = PageToMovie.Adaptation.Conversion.BookToFountainConverter;
 using PageToMovie.Adaptation.Contracts;
+using PageToMovie.Core.Abstractions;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -558,8 +559,7 @@ public class BookToFountainPathTests
                 TargetRuntimeMinutes = totalRuntimeMinutes,
                 ModelId = model,
             },
-            chat,
-            onProgress is null ? null : new Progress<string>(onProgress),
+            ChatCall.FromProgress(chat, model, onProgress is null ? null : new Progress<string>(onProgress)),
             budgetOverride: budgetOverride);
         var mapped = new PageToMovie.Engine.ProjectAdaptationConversionResult
         {

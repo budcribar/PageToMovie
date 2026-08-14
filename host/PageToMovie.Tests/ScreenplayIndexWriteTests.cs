@@ -73,10 +73,7 @@ public sealed class ScreenplayIndexWriteTests
             "Homer",
             index,
             indexFileId: null,
-            chat,
-            "grok-4.6",
-            onProgress: null,
-            ct: CancellationToken.None);
+            new ChatCall(chat, "grok-4.6"));
 
         Assert.True(BookToFountainConverter.LooksLikeGoodFountain(fountain));
         Assert.Equal(6, BookToFountainConverter.CountSceneHeadings(fountain));

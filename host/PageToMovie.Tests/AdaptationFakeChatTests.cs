@@ -32,7 +32,7 @@ public sealed class AdaptationFakeChatTests
                 ModelId = "grok-4.5",
                 Temperature = 0.2,
             },
-            chat);
+            new ChatCall(chat));
 
         Assert.False(string.IsNullOrWhiteSpace(result.Fountain));
         Assert.Contains("FADE", result.Fountain, StringComparison.OrdinalIgnoreCase);
@@ -58,7 +58,7 @@ public sealed class AdaptationFakeChatTests
                 Title = "Mary",
                 ModelId = "grok-4.5",
             },
-            chat);
+            new ChatCall(chat));
 
         Assert.DoesNotContain("VISION_META", result.Fountain, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(result.VisionMeta);
@@ -76,7 +76,7 @@ public sealed class AdaptationFakeChatTests
                 Title = "Mary",
                 ModelId = "grok-4.5",
             },
-            chat);
+            new ChatCall(chat));
 
         Assert.False(string.IsNullOrWhiteSpace(result.Fountain));
         // Converter should still produce something usable (heuristic or repaired).

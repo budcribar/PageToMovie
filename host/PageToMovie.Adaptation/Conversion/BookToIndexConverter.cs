@@ -12,20 +12,17 @@ public static class BookToIndexConverter
     public static async Task<ScreenplayIndex> BuildAsync(
         string title,
         string bookText,
-        IChatClient chat,
-        string model,
+        ChatCall chat,
         string? author = null,
-        Action<string>? onProgress = null,
-        IBookFileSession? bookSession = null,
-        CancellationToken ct = default)
+        IBookFileSession? bookSession = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
-        model = ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay index");
+        var model = ProjectModelSelection.RequireExplicit(chat.Model, ModelCapability.Chat, "Screenplay index");
         bookText = BookToFountainConverter.NormalizeBookText(bookText);
         if (string.IsNullOrWhiteSpace(bookText))
             throw new InvalidOperationException("Book text is empty.");
 
-        var system = await AdaptationPromptPack.LoadBookToIndexSystemPromptAsync(ct).ConfigureAwait(false);
+        var system = await AdaptationPromptPack.LoadBookToIndexSystemPromptAsync(chat.Ct).ConfigureAwait(false);
         var useFile = bookSession is { IsAvailable: true };
         if (!useFile && bookText.Length > InlineBookMaxChars)
             throw new InvalidOperationException(
@@ -38,15 +35,15 @@ public static class BookToIndexConverter
         {
             if (bookSession is { IsAvailable: true } availableSession)
             {
-                await availableSession.EnsureUploadedAsync(ct).ConfigureAwait(false);
-                onProgress?.Invoke("Indexing the book via file_id…");
+                await availableSession.EnsureUploadedAsync(chat.Ct).ConfigureAwait(false);
+                chat.Report("Indexing the book via file_id…");
             }
             else
-                onProgress?.Invoke("Indexing the book…");
+                chat.Report("Indexing the book…");
 
-            using var heartbeat = Stage1ProgressHeartbeat.Start(onProgress, "Indexing the book");
+            using var heartbeat = Stage1ProgressHeartbeat.Start(chat.OnProgress, "Indexing the book");
             var raw = await ExecuteStage1IndexAsync(
-                    chat, system, instruction, model, bookText, onProgress, ct)
+                    chat with { Model = model }, system, instruction, bookText)
                 .ConfigureAwait(false);
             if (!ScreenplayIndexParser.TryParse(raw, out var index, out var err) || index is null)
                 throw new InvalidOperationException(err);
@@ -56,9 +53,9 @@ public static class BookToIndexConverter
                 throw new InvalidOperationException(
                     "Index failed validation: " + string.Join("; ", gate.Failures.Take(8)));
             foreach (var w in gate.Warnings)
-                onProgress?.Invoke("Index note: " + w);
+                chat.Report("Index note: " + w);
             var rollup = ScreenplayIndexParser.Rollup(index);
-            onProgress?.Invoke(
+            chat.Report(
                 $"Index ready — {rollup.SceneCards} scenes, {rollup.Sequences} sequences, " +
                 $"{rollup.Locations} locations, {rollup.SpeakingCast} speaking.");
             return index;
@@ -91,18 +88,15 @@ public static class BookToIndexConverter
     }
 
     private static async Task<string> ExecuteStage1IndexAsync(
-        IChatClient chat,
+        ChatCall chat,
         string system,
         string user,
-        string model,
-        string bookText,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        string bookText)
     {
         var result = await Stage1ChatExecutor.ExecuteAsync(
-            chat,
+            chat.Chat,
             new Stage1ChatExecutor.Request(
-                system, user, model, 0.2,
+                system, user, chat.Model, 0.2,
                 ChatCallModes.BookToIndex,
                 "stage1-book-to-index-v1",
                 "Return valid screenplay.index.v1 JSON covering the entire book. Every card needs heading, beat, and both book anchors. No scene cap.",
@@ -110,15 +104,15 @@ public static class BookToIndexConverter
                 DeterministicFallback: null,
                 OperationName: "stage1_book_to_index"),
             raw => ValidateIndex(raw, bookText),
-            ct,
+            chat.Ct,
             Stage1BookSessionScope.Current).ConfigureAwait(false);
         if (!result.Success || string.IsNullOrWhiteSpace(result.Value?.FountainPackage))
         {
-            onProgress?.Invoke("Index failed validation.");
+            chat.Report("Index failed validation.");
             throw new InvalidOperationException("The index call did not produce a valid beat sheet.");
         }
         if (result.Source == Stage1ResultSource.CorrectiveResponse)
-            onProgress?.Invoke("Index corrected after validation.");
+            chat.Report("Index corrected after validation.");
         return result.Value.FountainPackage;
     }
 

@@ -126,7 +126,7 @@ public sealed class BookPrepareService
             return await ExtractFromEpubAsync(epub, imgDir, source, bookTxt, result, onProgress, ct)
                 .ConfigureAwait(false);
         if (pdf is not null && ShouldExtractFromSource(forceExtract, bookTxt))
-            return await ExtractFromPdfAsync(projectId, pdf, imgDir, source, bookTxt, result, onProgress, ct)
+            return await ExtractFromPdfAsync(projectId, pdf, imgDir, source, bookTxt, result, new ProgressCall(ct, onProgress))
                 .ConfigureAwait(false);
         if (File.Exists(bookTxt))
             return await LoadExistingBookTxtAsync(bookTxt, result, onProgress, ct).ConfigureAwait(false);
@@ -168,9 +168,10 @@ public sealed class BookPrepareService
         string source,
         string bookTxt,
         BookPrepareResult result,
-        Action<string>? onProgress,
-        CancellationToken ct)
+        ProgressCall progress)
     {
+        var onProgress = progress.OnProgress;
+        var ct = progress.Ct;
         onProgress?.Invoke($"Extracting text from {Path.GetFileName(pdf)} (PdfPig)…");
         var (rawExtractText, pageCount) = ExtractTextPdfPig(pdf);
         var text = GutenbergCleaner.StripHeaderAndFooter(rawExtractText);

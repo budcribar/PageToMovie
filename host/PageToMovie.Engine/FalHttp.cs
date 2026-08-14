@@ -40,56 +40,47 @@ internal static class FalHttp
     /// POST JSON with Fal Key auth. Logs HTTP failures and returns null (audio / lip-sync).
     /// </summary>
     public static Task<FalJsonResponse?> TryPostJsonAsync(
-        HttpClient http,
-        ILogger log,
+        HttpCall call,
         string path,
-        string apiKey,
         Dictionary<string, object?> payload,
-        string operation,
-        CancellationToken ct) =>
-        PostJsonCoreAsync(http, log, path, apiKey, payload, operation, onHttpError: null, ct);
+        string operation) =>
+        PostJsonCoreAsync(call, path, payload, operation, onHttpError: null);
 
     /// <summary>
     /// POST JSON with Fal Key auth. Logs HTTP failures then throws
     /// <c>{throwPrefix} {status}: {body}</c> (image / video).
     /// </summary>
     public static async Task<FalJsonResponse> PostJsonOrThrowAsync(
-        HttpClient http,
-        ILogger log,
+        HttpCall call,
         string path,
-        string apiKey,
         Dictionary<string, object?> payload,
         string operation,
-        string throwPrefix,
-        CancellationToken ct)
+        string throwPrefix)
     {
         var posted = await PostJsonCoreAsync(
-            http, log, path, apiKey, payload, operation,
-            (status, body) => new InvalidOperationException($"{throwPrefix} {status}: {body}"),
-            ct).ConfigureAwait(false);
+            call, path, payload, operation,
+            (status, body) => new InvalidOperationException($"{throwPrefix} {status}: {body}"))
+            .ConfigureAwait(false);
         return posted!;
     }
 
     private static async Task<FalJsonResponse?> PostJsonCoreAsync(
-        HttpClient http,
-        ILogger log,
+        HttpCall call,
         string path,
-        string apiKey,
         Dictionary<string, object?> payload,
         string operation,
-        Func<HttpStatusCode, string, Exception>? onHttpError,
-        CancellationToken ct)
+        Func<HttpStatusCode, string, Exception>? onHttpError)
     {
         var sw = Stopwatch.StartNew();
         using var resp = await ProviderHttpHelpers.SendJsonAsync(
-            http, HttpMethod.Post, path, payload, ct, req => ApplyKey(req, apiKey)).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            call.Http, HttpMethod.Post, path, payload, call.Ct, req => ApplyKey(req, call.ApiKey)).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(call.Ct).ConfigureAwait(false);
         var elapsedMs = sw.ElapsedMilliseconds;
 
         if (resp.IsSuccessStatusCode)
             return new FalJsonResponse(JsonDocument.Parse(body), body, elapsedMs);
 
-        log.LogError(FailedSubmitLogTemplate, operation, resp.StatusCode, elapsedMs, body);
+        call.Log.LogError(FailedSubmitLogTemplate, operation, resp.StatusCode, elapsedMs, body);
         if (onHttpError is not null)
             throw onHttpError(resp.StatusCode, body);
         return null;

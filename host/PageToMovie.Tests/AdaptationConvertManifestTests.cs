@@ -48,7 +48,7 @@ public sealed class AdaptationConvertManifestTests
                 Temperature = 0.2,
                 // no TargetRuntimeMinutes → unlimited
             },
-            chat);
+            new ChatCall(chat));
 
         Assert.NotNull(result.ConvertManifest);
         var m = result.ConvertManifest!;
@@ -89,7 +89,7 @@ public sealed class AdaptationConvertManifestTests
                 ModelId = "grok-4.5",
                 TargetRuntimeMinutes = 5,
             },
-            chat);
+            new ChatCall(chat));
 
         Assert.NotNull(result.ConvertManifest);
         Assert.Equal(5, result.ConvertManifest!.TargetRuntimeMinutes);
