@@ -20,13 +20,11 @@ public sealed class GrokVideoClient : IVideoClient
     public const int MaxPromptLengthRetries = 5;
 
     /// <summary>
-    /// Request xAI persist the generated video to the Files API so a later video-edit call can
-    /// reuse its file_id instead of re-uploading (see <see cref="IVideoEditClient"/>). Capped at
-    /// xAI's own maximum (30 days) — file_id reuse is always an optimization on top of the
-    /// locally-stored clip, never required, so a shorter/longer TTL only affects how often the
-    /// edit path falls back to base64 upload, not correctness.
+    /// Persist the generated video on xAI Files so a later edit — or a fork with no .mp4 — can
+    /// reuse file_id. No expires_after: xAI keeps the file until we delete it.
     /// </summary>
-    private const int StorageExpiresAfterSeconds = 2_592_000;
+    private static Dictionary<string, object?> PermanentVideoStorageOptions() =>
+        new() { ["filename"] = $"grok-video-{Guid.NewGuid():N}.mp4" };
 
     private readonly HttpClient _http;
     private readonly PageToMovieOptions _opts;
@@ -321,14 +319,8 @@ public sealed class GrokVideoClient : IVideoClient
             // duration = length of NEW extension only (not total)
             ["duration"] = durationSeconds,
             ["video"] = new Dictionary<string, object?> { ["url"] = videoUri },
-            // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
-            // file_id — see StorageExpiresAfterSeconds. "filename" is required by the API (a 422
-            // without it) — content doesn't matter to xAI, just needs to be a valid, unique name.
-            ["storage_options"] = new Dictionary<string, object?>
-            {
-                ["expires_after"] = StorageExpiresAfterSeconds,
-                ["filename"] = $"grok-video-{Guid.NewGuid():N}.mp4",
-            },
+            // Persist to Files API (file_id). "filename" is required (422 without it).
+            ["storage_options"] = PermanentVideoStorageOptions(),
         };
         // resolution/aspect may be ignored on extensions; still send when API allows
         if (!string.IsNullOrWhiteSpace(resolution))
@@ -379,13 +371,8 @@ public sealed class GrokVideoClient : IVideoClient
             ["aspect_ratio"] = ResolveAspectRatio(model).ToApiString(),
             ["resolution"] = resolution,
             // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
-            // file_id — see StorageExpiresAfterSeconds. "filename" is required by the API (a 422
-            // without it) — content doesn't matter to xAI, just needs to be a valid, unique name.
-            ["storage_options"] = new Dictionary<string, object?>
-            {
-                ["expires_after"] = StorageExpiresAfterSeconds,
-                ["filename"] = $"grok-video-{Guid.NewGuid():N}.mp4",
-            },
+            // Persist to Files API (file_id). "filename" is required (422 without it).
+            ["storage_options"] = PermanentVideoStorageOptions(),
         };
 
         if (startUri is not null)

@@ -358,4 +358,57 @@ public sealed class XaiResponsesClient
             "No xAI API key available for Files/Responses (save XAI key in Settings or set XAI_API_KEY).");
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
+
+    /// <summary>GET /v1/files/{id}/content — raw bytes. Caller must dispose the stream (closes the HTTP response).</summary>
+    public async Task<Stream> OpenFileContentStreamAsync(string fileId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileId))
+            throw new ArgumentException("file_id required", nameof(fileId));
+        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
+        var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/files/{Uri.EscapeDataString(fileId.Trim())}/content");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            resp.Dispose();
+            throw new InvalidOperationException($"xAI file content HTTP {(int)resp.StatusCode}: {Trim(err, 400)}");
+        }
+        var inner = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        return new ResponseOwnedStream(resp, inner);
+    }
+
+    private sealed class ResponseOwnedStream : Stream
+    {
+        private readonly HttpResponseMessage _resp;
+        private readonly Stream _inner;
+        public ResponseOwnedStream(HttpResponseMessage resp, Stream inner)
+        {
+            _resp = resp;
+            _inner = inner;
+        }
+        public override bool CanRead => _inner.CanRead;
+        public override bool CanSeek => _inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => _inner.Length;
+        public override long Position { get => _inner.Position; set => _inner.Position = value; }
+        public override void Flush() => _inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            _inner.ReadAsync(buffer, offset, count, cancellationToken);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            _inner.ReadAsync(buffer, cancellationToken);
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+                _resp.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
 }

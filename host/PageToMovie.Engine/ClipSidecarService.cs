@@ -111,10 +111,8 @@ public sealed class ClipSidecarService
             sidecar["source_provider"] = string.IsNullOrWhiteSpace(sourceProvider) ? "" : sourceProvider.Trim();
         }
 
-        // xAI Files API reference for this exact clip (only present when the provider requested
-        // storage at generation time and it succeeded). Lets a later "AI Edit" reuse the file
-        // instead of re-uploading — see IVideoEditClient. Never required; absent means the edit
-        // path falls back to a base64 upload of the local file.
+        // xAI Files API file_id (permanent unless we set expires_after at generate time).
+        // Forks skip .mp4s; playback/Easy Start streams this id from xAI.
         if (!string.IsNullOrWhiteSpace(sourceFileId))
         {
             sidecar["source_file_id"] = sourceFileId.Trim();

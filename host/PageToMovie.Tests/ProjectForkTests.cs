@@ -48,6 +48,9 @@ public class ProjectForkTests
             await File.WriteAllTextAsync(Path.Combine(sourceDir, "source", "screenplay.fountain"), "INT. HOUSE - DAY");
             Directory.CreateDirectory(Path.Combine(sourceDir, "assets", "video"));
             await File.WriteAllTextAsync(Path.Combine(sourceDir, "assets", "video", "scene_01_clip_01.mp4"), "fake video bytes");
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceDir, "assets", "video", "scene_01_clip_01.clip.json"),
+                """{"source_file_id":"file_abc123"}""");
 
             var fork = await store.ForkProjectAsync(source.Id, "collaborator1");
 
@@ -58,6 +61,8 @@ public class ProjectForkTests
 
             Assert.True(File.Exists(Path.Combine(fork.Path, "source", "screenplay.fountain")));
             Assert.False(File.Exists(Path.Combine(fork.Path, "assets", "video", "scene_01_clip_01.mp4")));
+            Assert.True(File.Exists(Path.Combine(fork.Path, "assets", "video", "scene_01_clip_01.clip.json")));
+            Assert.Equal("file_abc123", store.TryReadClipSourceFileId(fork.Id, 1, 1));
             // Fork has its own Git package (text only) with an initial commit
             Assert.True(Directory.Exists(Path.Combine(fork.Path, ".git")));
         }

@@ -6121,6 +6121,50 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
+    /// xAI Files <c>file_id</c> from the clip sidecar, even when the .mp4 was never copied
+    /// (forks skip video). Null if no sidecar or no id.
+    /// </summary>
+    public string? TryReadClipSourceFileId(string projectId, int sceneNumber, int clipNumber)
+    {
+        if (string.IsNullOrWhiteSpace(projectId)) return null;
+        try
+        {
+            var videoDir = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video);
+            if (!Directory.Exists(videoDir)) return null;
+            var prefix = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}";
+            var exact = Path.Combine(videoDir, prefix + StoreLit.ClipJsonSuffix);
+            if (File.Exists(exact) && TrySidecarFileId(exact, out var id))
+                return id;
+            foreach (var sidecar in Directory.EnumerateFiles(videoDir, prefix + "*" + StoreLit.ClipJsonSuffix))
+            {
+                if (TrySidecarFileId(sidecar, out id))
+                    return id;
+            }
+        }
+        catch { /* best effort */ }
+        return null;
+    }
+
+    private static bool TrySidecarFileId(string sidecarPath, out string? fileId)
+    {
+        fileId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(sidecarPath));
+            if (!doc.RootElement.TryGetProperty("source_file_id", out var el))
+                return false;
+            var s = el.GetString();
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            fileId = s.Trim();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// WIP full-movie path from config <c>wip_movie_path</c> (default assets/movie_wip.mp4).
     /// Returns null if the file is missing or empty.
     /// </summary>

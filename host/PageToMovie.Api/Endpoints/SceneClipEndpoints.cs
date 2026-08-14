@@ -558,30 +558,46 @@ public static class SceneClipEndpoints
     }
 }
 
-    private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberVideo(string id, int sceneNumber, int clipNumber, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
+    private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberVideo(
+        string id, int sceneNumber, int clipNumber,
+        ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
+        XaiResponsesClient? xai,
+        CancellationToken ct)
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     try
     {
         var path = store.ResolveClipVideoPath(id, sceneNumber, clipNumber);
+        string? parentId = null;
         if (path is null)
         {
-            // Fork fallback: a fork skips video (ForkSkipExtensions), so source the clip from its
-            // parent project — a forkable source keeps its media server-side (keep_media_on_server)
-            // — letting the client download it to dub/edit. The dubbed output stays per-user client-side.
             try
             {
                 var proj = await store.GetProjectAsync(id, ct);
-                var parent = proj?.ParentProjectId;
-                if (!string.IsNullOrWhiteSpace(parent))
-                    path = store.ResolveClipVideoPath(parent, sceneNumber, clipNumber);
+                parentId = proj?.ParentProjectId;
+                if (!string.IsNullOrWhiteSpace(parentId))
+                    path = store.ResolveClipVideoPath(parentId, sceneNumber, clipNumber);
             }
-            catch { /* fall through to 404 */ }
+            catch { /* fall through */ }
         }
-        if (path is null)
+        if (path is not null)
+            return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
+
+        // Fork / client-only: no .mp4 here. Stream the Grok file_id from the sidecar (copied on fork).
+        var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
+            ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
+        if (string.IsNullOrWhiteSpace(fileId) || xai is null)
             return Results.NotFound(new { ok = false, error = "clip video not found" });
-        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
+        try
+        {
+            var stream = await xai.OpenFileContentStreamAsync(fileId, ct);
+            return Results.Stream(stream, SpecializedMimeType.VideoMp4.ToMimeTypeString());
+        }
+        catch
+        {
+            return Results.NotFound(new { ok = false, error = "clip video not found" });
+        }
     }
     catch (Exception ex)
     {
