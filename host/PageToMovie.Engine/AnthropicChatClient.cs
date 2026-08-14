@@ -222,19 +222,29 @@ public sealed class AnthropicChatClient : ChatProviderWithoutBookVision, IChatCl
             }
 
             return await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, kind, modeTag, endpoint, model,
-                errorModel: null, sw.ElapsedMilliseconds,
-                promptForLog, userPromptForLog, promptChars, attemptNum,
+                _telemetry, resp, body, ChatRec(model),
                 ExtractMessageText, $"Anthropic {endpoint}", ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, kind, modeTag, endpoint, model,
-                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                _telemetry, ex, ChatRec(model), ct)
                 .ConfigureAwait(false);
             throw;
         }
+
+        ApiCallTelemetry ChatRec(string modelId) => new()
+        {
+            Kind = kind,
+            Mode = modeTag,
+            Endpoint = endpoint,
+            Model = modelId,
+            DurationMs = sw.ElapsedMilliseconds,
+            SystemPrompt = promptForLog,
+            UserPrompt = userPromptForLog,
+            PromptChars = promptChars,
+            Attempt = attemptNum,
+        };
     }
 
     /// <summary>Test helper for extracting assistant text from a Messages API response.</summary>

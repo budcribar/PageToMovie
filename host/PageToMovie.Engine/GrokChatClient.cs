@@ -113,9 +113,17 @@ public sealed class GrokChatClient : IChatClient
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
-                state.Stopwatch.ElapsedMilliseconds, state.SystemPrompt, state.UserPrompt,
-                attempt: null, ct);
+                _telemetry, ex, new ApiCallTelemetry
+                {
+                    Kind = "chat",
+                    Mode = state.ModeTag,
+                    Endpoint = ChatCompletionsPath,
+                    Model = state.Model,
+                    DurationMs = state.Stopwatch.ElapsedMilliseconds,
+                    SystemPrompt = state.SystemPrompt,
+                    UserPrompt = state.UserPrompt,
+                    Attempt = null,
+                }, ct);
             throw;
         }
     }
@@ -170,11 +178,18 @@ public sealed class GrokChatClient : IChatClient
                 continue;
 
             return await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
-                errorModel: null, state.Stopwatch.ElapsedMilliseconds,
-                state.SystemPrompt, state.UserPrompt,
-                (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
-                attemptNum, ExtractMessageText, "Chat", state.Ct);
+                _telemetry, resp, body, new ApiCallTelemetry
+                {
+                    Kind = "chat",
+                    Mode = state.ModeTag,
+                    Endpoint = ChatCompletionsPath,
+                    Model = state.Model,
+                    DurationMs = state.Stopwatch.ElapsedMilliseconds,
+                    SystemPrompt = state.SystemPrompt,
+                    UserPrompt = state.UserPrompt,
+                    PromptChars = (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
+                    Attempt = attemptNum,
+                }, ExtractMessageText, "Chat", state.Ct);
         }
 
         throw new InvalidOperationException("Chat parameter retry loop exhausted.");

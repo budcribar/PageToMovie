@@ -22,94 +22,50 @@ internal static class ChatClientHelpers
 
     /// <summary>
     /// Logs HTTP failure telemetry + throws, or parses assistant text and logs success telemetry.
-    /// <paramref name="errorModel"/> is the model id recorded on HTTP failure (Gemini logs the
-    /// normalized id there and the caller-supplied id on success); null uses <paramref name="model"/>.
+    /// <paramref name="rec"/> should already have Kind, Mode, Endpoint, Model, DurationMs,
+    /// SystemPrompt, UserPrompt, PromptChars, and Attempt. This method sets HttpStatus,
+    /// Error/Ok, ResponsePreview, and ResponseChars from the response.
+    /// Callers that need a different model id on HTTP failure (normalized vs requested)
+    /// set <see cref="ApiCallTelemetry.Model"/> on the record they pass.
     /// </summary>
     public static async Task<string> FinishChatResponseAsync(
         ProjectTelemetryService telemetry,
         HttpResponseMessage resp,
         string body,
-        string kind,
-        string? mode,
-        string endpoint,
-        string model,
-        string? errorModel,
-        long durationMs,
-        string? systemPrompt,
-        string? userPrompt,
-        int promptChars,
-        int attempt,
+        ApiCallTelemetry rec,
         Func<JsonElement, string> extractText,
         string httpErrorPrefix,
         CancellationToken ct)
     {
+        rec.HttpStatus = (int)resp.StatusCode;
         if (!resp.IsSuccessStatusCode)
         {
-            await telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Mode = mode,
-                Endpoint = endpoint,
-                Model = errorModel ?? model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = durationMs,
-                SystemPrompt = systemPrompt,
-                UserPrompt = userPrompt,
-                PromptChars = promptChars,
-                Attempt = attempt,
-                Error = ProviderHttpHelpers.Trim(body, TelemetryErrorTrim),
-                Ok = false,
-            }, ct).ConfigureAwait(false);
+            rec.Error = ProviderHttpHelpers.Trim(body, TelemetryErrorTrim);
+            rec.Ok = false;
+            await telemetry.LogApiCallAsync(rec, ct).ConfigureAwait(false);
             throw ChatHttpStatusException.FromResponse(resp,
                 $"{httpErrorPrefix} HTTP {(int)resp.StatusCode}: {ProviderHttpHelpers.Trim(body, TelemetryErrorTrim)}");
         }
 
         using var doc = JsonDocument.Parse(body);
         var text = extractText(doc.RootElement);
-        await telemetry.LogApiCallAsync(new ApiCallTelemetry
-        {
-            Kind = kind,
-            Mode = mode,
-            Endpoint = endpoint,
-            Model = model,
-            HttpStatus = (int)resp.StatusCode,
-            DurationMs = durationMs,
-            SystemPrompt = systemPrompt,
-            UserPrompt = userPrompt,
-            PromptChars = promptChars,
-            Attempt = attempt,
-            ResponsePreview = ProviderHttpHelpers.Trim(text, ResponsePreviewMax),
-            ResponseChars = text.Length,
-            Ok = true,
-        }, ct).ConfigureAwait(false);
+        rec.ResponsePreview = ProviderHttpHelpers.Trim(text, ResponsePreviewMax);
+        rec.ResponseChars = text.Length;
+        rec.Ok = true;
+        await telemetry.LogApiCallAsync(rec, ct).ConfigureAwait(false);
         return text;
     }
 
     public static Task LogChatExceptionAsync(
         ProjectTelemetryService telemetry,
         Exception ex,
-        string kind,
-        string? mode,
-        string endpoint,
-        string model,
-        long durationMs,
-        string? systemPrompt,
-        string? userPrompt,
-        int? attempt,
-        CancellationToken ct) =>
-        telemetry.LogApiCallAsync(new ApiCallTelemetry
-        {
-            Kind = kind,
-            Mode = mode,
-            Endpoint = endpoint,
-            Model = model,
-            DurationMs = durationMs,
-            SystemPrompt = systemPrompt,
-            UserPrompt = userPrompt,
-            Attempt = attempt,
-            Error = ex.Message,
-            Ok = false,
-        }, ct);
+        ApiCallTelemetry rec,
+        CancellationToken ct)
+    {
+        rec.Error = ex.Message;
+        rec.Ok = false;
+        return telemetry.LogApiCallAsync(rec, ct);
+    }
 
     /// <summary>Filename list logged on clip auto-review vision calls (Anthropic/Gemini).</summary>
     public static string ImageNamesForLog(IReadOnlyList<string> imagePaths) =>

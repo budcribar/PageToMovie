@@ -192,9 +192,8 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
             }
 
             var text = await ChatClientHelpers.FinishChatResponseAsync(
-                _telemetry, resp, body, kind, modeTag, endpoint, model,
-                errorModel: targetModel, sw.ElapsedMilliseconds,
-                promptForLog, userPromptForLog, promptChars, attemptNum,
+                _telemetry, resp, body,
+                ChatRec(resp.IsSuccessStatusCode ? model : targetModel),
                 ExtractMessageText, $"Gemini {endpoint}", ct).ConfigureAwait(false);
             _lastResolvedModel.Value = targetModel;
             return text;
@@ -202,11 +201,23 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             await ChatClientHelpers.LogChatExceptionAsync(
-                _telemetry, ex, kind, modeTag, endpoint, model,
-                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                _telemetry, ex, ChatRec(model), ct)
                 .ConfigureAwait(false);
             throw;
         }
+
+        ApiCallTelemetry ChatRec(string modelId) => new()
+        {
+            Kind = kind,
+            Mode = modeTag,
+            Endpoint = endpoint,
+            Model = modelId,
+            DurationMs = sw.ElapsedMilliseconds,
+            SystemPrompt = promptForLog,
+            UserPrompt = userPromptForLog,
+            PromptChars = promptChars,
+            Attempt = attemptNum,
+        };
     }
 
     private static string? ResolveApiKey() =>
