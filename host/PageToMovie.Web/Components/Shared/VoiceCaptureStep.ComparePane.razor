@@ -6,7 +6,7 @@
         <button class="btn btn-outline-primary btn-sm"
                 disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening || string.IsNullOrEmpty(Host._originalUrl))"
                 data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
-            @(Host._listening ? "▶ Narrator…" : "▶ Narrator")
+            @(Host._listening ? "▶ Original…" : "▶ Original")
         </button>
         @if (!string.IsNullOrEmpty(Host._takeUrl))
         {
@@ -15,9 +15,9 @@
             <button class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
                     data-testid="voice-capture-play-both" @onclick="Host.PlayBothAsync">▶ Both</button>
         }
-        @if (string.IsNullOrEmpty(Host._originalUrl))
+        @if (string.IsNullOrEmpty(Host._originalUrl) && !Host._busy)
         {
-            <span class="text-muted small align-self-center">Loading original…</span>
+            <span class="text-muted small align-self-center">Read the line in your voice — no original clip needed.</span>
         }
     </div>
 

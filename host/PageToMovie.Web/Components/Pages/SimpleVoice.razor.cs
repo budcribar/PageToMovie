@@ -192,7 +192,12 @@ public partial class SimpleVoice
 
             try { await Engine.SetStudioPathAsync(forkId, ProjectStudioPaths.SimpleVoice); }
             catch { /* older API */ }
-            await ActiveProject.SelectAsync(Engine, forkId, fork?.Title ?? story.Title, studioPath: ProjectStudioPaths.SimpleVoice);
+            await ActiveProject.SelectAsync(
+                Engine,
+                forkId,
+                fork?.Title ?? story.Title,
+                parentProjectId: fork?.ParentProjectId ?? story.Id,
+                studioPath: ProjectStudioPaths.SimpleVoice);
 
             _projectId = forkId;
             _projectLabel = fork?.Title ?? story.Title;
@@ -227,6 +232,7 @@ public partial class SimpleVoice
     private async Task ResolveNarratorKeyAsync()
     {
         _narratorKey = "Character_Narrator";
+        _voiceCharacterLabel = "Narrator";
         _needsCharacterPick = false;
         _narratorCandidates = new();
         if (string.IsNullOrEmpty(_projectId)) return;
@@ -236,27 +242,28 @@ public partial class SimpleVoice
             var list = dto?.Characters ?? new();
             if (list.Count == 0) return;
 
-            var confident = list.FirstOrDefault(c =>
-                                (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false)
-                                || (c.DisplayName?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false))
-                            ?? list.FirstOrDefault(c => c.VoiceOnly);
-            if (!string.IsNullOrEmpty(confident?.Key))
+            var speakers = list.Where(c => c.Speaks).ToList();
+            if (speakers.Count == 0)
+                speakers = list.Where(c => !c.IsGroup).ToList();
+            if (speakers.Count == 0)
+                speakers = list;
+
+            if (speakers.Count == 1)
             {
-                _narratorKey = confident.Key;
-                _voiceCharacterLabel = string.IsNullOrWhiteSpace(confident.DisplayName)
-                    ? CastKindClassifier.StripPrefix(confident.Key)
-                    : confident.DisplayName;
+                ApplyCharacter(speakers[0]);
                 return;
             }
 
-            // No character reads as "the narrator" — don't silently guess the first character in the
-            // list (that could be anyone). Let the user pick who they want to voice instead.
-            //
-            // Deliberately NOT filtered to c.Speaks: that flag means "has a quoted-dialogue cue in
-            // the screenplay", but pure third-person narration (e.g. a picture book with no spoken
-            // lines at all) has no such character — filtering on it left every character excluded,
-            // which silently fell through to the same list[0] guess this branch exists to avoid.
-            _narratorCandidates = list;
+            var already = speakers.FirstOrDefault(c => !string.IsNullOrEmpty(c.VoiceProviderVoiceId));
+            if (already is not null)
+            {
+                ApplyCharacter(already);
+                _narratorCandidates = speakers;
+                return;
+            }
+
+            // Mary has Teacher + Mary (+ kids). Always let the user pick who to replace.
+            _narratorCandidates = speakers;
             _needsCharacterPick = true;
         }
         catch
@@ -265,18 +272,31 @@ public partial class SimpleVoice
         }
     }
 
+    internal void ApplyCharacter(CharacterSummary c)
+    {
+        _narratorKey = c.Key ?? "";
+        _voiceCharacterLabel = string.IsNullOrWhiteSpace(c.DisplayName)
+            ? CastKindClassifier.StripPrefix(c.Key)
+            : c.DisplayName;
+    }
+
     /// <summary>User picked who to voice when no narrator could be confidently identified.</summary>
     internal async Task PickCharacterAsync(CharacterSummary c)
     {
         if (string.IsNullOrEmpty(c.Key)) return;
-        _narratorKey = c.Key;
-        _voiceCharacterLabel = string.IsNullOrWhiteSpace(c.DisplayName)
-            ? CastKindClassifier.StripPrefix(c.Key)
-            : c.DisplayName;
+        ApplyCharacter(c);
         _needsCharacterPick = false;
         _error = null;
         await EnsureVoiceModelAsync();
         await RefreshSampleStateAsync();
+        Notify();
+    }
+
+    internal void ChangeCharacter()
+    {
+        _voiceReady = false;
+        _needsCharacterPick = _narratorCandidates.Count > 0;
+        _error = null;
         Notify();
     }
 

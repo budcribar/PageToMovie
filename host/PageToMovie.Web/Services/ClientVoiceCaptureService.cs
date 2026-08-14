@@ -40,25 +40,34 @@ public sealed class ClientVoiceCaptureService
     public async Task<VoiceCapturePhrases?> BuildPhrasesAsync(
         string projectId, Action<string>? onProgress = null, string? charKey = null, CancellationToken ct = default)
     {
-        // Expected line texts for the target character + which scenes are theirs alone, straight
-        // from the blueprint — no dub/TTS needed, so this runs standalone from the capture page.
-        var scenes = await _engine.GetNarratorLinesAsync(projectId, charKey, ct);
-        if (scenes is null || scenes.Count == 0)
+        var wantKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim();
+        var scenes = await LoadTargetScenesAsync(projectId, wantKey, ct);
+        if (scenes.Count == 0)
+        {
+            onProgress?.Invoke("No spoken lines for this character in the shot plan.");
             return null;
+        }
 
         var phrases = new VoiceCapturePhrases
         {
             ProjectId = projectId,
             ConfidenceThreshold = ConfidenceThreshold,
-            CharKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim(),
+            CharKey = wantKey,
         };
 
+        var parentId = await TryParentProjectIdAsync(projectId, ct);
         foreach (var sc in ScenesWithTargetLines(scenes))
-            await ProcessSoloSceneAsync(phrases, sc, onProgress, ct);
+            await ProcessSoloSceneAsync(phrases, sc, parentId, onProgress, ct);
+
+        if (CountConfident(phrases) == 0)
+        {
+            onProgress?.Invoke("Using lines from the screenplay — record them in your voice.");
+            AddScriptFallbackPhrases(phrases, scenes);
+        }
 
         RankConfidentPhrases(phrases);
         var confidentCount = CountConfident(phrases);
-        onProgress?.Invoke($"Verified {confidentCount} of {phrases.Phrases.Count} detected phrase(s).");
+        onProgress?.Invoke($"Verified {confidentCount} of {phrases.Phrases.Count} phrase(s).");
         await _engine.SaveVoiceCapturePhrasesAsync(projectId, phrases, ct);
         return phrases;
     }
@@ -66,6 +75,7 @@ public sealed class ClientVoiceCaptureService
     private async Task ProcessSoloSceneAsync(
         VoiceCapturePhrases phrases,
         EngineApiClient.NarratorSceneLinesDto sc,
+        string? parentProjectId,
         Action<string>? onProgress,
         CancellationToken ct)
     {
@@ -77,6 +87,8 @@ public sealed class ClientVoiceCaptureService
         onProgress?.Invoke($"Scanning scene {sc.Scene:D2}…");
 
         var clipUrls = await _stitch.CollectClipUrlsAsync(phrases.ProjectId, sc.Scene, ct: ct);
+        if (clipUrls.Count == 0 && !string.IsNullOrWhiteSpace(parentProjectId))
+            clipUrls = await _stitch.CollectClipUrlsAsync(parentProjectId, sc.Scene, ct: ct);
         if (clipUrls.Count == 0)
             return;
 
@@ -241,6 +253,88 @@ public sealed class ClientVoiceCaptureService
                 });
         }
         return mergedWords;
+    }
+
+    private async Task<List<EngineApiClient.NarratorSceneLinesDto>> LoadTargetScenesAsync(
+        string projectId, string wantKey, CancellationToken ct)
+    {
+        var scenes = await _engine.GetNarratorLinesAsync(projectId, wantKey, ct);
+        if (scenes is { Count: > 0 })
+            return scenes;
+
+        // Blueprint speaker spelling can differ from the cast key; walk every line and match loosely.
+        var all = await _engine.GetDialogueLinesAsync(projectId, ct);
+        var mapped = new List<EngineApiClient.NarratorSceneLinesDto>();
+        foreach (var sc in all)
+        {
+            var mine = sc.Lines
+                .Where(l => CastKindClassifier.SameCharacter(l.Speaker, wantKey) && !string.IsNullOrWhiteSpace(l.Text))
+                .Select(l => l.Text.Trim())
+                .ToList();
+            if (mine.Count == 0) continue;
+            var others = sc.Lines.Any(l =>
+                !CastKindClassifier.SameCharacter(l.Speaker, wantKey) && !string.IsNullOrWhiteSpace(l.Text));
+            mapped.Add(new EngineApiClient.NarratorSceneLinesDto
+            {
+                Scene = sc.Scene,
+                HasOtherSpeakers = others,
+                Lines = mine,
+            });
+        }
+        return mapped;
+    }
+
+    private async Task<string?> TryParentProjectIdAsync(string projectId, CancellationToken ct)
+    {
+        try
+        {
+            var dto = await _engine.GetProjectsAsync(ct);
+            var hit = dto?.Projects?.FirstOrDefault(p =>
+                string.Equals(p.Id, projectId, StringComparison.OrdinalIgnoreCase));
+            if (hit is null && string.Equals(dto?.Active?.Id, projectId, StringComparison.OrdinalIgnoreCase))
+                hit = dto!.Active;
+            return string.IsNullOrWhiteSpace(hit?.ParentProjectId) ? null : hit.ParentProjectId.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Easy Start forks skip video files. When no clip can be STT-matched, still give the user
+    /// this character's screenplay lines so they can record a clone sample.
+    /// </summary>
+    internal static void AddScriptFallbackPhrases(
+        VoiceCapturePhrases phrases, List<EngineApiClient.NarratorSceneLinesDto> scenes)
+    {
+        foreach (var sc in ScenesWithTargetLines(scenes))
+        {
+            foreach (var raw in ExpectedNonEmptyLines(sc))
+            {
+                if (phrases.Phrases.Exists(p =>
+                        p.Scene == sc.Scene &&
+                        string.Equals(p.Text, raw, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var dur = EstimatePhraseDurationSec(raw);
+                phrases.Phrases.Add(new VoiceCapturePhrase
+                {
+                    Scene = sc.Scene,
+                    Clip = 0,
+                    WindowStartSec = 0,
+                    WindowEndSec = dur,
+                    Text = raw,
+                    MatchScore = 1,
+                    Confident = true,
+                });
+            }
+        }
+    }
+
+    internal static double EstimatePhraseDurationSec(string text)
+    {
+        var n = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        return Math.Clamp(n * 0.4, 2.0, 8.0);
     }
 
     /// <summary>Every scene that has at least one target line — mixed scenes included.</summary>

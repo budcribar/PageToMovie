@@ -13,13 +13,19 @@
         <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="Host.BackToPick">
             ← Change story
         </button>
+        @if (Host._narratorCandidates.Count > 1 && !Host._needsCharacterPick)
+        {
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="Host.ChangeCharacter">
+                Change character
+            </button>
+        }
     </div>
     <div class="card-body">
         @if (Host._needsCharacterPick)
         {
             <div data-testid="simple-voice-character-pick">
                 <p class="small text-muted mb-2">
-                    This story doesn’t have a clear narrator — who do you want to voice?
+                    Who do you want to voice?
                 </p>
                 <div class="list-group mb-2">
                     @foreach (var c in Host._narratorCandidates)

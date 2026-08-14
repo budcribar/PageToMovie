@@ -84,6 +84,7 @@ public partial class VoiceCaptureStep
         }
         catch (Exception ex) { _error = ex.Message; }
         if (_phrases.Count > 0) await PreparePhraseAsync();
+        else await PreparePhrasesAsync();
         StateHasChanged();
     }
 
@@ -122,17 +123,20 @@ public partial class VoiceCaptureStep
         StateHasChanged();
 
         var p = CurrentPhrase;
-        _ballDurationSec = Math.Max(1.0, p.DurationSec);
+        _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
         try
         {
             var sceneUrl = await GetSceneUrlAsync(p.Scene);
-            if (string.IsNullOrEmpty(sceneUrl)) { _status = "Couldn't load that scene."; return; }
+            if (string.IsNullOrEmpty(sceneUrl))
+                return;
             var res = await Js.InvokeAsync<ExtractUrlResult>(
                 "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", sceneUrl, p.WindowStartSec, p.WindowEndSec);
             if (res is { Success: true }) { _originalUrl = res.Url; _renderNarratorWave = true; }
-            else _status = res?.Error ?? "Couldn't load the original clip.";
         }
-        catch (Exception ex) { _status = ex.Message; }
+        catch
+        {
+            // Script-only phrases have no original clip — record without Listen.
+        }
         StateHasChanged();
     }
 
