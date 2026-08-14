@@ -21,6 +21,6 @@ Historical / ad-hoc helpers may still live here (including older Python utilitie
 ## Two-stage adaptation (concept)
 
 Stage 1 (screenplay) is implemented natively in `host/PageToMovie.Adaptation` (`AdaptationService` façade);
-Stage 2 (shot plan) in `host/PageToMovie.Engine`'s `Stage2PlannerService`. The Python scripts in
-`scripts/two_stage_adaptation/` predate this native implementation and are no longer the product path — see the
-root `README.md` pipeline section for the current one. Prompt sources and schemas: `prompts/`.
+Stage 2 (shot plan) in `host/PageToMovie.Engine`'s `Stage2PlannerService`. The old
+`scripts/two_stage_adaptation/` Python helpers were removed; the product path is native Adaptation/Engine.
+Prompt sources and schemas: `prompts/`.
