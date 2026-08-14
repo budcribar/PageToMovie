@@ -1,0 +1,100 @@
+# SonarCloud analysis for PageToMovie (SonarScanner for .NET).
+# Mirrors host/scripts/run-sonar-local.sh and docs/sonar-duplicate-detection.md.
+name: SonarCloud
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "host/**"
+      - ".github/workflows/sonarcloud.yml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "host/**"
+      - ".github/workflows/sonarcloud.yml"
+
+jobs:
+  sonarcloud:
+    name: Analyze
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: host
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Check SONAR_TOKEN
+        id: token
+        run: |
+          if [ -z "${SONAR_TOKEN}" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SONAR_TOKEN is not set; skipping SonarCloud upload so fork PRs stay green."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install SonarScanner for .NET
+        if: steps.token.outputs.present == 'true'
+        run: |
+          dotnet tool install --global dotnet-sonarscanner || \
+            dotnet tool update --global dotnet-sonarscanner
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Begin analysis
+        if: steps.token.outputs.present == 'true'
+        run: |
+          dotnet sonarscanner begin \
+            /k:"budcribar_PageToMovie" \
+            /o:"budcribar" \
+            /n:"PageToMovie" \
+            /d:sonar.token="${SONAR_TOKEN}" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.cs.analyzeGeneratedCode=false \
+            /d:sonar.exclusions="**/bin/**,**/obj/**,**/node_modules/**,**/playwright/**,**/*.min.js,**/wwwroot/lib/**,**/PageToMovie.Fakes/**/Generated/**,**/PageToMovie.Tests/**,**/PageToMovie.UiTests/**,**/PageToMovie.LoadSim/**,**/tools/**,**/evals/**,books/**,**/books/**,**/scripts/**" \
+            /d:sonar.cpd.exclusions="**/PageToMovie.Tests/**,**/PageToMovie.UiTests/**,**/PageToMovie.LoadSim/**,**/tools/**" \
+            /d:sonar.cpd.cs.minimumTokens=50 \
+            /d:sonar.cpd.cs.minimumLines=4 \
+            /d:sonar.sourceEncoding=UTF-8
+
+      - name: Restore
+        if: steps.token.outputs.present == 'true'
+        run: dotnet restore PageToMovie.slnx
+
+      - name: Build
+        if: steps.token.outputs.present == 'true'
+        run: dotnet build PageToMovie.slnx -c Release --no-restore -p:RunAnalyzersDuringBuild=true
+
+      - name: Test
+        if: steps.token.outputs.present == 'true'
+        continue-on-error: true
+        run: dotnet test PageToMovie.Tests -c Release --no-restore --no-build --verbosity minimal
+
+      - name: End analysis / upload
+        if: steps.token.outputs.present == 'true'
+        run: dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}"
