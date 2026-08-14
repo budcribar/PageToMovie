@@ -271,7 +271,7 @@ public static class CharacterEndpoints
             force: body.Force,
             copyIntoAssets: body.CopyIntoAssets,
             onlyCharKey: body.CharKey,
-            useGrok: false,
+            useVision: false,
             ct: ct);
         return result.Ok
             ? Results.Ok(new { ok = true, projectId = id, attach = result })

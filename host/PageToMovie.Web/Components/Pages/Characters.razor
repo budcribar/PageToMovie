@@ -112,7 +112,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
                     <button type="button" class="btn btn-sm btn-outline-secondary"
                             disabled="@_busy"
                             title="Vision: re-match book illustration pages to the current cast. Does not add/remove characters."
-                            @onclick="() => LookBook.StartSortCharacterPlatesAsync(useGrok: true)">
+                            @onclick="LookBook.StartSortCharacterPlatesAsync">
                         Re-match book pictures
                     </button>
                     <span class="small text-muted">Keeps the cast list; only re-assigns book plates</span>

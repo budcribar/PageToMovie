@@ -70,7 +70,7 @@ public static class JobEndpoints
         // <summary>Same as extract-cast but under /api/jobs for consistency with other long AI ops.</summary>
         app.MapPost("/api/jobs/extract-cast", PostJobsExtractCast);
         // <summary>
-        // Job: Grok vision sorts book images onto characters → scenes.json design_reference_images.
+        // Job: vision (when the project vision model is usable) sorts book images onto characters.
         // Progress via SignalR; cancel with /api/jobs/cancel.
         // </summary>
         app.MapPost("/api/jobs/sort-character-plates", PostJobsSortCharacterPlates);
@@ -592,9 +592,7 @@ public static class JobEndpoints
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = body.UseGrok
-                ? "Queued Grok vision character plate sort"
-                : "Queued heuristic character plate sort",
+            message = "Queued character plate sort",
             job,
         });
     }

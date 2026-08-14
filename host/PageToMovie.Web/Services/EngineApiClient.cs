@@ -4247,7 +4247,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         return resp.IsSuccessStatusCode;
     }
 
-    /// <summary>Sync heuristic-only attach (no Grok). Prefer <see cref="StartSortCharacterPlatesAsync"/>.</summary>
+    /// <summary>Sync heuristic-only attach (skips vision). Prefer <see cref="StartSortCharacterPlatesAsync"/>.</summary>
     public async Task<AttachCharacterPlatesResult?> AttachBookPlatesAsync(
         string projectId,
         bool force = true,
@@ -4262,7 +4262,6 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 Force = force,
                 CopyIntoAssets = true,
                 CharKey = charKey,
-                UseGrok = false,
             },
             JsonOpts,
             ct);
@@ -4280,12 +4279,12 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     }
 
     /// <summary>
-    /// Start Grok vision job: classify book pages → character plates in scenes.json.
+    /// Start plate-sort job: classify book pages → character plates.
+    /// Uses the project's vision model when that catalog row is usable.
     /// Progress via SignalR; cancel with <see cref="CancelJobAsync"/>.
     /// </summary>
     public async Task StartSortCharacterPlatesAsync(
         string projectId,
-        bool useGrok = true,
         int maxImages = 32,
         CancellationToken ct = default)
     {
@@ -4296,7 +4295,6 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 ProjectId = projectId,
                 Force = true,
                 CopyIntoAssets = true,
-                UseGrok = useGrok,
                 MaxImages = maxImages,
             },
             JsonOpts,

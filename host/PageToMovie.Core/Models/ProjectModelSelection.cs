@@ -88,6 +88,18 @@ public static class ProjectModelSelection
     public static string RequireVision(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Image vision") =>
         Require(cfg, ModelCapability.Vision, jobLabel, VisionConfigKey, PlanningConfigKey, ChatConfigKey);
 
+    /// <summary>
+    /// Project-configured vision model when the catalog has an enabled Vision row; otherwise null.
+    /// Does not throw — plate sort and other fallback paths use this instead of <see cref="RequireVision"/>.
+    /// </summary>
+    public static string? TryVision(IReadOnlyDictionary<string, JsonElement>? cfg)
+    {
+        var id = TryGet(cfg, VisionConfigKey, PlanningConfigKey, ChatConfigKey);
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var entry = SupportedModelCatalog.Find(id, ModelCapability.Vision);
+        return entry is { Enabled: true } ? entry.Id : null;
+    }
+
     public static string RequireVideoReview(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Video review") =>
         Require(cfg, ModelCapability.Chat, jobLabel, QualityConfigKey, VisionConfigKey, PlanningConfigKey);
 

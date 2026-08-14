@@ -74,6 +74,15 @@ public class ProjectModelSelectionTests
         Assert.Equal(modelId, id);
     }
 
+    [Fact]
+    public void TryVision_returns_catalog_vision_id_or_null()
+    {
+        Assert.Equal("grok-4.5", ProjectModelSelection.TryVision(Cfg(("vision_model_name", "grok-4.5"))));
+        Assert.Null(ProjectModelSelection.TryVision(null));
+        Assert.Null(ProjectModelSelection.TryVision(Cfg(("vision_model_name", "none"))));
+        Assert.Null(ProjectModelSelection.TryVision(Cfg(("vision_model_name", "grok-imagine-video"))));
+    }
+
     // ── Mismatch: wrong capability in slot must throw ─────────────────────
 
     [Theory]

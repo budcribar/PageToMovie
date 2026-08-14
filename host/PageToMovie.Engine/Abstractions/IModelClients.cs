@@ -84,6 +84,13 @@ public interface IVisionClient
 {
     bool IsConfigured { get; }
 
+    /// <summary>
+    /// True when this client can serve <paramref name="model"/> (that model's provider key is present).
+    /// Single-provider clients default to <see cref="IsConfigured"/>. Multi-provider facades resolve
+    /// the catalog row and check that provider only — not "any vision key".
+    /// </summary>
+    bool IsConfiguredFor(string? model) => IsConfigured;
+
     Task<string> TranscribePageAsync(
         string imagePath,
         int page,
