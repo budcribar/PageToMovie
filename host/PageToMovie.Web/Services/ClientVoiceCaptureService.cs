@@ -292,7 +292,7 @@ public sealed class ClientVoiceCaptureService
             var hit = dto?.Projects?.FirstOrDefault(p =>
                 string.Equals(p.Id, projectId, StringComparison.OrdinalIgnoreCase));
             if (hit is null && string.Equals(dto?.Active?.Id, projectId, StringComparison.OrdinalIgnoreCase))
-                hit = dto!.Active;
+                hit = dto?.Active;
             return string.IsNullOrWhiteSpace(hit?.ParentProjectId) ? null : hit.ParentProjectId.Trim();
         }
         catch
@@ -341,12 +341,9 @@ public sealed class ClientVoiceCaptureService
     internal static List<EngineApiClient.NarratorSceneLinesDto> ScenesWithTargetLines(
         List<EngineApiClient.NarratorSceneLinesDto> scenes)
     {
-        var list = new List<EngineApiClient.NarratorSceneLinesDto>();
-        foreach (var s in scenes)
-        {
-            if (s.Lines.Exists(l => !string.IsNullOrWhiteSpace(l)))
-                list.Add(s);
-        }
+        var list = scenes
+            .Where(s => s.Lines.Exists(l => !string.IsNullOrWhiteSpace(l)))
+            .ToList();
         list.Sort(CompareSceneNumber);
         return list;
     }

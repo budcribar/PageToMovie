@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Engine;
 
@@ -16,7 +17,8 @@ public static class ClipForkFallback
 
     private static readonly Regex NeedName = new(
         @"^scene_(\d+)_clip_(\d+)\.need-fork$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        CommonRegex.Timeout);
 
     public static string NeedFileName(int scene, int clip) =>
         $"scene_{scene:D2}_clip_{clip:D2}{NeedSuffix}";
