@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
+using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 
 // Beat-label eval: score HEURISTIC and AI against GROUND TRUTH (not each other).
@@ -120,7 +122,6 @@ Console.WriteLine($"Mode: {(exportAnnotate ? "export-annotate" : scoreGt ? "scor
 Console.WriteLine($"Books: {selected.Count}  prompt={promptVer}  aiFrom={aiFrom ?? "(chat)"}  fresh={fresh}");
 
 using var http = new HttpClient { BaseAddress = new Uri("https://api.x.ai/v1/") };
-using PageToMovie.Core.Utils;
 if (!string.IsNullOrWhiteSpace(key))
     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 http.Timeout = TimeSpan.FromMinutes(4);

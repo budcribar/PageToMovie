@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
+using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 
 var repo = FindRepo();
@@ -85,7 +87,6 @@ if (!resp.IsSuccessStatusCode)
     return 1;
 }
 using var doc = JsonDocument.Parse(respText);
-using PageToMovie.Core.Utils;
 var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = AmbientSfxClassifier.ParseLabels(content);
 

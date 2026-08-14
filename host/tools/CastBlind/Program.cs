@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
+using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 
 var repo = FindRepo();
@@ -101,7 +103,6 @@ var resp = await http.PostAsync("chat/completions", new StringContent(JsonSerial
 var text = await resp.Content.ReadAsStringAsync();
 if (!resp.IsSuccessStatusCode) { await Console.Error.WriteLineAsync(text[..Math.Min(600,text.Length)]); return 1; }
 using var rdoc = JsonDocument.Parse(text);
-using PageToMovie.Core.Utils;
 var content = rdoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = OnScreenCastClassifier.ParseLabels(content, castKeys);
 
