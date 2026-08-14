@@ -341,9 +341,13 @@ public sealed class AdminAuthService : IAdminAuthService
         // Using Username here used to create projects under divergent folders when the
         // handle contained dots or differed from UserId (e.g. budcribarmsn.com →
         // budcribarmsn_com/Mary) so re-login under another alias hid the project.
-        var canonicalId = string.IsNullOrWhiteSpace(dbUser.UserId)
-            ? (string.IsNullOrWhiteSpace(dbUser.Username) ? "" : dbUser.Username.Trim())
-            : dbUser.UserId.Trim();
+        string canonicalId;
+        if (!string.IsNullOrWhiteSpace(dbUser.UserId))
+            canonicalId = dbUser.UserId.Trim();
+        else if (!string.IsNullOrWhiteSpace(dbUser.Username))
+            canonicalId = dbUser.Username.Trim();
+        else
+            canonicalId = "";
         var handle = string.IsNullOrWhiteSpace(dbUser.Username) ? canonicalId : dbUser.Username.Trim();
 
         if (!UserDatabaseService.IsEmailConfirmed(dbUser) && !isDevAdmin)

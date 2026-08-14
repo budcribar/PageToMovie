@@ -90,7 +90,13 @@ public static class CostEndpoints
         _ = await store.GetProjectAsync(id, ct)
             ?? throw new InvalidOperationException($"Unknown project: {id}");
         var allUsers = all == true && user.IsAdmin;
-        var userId = allUsers ? null : (string.IsNullOrWhiteSpace(user.UserId) ? null : user.UserId);
+        string? userId;
+        if (allUsers)
+            userId = null;
+        else if (string.IsNullOrWhiteSpace(user.UserId))
+            userId = null;
+        else
+            userId = user.UserId;
         var stats = await userDb.GetApiCostByProviderAsync(userId: userId, projectId: id, ct);
         return Results.Ok(new
         {

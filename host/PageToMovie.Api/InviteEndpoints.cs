@@ -22,8 +22,13 @@ public static class InviteEndpoints
         {
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body, cancellationToken: ct);
             var root = doc.RootElement;
-            var username = root.TryGetProperty("username", out var u) ? u.GetString()
-                : root.TryGetProperty("email", out var em) ? em.GetString() : null;
+            string? username;
+            if (root.TryGetProperty("username", out var u))
+                username = u.GetString();
+            else if (root.TryGetProperty("email", out var em))
+                username = em.GetString();
+            else
+                username = null;
             var role = root.TryGetProperty("role", out var r) ? r.GetString() ?? "editor" : "editor";
             if (string.IsNullOrWhiteSpace(username))
                 return Results.BadRequest(new { ok = false, error = "username or email required" });
@@ -47,9 +52,15 @@ public static class InviteEndpoints
         {
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body, cancellationToken: ct);
             var root = doc.RootElement;
-            var key = root.TryGetProperty("username", out var u) ? u.GetString()
-                : root.TryGetProperty("email", out var em) ? em.GetString()
-                : root.TryGetProperty("token", out var tok) ? tok.GetString() : null;
+            string? key;
+            if (root.TryGetProperty("username", out var u))
+                key = u.GetString();
+            else if (root.TryGetProperty("email", out var em))
+                key = em.GetString();
+            else if (root.TryGetProperty("token", out var tok))
+                key = tok.GetString();
+            else
+                key = null;
             if (string.IsNullOrWhiteSpace(key))
                 return Results.BadRequest(new { ok = false, error = "username, email, or token required" });
             var publicBase = config["PublicBaseUrl"] ?? $"{req.Scheme}://{req.Host.Value}";

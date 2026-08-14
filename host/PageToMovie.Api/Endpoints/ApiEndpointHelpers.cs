@@ -266,48 +266,62 @@ internal static class ApiEndpointHelpers
         }
     }
 
-    public static string GuessImageContentType(string path) =>
-        path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? SpecializedMimeType.ImagePng.ToMimeTypeString()
-        : path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-          path.EndsWith(ApiText.JpegExtension, StringComparison.OrdinalIgnoreCase) ? "image/jpeg"
-        : path.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
-        : SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString();
+    public static string GuessImageContentType(string path)
+    {
+        if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            return SpecializedMimeType.ImagePng.ToMimeTypeString();
+        if (path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(ApiText.JpegExtension, StringComparison.OrdinalIgnoreCase))
+            return "image/jpeg";
+        if (path.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+            return "image/webp";
+        return SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString();
+    }
 
     public static object DemoPublicDto(
         DemoCatalogService.DemoEntry d,
         int upvoteCount = 0,
         bool upvotedByMe = false,
         bool canFork = false,
-        string visibilityMode = "Private") => new
+        string visibilityMode = "Private")
     {
-        d.Id,
-        d.Title,
-        d.Description,
-        d.ProjectId,
-        d.CreatedBy,
-        d.CreatedAt,
-        d.SizeBytes,
-        d.Status,
-        d.ReportCount,
-        upvoteCount,
-        upvotedByMe,
-        // True when this public film's studio project still exists (gallery Fork button).
-        canFork,
-        // YouTube is gallery playback SoT. Local videoPath only for staging (owner) before upload finishes.
-        videoPath = string.IsNullOrWhiteSpace(d.YoutubeId)
-            ? $"/api/demos/{Uri.EscapeDataString(d.Id)}/video"
-            : null,
-        d.YoutubeId,
-        d.YoutubeUrl,
-        d.Category,
-        d.Tags,
-        youtubeWatchUrl = string.IsNullOrWhiteSpace(d.YoutubeId)
-            ? null
-            : (string.IsNullOrWhiteSpace(d.YoutubeUrl) ? $"https://www.youtube.com/watch?v={d.YoutubeId}" : d.YoutubeUrl),
-        d.YoutubeLikeCount,
-        d.YoutubeViewCount,
-        visibilityMode,
-    };
+        string? youtubeWatchUrl;
+        if (string.IsNullOrWhiteSpace(d.YoutubeId))
+            youtubeWatchUrl = null;
+        else if (string.IsNullOrWhiteSpace(d.YoutubeUrl))
+            youtubeWatchUrl = $"https://www.youtube.com/watch?v={d.YoutubeId}";
+        else
+            youtubeWatchUrl = d.YoutubeUrl;
+
+        return new
+        {
+            d.Id,
+            d.Title,
+            d.Description,
+            d.ProjectId,
+            d.CreatedBy,
+            d.CreatedAt,
+            d.SizeBytes,
+            d.Status,
+            d.ReportCount,
+            upvoteCount,
+            upvotedByMe,
+            // True when this public film's studio project still exists (gallery Fork button).
+            canFork,
+            // YouTube is gallery playback SoT. Local videoPath only for staging (owner) before upload finishes.
+            videoPath = string.IsNullOrWhiteSpace(d.YoutubeId)
+                ? $"/api/demos/{Uri.EscapeDataString(d.Id)}/video"
+                : null,
+            d.YoutubeId,
+            d.YoutubeUrl,
+            d.Category,
+            d.Tags,
+            youtubeWatchUrl,
+            d.YoutubeLikeCount,
+            d.YoutubeViewCount,
+            visibilityMode,
+        };
+    }
 
     public static object DemoAdminDto(DemoCatalogService.DemoEntry d) => new
     {

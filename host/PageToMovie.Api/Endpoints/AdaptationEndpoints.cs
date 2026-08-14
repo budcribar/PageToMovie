@@ -691,6 +691,13 @@ public static class AdaptationEndpoints
 
         var snap = await FilmRuntime.SetTargetAsync(store, id, target, ct).ConfigureAwait(false);
         store.TriggerAutoGitCommit(id, $"ptm:stage=runtime_retarget target={snap.TargetMinutes}");
+        string message;
+        if (snap.TargetMinutes < snap.NaturalMinutes)
+            message = $"Target set to {snap.TargetMinutes} min (shorter than natural ~{snap.NaturalMinutes} min — typically fewer clips / lower cost).";
+        else if (snap.TargetMinutes == snap.NaturalMinutes)
+            message = $"Target set to natural length (~{snap.NaturalMinutes} min).";
+        else
+            message = $"Target set to {snap.TargetMinutes} min (longer than natural ~{snap.NaturalMinutes} min).";
         return Results.Ok(new
         {
             ok = true,
@@ -699,11 +706,7 @@ public static class AdaptationEndpoints
             naturalMinutes = snap.NaturalMinutes,
             targetMinutes = snap.TargetMinutes,
             mode = snap.Mode,
-            message = snap.TargetMinutes < snap.NaturalMinutes
-                ? $"Target set to {snap.TargetMinutes} min (shorter than natural ~{snap.NaturalMinutes} min — typically fewer clips / lower cost)."
-                : snap.TargetMinutes == snap.NaturalMinutes
-                    ? $"Target set to natural length (~{snap.NaturalMinutes} min)."
-                    : $"Target set to {snap.TargetMinutes} min (longer than natural ~{snap.NaturalMinutes} min).",
+            message,
             adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, ct),
         });
     }
