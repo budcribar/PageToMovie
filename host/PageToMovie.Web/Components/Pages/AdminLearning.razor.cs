@@ -15,7 +15,7 @@ public partial class AdminLearning
     internal string? _error;
     internal string? _message;
     private string _projectFilter { get; set; } = "";
-    private List<ProjectInfo> _projects = new();
+    internal List<ProjectInfo> _projects = new();
     internal LearningInsightsDto? _insights;
     internal ReviewComparisonInsightsDto? _comparison;
     internal List<ReviewLearningEvent> _events = new();
