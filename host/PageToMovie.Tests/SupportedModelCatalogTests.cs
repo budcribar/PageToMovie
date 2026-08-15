@@ -230,7 +230,7 @@ public class SupportedModelCatalogTests
     public void Claude_and_gemini_are_selectable_as_chat_models()
     {
         var claude = SupportedModelCatalog.Find("claude-sonnet-5", ModelCapability.Chat);
-        var gemini = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Chat);
+        var gemini = SupportedModelCatalog.Find("gemini-3.7-flash", ModelCapability.Chat);
         Assert.NotNull(claude);
         Assert.NotNull(gemini);
         Assert.True(claude!.Enabled);
@@ -238,6 +238,25 @@ public class SupportedModelCatalogTests
         Assert.Equal("anthropic", claude.ProviderId);
         Assert.Equal("gemini", gemini.ProviderId);
         Assert.Contains("ANTHROPIC_API_KEY", claude.RequiredEnvKeys);
+    }
+
+    [Fact]
+    public void Video_review_default_is_gemini_3_7_flash_and_2_5_stays_disabled()
+    {
+        Assert.Equal("gemini-3.7-flash", SupportedModelCatalog.DefaultModelIdForCapability("video-review"));
+        var chat = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Chat);
+        var vision = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Vision);
+        Assert.NotNull(chat);
+        Assert.NotNull(vision);
+        Assert.False(chat!.Enabled);
+        Assert.False(vision!.Enabled);
+        Assert.True(chat.Deprecated);
+        Assert.True(vision.Deprecated);
+        Assert.DoesNotContain(
+            SupportedModelCatalog.ForCapability(ModelCapability.Chat),
+            e => e.Id.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("gemini-3.7-flash", SupportedModelCatalog.TaskRankings["video_review"][0]);
+        Assert.Contains("gemini-2.5-flash", SupportedModelCatalog.TaskRankings["video_review"]);
     }
 
     [Fact]

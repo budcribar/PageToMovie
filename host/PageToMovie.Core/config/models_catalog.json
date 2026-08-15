@@ -114,7 +114,7 @@
       "id": "video-review",
       "displayName": "Video & Clip Review (Multimodal)",
       "description": "Evaluates dialogue, lip sync, and scene rhythm (Google Gemini natively analyzes MP4 video files).",
-      "defaultModelId": "gemini-2.5-flash"
+      "defaultModelId": "gemini-3.7-flash"
     },
     {
       "id": "audio",
@@ -1156,20 +1156,21 @@
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "maxInputTokens": 1048576,
       "inputCostPerMillionTokens": 0.3,
       "outputCostPerMillionTokens": 2.5,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired via GeminiChatClient. Supports native multimodal MP4 video review. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\") \u2014 GeminiChatClient was already silently falling back to gemini-2.5-flash on that 404, so this just makes the catalog match what was actually running.",
+      "notes": "Wired via GeminiChatClient. Supports native multimodal MP4 video review. Disabled 2026-08-15 (video-review default is now gemini-3.7-flash). Id kept so existing projects still resolve until on-open migrate rewrites the slot. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\").",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
       "pricingNotes": "Google Gemini API list price 2026-08-15: $0.30 input / $2.50 output per 1M tokens. Context 1,048,576 in / 65,536 out.",
       "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingLastReviewedAt": "2026-08-15",
+      "deprecated": true
     },
     {
       "id": "gemini-3.6-flash",
@@ -1406,20 +1407,21 @@
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "maxInputTokens": 1048576,
       "inputCostPerMillionTokens": 0.3,
       "outputCostPerMillionTokens": 2.5,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Was gemini-2.5-pro, retired by Google for new API keys \u2014 see the Chat entry's note.",
+      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Disabled 2026-08-15 with the Chat sibling; id kept for existing projects. Was gemini-2.5-pro, retired by Google for new API keys \u2014 see the Chat entry's note.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
       "lastVerifiedAt": "2026-08-15",
       "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15): $0.30 / $2.50 per 1M. Context 1,048,576 in / 65,536 out.",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingLastReviewedAt": "2026-08-15",
+      "deprecated": true
     },
     {
       "id": "gemini-3.7-flash",
@@ -1891,6 +1893,7 @@
       "gemini-2.5-flash"
     ],
     "video_review": [
+      "gemini-3.7-flash",
       "gemini-2.5-flash",
       "grok-4.6",
       "grok-4.5"
