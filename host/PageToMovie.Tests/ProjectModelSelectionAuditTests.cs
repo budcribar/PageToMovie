@@ -9,7 +9,13 @@ public class ProjectModelSelectionAuditTests
 {
     public ProjectModelSelectionAuditTests()
     {
-        SupportedModelCatalog.ReloadCatalog();
+        // Real embedded catalog — not ReloadCatalog(), which follows PageToMovie_USE_FAKES
+        // and would load models_catalog.fake.json (those ids are still enabled there).
+        using var stream = typeof(SupportedModelCatalog).Assembly
+            .GetManifestResourceStream("PageToMovie.Core.config.models_catalog.json")
+            ?? throw new InvalidOperationException("Real models catalog resource missing.");
+        using var reader = new StreamReader(stream);
+        Assert.True(SupportedModelCatalog.TryLoadFromJson(reader.ReadToEnd()));
     }
 
     [Fact]
@@ -18,6 +24,11 @@ public class ProjectModelSelectionAuditTests
         var store = TestProjects.CreateStore("audit-stale-", out var root, "Stale");
         try
         {
+            var flash = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Chat);
+            var quality = SupportedModelCatalog.Find("grok-imagine-image-quality", ModelCapability.Image);
+            Assert.False(flash?.Enabled);
+            Assert.False(quality?.Enabled);
+
             WriteProject(root, "Stale", "Stale Film", """
                 {
                   "quality_model_name": "gemini-2.5-flash",
