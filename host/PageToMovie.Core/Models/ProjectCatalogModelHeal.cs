@@ -131,10 +131,10 @@ public static class ProjectCatalogModelHeal
         }
 
         var providerId = SupportedModelCatalog.ProviderIdFor(modelId, capability);
-        foreach (var providerKey in providerKeys)
+        foreach (var providerKey in providerKeys.Where(providerKey =>
+                     cfg.ContainsKey(providerKey) || string.Equals(providerKey, QualityProviderKey, StringComparison.OrdinalIgnoreCase)))
         {
-            if (cfg.ContainsKey(providerKey) || string.Equals(providerKey, QualityProviderKey, StringComparison.OrdinalIgnoreCase))
-                SetString(cfg, providerKey, providerId);
+            SetString(cfg, providerKey, providerId);
         }
 
         SetSelection(cfg, selectionsKey, modelId);
@@ -145,10 +145,9 @@ public static class ProjectCatalogModelHeal
         string[] keys,
         string selectionsKey)
     {
-        foreach (var key in keys)
+        foreach (var key in keys.Where(cfg.ContainsKey))
         {
-            if (cfg.ContainsKey(key))
-                SetString(cfg, key, "none");
+            SetString(cfg, key, "none");
         }
 
         if (cfg.ContainsKey(ModelSelectionsKey))
