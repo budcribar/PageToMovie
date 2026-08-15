@@ -644,5 +644,10 @@ public partial class VoiceCaptureStep
     private sealed class ExtractUrlResult { public bool Success { get; set; } public string? Url { get; set; } public string? Error { get; set; } }
     private sealed class RhythmResult { public bool Success { get; set; } public int Score { get; set; } public List<double>? Regions { get; set; } public string? Error { get; set; } }
     private sealed class VoiceCaptureStopResult { public bool Ok { get; set; } public string? Error { get; set; } public string? Base64 { get; set; } public string? FileName { get; set; } }
-    private sealed class VoiceCaptureStartResult { public bool Ok { get; set; } public string? MimeType { get; set; } public string? Error { get; set; } }
+    private sealed class VoiceCaptureStartResult
+    {
+        public bool Ok { get; set; } = false;
+        public string? MimeType { get; set; }
+        public string? Error { get; set; } = null;
+    }
 }
