@@ -29,7 +29,9 @@ internal static class ApiServiceConfiguration
             var store = sp.GetRequiredService<ProjectStore>();
             var root = Path.Combine(store.WorkspaceRoot, ApiText.ProjectsFolder);
             var email = sp.GetService<PageToMovie.Engine.Collaboration.IProjectInviteMailer>();
-            return new ProjectAclService(root, null, email, store);
+            var users = new PageToMovie.Engine.Collaboration.UserDatabaseProjectUserDirectory(
+                sp.GetRequiredService<UserDatabaseService>());
+            return new ProjectAclService(root, users, email, store);
         });
 
         var listenPorts = new HashSet<string> { "5088", "8080", "80" };

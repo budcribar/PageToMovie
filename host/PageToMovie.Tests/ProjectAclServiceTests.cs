@@ -67,6 +67,33 @@ public class ProjectAclServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Email_session_is_owner_of_handle_namespaced_project()
+    {
+        // Production shape: folder + ownerUserId are the handle; JWT / X-User-Id is the email.
+        var project = await _store.CreateProjectAsync("Mary3", ownerUserId: "budcribar");
+        Assert.Equal("budcribar/Mary3", project.Id);
+        Assert.Equal("budcribar", project.OwnerUserId);
+
+        const string emailCaller = "budcribar@example.com";
+        Assert.NotEqual(emailCaller, project.OwnerUserId);
+
+        var level = await _acl.GetAccessLevelAsync(project.Id, emailCaller);
+        Assert.Equal(ProjectAccessLevel.Owner, level);
+        Assert.True(await _acl.CanAccessAsync(project.Id, emailCaller, ProjectAccessLevel.Editor));
+        Assert.False(await _acl.CanAccessAsync(project.Id, "stranger@example.com", ProjectAccessLevel.Viewer));
+    }
+
+    [Fact]
+    public async Task Admin_flag_grants_access_without_being_the_owner()
+    {
+        var project = await _store.CreateProjectAsync("Mary3Admin", ownerUserId: "budcribar");
+        const string adminId = "other-admin";
+
+        Assert.False(await _acl.CanAccessAsync(project.Id, adminId, ProjectAccessLevel.Viewer));
+        Assert.True(await _acl.CanAccessAsync(project.Id, adminId, ProjectAccessLevel.Viewer, isAdmin: true));
+    }
+
+    [Fact]
     public async Task SaveAclAsync_writes_encoded_composite_id_to_the_normalized_path()
     {
         var project = await _store.CreateProjectAsync("NormId", ownerUserId: OwnerUserId);

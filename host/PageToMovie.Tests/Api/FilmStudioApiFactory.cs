@@ -46,6 +46,7 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
                 ["PageToMovie:Auth:AdminUsername"] = "admin",
                 ["PageToMovie:Auth:AdminPassword"] = "admin",
                 ["PageToMovie:Auth:DefaultUserId"] = "test-user",
+                ["PageToMovie:Auth:AdminUserIds:0"] = AdminFixtureUserId,
                 // Force YouTube OAuth to "unconfigured" regardless of the host machine's real
                 // environment variables (e.g. PageToMovie__YouTube__ClientId/ClientSecret/RedirectUri
                 // set for local dev use of the actual product) — otherwise a dev/CI box with real
@@ -65,6 +66,9 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
                 o.EnableReadCaches = true;
                 o.Auth ??= new AuthOptions();
                 o.Auth.RequireLogin = false;
+                o.Auth.AdminUserIds ??= new List<string>();
+                if (!o.Auth.AdminUserIds.Contains(AdminFixtureUserId, StringComparer.OrdinalIgnoreCase))
+                    o.Auth.AdminUserIds.Add(AdminFixtureUserId);
                 o.YouTube ??= new YouTubeOptions();
                 o.YouTube.ClientId = "";
                 o.YouTube.ClientSecret = "";
@@ -73,6 +77,9 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
         });
     }
 
+    /// <summary>Non-owner admin id used by ACL/activate tests — not a production default.</summary>
+    public const string AdminFixtureUserId = "acl-admin-fixture";
+
     public HttpClient CreateUserClient(string userId = "test-user")
     {
         var client = CreateClient();
@@ -80,6 +87,9 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
         client.DefaultRequestHeaders.Add("X-User-Id", userId);
         return client;
     }
+
+    public HttpClient CreateAdminClient(string userId = AdminFixtureUserId) =>
+        CreateUserClient(userId);
 
     protected override void Dispose(bool disposing)
     {

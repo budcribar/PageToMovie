@@ -62,6 +62,59 @@ public class NamespacedProjectIdApiTests : IClassFixture<PageToMovieApiFactory>
     }
 
     [Fact]
+    public async Task Owner_email_session_can_activate_and_heartbeat_handle_namespaced_fixture()
+    {
+        var projectId = await SeedNamespacedFixtureAsync(ownerUserId: "budcribar", slug: "Mary3");
+        Assert.Equal("budcribar/Mary3", projectId);
+
+        // Session id is the email; project.json ownerUserId + folder segment are the handle.
+        const string emailCaller = "budcribar@example.com";
+        await InsertUserAsync(emailCaller, username: "budcribar", email: emailCaller);
+        using var ownerClient = _factory.CreateUserClient(emailCaller);
+
+        var activate = await ownerClient.PostAsync($"/api/projects/{projectId}/activate", content: null);
+        Assert.Equal(HttpStatusCode.OK, activate.StatusCode);
+
+        var heartbeat = await ownerClient.PostAsync($"/api/projects/{projectId}/presence/heartbeat", content: null);
+        Assert.Equal(HttpStatusCode.OK, heartbeat.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_can_activate_and_heartbeat_namespaced_fixture_they_do_not_own()
+    {
+        var projectId = await SeedNamespacedFixtureAsync(ownerUserId: "budcribar", slug: "Mary4");
+        Assert.Equal("budcribar/Mary4", projectId);
+
+        using var admin = _factory.CreateAdminClient();
+        Assert.NotEqual("budcribar", PageToMovieApiFactory.AdminFixtureUserId);
+
+        var activate = await admin.PostAsync($"/api/projects/{projectId}/activate", content: null);
+        Assert.Equal(HttpStatusCode.OK, activate.StatusCode);
+
+        var heartbeat = await admin.PostAsync($"/api/projects/{projectId}/presence/heartbeat", content: null);
+        Assert.Equal(HttpStatusCode.OK, heartbeat.StatusCode);
+    }
+
+    [Fact]
+    public async Task Stranger_gets_403_on_namespaced_fixture()
+    {
+        var projectId = await SeedNamespacedFixtureAsync(ownerUserId: "budcribar", slug: "Mary5");
+        Assert.Equal("budcribar/Mary5", projectId);
+
+        var strangerId = "stranger_" + Guid.NewGuid().ToString("N")[..8];
+        await InsertUserAsync(strangerId);
+        using var stranger = _factory.CreateUserClient(strangerId);
+
+        var heartbeat = await stranger.PostAsync($"/api/projects/{projectId}/presence/heartbeat", content: null);
+        Assert.Equal(HttpStatusCode.Forbidden, heartbeat.StatusCode);
+        var body = await heartbeat.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("project_access_denied", body.GetProperty("error").GetString());
+
+        var activate = await stranger.PostAsync($"/api/projects/{projectId}/activate", content: null);
+        Assert.Equal(HttpStatusCode.Forbidden, activate.StatusCode);
+    }
+
+    [Fact]
     public async Task Stranger_gets_403_with_full_namespaced_id_not_owner_segment_only()
     {
         var (ownerClient, ownerId, projectId) = await CreateNamespacedProjectAsync();
@@ -105,13 +158,23 @@ public class NamespacedProjectIdApiTests : IClassFixture<PageToMovieApiFactory>
         return (client, userId, projectId!);
     }
 
-    private async Task InsertUserAsync(string userId)
+    private async Task<string> SeedNamespacedFixtureAsync(string ownerUserId, string slug)
+    {
+        var store = _factory.Services.GetRequiredService<ProjectStore>();
+        var project = await store.CreateProjectAsync(slug, ownerUserId: ownerUserId);
+        Assert.False(string.IsNullOrWhiteSpace(project.Id));
+        Assert.Contains('/', project.Id);
+        return project.Id;
+    }
+
+    private async Task InsertUserAsync(string userId, string? username = null, string? email = null)
     {
         var userDb = _factory.Services.GetRequiredService<UserDatabaseService>();
         await userDb.InsertUserAsync(new UserEntity
         {
             UserId = userId,
-            Username = userId,
+            Username = username ?? userId,
+            Email = email,
             PasswordHash = "hash",
             Role = "User",
             CreatedAt = DateTime.UtcNow,
