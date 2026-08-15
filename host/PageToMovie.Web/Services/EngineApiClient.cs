@@ -1545,6 +1545,18 @@ public sealed class EngineApiClient
         resp.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Non-throwing <see cref="EnsureHealthyAsync"/> for <see cref="ServerHealthState.Probe"/>.</summary>
+    public async Task<bool> ProbeHealthAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await EnsureHealthyAsync(ct);
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return false; }
+    }
+
     public async Task<ProjectsDto?> GetProjectsAsync(CancellationToken ct = default)
     {
         SyncIdentityHeaders();
