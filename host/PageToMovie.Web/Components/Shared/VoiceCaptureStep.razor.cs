@@ -24,6 +24,9 @@ public partial class VoiceCaptureStep
 
     internal const int MaxPhrases = 8;
 
+    /// <summary>Stop this many ms after the teleprompter/line duration (user finished reading).</summary>
+    internal const int AutoStopTailMs = 200;
+
     internal string? _projectId;
     internal bool _loading = true;
     internal bool _busy;
@@ -53,6 +56,7 @@ public partial class VoiceCaptureStep
     internal bool _renderYouWave;      // draw the "you" strip (coloured by match) on the next render
 
     internal readonly List<string> _kept = new(); // kept take data URLs
+    internal int _scoreEpoch; // bumped when word colours change so ScriptPane re-renders
 
     internal VoiceCapturePhrase CurrentPhrase => _phrases[Math.Clamp(_i, 0, _phrases.Count - 1)];
 
@@ -120,6 +124,7 @@ public partial class VoiceCaptureStep
         _originalUrl = null;
         _takeUrl = null;
         _score = null; _regions = null;
+        _scoreEpoch++;
         StateHasChanged();
 
         var p = CurrentPhrase;
@@ -215,15 +220,29 @@ public partial class VoiceCaptureStep
 
     internal async Task ListenAsync()
     {
-        if (_listening || _recording || _light > 0) return;
+        if (_listening || _recording || _light > 0 || _busy) return;
         if (string.IsNullOrEmpty(_originalUrl))
+        {
+            _status = "Loading the original line…";
+            await InvokeAsync(StateHasChanged);
             await TryLoadOriginalAsync(CurrentPhrase);
-        if (string.IsNullOrEmpty(_originalUrl)) return;
+        }
+        if (string.IsNullOrEmpty(_originalUrl))
+        {
+            _status = "No original line to play yet — you can still Record.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
         _listening = true;
+        _status = null;
         _teleSession++;
         _teleStartPending = true;
-        StateHasChanged();
-        try { await Js.InvokeAsync<bool>("PageToMovieFfmpeg.playAudioAsync", _originalUrl); }
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var timeoutMs = AutoStopDelayMs(_ballDurationSec) + 2000;
+            await Js.InvokeAsync<bool>("PageToMovieFfmpeg.playAudioAsync", _originalUrl, timeoutMs);
+        }
         catch { /* ignore playback errors */ }
         _listening = false;
         await InvokeAsync(StateHasChanged);
@@ -371,6 +390,7 @@ public partial class VoiceCaptureStep
         _takeUrl = null;
         _score = null;
         _regions = null;
+        _scoreEpoch++;
         _busy = false;
         _recordSession = Math.Max(0, _recordSession);
         _status = "Allow the microphone if the browser asks…";
@@ -424,7 +444,15 @@ public partial class VoiceCaptureStep
         var session = ++_recordSession;
         await InvokeAsync(StateHasChanged);
         _ = ClearLightAsync();
-        _ = AutoStopAsync(session, (int)((_ballDurationSec + 1.0) * 1000));
+        _ = AutoStopAsync(session, AutoStopDelayMs(_ballDurationSec));
+    }
+
+    /// <summary>Phrase length + a short tail so we stop ~200ms after the line is finished.</summary>
+    internal static int AutoStopDelayMs(double phraseDurationSec)
+    {
+        if (double.IsNaN(phraseDurationSec) || double.IsInfinity(phraseDurationSec) || phraseDurationSec < 0)
+            phraseDurationSec = 2;
+        return (int)Math.Clamp(phraseDurationSec * 1000.0 + AutoStopTailMs, 400, 30_000);
     }
 
     internal async Task CancelRecordAsync()
@@ -487,7 +515,13 @@ public partial class VoiceCaptureStep
                 }
                 var s = await Js.InvokeAsync<RhythmResult>(
                     "PageToMovieFfmpeg.analyzeRhythmMatchAsync", _originalUrl, _takeUrl, boundaries);
-                if (s is { Success: true }) { _score = s.Score; _regions = s.Regions; _renderYouWave = true; }
+                if (s is { Success: true })
+                {
+                    _score = s.Score;
+                    _regions = s.Regions;
+                    _scoreEpoch++;
+                    _renderYouWave = true;
+                }
             }
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -556,9 +590,11 @@ public partial class VoiceCaptureStep
     internal static List<string> SplitWords(string? t) =>
         string.IsNullOrWhiteSpace(t) ? new() : t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
 
-    internal string WordStyle(int wordIndex)
+    internal string WordStyle(int wordIndex) => WordStyleFor(_regions, wordIndex, _recording);
+
+    internal static string WordStyleFor(IReadOnlyList<double>? regions, int wordIndex, bool recording)
     {
-        if (_recording || _regions is not { Count: > 0 } r) return "";
+        if (recording || regions is not { Count: > 0 } r) return "";
         var m = r[Math.Min(wordIndex, r.Count - 1)];
         int rr, gg, bb;
         if (m >= 0.7) { rr = 52; gg = 199; bb = 89; }

@@ -53,13 +53,19 @@ else
                 <span class="badge text-bg-secondary">@_kept.Count kept</span>
             </div>
 
-            <VoiceCaptureStep_ScriptPane />
+            <VoiceCaptureStep_ScriptPane Light="_light" Recording="_recording" Listening="_listening"
+                                        TeleSession="_teleSession" ScoreEpoch="_scoreEpoch" />
 
             @* Compare — play the narrator, yourself, or both together; the strips show the rhythm. *@
-            <VoiceCaptureStep_ComparePane />
+            <VoiceCaptureStep_ComparePane Busy="_busy" Recording="_recording" Light="_light" Listening="_listening"
+                                         HasTake="@(!string.IsNullOrEmpty(_takeUrl))"
+                                         HasOriginal="@(!string.IsNullOrEmpty(_originalUrl))"
+                                         Score="_score" />
 
             @* Controls (hidden during the light countdown) *@
-            <VoiceCaptureStep_Controls />
+            <VoiceCaptureStep_Controls Busy="_busy" Recording="_recording" Light="_light" Listening="_listening"
+                                      HasTake="@(!string.IsNullOrEmpty(_takeUrl))"
+                                      KeptCount="_kept.Count" PhraseIndex="_i" PhraseCount="_phrases.Count" />
 
             @if (!string.IsNullOrEmpty(_status))
             {

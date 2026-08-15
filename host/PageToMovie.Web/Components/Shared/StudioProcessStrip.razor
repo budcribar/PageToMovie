@@ -38,7 +38,8 @@
            href="@(BookLocked ? "javascript:void(0)" : "simple-voice")"
            title="@(BookLocked ? "Connect API keys in Setup first" : "Pick a library story")"
            data-testid="studio-step-book"
-           @onclick:preventDefault="@BookLocked">
+           @onclick="OnStoryStepClick"
+           @onclick:preventDefault="@(BookLocked || HandleStoryInPage)">
             <span class="ptm-step__num">1</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">@L["ProcessStrip.Story"]</span>

@@ -1,5 +1,6 @@
 using System.Linq;
 using PageToMovie.Core.Models;
+using PageToMovie.Web.Components.Shared;
 using PageToMovie.Web.Services;
 using Xunit;
 
@@ -33,5 +34,27 @@ public sealed class VoiceCaptureScriptFallbackTests
         Assert.True(phrases.Phrases[0].Confident);
         Assert.Equal("Oh, Mary loves the lamb, you know.", phrases.Phrases[0].Text);
         Assert.True(phrases.Phrases[0].DurationSec >= 2);
+    }
+
+    [Fact]
+    public void AutoStopDelayMs_is_phrase_length_plus_200ms()
+    {
+        Assert.Equal(3200, VoiceCaptureStep.AutoStopDelayMs(3.0));
+        Assert.Equal(VoiceCaptureStep.AutoStopTailMs + 2000, VoiceCaptureStep.AutoStopDelayMs(2.0));
+        Assert.InRange(VoiceCaptureStep.AutoStopDelayMs(double.NaN), 400, 30_000);
+        Assert.Equal(400, VoiceCaptureStep.AutoStopDelayMs(0));
+        Assert.Equal(30_000, VoiceCaptureStep.AutoStopDelayMs(120));
+    }
+
+    [Theory]
+    [InlineData(0.9, "52,199,89")]
+    [InlineData(0.6, "255,204,0")]
+    [InlineData(0.2, "255,59,48")]
+    public void WordStyleFor_colors_green_yellow_red(double match, string rgb)
+    {
+        var style = VoiceCaptureStep.WordStyleFor(new[] { match }, 0, recording: false);
+        Assert.Contains(rgb, style);
+        Assert.Equal("", VoiceCaptureStep.WordStyleFor(new[] { match }, 0, recording: true));
+        Assert.Equal("", VoiceCaptureStep.WordStyleFor(null, 0, recording: false));
     }
 }

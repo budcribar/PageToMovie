@@ -21,4 +21,6 @@ public partial class SimpleVoice_PickPhase
     [CascadingParameter] public required SimpleVoice Host { get; set; }
 
     [Parameter] public bool StoriesLoading { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
 }

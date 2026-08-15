@@ -182,6 +182,7 @@ public partial class SimpleVoice
         _busy = true;
         _error = null;
         _message = null;
+        Notify();
         try
         {
             // Make the user's own copy of the film (fork), then set up the voice step on it.
@@ -203,11 +204,14 @@ public partial class SimpleVoice
             _projectLabel = fork?.Title ?? story.Title;
             _voiceReady = false;
             _dubbedUrl = null;
-            _phase = Phase.Record;
             await EnsureVoiceModelAsync();
             await ResolveNarratorKeyAsync();
             if (!_needsCharacterPick)
                 await RefreshSampleStateAsync();
+            // Phase last so the destination (character pick or recorder) paints already themed —
+            // swapping mid-fork let MainLayout re-render an empty/unstyled Record card.
+            if (_phase != Phase.Done)
+                _phase = Phase.Record;
         }
         catch (Exception ex)
         {
@@ -227,6 +231,37 @@ public partial class SimpleVoice
         _error = null;
         _message = null;
         Notify();
+    }
+
+    /// <summary>Strip Back: previous Easy Start step, not a same-URL navigation.</summary>
+    internal enum BackTarget { None, Pick, Character, Voice }
+
+    internal BackTarget ComputeBackTarget()
+    {
+        if (_phase == Phase.Movie) return BackTarget.Voice;
+        if (_phase is Phase.Record or Phase.Done)
+        {
+            if (!_needsCharacterPick && _narratorCandidates.Count > 1)
+                return BackTarget.Character;
+            return BackTarget.Pick;
+        }
+        return BackTarget.None;
+    }
+
+    internal void OnStripBack()
+    {
+        switch (ComputeBackTarget())
+        {
+            case BackTarget.Voice:
+                BackToVoiceFromMovie();
+                break;
+            case BackTarget.Character:
+                ChangeCharacter();
+                break;
+            case BackTarget.Pick:
+                BackToPick();
+                break;
+        }
     }
 
     private async Task ResolveNarratorKeyAsync()

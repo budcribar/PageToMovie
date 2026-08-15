@@ -34,43 +34,94 @@ window.PageToMovieVoiceCapture = (function () {
     return { ok: true, mimeType: recorder.mimeType || mime || "audio/webm" };
   }
 
-  function stop() {
+  function readBlob(blob, type) {
     return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        const base64 = typeof dataUrl === "string" ? dataUrl.split(",")[1] : null;
+        resolve({
+          ok: true,
+          mimeType: type,
+          byteLength: blob.size,
+          base64,
+          fileName: "voice_clone_sample.webm",
+        });
+      };
+      reader.onerror = () => reject(reader.error || new Error("read failed"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function releaseMic() {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((t) => t.stop());
+      mediaStream = null;
+    }
+    recorder = null;
+  }
+
+  function stop() {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (payload) => {
+        if (settled) return;
+        settled = true;
+        resolve(payload);
+      };
+
       if (!recorder) {
-        resolve({ ok: false, error: "Not recording" });
+        finish({ ok: false, error: "Not recording" });
         return;
       }
+
       const rec = recorder;
-      rec.onstop = () => {
+      const type = rec.mimeType || "audio/webm";
+      const timer = setTimeout(() => {
         try {
-          const type = rec.mimeType || "audio/webm";
           const blob = new Blob(chunks, { type });
           chunks = [];
-          if (mediaStream) {
-            mediaStream.getTracks().forEach((t) => t.stop());
-            mediaStream = null;
+          releaseMic();
+          if (blob.size === 0) {
+            finish({ ok: false, error: "No audio captured." });
+            return;
           }
-          recorder = null;
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const dataUrl = reader.result;
-            const base64 = typeof dataUrl === "string" ? dataUrl.split(",")[1] : null;
-            resolve({
-              ok: true,
-              mimeType: type,
-              byteLength: blob.size,
-              base64,
-              fileName: "voice_clone_sample.webm",
-            });
-          };
-          reader.onerror = () => reject(reader.error || new Error("read failed"));
-          reader.readAsDataURL(blob);
+          readBlob(blob, type).then(finish).catch((err) => {
+            finish({ ok: false, error: (err && err.message) || "read failed" });
+          });
         } catch (err) {
-          reject(err);
+          releaseMic();
+          finish({ ok: false, error: (err && err.message) || "stop timed out" });
+        }
+      }, 2500);
+
+      rec.onstop = () => {
+        clearTimeout(timer);
+        try {
+          const blob = new Blob(chunks, { type });
+          chunks = [];
+          releaseMic();
+          readBlob(blob, type).then(finish).catch((err) => {
+            finish({ ok: false, error: (err && err.message) || "read failed" });
+          });
+        } catch (err) {
+          releaseMic();
+          finish({ ok: false, error: (err && err.message) || "stop failed" });
         }
       };
-      if (rec.state === "recording") rec.stop();
-      else rec.onstop();
+
+      try {
+        if (rec.state === "recording") {
+          try { rec.requestData(); } catch (_) { /* older browsers */ }
+          rec.stop();
+        } else {
+          rec.onstop();
+        }
+      } catch (err) {
+        clearTimeout(timer);
+        releaseMic();
+        finish({ ok: false, error: (err && err.message) || "stop failed" });
+      }
     });
   }
 
