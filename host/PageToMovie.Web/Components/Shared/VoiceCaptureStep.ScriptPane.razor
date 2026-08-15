@@ -6,7 +6,12 @@
     var inTele = Host._recording || Host._light > 0 || Host._listening;
     var hintClass = "text-muted";
     if (inTele)
-        hintClass = Host._listening ? "text-info" : "text-danger";
+    {
+        if (Host._listening)
+            hintClass = "text-info";
+        else
+            hintClass = "text-danger";
+    }
 }
 
 <div class="d-flex align-items-center gap-2 mb-1 ptm-script-line">
