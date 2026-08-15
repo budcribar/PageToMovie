@@ -1,21 +1,16 @@
-@* Shared extract of VoiceCaptureStep — listen / play you / play both + score waveforms *@
+@* Waveforms + You / Both. Original play lives on the control row so it never disappears. *@
 @using Microsoft.AspNetCore.Components
 
 <div class="mb-3">
-    <div class="d-flex flex-wrap gap-2 mb-2">
-        <button type="button" class="btn btn-outline-primary btn-sm"
-                disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
-                data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
-            @(Host._listening ? "▶ Original…" : "▶ Original")
-        </button>
-        @if (!string.IsNullOrEmpty(Host._takeUrl))
-        {
+    @if (!string.IsNullOrEmpty(Host._takeUrl))
+    {
+        <div class="d-flex flex-wrap gap-2 mb-2">
             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
                     data-testid="voice-capture-play-you" @onclick="Host.PlayYouAsync">▶ You</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening || string.IsNullOrEmpty(Host._originalUrl))"
                     data-testid="voice-capture-play-both" @onclick="Host.PlayBothAsync">▶ Both</button>
-        }
-    </div>
+        </div>
+    }
 
     <div class="ptm-wave-row">
         <span class="ptm-wave-label">@(string.IsNullOrWhiteSpace(Host.CharacterLabel) ? "Original" : Host.CharacterLabel)</span>

@@ -1,7 +1,13 @@
-@* Shared extract of VoiceCaptureStep — record / keep / finish controls *@
+@* Shared extract of VoiceCaptureStep — original / record / keep / finish *@
 @using Microsoft.AspNetCore.Components
 
 <div class="d-flex flex-wrap gap-2">
+    <button type="button" class="btn btn-outline-primary"
+            disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
+            data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
+        @(Host._listening ? "▶ Original…" : "▶ Original")
+    </button>
+
     @if (Host._recording)
     {
         <button type="button" class="btn btn-outline-secondary" disabled="@Host._busy" @onclick="Host.StopAndScoreAsync">
@@ -21,14 +27,14 @@
 
         @if (!string.IsNullOrEmpty(Host._takeUrl))
         {
-            <button class="btn btn-primary" disabled="@Host._busy" data-testid="voice-capture-keep" @onclick="Host.KeepAndNextAsync">
+            <button type="button" class="btn btn-primary" disabled="@Host._busy" data-testid="voice-capture-keep" @onclick="Host.KeepAndNextAsync">
                 Keep & @(Host._i + 1 < Host._phrases.Count ? "next →" : "finish")
             </button>
         }
 
         @if (Host._kept.Count > 0)
         {
-            <button class="btn btn-success ms-auto" disabled="@Host._busy" data-testid="voice-capture-finish" @onclick="Host.FinishAsync">
+            <button type="button" class="btn btn-success ms-auto" disabled="@Host._busy" data-testid="voice-capture-finish" @onclick="Host.FinishAsync">
                 ✓ Create my voice (@Host._kept.Count)
             </button>
         }
