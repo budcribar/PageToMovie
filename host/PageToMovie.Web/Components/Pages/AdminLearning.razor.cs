@@ -15,6 +15,7 @@ public partial class AdminLearning
     internal string? _error;
     internal string? _message;
     private string _projectFilter { get; set; } = "";
+    private List<ProjectInfo> _projects = new();
     internal LearningInsightsDto? _insights;
     internal ReviewComparisonInsightsDto? _comparison;
     internal List<ReviewLearningEvent> _events = new();
@@ -28,6 +29,15 @@ public partial class AdminLearning
     private static bool IsChecklistDone(ProposalChecklistItem item) =>
         string.Equals(item.Disposition, "accepted", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(item.Disposition, "rejected", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Human title/label for the filter list; id stays the option value.</summary>
+    private static string ProjectOptionLabel(ProjectInfo p)
+    {
+        var label = p.Label ?? p.Title ?? p.Id;
+        if (string.IsNullOrWhiteSpace(label) || string.Equals(label, p.Id, StringComparison.Ordinal))
+            return p.Id;
+        return $"{label} ({p.Id})";
+    }
 
     private int DoneCount =>
         _checklist?.Items.Count(IsChecklistDone) ?? 0;
@@ -48,6 +58,7 @@ public partial class AdminLearning
         _error = null;
         try
         {
+            await LoadProjectsAsync();
             var pid = string.IsNullOrWhiteSpace(_projectFilter) ? null : _projectFilter.Trim();
             _insights = await Api.GetLearningInsightsAsync(pid);
             _comparison = await Api.GetReviewComparisonAsync(pid);
@@ -58,6 +69,22 @@ public partial class AdminLearning
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        try
+        {
+            var projs = await Api.GetProjectsAsync();
+            _projects = (projs?.Projects ?? new List<ProjectInfo>())
+                .Where(p => !string.IsNullOrWhiteSpace(p.Id))
+                .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            // Keep any previously loaded list; insights/events still refresh.
+        }
     }
 
     private async Task SynthesizePromptImprovementsAsync()
