@@ -69,7 +69,7 @@ public class NamespacedProjectIdApiTests : IClassFixture<PageToMovieApiFactory>
 
         // Session id is the email; project.json ownerUserId + folder segment are the handle.
         const string emailCaller = "budcribar@example.com";
-        await InsertUserAsync(emailCaller, username: "budcribar", email: emailCaller);
+        await InsertUserAsync(emailCaller, username: "mary3_email_owner", email: emailCaller);
         using var ownerClient = _factory.CreateUserClient(emailCaller);
 
         var activate = await ownerClient.PostAsync($"/api/projects/{projectId}/activate", content: null);
