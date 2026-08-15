@@ -725,8 +725,8 @@ window.PageToMovieFfmpeg = {
     playAudioAsync: function (url, timeoutMs) {
         return new Promise(function (resolve) {
             if (!url) { resolve(false); return; }
-            var settled = false;
-            var done = function (ok) {
+            let settled = false;
+            const done = function (ok) {
                 if (settled) return;
                 settled = true;
                 resolve(!!ok);
@@ -735,8 +735,8 @@ window.PageToMovieFfmpeg = {
                 const a = new Audio(url);
                 a.onended = function () { done(true); };
                 a.onerror = function () { done(false); };
-                var ms = typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : 30000;
-                var timer = setTimeout(function () {
+                const ms = typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : 30000;
+                const timer = setTimeout(function () {
                     try { a.pause(); } catch (_) { /* ignore */ }
                     done(true);
                 }, ms);
