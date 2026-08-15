@@ -44,8 +44,8 @@ public partial class Home
             if (!_manageExpanded) return;
             _showRename = false;
             S.Import._showImport = false;
-            // Always show checkpoints inside Manage (no second click).
-            S.Checkpoints._showCheckpoints = true;
+            // List stays collapsed; header still shows a count from this load.
+            S.Checkpoints._showCheckpoints = false;
             try { await S.Jobs.RefreshPackageStatusAsync(); } catch { /* soft */ }
             try { await S.Checkpoints.LoadCheckpointsAsync(); } catch { /* soft */ }
             S.StateHasChanged();
