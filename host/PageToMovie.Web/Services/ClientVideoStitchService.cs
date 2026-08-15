@@ -142,7 +142,8 @@ public sealed class ClientVideoStitchService
         string projectId,
         int sceneNumber,
         SceneDetail? detail = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool includeServerFallback = true)
     {
         // Ensure a fresh ?mt= media token before any ClipVideoUrl fallback (see CollectSceneMediaUrlsAsync).
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
@@ -158,7 +159,10 @@ public sealed class ClientVideoStitchService
                 ? null
                 : await _media.GetLocalBlobUrlAsync(
                     projectId, $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4");
-            list.Add(local ?? _engine.ClipVideoUrl(projectId, sceneNumber, clipNumber));
+            if (!string.IsNullOrEmpty(local))
+                list.Add(local);
+            else if (includeServerFallback)
+                list.Add(_engine.ClipVideoUrl(projectId, sceneNumber, clipNumber));
         }
         return list;
     }

@@ -86,9 +86,11 @@ public sealed class ClientVoiceCaptureService
 
         onProgress?.Invoke($"Scanning scene {sc.Scene:D2}…");
 
-        var clipUrls = await _stitch.CollectClipUrlsAsync(phrases.ProjectId, sc.Scene, ct: ct);
+        var clipUrls = await _stitch.CollectClipUrlsAsync(
+            phrases.ProjectId, sc.Scene, ct: ct, includeServerFallback: false);
         if (clipUrls.Count == 0 && !string.IsNullOrWhiteSpace(parentProjectId))
-            clipUrls = await _stitch.CollectClipUrlsAsync(parentProjectId, sc.Scene, ct: ct);
+            clipUrls = await _stitch.CollectClipUrlsAsync(
+                parentProjectId, sc.Scene, ct: ct, includeServerFallback: false);
         if (clipUrls.Count == 0)
             return;
 

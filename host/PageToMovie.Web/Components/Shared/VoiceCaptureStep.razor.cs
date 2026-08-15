@@ -124,6 +124,8 @@ public partial class VoiceCaptureStep
 
         var p = CurrentPhrase;
         _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
+        if (IsScriptOnlyPhrase(p))
+            return;
         try
         {
             var sceneUrl = await GetSceneUrlAsync(p.Scene);
@@ -135,10 +137,13 @@ public partial class VoiceCaptureStep
         }
         catch
         {
-            // Script-only phrases have no original clip — record without Listen.
+            // Script-only / 404 clip — record without Listen.
         }
         StateHasChanged();
     }
+
+    internal static bool IsScriptOnlyPhrase(VoiceCapturePhrase p) =>
+        p.Clip <= 0 && p.WindowStartSec <= 0 && p.MatchScore >= 1;
 
     internal Task<string?> GetSceneUrlAsync(int scene) =>
         ScenePlaybackSupport.GetSceneUrlAsync(Stitch, _projectId ?? "", scene, _sceneUrls);
