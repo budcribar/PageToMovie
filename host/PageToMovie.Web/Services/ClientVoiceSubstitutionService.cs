@@ -74,7 +74,7 @@ public sealed class ClientVoiceSubstitutionService
 
         var terminal = await _engine.WaitForJobTerminalAsync(job.JobId, TimeSpan.FromMinutes(15), ct);
         if (!IsSuccessfulJobStatus(terminal?.Status))
-            return new DubMovieResult(false, null, 0, 0, terminal?.Error ?? terminal?.Message ?? "The voice job did not finish.");
+            return new DubMovieResult(false, null, 0, 0, JobFailureMessage(terminal));
 
         onProgress?.Invoke("Syncing clips and audio…");
         await TrySyncProjectMediaAsync(projectId);
@@ -88,15 +88,15 @@ public sealed class ClientVoiceSubstitutionService
         onProgress?.Invoke("Placing your voice over each scene…");
         var overlays = await ApplyAcrossMovieAsync(projectId, ct);
         var ordered = SuccessfulOverlayUrls(overlays);
-        var failed = overlays.Count(o => !o.Success);
+        var failed = FailedOverlayCount(overlays);
         if (ordered.Count == 0)
             return new DubMovieResult(false, null, 0, failed,
                 "No scenes could be voiced — check that the movie's clips are available and a voice has been recorded.");
 
         onProgress?.Invoke("Stitching your movie…");
         var stitched = await _stitch.ConcatAsync(ordered, ct);
-        if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url))
-            return new DubMovieResult(false, null, ordered.Count, failed, stitched.Error ?? "Could not stitch the dubbed movie.");
+        if (!IsSuccessfulStitch(stitched))
+            return new DubMovieResult(false, null, ordered.Count, failed, StitchFailureMessage(stitched));
 
         return new DubMovieResult(true, stitched.Url, ordered.Count, failed, null);
     }
@@ -123,6 +123,9 @@ public sealed class ClientVoiceSubstitutionService
         string.Equals(status, "succeeded", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+
+    private static string JobFailureMessage(JobSnapshot? terminal) =>
+        terminal?.Error ?? terminal?.Message ?? "The voice job did not finish.";
 
     private async Task TrySyncProjectMediaAsync(string projectId)
     {
@@ -153,6 +156,15 @@ public sealed class ClientVoiceSubstitutionService
             .OrderBy(o => o.Scene)
             .Select(o => o.Url ?? "")
             .ToList();
+
+    private static int FailedOverlayCount(IReadOnlyList<SceneOverlayResult> overlays) =>
+        overlays.Count(o => !o.Success);
+
+    private static bool IsSuccessfulStitch(ClientStitchResult stitched) =>
+        stitched.Success && !string.IsNullOrWhiteSpace(stitched.Url);
+
+    private static string StitchFailureMessage(ClientStitchResult stitched) =>
+        stitched.Error ?? "Could not stitch the dubbed movie.";
 
     /// <summary>Download a produced (blob) movie URL to the user's device.</summary>
     public async Task DownloadAsync(string url, string fileName)
