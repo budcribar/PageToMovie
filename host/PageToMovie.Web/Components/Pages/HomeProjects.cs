@@ -192,6 +192,58 @@ public partial class Home
 
         internal bool CanConfirmDelete => _deleteId is not null;
 
+        /// <summary>
+        /// Project the picker and Manage actions target. Client selection wins over a stale
+        /// list-Active leftover (that mismatch is how Delete named the wrong project).
+        /// </summary>
+        internal string? SelectedProjectId =>
+            !string.IsNullOrWhiteSpace(S.ActiveProject.ProjectId)
+                ? S.ActiveProject.ProjectId
+                : _projects?.Active?.Id;
+
+        internal ProjectInfo? FindProject(string? id) => FindProject(_projects?.Projects, id);
+
+        internal static ProjectInfo? FindProject(IEnumerable<ProjectInfo>? projects, string? id)
+        {
+            if (string.IsNullOrWhiteSpace(id) || projects is null) return null;
+            return projects.FirstOrDefault(p =>
+                string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static string ProjectDisplayLabel(ProjectInfo? p, string? fallbackId = null)
+        {
+            if (!string.IsNullOrWhiteSpace(p?.Label)) return p.Label.Trim();
+            if (!string.IsNullOrWhiteSpace(p?.Title)) return p.Title.Trim();
+            if (!string.IsNullOrWhiteSpace(fallbackId)) return fallbackId.Trim();
+            return (p?.Id ?? "").Trim();
+        }
+
+        /// <summary>
+        /// Id + display label for a manage action. Uses the picker/client selection, not a stale
+        /// list-Active leftover.
+        /// </summary>
+        internal static (string? Id, string Label) ResolveManageTarget(
+            string? clientSelectedId,
+            string? listActiveId,
+            IEnumerable<ProjectInfo>? projects)
+        {
+            var id = !string.IsNullOrWhiteSpace(clientSelectedId)
+                ? clientSelectedId.Trim()
+                : listActiveId?.Trim();
+            if (string.IsNullOrWhiteSpace(id)) return (null, "");
+            var p = FindProject(projects, id);
+            return (p?.Id ?? id, ProjectDisplayLabel(p, id));
+        }
+
+        /// <summary>Keep list Active in lockstep with the picker so Manage/Delete match the choice.</summary>
+        internal void BindLocalActive(string id)
+        {
+            if (_projects is null || string.IsNullOrWhiteSpace(id)) return;
+            var p = FindProject(id);
+            if (p is not null)
+                _projects.Active = p;
+        }
+
 
         internal async Task LoadAsync()
         {
@@ -326,7 +378,7 @@ public partial class Home
 
         internal async Task ConfirmRenameAsync()
         {
-            var id = _projects?.Active?.Id ?? S.ActiveProject.ProjectId;
+            var id = SelectedProjectId;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(_renameName)) return;
             S._busy = true;
             S._error = null;
@@ -399,21 +451,35 @@ public partial class Home
         internal async Task SelectProjectAsync(string id)
         {
             if (string.IsNullOrWhiteSpace(id)) return;
-            if (string.Equals(id, _projects?.Active?.Id, StringComparison.OrdinalIgnoreCase))
+            // Only skip when both client and list already agree — a stale list-Active must not
+            // block switching, and must not supply the label for the newly chosen id.
+            if (string.Equals(id, S.ActiveProject.ProjectId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(id, _projects?.Active?.Id, StringComparison.OrdinalIgnoreCase))
                 return;
+
+            var selected = FindProject(id);
+            BindLocalActive(id);
+            S.ActiveProject.Set(
+                id,
+                ProjectDisplayLabel(selected, id),
+                selected?.ParentProjectId,
+                selected?.StudioPath ?? StudioPath.Full);
 
             S._busy = true;
             S._error = null;
             S._message = null;
-            _deleteId = null;
-            _deleteConfirm = "";
+            CancelDelete();
             try
             {
-                _projects = await S.Engine.GetProjectsAsync();
-                var a = _projects?.Active ?? _projects?.Projects.FirstOrDefault(p =>
-                    string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
-                await S.ActiveProject.SelectAsync(S.Engine, id, a?.Label ?? a?.Title ?? id, a?.ParentProjectId, a?.StudioPath ?? StudioPath.Full);
+                await S.ActiveProject.SelectAsync(
+                    S.Engine,
+                    id,
+                    ProjectDisplayLabel(selected, id),
+                    selected?.ParentProjectId,
+                    selected?.StudioPath ?? StudioPath.Full);
                 await S.Costs.RefreshProjectCostAsync();
+                _projects = await S.Engine.GetProjectsAsync();
+                BindLocalActive(id);
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
@@ -428,8 +494,17 @@ public partial class Home
         }
 
 
-        internal Task BeginDeleteAsync(string id, string label)
+        /// <summary>
+        /// Open delete confirm for the project the user currently has selected (picker / client
+        /// active). Ignores render-time closures so a leftover list-Active cannot rename the modal.
+        /// </summary>
+        internal Task BeginDeleteAsync()
         {
+            var (id, label) = ResolveManageTarget(
+                SelectedProjectId,
+                _projects?.Active?.Id,
+                _projects?.Projects);
+            if (string.IsNullOrWhiteSpace(id)) return Task.CompletedTask;
             _deleteId = id;
             _deleteLabel = label;
             _deleteConfirm = "";
