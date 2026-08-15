@@ -537,7 +537,7 @@ public sealed class BillingOptions
     public string CanonicalAccountEmail { get; set; } = "budcribar@msn.com";
 
     /// <summary>
-    /// Comma-separated alias user ids / usernames / email-shaped ids to merge into
+    /// Comma-separated legacy alias user ids / usernames to merge into
     /// <see cref="LegacyCostOwnerUserId"/> (handle) on user_version 6.
     /// </summary>
     public string AccountMergeAliasIds { get; set; } =

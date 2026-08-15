@@ -370,7 +370,7 @@ public static class JobEndpoints
                 return false;
             var me = await TryLoadUserEntityAsync(userDb, user.UserId, ct);
             var aliases = ProjectOwnership.CollectAliases(
-                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username);
             return ProjectOwnership.IsOwnedBy(info, aliases);
         }
         catch

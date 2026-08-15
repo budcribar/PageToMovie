@@ -54,10 +54,7 @@ public sealed class AdminSessionService
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Public @handle for UI (never show raw email). If an old account used email as username,
-    /// shows the local-part only as a best-effort display handle.
-    /// </summary>
+    /// <summary>Public @handle for UI — the session userId, never an email local-part.</summary>
     public string DisplayHandle
     {
         get
@@ -65,11 +62,6 @@ public sealed class AdminSessionService
             var id = (UserId ?? "").Trim();
             if (id.Length == 0 || string.Equals(id, LocalMode, StringComparison.OrdinalIgnoreCase))
                 return "@local";
-            if (id.Contains('@', StringComparison.Ordinal))
-            {
-                var at = id.IndexOf('@');
-                if (at > 0) id = id[..at];
-            }
             return id.StartsWith('@') ? id : "@" + id;
         }
     }

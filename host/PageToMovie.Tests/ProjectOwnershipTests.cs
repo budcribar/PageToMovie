@@ -23,8 +23,7 @@ public class ProjectOwnershipTests
         var aliases = ProjectOwnership.CollectAliases(
             requestUserId: "budcribarmsn.com",
             canonicalUserId: "budcribarmsn.com",
-            username: "budcribarmsn.com",
-            email: null);
+            username: "budcribarmsn.com");
         Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
     }
 
@@ -39,21 +38,31 @@ public class ProjectOwnershipTests
         var aliases = ProjectOwnership.CollectAliases(
             requestUserId: "BudCribar",
             canonicalUserId: "budcribar",
-            username: "BudCribar",
-            email: "bud@example.com");
+            username: "BudCribar");
         Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
     }
 
     [Fact]
-    public void CollectAliases_includes_local_part_when_request_id_is_email()
+    public void CollectAliases_does_not_derive_handle_from_email_or_local_part()
     {
         var aliases = ProjectOwnership.CollectAliases(requestUserId: "budcribar@example.com");
         Assert.Contains("budcribar@example.com", aliases, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("budcribar", aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("budcribar", aliases, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void IsOwnedBy_matches_email_session_to_handle_folder()
+    public void CollectAliases_ignores_email_shaped_username()
+    {
+        var aliases = ProjectOwnership.CollectAliases(
+            requestUserId: "alice",
+            canonicalUserId: "alice",
+            username: "alice@example.com");
+        Assert.Contains("alice", aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("alice@example.com", aliases, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void IsOwnedBy_rejects_email_session_for_handle_folder()
     {
         var p = new ProjectInfo
         {
@@ -61,30 +70,29 @@ public class ProjectOwnershipTests
             OwnerUserId = "budcribar",
         };
         var aliases = ProjectOwnership.CollectAliases(requestUserId: "budcribar@example.com");
-        Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
+        Assert.False(ProjectOwnership.IsOwnedBy(p, aliases));
     }
 
     [Fact]
-    public void IsOwnedBy_matches_email_local_part_folder()
+    public void IsOwnedBy_rejects_when_only_contact_email_would_have_matched()
     {
         var p = new ProjectInfo
         {
-            Id = "alice/Project",
+            Id = "other/Project",
             OwnerUserId = "alice@example.com",
         };
         var aliases = ProjectOwnership.CollectAliases(
             requestUserId: "alice",
             canonicalUserId: "alice",
-            username: "alice",
-            email: "alice@example.com");
-        Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
+            username: "alice");
+        Assert.False(ProjectOwnership.IsOwnedBy(p, aliases));
     }
 
     [Fact]
     public void IsOwnedBy_rejects_other_users()
     {
         var p = new ProjectInfo { Id = "other/Mary", OwnerUserId = "other" };
-        var aliases = ProjectOwnership.CollectAliases("budcribar", "budcribar", "Bud", null);
+        var aliases = ProjectOwnership.CollectAliases("budcribar", "budcribar", "Bud");
         Assert.False(ProjectOwnership.IsOwnedBy(p, aliases));
     }
 

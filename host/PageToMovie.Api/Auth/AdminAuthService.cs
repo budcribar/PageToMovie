@@ -303,7 +303,7 @@ public sealed class AdminAuthService : IAdminAuthService
 
     private async Task<UserEntity?> LookupLoginUserAsync(string username, CancellationToken ct)
     {
-        // 1. Check SQLite database for user (username or email — session always stores public handle)
+        // Look up by username, or by email as a contact field. Session JWT always stores UserId.
         var dbUser = await _userDb.GetUserByUsernameAsync(username, ct).ConfigureAwait(false);
         if (dbUser is not null)
             return dbUser;

@@ -62,21 +62,22 @@ public class NamespacedProjectIdApiTests : IClassFixture<PageToMovieApiFactory>
     }
 
     [Fact]
-    public async Task Owner_email_session_can_activate_and_heartbeat_handle_namespaced_fixture()
+    public async Task Email_session_does_not_own_handle_namespaced_fixture()
     {
         var projectId = await SeedNamespacedFixtureAsync(ownerUserId: "budcribar", slug: "Mary3");
         Assert.Equal("budcribar/Mary3", projectId);
 
-        // Session id is the email; project.json ownerUserId + folder segment are the handle.
+        // Session userId is an email. That is not the project owner — local-part coincidence
+        // must not grant activate / heartbeat.
         const string emailCaller = "budcribar@example.com";
         await InsertUserAsync(emailCaller, username: "mary3_email_owner", email: emailCaller);
-        using var ownerClient = _factory.CreateUserClient(emailCaller);
+        using var emailClient = _factory.CreateUserClient(emailCaller);
 
-        var activate = await ownerClient.PostAsync($"/api/projects/{projectId}/activate", content: null);
-        Assert.Equal(HttpStatusCode.OK, activate.StatusCode);
+        var activate = await emailClient.PostAsync($"/api/projects/{projectId}/activate", content: null);
+        Assert.Equal(HttpStatusCode.Forbidden, activate.StatusCode);
 
-        var heartbeat = await ownerClient.PostAsync($"/api/projects/{projectId}/presence/heartbeat", content: null);
-        Assert.Equal(HttpStatusCode.OK, heartbeat.StatusCode);
+        var heartbeat = await emailClient.PostAsync($"/api/projects/{projectId}/presence/heartbeat", content: null);
+        Assert.Equal(HttpStatusCode.Forbidden, heartbeat.StatusCode);
     }
 
     [Fact]

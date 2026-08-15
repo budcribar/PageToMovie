@@ -206,14 +206,13 @@ public static class ProjectEndpoints
         if (user.IsAdmin)
             return all;
 
-        // Resolve all known identities for this account so projects created under a
-        // previous handle / email-shaped id (folder budcribarmsn_com vs budcribar) still appear.
+        // Resolve userId + username handle so projects created under a previous
+        // handle (folder vs userId) still appear. Email is contact-only.
         var me = await TryLoadCurrentUserAsync(userDb, user.UserId, ct);
         var aliases = ProjectOwnership.CollectAliases(
             user.UserId,
             canonicalUserId: me?.UserId,
-            username: me?.Username,
-            email: me?.Email);
+            username: me?.Username);
         var list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
         await HealStaleProjectOwnersAsync(list, me, user.UserId, store, ct);
         return list;
@@ -286,7 +285,7 @@ public static class ProjectEndpoints
             }
             catch { /* offline */ }
             var aliases = ProjectOwnership.CollectAliases(
-                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username);
             var info = await store.GetProjectAsync(id, ct).ConfigureAwait(false);
             if (info is null)
                 return Results.NotFound(new { ok = false, error = "Project not found" });
@@ -383,7 +382,7 @@ public static class ProjectEndpoints
             }
             catch { /* offline */ }
             var aliases = ProjectOwnership.CollectAliases(
-                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username);
             list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
         }
 

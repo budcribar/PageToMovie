@@ -869,7 +869,7 @@ public class UserDatabaseService
                      .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             AddV6Alias(aliasCandidates, part, primaryId, primaryHandle);
         AddV6Alias(aliasCandidates, primaryEmail, primaryId, primaryHandle);
-        // Local-part of email (budcribar from budcribar@msn.com) is NOT an alias if it equals primary.
+        // Never treat the email local-part as an alias of userId (that match is coincidence).
 
         CollectV6AliasesByEmail(conn, aliasCandidates, primaryId, primaryHandle, primaryEmail);
         CollectV6AliasesFromAllUsers(conn, aliasCandidates, primaryId, primaryHandle, primaryEmail);
