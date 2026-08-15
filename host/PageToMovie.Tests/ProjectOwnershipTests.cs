@@ -45,6 +45,26 @@ public class ProjectOwnershipTests
     }
 
     [Fact]
+    public void CollectAliases_includes_local_part_when_request_id_is_email()
+    {
+        var aliases = ProjectOwnership.CollectAliases(requestUserId: "budcribar@example.com");
+        Assert.Contains("budcribar@example.com", aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("budcribar", aliases, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void IsOwnedBy_matches_email_session_to_handle_folder()
+    {
+        var p = new ProjectInfo
+        {
+            Id = "budcribar/Mary3",
+            OwnerUserId = "budcribar",
+        };
+        var aliases = ProjectOwnership.CollectAliases(requestUserId: "budcribar@example.com");
+        Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
+    }
+
+    [Fact]
     public void IsOwnedBy_matches_email_local_part_folder()
     {
         var p = new ProjectInfo

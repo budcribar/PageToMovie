@@ -41,18 +41,24 @@ public static class ProjectOwnership
             set.Add(t);
             var seg = SanitizeOwnerSegment(t);
             if (seg.Length > 0) set.Add(seg);
+            // Session / owner ids are often the email itself (JWT sub). Treat the
+            // local-part as a handle alias the same way we do for the email field.
+            var at = t.IndexOf('@');
+            if (at > 0)
+            {
+                var local = t[..at];
+                if (local.Length > 0 && set.Add(local))
+                {
+                    var localSeg = SanitizeOwnerSegment(local);
+                    if (localSeg.Length > 0) set.Add(localSeg);
+                }
+            }
         }
 
         Add(requestUserId);
         Add(canonicalUserId);
         Add(username);
         Add(email);
-        // Email local-part (before @) — some older sessions used it as handle.
-        if (!string.IsNullOrWhiteSpace(email) && email.Contains('@', StringComparison.Ordinal))
-        {
-            var local = email.Split('@')[0];
-            Add(local);
-        }
         return set.ToList();
     }
 

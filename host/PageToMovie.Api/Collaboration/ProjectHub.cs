@@ -28,7 +28,7 @@ public sealed class ProjectHub : Hub
         var userId = _user.UserId;
         if (string.IsNullOrWhiteSpace(userId))
             throw new HubException("Not authenticated");
-        if (!await _acl.CanAccessAsync(projectId, userId, ProjectAccessLevel.Viewer))
+        if (!await _acl.CanAccessAsync(projectId, userId, ProjectAccessLevel.Viewer, _user.IsAdmin))
             throw new HubException("Forbidden");
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(projectId));
         await _presence.HeartbeatAsync(projectId, userId, Context.ConnectionId);

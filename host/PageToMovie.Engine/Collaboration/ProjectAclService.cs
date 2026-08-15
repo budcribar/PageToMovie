@@ -89,21 +89,73 @@ public sealed class ProjectAclService : IProjectAclService
     {
         userId = Norm(userId);
         if (string.IsNullOrEmpty(userId)) return ProjectAccessLevel.None;
+
+        // Same alias-aware ownership as GET /api/projects (handle vs email vs sanitized
+        // folder segment). A strict ownerUserId == caller id compare hides projects the
+        // signed-in owner can already see in the picker — then activate / heartbeat 403.
+        if (await IsProjectOwnerAsync(projectId, userId, ct).ConfigureAwait(false))
+            return ProjectAccessLevel.Owner;
+
         var acl = await LoadAsync(projectId, ct);
         if (acl is null)
-        {
-            var realOwner = await ResolveRealOwnerAsync(projectId, ct);
-            return string.Equals(realOwner, userId, StringComparison.OrdinalIgnoreCase)
-                ? ProjectAccessLevel.Owner : ProjectAccessLevel.None;
-        }
-        if (string.Equals(acl.OwnerUserId, userId, StringComparison.OrdinalIgnoreCase)) return ProjectAccessLevel.Owner;
+            return ProjectAccessLevel.None;
+        if (CallerMatchesRecordedOwner(acl.OwnerUserId, userId)) return ProjectAccessLevel.Owner;
         if (acl.Editors.Contains(userId, StringComparer.OrdinalIgnoreCase)) return ProjectAccessLevel.Editor;
         if (acl.Viewers.Contains(userId, StringComparer.OrdinalIgnoreCase)) return ProjectAccessLevel.Viewer;
         return ProjectAccessLevel.None;
     }
 
+    private async Task<bool> IsProjectOwnerAsync(string projectId, string userId, CancellationToken ct)
+    {
+        if (_projects is null) return false;
+        try
+        {
+            var proj = await _projects.GetProjectAsync(projectId, ct).ConfigureAwait(false);
+            if (proj is null) return false;
+            var info = await TryFindCallerAsync(userId, ct).ConfigureAwait(false);
+            return ProjectOwnership.IsOwnedBy(
+                proj,
+                requestUserId: userId,
+                canonicalUserId: info?.UserId,
+                username: info?.Username,
+                email: info?.Email);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<ProjectUserInfo?> TryFindCallerAsync(string userId, CancellationToken ct)
+    {
+        if (_users is null) return null;
+        return await _users.FindByIdAsync(userId, ct).ConfigureAwait(false)
+               ?? await _users.FindByUsernameAsync(userId, ct).ConfigureAwait(false)
+               ?? await _users.FindByEmailAsync(userId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// ACL <c>ownerUserId</c> vs caller — accept the same identity aliases as
+    /// <see cref="ProjectOwnership.CollectAliases"/> so a seeded ACL stamped with the
+    /// handle still matches an email-shaped session (and the reverse).
+    /// </summary>
+    private static bool CallerMatchesRecordedOwner(string? recordedOwner, string userId)
+    {
+        if (string.IsNullOrWhiteSpace(recordedOwner)) return false;
+        var owner = recordedOwner.Trim();
+        if (string.Equals(owner, userId, StringComparison.OrdinalIgnoreCase)) return true;
+        var aliases = ProjectOwnership.CollectAliases(userId);
+        if (aliases.Contains(owner, StringComparer.OrdinalIgnoreCase)) return true;
+        var seg = ProjectOwnership.SanitizeOwnerSegment(owner);
+        return seg.Length > 0 && aliases.Contains(seg, StringComparer.OrdinalIgnoreCase);
+    }
+
     public async Task<bool> CanAccessAsync(string projectId, string userId, ProjectAccessLevel minimum, CancellationToken ct = default) =>
         await GetAccessLevelAsync(projectId, userId, ct) >= minimum;
+
+    public Task<bool> CanAccessAsync(
+        string projectId, string userId, ProjectAccessLevel minimum, bool isAdmin, CancellationToken ct = default) =>
+        isAdmin ? Task.FromResult(true) : CanAccessAsync(projectId, userId, minimum, ct);
 
     public async Task InviteEditorAsync(string projectId, string ownerUserId, string editorUserId, CancellationToken ct = default)
     {
@@ -500,6 +552,29 @@ public interface IProjectUserDirectory
     Task<ProjectUserInfo?> FindByIdAsync(string userId, CancellationToken ct = default);
     Task<ProjectUserInfo?> FindByUsernameAsync(string username, CancellationToken ct = default);
     Task<ProjectUserInfo?> FindByEmailAsync(string email, CancellationToken ct = default);
+}
+
+/// <summary>Adapts the user table so ACL owner checks see handle + email aliases.</summary>
+public sealed class UserDatabaseProjectUserDirectory : IProjectUserDirectory
+{
+    private readonly PageToMovie.Engine.UserDatabaseService _db;
+
+    public UserDatabaseProjectUserDirectory(PageToMovie.Engine.UserDatabaseService db) =>
+        _db = db ?? throw new ArgumentNullException(nameof(db));
+
+    public async Task<ProjectUserInfo?> FindByIdAsync(string userId, CancellationToken ct = default) =>
+        Map(await _db.GetUserByIdAsync(userId, ct).ConfigureAwait(false));
+
+    public async Task<ProjectUserInfo?> FindByUsernameAsync(string username, CancellationToken ct = default) =>
+        Map(await _db.GetUserByUsernameAsync(username, ct).ConfigureAwait(false));
+
+    public async Task<ProjectUserInfo?> FindByEmailAsync(string email, CancellationToken ct = default) =>
+        Map(await _db.GetUserByEmailAsync(email, ct).ConfigureAwait(false));
+
+    private static ProjectUserInfo? Map(UserEntity? u) =>
+        u is null
+            ? null
+            : new ProjectUserInfo { UserId = u.UserId, Username = u.Username, Email = u.Email };
 }
 
 public interface IProjectInviteMailer
