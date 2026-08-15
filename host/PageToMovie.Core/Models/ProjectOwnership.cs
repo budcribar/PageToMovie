@@ -2,8 +2,9 @@ namespace PageToMovie.Core.Models;
 
 /// <summary>
 /// Who may see a project in GET /api/projects. Matches stable user id, username handle,
-/// email, and sanitized folder owner segments so identity drift (email vs handle, dots
-/// in names) does not hide projects that still exist on disk.
+/// and sanitized folder owner segments so identity drift (handle vs userId, dots in names)
+/// does not hide projects that still exist on disk. Email is contact-only and is never
+/// an ownership principal — do not derive a handle from an address or its local-part.
 /// </summary>
 public static class ProjectOwnership
 {
@@ -30,35 +31,31 @@ public static class ProjectOwnership
     public static IReadOnlyList<string> CollectAliases(
         string? requestUserId,
         string? canonicalUserId = null,
-        string? username = null,
-        string? email = null)
+        string? username = null)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void Add(string? v)
+        void AddIdentity(string? v)
         {
             if (string.IsNullOrWhiteSpace(v)) return;
             var t = v.Trim();
             set.Add(t);
             var seg = SanitizeOwnerSegment(t);
             if (seg.Length > 0) set.Add(seg);
-            // Session / owner ids are often the email itself (JWT sub). Treat the
-            // local-part as a handle alias the same way we do for the email field.
-            var at = t.IndexOf('@');
-            if (at > 0)
-            {
-                var local = t[..at];
-                if (local.Length > 0 && set.Add(local))
-                {
-                    var localSeg = SanitizeOwnerSegment(local);
-                    if (localSeg.Length > 0) set.Add(localSeg);
-                }
-            }
         }
 
-        Add(requestUserId);
-        Add(canonicalUserId);
-        Add(username);
-        Add(email);
+        void AddHandle(string? v)
+        {
+            if (string.IsNullOrWhiteSpace(v)) return;
+            var t = v.Trim();
+            // Username is a first-class handle alias of userId. An email-shaped
+            // value is contact, not a handle — never derive a principal from it.
+            if (t.Contains('@', StringComparison.Ordinal)) return;
+            AddIdentity(t);
+        }
+
+        AddIdentity(requestUserId);
+        AddIdentity(canonicalUserId);
+        AddHandle(username);
         return set.ToList();
     }
 
@@ -95,9 +92,8 @@ public static class ProjectOwnership
         ProjectInfo project,
         string? requestUserId,
         string? canonicalUserId = null,
-        string? username = null,
-        string? email = null) =>
-        IsOwnedBy(project, CollectAliases(requestUserId, canonicalUserId, username, email));
+        string? username = null) =>
+        IsOwnedBy(project, CollectAliases(requestUserId, canonicalUserId, username));
 
     /// <summary>
     /// Pick the active project from a list the caller already scoped to this user

@@ -37,9 +37,8 @@ public sealed class ProjectAclService : IProjectAclService
     /// <summary>
     /// The project's real owner, from <c>project.json</c>'s <c>ownerUserId</c> field — the account id
     /// recorded at creation time, never derived from the project path (path segments are a sanitized
-    /// slug, e.g. an old email-based id turned into "budcribargmail_com"; the real id, e.g.
-    /// "budcribar@gmail.com", only lives in project.json, and the two can legitimately differ once a
-    /// project outlives an identity migration).
+    /// slug of the userId; the two can differ when a handle contains dots or after an identity
+    /// migration).
     /// </summary>
     private async Task<string?> ResolveRealOwnerAsync(string projectId, CancellationToken ct)
     {
@@ -90,9 +89,10 @@ public sealed class ProjectAclService : IProjectAclService
         userId = Norm(userId);
         if (string.IsNullOrEmpty(userId)) return ProjectAccessLevel.None;
 
-        // Same alias-aware ownership as GET /api/projects (handle vs email vs sanitized
-        // folder segment). A strict ownerUserId == caller id compare hides projects the
-        // signed-in owner can already see in the picker — then activate / heartbeat 403.
+        // Same alias-aware ownership as GET /api/projects (userId / username handle vs
+        // sanitized folder segment). A strict ownerUserId == caller id compare hides
+        // projects the signed-in owner can already see in the picker — then activate /
+        // heartbeat 403. Email is contact-only and is never a principal.
         if (await IsProjectOwnerAsync(projectId, userId, ct).ConfigureAwait(false))
             return ProjectAccessLevel.Owner;
 
@@ -117,8 +117,7 @@ public sealed class ProjectAclService : IProjectAclService
                 proj,
                 requestUserId: userId,
                 canonicalUserId: info?.UserId,
-                username: info?.Username,
-                email: info?.Email);
+                username: info?.Username);
         }
         catch
         {
@@ -129,15 +128,15 @@ public sealed class ProjectAclService : IProjectAclService
     private async Task<ProjectUserInfo?> TryFindCallerAsync(string userId, CancellationToken ct)
     {
         if (_users is null) return null;
+        // Identity is userId (username is a handle alias). Do not resolve callers by email.
         return await _users.FindByIdAsync(userId, ct).ConfigureAwait(false)
-               ?? await _users.FindByUsernameAsync(userId, ct).ConfigureAwait(false)
-               ?? await _users.FindByEmailAsync(userId, ct).ConfigureAwait(false);
+               ?? await _users.FindByUsernameAsync(userId, ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// ACL <c>ownerUserId</c> vs caller — accept the same identity aliases as
-    /// <see cref="ProjectOwnership.CollectAliases"/> so a seeded ACL stamped with the
-    /// handle still matches an email-shaped session (and the reverse).
+    /// <see cref="ProjectOwnership.CollectAliases"/> (userId and username handle,
+    /// never email or email local-part).
     /// </summary>
     private static bool CallerMatchesRecordedOwner(string? recordedOwner, string userId)
     {
@@ -554,7 +553,7 @@ public interface IProjectUserDirectory
     Task<ProjectUserInfo?> FindByEmailAsync(string email, CancellationToken ct = default);
 }
 
-/// <summary>Adapts the user table so ACL owner checks see handle + email aliases.</summary>
+/// <summary>Adapts the user table so ACL owner checks see userId and username handle.</summary>
 public sealed class UserDatabaseProjectUserDirectory : IProjectUserDirectory
 {
     private readonly PageToMovie.Engine.UserDatabaseService _db;

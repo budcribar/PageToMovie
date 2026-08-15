@@ -10,14 +10,14 @@ namespace PageToMovie.Tests;
 /// Ownership resolution when a project has no <c>project-acl.json</c> yet (legacy / brand-new
 /// projects). Must come from the project's real <c>project.json</c> ownerUserId, never from
 /// splitting the project id path — the path's owner segment is a filesystem-sanitized slug (e.g.
-/// an old email "budcribar@gmail.com" turned into "budcribargmail_com"), not the real account id.
+/// "owner.handle" turned into "owner_handle"), not the real account id.
 /// </summary>
 public class ProjectAclServiceTests : IDisposable
 {
     private readonly string _root;
     private readonly ProjectStore _store;
     private readonly ProjectAclService _acl;
-    private const string OwnerUserId = "budcribar@gmail.com";
+    private const string OwnerUserId = "owner.handle";
 
     public ProjectAclServiceTests()
     {
@@ -39,7 +39,7 @@ public class ProjectAclServiceTests : IDisposable
         var project = await _store.CreateProjectAsync("Smoke", ownerUserId: OwnerUserId);
 
         // Owner segment in the id/path is sanitized and must differ from the raw id for this to be
-        // a meaningful test of the bug (email-derived path slug vs. the real account id).
+        // a meaningful test of the bug (folder slug vs. the real account id).
         Assert.NotEqual(OwnerUserId, project.Id.Split('/')[0]);
 
         var level = await _acl.GetAccessLevelAsync(project.Id, OwnerUserId);
@@ -67,9 +67,10 @@ public class ProjectAclServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Email_session_is_owner_of_handle_namespaced_project()
+    public async Task Email_session_is_not_owner_of_handle_namespaced_project()
     {
-        // Production shape: folder + ownerUserId are the handle; JWT / X-User-Id is the email.
+        // Folder + ownerUserId are the userId. An email string is contact, not a principal —
+        // matching the local-part "budcribar" is coincidence, not ownership.
         var project = await _store.CreateProjectAsync("Mary3", ownerUserId: "budcribar");
         Assert.Equal("budcribar/Mary3", project.Id);
         Assert.Equal("budcribar", project.OwnerUserId);
@@ -78,9 +79,9 @@ public class ProjectAclServiceTests : IDisposable
         Assert.NotEqual(emailCaller, project.OwnerUserId);
 
         var level = await _acl.GetAccessLevelAsync(project.Id, emailCaller);
-        Assert.Equal(ProjectAccessLevel.Owner, level);
-        Assert.True(await _acl.CanAccessAsync(project.Id, emailCaller, ProjectAccessLevel.Editor));
-        Assert.False(await _acl.CanAccessAsync(project.Id, "stranger@example.com", ProjectAccessLevel.Viewer));
+        Assert.Equal(ProjectAccessLevel.None, level);
+        Assert.False(await _acl.CanAccessAsync(project.Id, emailCaller, ProjectAccessLevel.Viewer));
+        Assert.Equal(ProjectAccessLevel.Owner, await _acl.GetAccessLevelAsync(project.Id, "budcribar"));
     }
 
     [Fact]
