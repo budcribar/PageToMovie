@@ -26,15 +26,26 @@
     {
         <InlineAlert Message="@_message" Variant="info" CssClass="py-2" />
 
-        <div class="row g-2 mb-3">
-            <div class="col-md-3">
-                <label class="form-label small">Filter project</label>
-                <input class="form-control form-control-sm" @bind="_projectFilter" placeholder="optional project id" />
+        <AdminFilterBar ShowSearch="false"
+                        CssClass="d-flex flex-wrap align-items-end gap-2 mb-3"
+                        TestId="learning-project-filter-bar">
+            <div>
+                <label class="form-label small" for="learning-project-filter">Filter project</label>
+                <select id="learning-project-filter"
+                        class="form-select form-select-sm bg-dark text-light border-secondary"
+                        style="min-width: 16rem;"
+                        data-testid="learning-project-filter"
+                        @bind="_projectFilter"
+                        @bind:after="RefreshAsync">
+                    <option value="">All projects</option>
+                    @foreach (var p in _projects)
+                    {
+                        <option value="@p.Id">@ProjectOptionLabel(p)</option>
+                    }
+                </select>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="RefreshAsync">Apply</button>
-            </div>
-        </div>
+            <button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="RefreshAsync">Apply</button>
+        </AdminFilterBar>
 
         @if (_insights is not null)
         {
