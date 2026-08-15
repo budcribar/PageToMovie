@@ -225,6 +225,9 @@ public class ApiEndpointSmokeTests : IClassFixture<PageToMovieApiFactory>, IAsyn
 
         var events = await _client.GetAsync("/api/admin/learning/events");
         Assert.True(events.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.OK or HttpStatusCode.Unauthorized);
+
+        var modelSelections = await _client.GetAsync("/api/admin/projects/model-selections");
+        Assert.True(modelSelections.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.OK or HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -254,6 +257,7 @@ public class ApiEndpointSmokeTests : IClassFixture<PageToMovieApiFactory>, IAsyn
                      "/api/admin/learning/events",
                      "/api/admin/config",
                      "/api/admin/loadsim",
+                     "/api/admin/projects/model-selections",
                  })
         {
             var resp = await admin.GetAsync(path);

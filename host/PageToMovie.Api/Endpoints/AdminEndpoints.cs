@@ -45,6 +45,7 @@ public static class AdminEndpoints
         app.MapPost("/api/admin/learning/project-rules/{projectId}/reject", PostAdminLearningProjectRulesProjectIdReject);
         // Users & credits overview (admin)
         app.MapGet("/api/admin/users", GetAdminUsers);
+        app.MapGet("/api/admin/projects/model-selections", GetAdminProjectsModelSelections);
         // <summary>Admin: download full project folder as zip for local debug.</summary>
         app.MapGet("/api/admin/projects/{id}/export", GetAdminProjectsIdExport);
         // <summary>Admin: Download all server diagnostic logs (jobs, edit logs, prompts, system info) as a zip archive.</summary>
@@ -484,6 +485,25 @@ public static class AdminEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task<IResult> GetAdminProjectsModelSelections(
+        IUserContext user,
+        ProjectStore store,
+        CancellationToken ct)
+    {
+        if (!user.IsAdmin)
+            return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
+                statusCode: StatusCodes.Status403Forbidden);
+        try
+        {
+            var projects = await store.ListProjectModelSelectionsAsync(ct);
+            return Results.Ok(new { ok = true, projects });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
 
     private static async Task<IResult> GetAdminUsers(IUserContext user, CreditService credits)
     {
