@@ -235,6 +235,21 @@ public partial class Home
             return (p?.Id ?? id, ProjectDisplayLabel(p, id));
         }
 
+        /// <summary>
+        /// True when the client-side selection must be replaced after a delete: it named the deleted
+        /// project, or it no longer appears in the refreshed list. A selection that survives is kept.
+        /// </summary>
+        internal static bool SelectionGoneAfterDelete(
+            string? clientSelectedId,
+            string deletedId,
+            IEnumerable<ProjectInfo>? refreshedProjects)
+        {
+            if (string.IsNullOrWhiteSpace(clientSelectedId)) return false;
+            if (string.Equals(clientSelectedId.Trim(), deletedId.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+            return refreshedProjects is not null && FindProject(refreshedProjects, clientSelectedId) is null;
+        }
+
         /// <summary>Keep list Active in lockstep with the picker so Manage/Delete match the choice.</summary>
         internal void BindLocalActive(string id)
         {
@@ -549,6 +564,24 @@ public partial class Home
             {
                 var result = await S.Engine.DeleteProjectAsync(id);
                 _projects = result ?? await S.Engine.GetProjectsAsync();
+
+                // The client-side selection outlives the server delete (RefreshFromServerAsync only
+                // hydrates when nothing is selected), so the picker kept showing the deleted project.
+                // Drop it now: adopt the server's new active project, or clear when none remain.
+                if (SelectionGoneAfterDelete(S.ActiveProject.ProjectId, id, _projects?.Projects))
+                {
+                    var next = _projects?.Active;
+                    if (next?.Id is { Length: > 0 } nextId)
+                    {
+                        S.ActiveProject.Set(nextId, ProjectDisplayLabel(next, nextId), next.ParentProjectId);
+                        BindLocalActive(nextId);
+                    }
+                    else
+                    {
+                        S.ActiveProject.Clear();
+                        if (_projects is not null) _projects.Active = null;
+                    }
+                }
                 await S.ActiveProject.RefreshFromServerAsync(S.Engine);
                 S._message = $"Deleted “{_deleteLabel}”";
                 CancelDelete();

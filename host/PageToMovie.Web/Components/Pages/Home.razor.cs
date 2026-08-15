@@ -86,6 +86,21 @@ public partial class Home : IAsyncDisposable
     }
 
 
+    /// <summary>
+    /// Raised after every Home render. The card children receive only <c>IsFixed</c> cascading
+    /// values, so Blazor never re-renders them when Home does — state changed by handlers that
+    /// live on Home (delete confirm, messages) would otherwise never reach them. Children that
+    /// read Home state subscribe and call their own StateHasChanged.
+    /// </summary>
+    public event Action? Rendered;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
+
     protected override async Task OnInitializedAsync()
     {
         EnsureDomains();

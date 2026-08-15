@@ -69,6 +69,30 @@ public class HomeProjectDeleteTargetTests
     }
 
     [Fact]
+    public void SelectionGoneAfterDelete_when_client_selection_is_the_deleted_project()
+    {
+        var remaining = new[] { P("other-id") };
+        Assert.True(Home.HomeProjects.SelectionGoneAfterDelete("Doomed-Id", "doomed-id", remaining));
+    }
+
+    [Fact]
+    public void SelectionGoneAfterDelete_when_client_selection_missing_from_refreshed_list()
+    {
+        var remaining = new[] { P("other-id") };
+        Assert.True(Home.HomeProjects.SelectionGoneAfterDelete("vanished-id", "doomed-id", remaining));
+    }
+
+    [Fact]
+    public void SelectionGoneAfterDelete_keeps_a_surviving_selection()
+    {
+        var remaining = new[] { P("keep-id"), P("other-id") };
+        Assert.False(Home.HomeProjects.SelectionGoneAfterDelete("keep-id", "doomed-id", remaining));
+        Assert.False(Home.HomeProjects.SelectionGoneAfterDelete(null, "doomed-id", remaining));
+        // No refreshed list to check against — only the deleted id itself counts as gone.
+        Assert.False(Home.HomeProjects.SelectionGoneAfterDelete("keep-id", "doomed-id", null));
+    }
+
+    [Fact]
     public void FindProject_is_case_insensitive_and_returns_null_for_unknown()
     {
         var list = new[] { P("Chosen-Id", "Chosen Label") };
