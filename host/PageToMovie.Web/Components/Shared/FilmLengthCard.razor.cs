@@ -86,6 +86,8 @@ public sealed partial class FilmLengthCard : IDisposable
     /// <summary>
     /// C6/G1: when the project has no saved runtime target, seed from the user's last choice.
     /// Applies once per project load; persists so estimate uses the same minutes.
+    /// Only ever shortens: the remembered target came from a different book, and stretching a
+    /// 2-minute nursery rhyme to a 180-minute feature (last set on a novel) priced it at $700+.
     /// </summary>
     private async Task TryApplyUserRuntimePrefAsync()
     {
@@ -96,7 +98,7 @@ public sealed partial class FilmLengthCard : IDisposable
             if (!UserPrefs.Loaded)
                 await UserPrefs.LoadAsync();
             var pref = UserPrefs.LastRuntimeTargetMin;
-            if (pref is not int mins || mins < 1 || mins > 180)
+            if (!ShouldSeedTargetFromPref(pref, _natural, out var mins))
                 return;
             if (mins == _natural)
             {
@@ -123,6 +125,20 @@ public sealed partial class FilmLengthCard : IDisposable
             _target = _natural;
             _edit = _natural;
         }
+    }
+
+    /// <summary>
+    /// A remembered runtime preference seeds a fresh project only when it is a valid length that
+    /// does not exceed the book's natural runtime — a preference can shorten a long book, never
+    /// pad a short one.
+    /// </summary>
+    internal static bool ShouldSeedTargetFromPref(int? pref, int naturalMinutes, out int minutes)
+    {
+        minutes = 0;
+        if (pref is not int mins || mins < 1 || mins > 180) return false;
+        if (naturalMinutes > 0 && mins > naturalMinutes) return false;
+        minutes = mins;
+        return true;
     }
 
     /// <summary>Debounced autosave after the user edits the target.</summary>
