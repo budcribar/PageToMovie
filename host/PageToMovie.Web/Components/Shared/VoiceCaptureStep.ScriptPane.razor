@@ -1,8 +1,13 @@
 @* Shared extract of VoiceCaptureStep — lights on the same line as the scrolling phrase *@
 @using Microsoft.AspNetCore.Components
 
-@{ var words = VoiceCaptureStep.SplitWords(Host.CurrentPhrase.Text); }
-@{ var inTele = Host._recording || Host._light > 0 || Host._listening; }
+@{
+    var words = VoiceCaptureStep.SplitWords(Host.CurrentPhrase.Text);
+    var inTele = Host._recording || Host._light > 0 || Host._listening;
+    var hintClass = "text-muted";
+    if (inTele)
+        hintClass = Host._listening ? "text-info" : "text-danger";
+}
 
 <div class="d-flex align-items-center gap-2 mb-1 ptm-script-line">
     <div class="ptm-light-box-h" data-testid="voice-capture-light">
@@ -20,7 +25,7 @@
         </div>
     </div>
 </div>
-<div class="small mb-3 @(inTele ? (Host._listening ? "text-info" : "text-danger") : "text-muted")">
+<div class="small mb-3 @hintClass">
     @if (inTele)
     {
         @Host.LightPrompt

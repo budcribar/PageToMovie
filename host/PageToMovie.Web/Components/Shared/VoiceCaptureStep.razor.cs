@@ -50,7 +50,7 @@ public partial class VoiceCaptureStep
     internal int _light; // 0 = off, 1 = red, 2 = yellow, 3 = green (go)
     internal double _ballDurationSec = 3;
     internal int _recordSession;
-    internal int _teleSession; // bumped to (re)start the teleprompter scroll (Listen and on "Go")
+    internal int _teleSession; // bumped to remount #tele-text at the start (Listen, and Record/Re-record on click)
     internal bool _teleStartPending; // set when a scroll should start on the next render (spans in DOM)
     internal bool _renderNarratorWave; // draw the narrator strip on the next render
     internal bool _renderYouWave;      // draw the "you" strip (coloured by match) on the next render
@@ -393,6 +393,8 @@ public partial class VoiceCaptureStep
         _scoreEpoch++;
         _busy = false;
         _recordSession = Math.Max(0, _recordSession);
+        // Snap the line back to the start immediately (before red/yellow), not when green starts the scroll.
+        _teleSession++;
         _status = "Allow the microphone if the browser asks…";
         await InvokeAsync(StateHasChanged);
 
@@ -439,7 +441,6 @@ public partial class VoiceCaptureStep
         if (_recordSession < 0) return;
         _light = 3;
         _recording = true;
-        _teleSession++;
         _teleStartPending = true;
         var session = ++_recordSession;
         await InvokeAsync(StateHasChanged);
@@ -644,5 +645,10 @@ public partial class VoiceCaptureStep
     private sealed class ExtractUrlResult { public bool Success { get; set; } public string? Url { get; set; } public string? Error { get; set; } }
     private sealed class RhythmResult { public bool Success { get; set; } public int Score { get; set; } public List<double>? Regions { get; set; } public string? Error { get; set; } }
     private sealed class VoiceCaptureStopResult { public bool Ok { get; set; } public string? Error { get; set; } public string? Base64 { get; set; } public string? FileName { get; set; } }
-    private sealed class VoiceCaptureStartResult { public bool Ok { get; set; } public string? MimeType { get; set; } public string? Error { get; set; } }
+    private sealed class VoiceCaptureStartResult
+    {
+        public bool Ok { get; set; } = false;
+        public string? MimeType { get; set; }
+        public string? Error { get; set; } = null;
+    }
 }
