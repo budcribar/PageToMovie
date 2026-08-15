@@ -59,16 +59,7 @@ public sealed class ClientVoiceSubstitutionService
         Action<string>? onProgress = null,
         CancellationToken ct = default)
     {
-        var recordedKey = string.IsNullOrWhiteSpace(charKey) ? null : charKey.Trim();
-        if (string.IsNullOrWhiteSpace(recordedKey))
-        {
-            try
-            {
-                var chars = await _engine.GetCharactersAsync(projectId, ct);
-                recordedKey = VoiceSubstitutionOverlayGate.FirstRecordedCharacterKey(chars?.Characters);
-            }
-            catch { /* server defaults the key if still empty */ }
-        }
+        var recordedKey = await ResolveRecordedCharacterKeyAsync(projectId, charKey, ct);
 
         var timing = await TryGetDialogueTimingAsync(projectId, ct);
         var existingAlignment = await TryGetVoiceAlignmentAsync(projectId, ct);
@@ -82,37 +73,21 @@ public sealed class ClientVoiceSubstitutionService
             return new DubMovieResult(false, null, 0, 0, "Could not start the voice job.");
 
         var terminal = await _engine.WaitForJobTerminalAsync(job.JobId, TimeSpan.FromMinutes(15), ct);
-        var status = terminal?.Status ?? "";
-        var jobOk = string.Equals(status, "succeeded", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
-        if (!jobOk)
+        if (!IsSuccessfulJobStatus(terminal?.Status))
             return new DubMovieResult(false, null, 0, 0, terminal?.Error ?? terminal?.Message ?? "The voice job did not finish.");
 
         onProgress?.Invoke("Syncing clips and audio…");
-        try { await _media.SyncProjectMediaToClientAsync(projectId); } catch { /* best effort — overlay reads whatever is local */ }
+        await TrySyncProjectMediaAsync(projectId);
 
         // Once per book: STT-verify the dialogue windows so the overlay can place confirmed lines
         // exactly where the original spoke. Built + cached the first time; reused thereafter. Must
         // match the character actually being dubbed — a cache built for a different character's solo
         // lines would mismatch this movie's placement windows.
-        try
-        {
-            var cached = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
-            var cachedKey = string.IsNullOrWhiteSpace(cached?.CharKey) ? "Character_Narrator" : cached.CharKey.Trim();
-            var wantKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim();
-            if (cached is null || !string.Equals(cachedKey, wantKey, StringComparison.OrdinalIgnoreCase))
-                await _capture.BuildPhrasesAsync(projectId, onProgress, charKey, ct);
-        }
-        catch { /* best effort — overlay falls back to word-count/WPS placement if this fails */ }
+        await EnsureVoiceCapturePhrasesAsync(projectId, charKey, onProgress, ct);
 
         onProgress?.Invoke("Placing your voice over each scene…");
         var overlays = await ApplyAcrossMovieAsync(projectId, ct);
-        var ordered = overlays
-            .Where(o => o.Success && !string.IsNullOrWhiteSpace(o.Url))
-            .OrderBy(o => o.Scene)
-            .Select(o => o.Url ?? "")
-            .ToList();
+        var ordered = SuccessfulOverlayUrls(overlays);
         var failed = overlays.Count(o => !o.Success);
         if (ordered.Count == 0)
             return new DubMovieResult(false, null, 0, failed,
@@ -125,6 +100,59 @@ public sealed class ClientVoiceSubstitutionService
 
         return new DubMovieResult(true, stitched.Url, ordered.Count, failed, null);
     }
+
+    private async Task<string?> ResolveRecordedCharacterKeyAsync(
+        string projectId, string? charKey, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(charKey))
+            return charKey.Trim();
+
+        try
+        {
+            var chars = await _engine.GetCharactersAsync(projectId, ct);
+            return VoiceSubstitutionOverlayGate.FirstRecordedCharacterKey(chars?.Characters);
+        }
+        catch
+        {
+            // server defaults the key if still empty
+            return null;
+        }
+    }
+
+    private static bool IsSuccessfulJobStatus(string? status) =>
+        string.Equals(status, "succeeded", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+
+    private async Task TrySyncProjectMediaAsync(string projectId)
+    {
+        try { await _media.SyncProjectMediaToClientAsync(projectId); }
+        catch { /* best effort — overlay reads whatever is local */ }
+    }
+
+    private async Task EnsureVoiceCapturePhrasesAsync(
+        string projectId, string? charKey, Action<string>? onProgress, CancellationToken ct)
+    {
+        try
+        {
+            var cached = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
+            var cachedKey = DefaultNarratorKeyIfBlank(cached?.CharKey);
+            var wantKey = DefaultNarratorKeyIfBlank(charKey);
+            if (cached is null || !string.Equals(cachedKey, wantKey, StringComparison.OrdinalIgnoreCase))
+                await _capture.BuildPhrasesAsync(projectId, onProgress, charKey, ct);
+        }
+        catch { /* best effort — overlay falls back to word-count/WPS placement if this fails */ }
+    }
+
+    private static string DefaultNarratorKeyIfBlank(string? key) =>
+        string.IsNullOrWhiteSpace(key) ? "Character_Narrator" : key.Trim();
+
+    private static List<string> SuccessfulOverlayUrls(IReadOnlyList<SceneOverlayResult> overlays) =>
+        overlays
+            .Where(o => o.Success && !string.IsNullOrWhiteSpace(o.Url))
+            .OrderBy(o => o.Scene)
+            .Select(o => o.Url ?? "")
+            .ToList();
 
     /// <summary>Download a produced (blob) movie URL to the user's device.</summary>
     public async Task DownloadAsync(string url, string fileName)
