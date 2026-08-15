@@ -61,8 +61,8 @@ public sealed class CostReportServiceTests : IDisposable
 
     [Theory]
     [InlineData("hunyuan-video", "720p", 0.40)]
-    [InlineData("fal-ai/wan-i2v", "480p", 0.20)]
-    [InlineData("fal-ai/wan-i2v", "720p", 0.40)]
+    [InlineData("fal-ai/wan-2.1", "480p", 0.20)]
+    [InlineData("fal-ai/wan-2.1", "720p", 0.40)]
     public void BuildVideoBaseRateTable_ReturnsRealFlatFeeForFrameCountBasedModels(
         string modelId, string resolution, double expectedBase)
     {

@@ -40,7 +40,7 @@ public class ClipVideoGenerationLiveTests : IDisposable
         };
         yield return new object[]
         {
-            "Gemini_Veo", "veo-3.1-generate-preview", "gemini-3-pro-image",
+            "Gemini_Veo", "veo-3.1", "gemini-2.5-pro-image",
             SupportedModelCatalog.GoogleApiKeyEnv, false,
         };
     }

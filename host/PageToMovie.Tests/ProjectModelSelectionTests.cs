@@ -29,8 +29,8 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-imagine-video")]
-    [InlineData("fal-ai/wan-i2v")]
-    [InlineData("veo-3.1-generate-preview")]
+    [InlineData("fal-ai/wan-2.1")]
+    [InlineData("veo-3.1")]
     public void RequireVideo_accepts_catalog_video_models(string modelId)
     {
         var id = ProjectModelSelection.RequireVideo(Cfg(("model_name", modelId)));
@@ -111,7 +111,7 @@ public class ProjectModelSelectionTests
     [Theory]
     [InlineData("grok-imagine-video")]
     [InlineData("grok-imagine-image")]
-    [InlineData("fal-ai/wan-i2v")]
+    [InlineData("fal-ai/wan-2.1")]
     public void RequirePlanning_rejects_non_chat_models(string modelId)
     {
         var ex = Assert.Throws<InvalidOperationException>(

@@ -169,7 +169,7 @@ public class MultiProviderClientTests
     }
 
     [Theory]
-    [InlineData("gemini-3-pro-image", ModelProviderFamily.Google)]
+    [InlineData("gemini-2.5-pro-image", ModelProviderFamily.Google)]
     [InlineData("grok-imagine-image-quality", ModelProviderFamily.Xai)]
     public void Image_routing_resolves_expected_provider(string model, ModelProviderFamily expected)
     {
@@ -178,7 +178,7 @@ public class MultiProviderClientTests
     }
 
     [Theory]
-    [InlineData("veo-3.1-generate-preview", ModelProviderFamily.Google)]
+    [InlineData("veo-3.1", ModelProviderFamily.Google)]
     [InlineData("grok-imagine-video", ModelProviderFamily.Xai)]
     public void Video_routing_resolves_expected_provider(string model, ModelProviderFamily expected)
     {

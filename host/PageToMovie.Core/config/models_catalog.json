@@ -517,7 +517,7 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
-      "id": "fal-ai/wan-i2v",
+      "id": "fal-ai/wan-2.1",
       "displayName": "Wan 2.1 (Fal.ai)",
       "capability": "Video",
       "provider": "Fal",
@@ -551,7 +551,7 @@
         "1:1"
       ],
       "defaultAspectRatio": "auto",
-      "notes": "Alibaba Wan 2.1 open-weights image-to-video on Fal.ai. Official current I2V id is fal-ai/wan-i2v (catalog id remapped from fal-ai/wan-2.1; that page 404s). Official 2.1 pricing is a flat fee per video: 480p $0.20, 720p $0.40 (no 1080p). Duration is a narrow ~5-6s band (81-100 frames @ 5-24fps typical). Single init/reference image only (true i2v). numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/wan-i2v/api. \"auto\" (default) infers aspect ratio from the input image. Wan 2.7 is a separate catalog row.",
+      "notes": "Alibaba Wan 2.1 open-weights image-to-video on Fal.ai. Catalog id stays fal-ai/wan-2.1 so existing projects keep resolving. Official Fal I2V endpoint is fal-ai/wan-i2v (endpointPath). Official 2.1 pricing is a flat fee per video: 480p $0.20, 720p $0.40 (no 1080p). Duration is a narrow ~5-6s band (81-100 frames @ 5-24fps typical). Single init/reference image only (true i2v). numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/wan-i2v/api. \"auto\" (default) infers aspect ratio from the input image. Wan 2.7 is a separate catalog row.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxPromptLength": 800,
@@ -591,7 +591,7 @@
         "1:1"
       ],
       "defaultAspectRatio": "auto",
-      "notes": "Alibaba Wan 2.7 image-to-video on Fal.ai. 2\u201315s. 720p $0.10/s, 1080p $0.15/s. Single init/reference image. Distinct from the Wan 2.1 row (fal-ai/wan-i2v).",
+      "notes": "Alibaba Wan 2.7 image-to-video on Fal.ai. 2\u201315s. 720p $0.10/s, 1080p $0.15/s. Single init/reference image. Distinct from the Wan 2.1 row (fal-ai/wan-2.1).",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxPromptLength": 800,
@@ -640,7 +640,7 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
-      "id": "veo-3.1-generate-preview",
+      "id": "veo-3.1",
       "displayName": "Google Veo 3.1",
       "capability": "Video",
       "provider": "Google",
@@ -671,12 +671,12 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id is veo-3.1-generate-preview (catalog id remapped from veo-3.1 so the client URL matches). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image ingredients reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16.",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Catalog id stays veo-3.1 so existing projects keep resolving. Official Gemini API id is veo-3.1-generate-preview (endpointPath). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image ingredients reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged). Official model id veo-3.1-generate-preview.",
+      "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged). Official model id veo-3.1-generate-preview (catalog id stays veo-3.1).",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
     },
@@ -712,7 +712,7 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-fast-generate-preview. Duration 4/6/8s copied from the Veo 3.1 family (same discrete set as veo-3.1-generate-preview).",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-fast-generate-preview. Duration 4/6/8s copied from the Veo 3.1 family (same discrete set as veo-3.1).",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
@@ -794,6 +794,30 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
+      "id": "gemini-2.5-pro-image",
+      "displayName": "Gemini 2.5 Pro Image",
+      "capability": "Image",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-2.5-pro-image:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.134,
+      "maxReferenceImages": 14,
+      "notes": "Wired via GeminiImageClient. Catalog id stays gemini-2.5-pro-image so existing projects keep resolving. Official current generateContent image model is gemini-3-pro-image (Nano Banana Pro) \u2014 see that newer catalog row. Supports up to 14 reference images (documented soft max; older Flash image paths may be lower).",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "maxPromptLength": 4000,
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.134/image (unchanged). Official current image id is gemini-3-pro-image (new row); this id is kept for existing projects.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
       "id": "gemini-3-pro-image",
       "displayName": "Gemini 3 Pro Image (Nano Banana Pro)",
       "capability": "Image",
@@ -809,11 +833,11 @@
       "supportsVideoReview": false,
       "imageCostPerImage": 0.134,
       "maxReferenceImages": 14,
-      "notes": "Wired via GeminiImageClient. Official generateContent model is gemini-3-pro-image (Nano Banana Pro). Catalog id remapped from the non-official gemini-2.5-pro-image. Supports up to 14 reference images (documented soft max; older Flash image paths may be lower).",
+      "notes": "Wired via GeminiImageClient. Official current generateContent image model (Nano Banana Pro). Newer sibling of gemini-2.5-pro-image, which stays in the catalog for existing projects. Supports up to 14 reference images (documented soft max).",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
-      "pricingNotes": "Google Gemini API 2026-08-15: $0.134/image (unchanged). Official model id gemini-3-pro-image.",
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.134/image.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
     },
@@ -1470,7 +1494,7 @@
       "deprecated": true
     },
     {
-      "id": "fal-ai/minimax-music",
+      "id": "fal-ai/minimax/music",
       "displayName": "MiniMax Music",
       "capability": "Audio",
       "provider": "Fal",
@@ -1485,7 +1509,7 @@
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 60,
-      "notes": "First-gen MiniMax Music on Fal.ai. Official id remapped from fal-ai/minimax/music (that page 404s) to fal-ai/minimax-music. Successors: fal-ai/minimax-music/v2.6 and minimax/music-3.",
+      "notes": "First-gen MiniMax Music on Fal.ai. Catalog id stays fal-ai/minimax/music so existing projects keep resolving. Official Fal id is fal-ai/minimax-music (endpointPath). Successors: fal-ai/minimax-music/v2.6 and minimax/music-3.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "supportsVocals": false,

@@ -22,8 +22,8 @@ public class VideoModelOverrideTests
 
     [Theory]
     [InlineData("grok-imagine-video")]
-    [InlineData("fal-ai/wan-i2v")]
-    [InlineData("veo-3.1-generate-preview")]
+    [InlineData("fal-ai/wan-2.1")]
+    [InlineData("veo-3.1")]
     public void Accepts_catalog_video_models(string modelId)
     {
         var id = FilmJobService.ResolveExplicitVideoModel(modelId);
