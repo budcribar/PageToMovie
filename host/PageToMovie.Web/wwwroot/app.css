@@ -126,6 +126,35 @@ html, body {
     transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
 }
 
+/* Voice capture — unscoped so ScriptPane / ComparePane children actually get these. */
+.ptm-light-box-h {
+    display: inline-flex;
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    background: #1b1b1b;
+    flex-shrink: 0;
+}
+.ptm-light-sm {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.ptm-red-off { background: #3a1310; } .ptm-red-on { background: #ff3b30; box-shadow: 0 0 14px #ff3b30; }
+.ptm-yellow-off { background: #3a3210; } .ptm-yellow-on { background: #ffcc00; box-shadow: 0 0 14px #ffcc00; }
+.ptm-green-off { background: #123a1f; } .ptm-green-on { background: #34c759; box-shadow: 0 0 14px #34c759; }
+.tele-viewport { position: relative; overflow: hidden; height: 1.9em; width: 100%; }
+.tele-pointer { position: absolute; left: 28%; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+    background: #ffc107; box-shadow: 0 0 10px #ffc107; z-index: 2; }
+.tele-text { position: absolute; left: 28%; white-space: nowrap; will-change: transform; }
+.tele-w { display: inline-block; margin-right: 0.32em; }
+.tele-w.tele-active { background: rgba(255,193,7,.32); border-radius: 4px; }
+.ptm-wave-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ptm-wave-label { width: 62px; flex-shrink: 0; font-size: .8rem; color: #93a3b8; }
+.ptm-wave { flex-grow: 1; width: 100%; max-width: 520px; height: 34px; background: rgba(255,255,255,.05); border-radius: 6px; }
+
 h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
     font-family: Outfit, Inter, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;

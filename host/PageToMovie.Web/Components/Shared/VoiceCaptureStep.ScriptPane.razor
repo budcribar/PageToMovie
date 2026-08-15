@@ -1,17 +1,16 @@
-@* Shared extract of VoiceCaptureStep — teleprompter / script text + countdown light *@
+@* Shared extract of VoiceCaptureStep — one traffic-light box, then the scrolling line *@
 @using Microsoft.AspNetCore.Components
 
 @{ var words = VoiceCaptureStep.SplitWords(Host.CurrentPhrase.Text); }
 @{ var inTele = Host._recording || Host._light > 0 || Host._listening; }
 
-@* Lights + pointer + line are always visible so this doesn't look like a static text box. *@
-<div class="d-flex align-items-center gap-2 mb-1">
-    <div class="ptm-light-box-h" data-testid="voice-capture-light">
+<div class="mb-1">
+    <div class="ptm-light-box-h mb-2" data-testid="voice-capture-light">
         <span class="ptm-light-sm @(Host._light == 1 ? "ptm-red-on" : "ptm-red-off")"></span>
         <span class="ptm-light-sm @(Host._light == 2 ? "ptm-yellow-on" : "ptm-yellow-off")"></span>
         <span class="ptm-light-sm @(Host._light == 3 ? "ptm-green-on" : "ptm-green-off")"></span>
     </div>
-    <div class="tele-viewport flex-grow-1">
+    <div class="tele-viewport">
         <div class="tele-pointer"></div>
         <div id="tele-text" @key="Host._teleSession" class="tele-text fs-5">
             @foreach (var w in words)

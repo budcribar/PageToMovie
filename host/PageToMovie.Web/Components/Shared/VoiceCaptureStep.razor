@@ -11,30 +11,6 @@
 @inject AdminSessionService Session
 @inject IJSRuntime Js
 
-<style>
-    .ptm-ball-track { position: relative; height: 10px; background: rgba(255,255,255,.12); border-radius: 6px; overflow: hidden; }
-    .ptm-ball-dot { position: absolute; top: -5px; width: 20px; height: 20px; border-radius: 50%;
-        background: #ffc107; box-shadow: 0 0 10px #ffc107; }
-    .ptm-ball-run { animation: ptm-ball-move var(--ptm-ball-dur, 3s) linear forwards; }
-    @@keyframes ptm-ball-move { from { left: 0; } to { left: calc(100% - 20px); } }
-    .ptm-light-box { display: inline-flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: #1b1b1b; }
-    .ptm-light { width: 34px; height: 34px; border-radius: 50%; transition: background .15s, box-shadow .15s; }
-    .ptm-red-off { background: #3a1310; } .ptm-red-on { background: #ff3b30; box-shadow: 0 0 14px #ff3b30; }
-    .ptm-yellow-off { background: #3a3210; } .ptm-yellow-on { background: #ffcc00; box-shadow: 0 0 14px #ffcc00; }
-    .ptm-green-off { background: #123a1f; } .ptm-green-on { background: #34c759; box-shadow: 0 0 14px #34c759; }
-    .ptm-light-box-h { display: inline-flex; flex-direction: row; gap: 6px; padding: 6px 8px; border-radius: 10px; background: #1b1b1b; }
-    .ptm-light-sm { width: 18px; height: 18px; border-radius: 50%; }
-    .tele-viewport { position: relative; overflow: hidden; height: 1.9em; }
-    .tele-pointer { position: absolute; left: 28%; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
-        background: #ffc107; box-shadow: 0 0 10px #ffc107; z-index: 2; }
-    .tele-text { position: absolute; left: 28%; white-space: nowrap; will-change: transform; }
-    .tele-w { display: inline-block; margin-right: 0.32em; }
-    .tele-w.tele-active { background: rgba(255,193,7,.32); border-radius: 4px; }
-    .ptm-wave-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .ptm-wave-label { width: 62px; flex-shrink: 0; font-size: .8rem; color: #93a3b8; }
-    .ptm-wave { flex-grow: 1; width: 100%; max-width: 520px; height: 34px; background: rgba(255,255,255,.05); border-radius: 6px; }
-</style>
-
 @if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert alert-danger" data-testid="voice-capture-error">@_error</div>
