@@ -494,9 +494,13 @@ public partial class Home
         }
 
 
+        /// <summary>Operator-facing error when Delete is clicked with no picker/client target.</summary>
+        internal const string NoProjectSelectedToDelete = "Select a project to delete.";
+
         /// <summary>
         /// Open delete confirm for the project the user currently has selected (picker / client
         /// active). Ignores render-time closures so a leftover list-Active cannot rename the modal.
+        /// Must notify Home — the confirm lives on the page, not in the Manage child that clicked.
         /// </summary>
         internal Task BeginDeleteAsync()
         {
@@ -504,12 +508,20 @@ public partial class Home
                 SelectedProjectId,
                 _projects?.Active?.Id,
                 _projects?.Projects);
-            if (string.IsNullOrWhiteSpace(id)) return Task.CompletedTask;
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                S._error = NoProjectSelectedToDelete;
+                S._message = null;
+                S.StateHasChanged();
+                return Task.CompletedTask;
+            }
             _deleteId = id;
             _deleteLabel = label;
             _deleteConfirm = "";
             S._error = null;
             S._message = null;
+            // StudioCard owns the click; Home owns the modal. Without this the parent never paints.
+            S.StateHasChanged();
             return Task.CompletedTask;
         }
 
@@ -523,6 +535,7 @@ public partial class Home
             _deleteId = null;
             _deleteLabel = "";
             _deleteConfirm = "";
+            S.StateHasChanged();
         }
 
 

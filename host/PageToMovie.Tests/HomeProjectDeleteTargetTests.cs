@@ -60,6 +60,15 @@ public class HomeProjectDeleteTargetTests
     }
 
     [Fact]
+    public void ResolveManageTarget_empty_when_nothing_selected()
+    {
+        var (id, label) = Home.HomeProjects.ResolveManageTarget(null, null, Array.Empty<ProjectInfo>());
+        Assert.Null(id);
+        Assert.Equal("", label);
+        Assert.Equal("Select a project to delete.", Home.HomeProjects.NoProjectSelectedToDelete);
+    }
+
+    [Fact]
     public void FindProject_is_case_insensitive_and_returns_null_for_unknown()
     {
         var list = new[] { P("Chosen-Id", "Chosen Label") };

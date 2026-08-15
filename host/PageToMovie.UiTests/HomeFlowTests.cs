@@ -78,8 +78,17 @@ public class HomeFlowTests
             await page.GetByTestId("home-delete-project").ClickAsync();
 
             var modal = page.GetByTestId("home-delete-project-modal");
+            // Must be painted (display/visibility/box), not merely present after a state flip.
             await Assertions.Expect(modal).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            await Assertions.Expect(modal).ToBeInViewportAsync();
+            var box = await modal.BoundingBoxAsync();
+            Assert.NotNull(box);
+            Assert.True(box!.Width > 0 && box.Height > 0,
+                $"Delete confirm must paint on screen, but box was {box.Width}x{box.Height}.");
+            await Assertions.Expect(page.GetByTestId("home-delete-project-label")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("home-delete-project-label")).ToHaveTextAsync(leftover);
+            await Assertions.Expect(page.GetByTestId("home-delete-project-cancel")).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByTestId("home-delete-project-confirm")).ToBeVisibleAsync();
             await Assertions.Expect(modal).Not.ToContainTextAsync(chosen);
 
             await page.GetByTestId("home-delete-project-cancel").ClickAsync();
