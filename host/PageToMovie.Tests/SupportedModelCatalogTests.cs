@@ -50,7 +50,7 @@ public class SupportedModelCatalogTests
     [InlineData("grok-imagine-video", 7)]   // multi-plate identity conditioning
     [InlineData("hunyuan-video", 1)]        // single init/reference image only (true i2v)
     [InlineData("fal-ai/wan-2.1", 1)]       // single init/reference image only (true i2v)
-    [InlineData("veo-3.1", 3)]              // Vertex Veo 3.1: up to 3 asset reference images
+    [InlineData("veo-3.1", 3)] // Gemini API Veo 3.1: up to 3 asset reference images
     public void MaxReferenceImages_MatchesRealPerModelCapability(string modelId, int expectedMax)
     {
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
@@ -60,7 +60,7 @@ public class SupportedModelCatalogTests
     [Theory]
     [InlineData("grok-imagine-image-quality", 3)]  // Grok Imagine multi-image edit hard cap
     [InlineData("grok-imagine-image", 3)]          // Grok Imagine multi-image edit hard cap
-    [InlineData("gemini-2.5-pro-image", 14)]       // documented soft max for Gemini 3 image family
+    [InlineData("gemini-2.5-pro-image", 14)]         // documented soft max for Gemini 3 image family
     public void MaxReferenceImages_MatchesRealPerModelCapability_ForImageModels(string modelId, int expectedMax)
     {
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Image);
@@ -230,7 +230,7 @@ public class SupportedModelCatalogTests
     public void Claude_and_gemini_are_selectable_as_chat_models()
     {
         var claude = SupportedModelCatalog.Find("claude-sonnet-5", ModelCapability.Chat);
-        var gemini = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Chat);
+        var gemini = SupportedModelCatalog.Find("gemini-3.7-flash", ModelCapability.Chat);
         Assert.NotNull(claude);
         Assert.NotNull(gemini);
         Assert.True(claude!.Enabled);
@@ -238,6 +238,45 @@ public class SupportedModelCatalogTests
         Assert.Equal("anthropic", claude.ProviderId);
         Assert.Equal("gemini", gemini.ProviderId);
         Assert.Contains("ANTHROPIC_API_KEY", claude.RequiredEnvKeys);
+    }
+
+    [Fact]
+    public void Video_review_default_is_gemini_3_7_flash_and_2_5_stays_disabled()
+    {
+        Assert.Equal("gemini-3.7-flash", SupportedModelCatalog.DefaultModelIdForCapability("video-review"));
+        var chat = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Chat);
+        var vision = SupportedModelCatalog.Find("gemini-2.5-flash", ModelCapability.Vision);
+        Assert.NotNull(chat);
+        Assert.NotNull(vision);
+        Assert.False(chat!.Enabled);
+        Assert.False(vision!.Enabled);
+        Assert.True(chat.Deprecated);
+        Assert.True(vision.Deprecated);
+        Assert.DoesNotContain(
+            SupportedModelCatalog.ForCapability(ModelCapability.Chat),
+            e => e.Id.Equals("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("gemini-3.7-flash", SupportedModelCatalog.TaskRankings["video_review"][0]);
+        Assert.Contains("gemini-2.5-flash", SupportedModelCatalog.TaskRankings["video_review"]);
+    }
+
+    [Fact]
+    public void Image_default_is_grok_imagine_image_2_0_and_prior_imagine_rows_are_disabled()
+    {
+        Assert.Equal("grok-imagine-image-2.0", SupportedModelCatalog.DefaultModelIdForCapability("image"));
+        var quality = SupportedModelCatalog.Find("grok-imagine-image-quality", ModelCapability.Image);
+        var fast = SupportedModelCatalog.Find("grok-imagine-image", ModelCapability.Image);
+        var two = SupportedModelCatalog.Find("grok-imagine-image-2.0", ModelCapability.Image);
+        Assert.NotNull(quality);
+        Assert.NotNull(fast);
+        Assert.NotNull(two);
+        Assert.False(quality!.Enabled);
+        Assert.True(quality.Deprecated);
+        Assert.False(fast!.Enabled);
+        Assert.True(fast.Deprecated);
+        Assert.True(two!.Enabled);
+        var enabledImage = SupportedModelCatalog.ForCapability(ModelCapability.Image);
+        Assert.DoesNotContain(enabledImage, e => e.Id.Equals("grok-imagine-image-quality", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(enabledImage, e => e.Id.Equals("grok-imagine-image", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -291,7 +330,7 @@ public class SupportedModelCatalogTests
     [InlineData("grok-4.5", ModelCapability.Chat, 500_000)]
     [InlineData("grok-4", ModelCapability.Chat, 256_000)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 1_000_000)]
-    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 1_000_000)]
+    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 1_048_576)]
     public void Chat_models_carry_real_context_window(string id, ModelCapability cap, int expectedMaxInputTokens)
     {
         // Provider-documented context windows (2026-07) — BookToFountainConverter.
@@ -317,7 +356,7 @@ public class SupportedModelCatalogTests
     [InlineData("grok-4.5", ModelCapability.Chat, 2.00, 6.00)]
     [InlineData("grok-4", ModelCapability.Chat, 3.00, 15.00)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 2.00, 10.00)]
-    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 2.00, 12.00)]
+    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 0.30, 2.50)]
     public void Chat_models_carry_real_token_pricing(
         string id, ModelCapability cap, double expectedInput, double expectedOutput)
     {
@@ -338,7 +377,8 @@ public class SupportedModelCatalogTests
         Assert.NotNull(grok?.VideoCostPerSecondByResolution);
         Assert.Equal(0.05, grok!.VideoCostPerSecondByResolution!["480p"]);
         Assert.Equal(0.07, grok.VideoCostPerSecondByResolution["720p"]);
-        Assert.Equal(0.25, grok.VideoCostPerSecondByResolution["1080p"]);
+        Assert.False(grok.VideoCostPerSecondByResolution.ContainsKey("1080p"),
+            "1080p $0.25 is not official for grok-imagine-video (native 1080p is grok-imagine-video-1.5)");
 
         var veo = SupportedModelCatalog.Find("veo-3.1", ModelCapability.Video);
         Assert.NotNull(veo?.VideoCostPerSecondByResolution);

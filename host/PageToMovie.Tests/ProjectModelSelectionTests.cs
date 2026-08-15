@@ -38,8 +38,7 @@ public class ProjectModelSelectionTests
     }
 
     [Theory]
-    [InlineData("grok-imagine-image")]
-    [InlineData("grok-imagine-image-quality")]
+    [InlineData("grok-imagine-image-2.0")]
     [InlineData("fal-ai/flux/dev")]
     public void RequireImage_accepts_catalog_image_models(string modelId)
     {
@@ -49,8 +48,8 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-4.5")]
-    [InlineData("grok-4")]
-    [InlineData("gemini-2.5-flash")]
+    [InlineData("grok-4.6")]
+    [InlineData("gemini-3.7-flash")]
     public void RequirePlanning_accepts_catalog_chat_models(string modelId)
     {
         var id = ProjectModelSelection.RequirePlanning(Cfg(("planning_model_name", modelId)));
@@ -66,7 +65,7 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-4.5")]
-    [InlineData("gemini-2.5-flash")]
+    [InlineData("gemini-3.7-flash")]
     public void RequireVision_accepts_vision_or_chat_overlap_models(string modelId)
     {
         // Catalog lists some ids under Vision and/or Chat; Find allows Chat↔Vision.
@@ -216,9 +215,9 @@ public class ProjectModelSelectionTests
     public void RequirePlanning_prefers_planning_model_name_over_chat()
     {
         var id = ProjectModelSelection.RequirePlanning(Cfg(
-            ("planning_model_name", "grok-4"),
+            ("planning_model_name", "grok-4.6"),
             ("chat_model_name", "grok-4.5")));
-        Assert.Equal("grok-4", id);
+        Assert.Equal("grok-4.6", id);
     }
 
     [Fact]

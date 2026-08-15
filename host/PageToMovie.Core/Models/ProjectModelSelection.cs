@@ -41,7 +41,7 @@ public static class ProjectModelSelection
     /// <summary>
     /// True when <paramref name="id"/> is a concrete catalog model id (not empty / none / disabled / auto).
     /// </summary>
-    private static bool IsUsableModelId(string? id)
+    public static bool IsUsableModelId(string? id)
     {
         if (string.IsNullOrWhiteSpace(id)) return false;
         if (id.Equals("none", StringComparison.OrdinalIgnoreCase)) return false;

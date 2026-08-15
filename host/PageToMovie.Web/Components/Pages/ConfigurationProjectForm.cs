@@ -97,7 +97,15 @@ public partial class Configuration
                 S._cfg = dto?.Config;
                 _projectDir = dto?.ProjectDir ?? $"projects/{S._projectId}";
                 if (S._cfg is null) return;
-                ApplyLoadedConfig();
+                var healed = ApplyLoadedConfig();
+                if (healed)
+                {
+                    try { await PersistProjectConfigAsync(); }
+                    catch (Exception persistEx)
+                    {
+                        S._error = persistEx.Message;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -117,11 +125,12 @@ public partial class Configuration
             }
         }
 
-        private void ApplyLoadedConfig()
+        private bool ApplyLoadedConfig()
         {
+            var healed = S._cfg is not null && ProjectCatalogModelHeal.Apply(S._cfg);
             ApplyUiAndModelFields();
-            DropStaleCatalogModelIds();
             ApplyPipelineFields();
+            return healed;
         }
 
         private void ApplyUiAndModelFields()
@@ -136,34 +145,6 @@ public partial class Configuration
             S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
             S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
             S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
-        }
-
-        private void DropStaleCatalogModelIds()
-        {
-            // Drop ids that are not in the catalog (stale project config).
-            DropIfUnknown(ref S.Coverage._modelName, S.Catalog._videoModels, ConfigurationCatalog.DefaultForCapability("video"));
-            DropIfUnknown(ref S.Coverage._imageModel, S.Catalog._imageModels, ConfigurationCatalog.DefaultForCapability("image"));
-            DropIfUnknown(ref S.Coverage._planningModel, S.Catalog._planningModels, ConfigurationCatalog.DefaultForCapability("chat"));
-            DropIfUnknown(ref S.Coverage._visionModel, S.Catalog._visionModels, ConfigurationCatalog.DefaultForCapability("vision"));
-            DropIfUnknown(ref S.Coverage._qualityModel, S.Catalog._videoReviewModels, ConfigurationCatalog.DefaultQualityModel());
-            DropIfUnknownOptional(ref S.Coverage._audioModel, S.Catalog._audioModels);
-            DropIfUnknownOptional(ref S.Coverage._voiceModel, S.Catalog._voiceModels);
-        }
-
-        private static void DropIfUnknown(ref string slot, IReadOnlyList<SupportedModelDto> models, string fallback)
-        {
-            var current = slot;
-            if (!string.IsNullOrWhiteSpace(current) && !models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase)))
-                slot = fallback;
-        }
-
-        private static void DropIfUnknownOptional(ref string slot, IReadOnlyList<SupportedModelDto> models)
-        {
-            var current = slot;
-            if (!string.IsNullOrWhiteSpace(current)
-                && !current.Equals("none", StringComparison.OrdinalIgnoreCase)
-                && !models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase)))
-                slot = "none";
         }
 
         private void ApplyPipelineFields()
@@ -280,6 +261,12 @@ public partial class Configuration
                 // from model_name / image_model_name via SupportedModelCatalog.
                 ["cost_estimates"] = BuildVendorCostEstimatesSnapshot(),
             };
+            if (S._cfg is not null
+                && S._cfg.TryGetValue("video_review_model_name", out var legacyReview)
+                && legacyReview.ValueKind == JsonValueKind.String)
+            {
+                updates["video_review_model_name"] = legacyReview.GetString();
+            }
 
             await S.Engine.SaveConfigAsync(S._projectId, updates);
         }
