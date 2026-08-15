@@ -53,7 +53,9 @@ public static class SceneClipEndpoints
         app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/auto-review/apply", PostProjectsIdScenesSceneClipsClipAutoReviewApply);
         app.MapGet("/api/projects/{id}/scenes", GetProjectsIdScenes);
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}", GetProjectsIdScenesSceneNumber);
-        app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/video", GetProjectsIdScenesSceneNumberClipsClipNumberVideo);
+        app.MapMethods("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/video",
+            new[] { "GET", "HEAD" }, GetProjectsIdScenesSceneNumberClipsClipNumberVideo);
+
         app.MapGet("/api/projects/{id}/clips/fork-fallback-needed", GetProjectsIdClipsForkFallbackNeeded);
         app.MapPost("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/fork-fallback", PostProjectsIdScenesClipForkFallback);
 
@@ -563,6 +565,7 @@ public static class SceneClipEndpoints
 
     private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberVideo(
         string id, int sceneNumber, int clipNumber,
+        HttpRequest req,
         ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
         XaiResponsesClient? xai,
         CancellationToken ct)
@@ -584,12 +587,15 @@ public static class SceneClipEndpoints
             }
             catch { /* fall through */ }
         }
+        var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
+            ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
+        var exists = path is not null || !string.IsNullOrWhiteSpace(fileId);
+        if (HttpMethods.IsHead(req.Method))
+            return exists ? Results.Ok() : Results.NotFound();
+
         if (path is not null)
             return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
 
-        // Fork / client-only: no .mp4 here. Stream the Grok file_id from the sidecar (copied on fork).
-        var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
-            ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
         if (string.IsNullOrWhiteSpace(fileId) || xai is null)
         {
             await MarkForkFallbackNeededAsync(store, id, parentId, sceneNumber, clipNumber, ct);

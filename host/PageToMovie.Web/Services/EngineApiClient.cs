@@ -2271,20 +2271,17 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         BrowserMediaPath(
             $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/video");
 
-    /// <summary>True if the clip/media URL returns 2xx without downloading the body.</summary>
+    /// <summary>True if the clip/media URL returns 2xx. GET + Range so we never HEAD (405).</summary>
     public async Task<bool> MediaUrlReachableAsync(string url, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(url)) return false;
         if (url.StartsWith("blob:", StringComparison.OrdinalIgnoreCase)) return true;
         try
         {
-            using var head = new HttpRequestMessage(HttpMethod.Head, url);
-            using var resp = await _http.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (resp.IsSuccessStatusCode) return true;
-            if ((int)resp.StatusCode is 404 or 401 or 403) return false;
             using var get = new HttpRequestMessage(HttpMethod.Get, url);
-            using var got = await _http.SendAsync(get, HttpCompletionOption.ResponseHeadersRead, ct);
-            return got.IsSuccessStatusCode;
+            get.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+            using var resp = await _http.SendAsync(get, HttpCompletionOption.ResponseHeadersRead, ct);
+            return resp.IsSuccessStatusCode || (int)resp.StatusCode == 206;
         }
         catch
         {

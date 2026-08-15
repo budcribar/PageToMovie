@@ -141,26 +141,10 @@ public partial class VoiceCaptureStep
             }
             if (playable.Count == 0) return;
 
-            string sceneUrl;
-            if (playable.Count == 1)
-                sceneUrl = playable[0];
-            else
-            {
-                var stitched = await Stitch.ConcatAsync(playable, cts.Token);
-                if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url)) return;
-                sceneUrl = stitched.Url;
-            }
-
-            var start = Math.Max(0, p.WindowStartSec);
-            var end = p.WindowEndSec > start + 0.3 ? p.WindowEndSec : start + Math.Max(2.5, _ballDurationSec);
-            var res = await Js.InvokeAsync<ExtractUrlResult>(
-                "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", sceneUrl, start, end);
-            if (res is { Success: true } && !string.IsNullOrEmpty(res.Url))
-            {
-                _originalUrl = res.Url;
-                _renderNarratorWave = true;
-                await InvokeAsync(StateHasChanged);
-            }
+            // Play the first reachable clip as Original — no ffmpeg stitch/extract (those hang on 404).
+            _originalUrl = playable[0];
+            _renderNarratorWave = true;
+            await InvokeAsync(StateHasChanged);
         }
         catch
         {
