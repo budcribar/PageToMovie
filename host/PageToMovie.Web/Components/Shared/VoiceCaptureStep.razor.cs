@@ -124,34 +124,87 @@ public partial class VoiceCaptureStep
 
         var p = CurrentPhrase;
         _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
-        // Don't hammer dead fork clip URLs on load — that 404s and can stall the recorder.
-        if (!IsScriptOnlyPhrase(p))
-            _ = TryLoadOriginalAsync(p);
+        _ = TryLoadOriginalAsync(p);
     }
 
     internal async Task TryLoadOriginalAsync(VoiceCapturePhrase p)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            var urls = await Stitch.CollectClipUrlsAsync(_projectId ?? "", p.Scene, ct: cts.Token, includeServerFallback: true);
-            var playable = new List<string>();
-            foreach (var u in urls)
-            {
-                if (await Engine.MediaUrlReachableAsync(u, cts.Token))
-                    playable.Add(u);
-            }
-            if (playable.Count == 0) return;
-
-            // Play the first reachable clip as Original — no ffmpeg stitch/extract (those hang on 404).
-            _originalUrl = playable[0];
-            _renderNarratorWave = true;
-            await InvokeAsync(StateHasChanged);
+            if (await TryExtractOriginalFromClipsAsync(p))
+                return;
+            await TryTtsOriginalAsync(p);
         }
         catch
         {
-            // Fork / missing clip — Record still works.
+            // Record still works without a reference take.
         }
+    }
+
+    internal async Task<bool> TryExtractOriginalFromClipsAsync(VoiceCapturePhrase p)
+    {
+        var start = Math.Max(0, p.WindowStartSec);
+        var end = p.WindowEndSec > start + 0.3 ? p.WindowEndSec : start + Math.Max(2.5, _ballDurationSec);
+        foreach (var pid in await ProjectIdsForClipsAsync())
+        {
+            var urls = await Stitch.CollectClipUrlsAsync(pid, p.Scene, ct: default, includeServerFallback: true);
+            foreach (var url in urls)
+            {
+                try
+                {
+                    var res = await Js.InvokeAsync<ExtractUrlResult>(
+                        "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", url, start, end);
+                    if (res is { Success: true } && !string.IsNullOrEmpty(res.Url))
+                    {
+                        _originalUrl = res.Url;
+                        _renderNarratorWave = true;
+                        await InvokeAsync(StateHasChanged);
+                        return true;
+                    }
+                }
+                catch { /* next url */ }
+            }
+        }
+        return false;
+    }
+
+    internal async Task TryTtsOriginalAsync(VoiceCapturePhrase p)
+    {
+        if (string.IsNullOrWhiteSpace(_projectId) || string.IsNullOrWhiteSpace(p.Text))
+            return;
+        var speak = await Engine.SpeakVoiceAsync(_projectId, CharKey, p.Text);
+        if (speak is not { Ok: true }) return;
+        string? url = null;
+        if (!string.IsNullOrWhiteSpace(speak.AudioBase64))
+        {
+            var mime = string.IsNullOrWhiteSpace(speak.ContentType) ? "audio/mpeg" : speak.ContentType;
+            try { url = await Js.InvokeAsync<string?>("PageToMovieMedia.blobUrlFromBase64", speak.AudioBase64, mime); }
+            catch { /* fall through */ }
+        }
+        if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(speak.ClientUrl))
+            url = Engine.BrowserMediaPath(speak.ClientUrl);
+        if (string.IsNullOrWhiteSpace(url)) return;
+        _originalUrl = url;
+        _renderNarratorWave = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    internal async Task<List<string>> ProjectIdsForClipsAsync()
+    {
+        var ids = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_projectId))
+            ids.Add(_projectId);
+        try
+        {
+            var all = await Engine.GetProjectsAsync();
+            var me = all?.Projects?.FirstOrDefault(x =>
+                string.Equals(x.Id, _projectId, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(me?.ParentProjectId)
+                && !ids.Contains(me.ParentProjectId, StringComparer.OrdinalIgnoreCase))
+                ids.Add(me.ParentProjectId);
+        }
+        catch { /* fork parent is optional */ }
+        return ids;
     }
 
     internal static bool IsScriptOnlyPhrase(VoiceCapturePhrase p) =>
@@ -162,10 +215,13 @@ public partial class VoiceCaptureStep
 
     internal async Task ListenAsync()
     {
-        if (string.IsNullOrEmpty(_originalUrl) || _listening || _recording || _light > 0) return;
+        if (_listening || _recording || _light > 0) return;
+        if (string.IsNullOrEmpty(_originalUrl))
+            await TryLoadOriginalAsync(CurrentPhrase);
+        if (string.IsNullOrEmpty(_originalUrl)) return;
         _listening = true;
         _teleSession++;
-        _teleStartPending = true; // the scroll starts in OnAfterRenderAsync, once the spans render
+        _teleStartPending = true;
         StateHasChanged();
         try { await Js.InvokeAsync<bool>("PageToMovieFfmpeg.playAudioAsync", _originalUrl); }
         catch { /* ignore playback errors */ }
@@ -175,6 +231,11 @@ public partial class VoiceCaptureStep
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try { await Js.InvokeVoidAsync("PageToMovieFfmpeg.drawWaveformPlaceholder", "ptm-wave-narrator"); }
+            catch { /* ignore */ }
+        }
         if (_teleStartPending)
         {
             _teleStartPending = false;

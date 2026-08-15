@@ -808,6 +808,7 @@ window.PageToMovieFfmpeg = {
             ctx.clearRect(0, 0, w, h);
 
             const resp = await fetch(url);
+            if (!resp.ok) return false;
             const arr = await resp.arrayBuffer();
             const AC = window.AudioContext || window.webkitAudioContext;
             actx = new AC();
@@ -821,6 +822,27 @@ window.PageToMovieFfmpeg = {
         } catch { /* waveform decode/draw failed */ return false; } finally {
             if (actx) { try { await actx.close(); } catch (_) { /* */ } }
         }
+    },
+
+    drawWaveformPlaceholder: function (canvasId) {
+        try {
+            const cv = document.getElementById(canvasId);
+            if (!cv) return false;
+            const w = Math.max(80, Math.floor(cv.clientWidth || cv.width || 320));
+            const h = cv.height || 34;
+            cv.width = w;
+            const ctx = cv.getContext("2d");
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "rgba(147,197,253,.22)";
+            const bins = Math.min(w, 80);
+            const barW = w / bins;
+            for (let i = 0; i < bins; i++) {
+                const v = 0.12 + 0.08 * Math.sin(i / 3.2);
+                const bh = Math.max(1, v * (h - 2));
+                ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 0.6), bh);
+            }
+            return true;
+        } catch { return false; }
     },
 
     _resampleSpan: function (raw, lo, spanLen, fine, bins) {

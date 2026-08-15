@@ -3,23 +3,17 @@
 
 <div class="mb-3">
     <div class="d-flex flex-wrap gap-2 mb-2">
-        @if (!string.IsNullOrEmpty(Host._originalUrl))
-        {
-            <button type="button" class="btn btn-outline-primary btn-sm"
-                    disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
-                    data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
-                @(Host._listening ? "▶ Original…" : "▶ Original")
-            </button>
-        }
+        <button type="button" class="btn btn-outline-primary btn-sm"
+                disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
+                data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
+            @(Host._listening ? "▶ Original…" : "▶ Original")
+        </button>
         @if (!string.IsNullOrEmpty(Host._takeUrl))
         {
             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
                     data-testid="voice-capture-play-you" @onclick="Host.PlayYouAsync">▶ You</button>
-            @if (!string.IsNullOrEmpty(Host._originalUrl))
-            {
-                <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
-                        data-testid="voice-capture-play-both" @onclick="Host.PlayBothAsync">▶ Both</button>
-            }
+            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening || string.IsNullOrEmpty(Host._originalUrl))"
+                    data-testid="voice-capture-play-both" @onclick="Host.PlayBothAsync">▶ Both</button>
         }
     </div>
 
