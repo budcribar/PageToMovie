@@ -4,13 +4,17 @@
 <div class="d-flex flex-wrap gap-2">
     @if (Host._recording)
     {
-        <button class="btn btn-outline-secondary" disabled="@Host._busy" @onclick="Host.StopAndScoreAsync">
+        <button type="button" class="btn btn-outline-secondary" disabled="@Host._busy" @onclick="Host.StopAndScoreAsync">
             ⏹ Stop
         </button>
     }
-    else if (Host._light == 0)
+    else if (Host._light > 0)
     {
-        <button type="button" class="btn btn-danger" disabled="@(Host._busy || Host._recording || Host._light > 0)"
+        <button type="button" class="btn btn-outline-secondary" @onclick="Host.CancelRecordAsync">Cancel</button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-danger" disabled="@Host._busy"
                 data-testid="voice-capture-record" @onclick="OnRecordAsync">
             🔴 @(Host._takeUrl is null ? "Record" : "Re-record")
         </button>

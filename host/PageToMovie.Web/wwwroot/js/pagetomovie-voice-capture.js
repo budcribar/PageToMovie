@@ -7,7 +7,10 @@ window.PageToMovieVoiceCapture = (function () {
   async function start() {
     if (recorder?.state === "recording") return { ok: true, already: true };
     chunks = [];
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mic = navigator.mediaDevices.getUserMedia({ audio: true });
+    const timed = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Microphone timed out — click Record and allow the mic.")), 12000));
+    mediaStream = await Promise.race([mic, timed]);
     let mime = "";
     if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
       mime = "audio/webm;codecs=opus";

@@ -124,9 +124,6 @@ public partial class VoiceCaptureStep
 
         var p = CurrentPhrase;
         _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
-        if (IsScriptOnlyPhrase(p))
-            return;
-        // Don't block Record on a 404 clip fetch.
         _ = TryLoadOriginalAsync(p);
     }
 
@@ -134,11 +131,30 @@ public partial class VoiceCaptureStep
     {
         try
         {
-            var sceneUrl = await GetSceneUrlAsync(p.Scene);
-            if (string.IsNullOrEmpty(sceneUrl))
-                return;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var urls = await Stitch.CollectClipUrlsAsync(_projectId ?? "", p.Scene, ct: cts.Token, includeServerFallback: true);
+            var playable = new List<string>();
+            foreach (var u in urls)
+            {
+                if (await Engine.MediaUrlReachableAsync(u, cts.Token))
+                    playable.Add(u);
+            }
+            if (playable.Count == 0) return;
+
+            string sceneUrl;
+            if (playable.Count == 1)
+                sceneUrl = playable[0];
+            else
+            {
+                var stitched = await Stitch.ConcatAsync(playable, cts.Token);
+                if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url)) return;
+                sceneUrl = stitched.Url;
+            }
+
+            var start = Math.Max(0, p.WindowStartSec);
+            var end = p.WindowEndSec > start + 0.3 ? p.WindowEndSec : start + Math.Max(2.5, _ballDurationSec);
             var res = await Js.InvokeAsync<ExtractUrlResult>(
-                "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", sceneUrl, p.WindowStartSec, p.WindowEndSec);
+                "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", sceneUrl, start, end);
             if (res is { Success: true } && !string.IsNullOrEmpty(res.Url))
             {
                 _originalUrl = res.Url;
@@ -304,36 +320,54 @@ public partial class VoiceCaptureStep
 
     internal async Task RecordAsync()
     {
-        _error = null; _status = null; _takeUrl = null; _score = null; _regions = null;
-
-        // Red → yellow → green. Recording (and the scroll) start on green.
-        _light = 1;
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(650);
-        _light = 2;
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(650);
-        _light = 3;
+        _error = null;
+        _takeUrl = null;
+        _score = null;
+        _regions = null;
+        _status = "Allow the microphone if the browser asks…";
         await InvokeAsync(StateHasChanged);
 
         try
         {
             await Js.InvokeAsync<object>("PageToMovieVoiceCapture.start");
-            _recording = true;
-            _teleSession++;
-            _teleStartPending = true;
-            var session = ++_recordSession;
-            await InvokeAsync(StateHasChanged);
-            _ = ClearLightAsync();
-            _ = AutoStopAsync(session, (int)((_ballDurationSec + 1.0) * 1000));
         }
         catch (Exception ex)
         {
             _error = "Microphone failed: " + ex.Message;
-            _recording = false;
+            _status = null;
             _light = 0;
+            _recording = false;
             await InvokeAsync(StateHasChanged);
+            return;
         }
+
+        _status = null;
+        _light = 1;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(650);
+        if (_recordSession < 0) return; // cancelled
+        _light = 2;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(650);
+        if (_recordSession < 0) return;
+        _light = 3;
+        _recording = true;
+        _teleSession++;
+        _teleStartPending = true;
+        var session = ++_recordSession;
+        await InvokeAsync(StateHasChanged);
+        _ = ClearLightAsync();
+        _ = AutoStopAsync(session, (int)((_ballDurationSec + 1.0) * 1000));
+    }
+
+    internal async Task CancelRecordAsync()
+    {
+        _recordSession = -1;
+        _light = 0;
+        _recording = false;
+        _status = null;
+        try { await Js.InvokeVoidAsync("PageToMovieVoiceCapture.cancel"); } catch { /* ignore */ }
+        await InvokeAsync(StateHasChanged);
     }
 
     internal async Task ClearLightAsync()
