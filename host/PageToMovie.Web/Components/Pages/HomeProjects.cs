@@ -266,14 +266,14 @@ public partial class Home
             S._busy = true;
             try
             {
+                // Unreachable server: the layout's ServerHealthBanner already says so (fed by
+                // this very call) and its Recovered event re-runs LoadAsync — nothing else to show.
                 try
                 {
                     await S.Engine.EnsureHealthyAsync();
-                    S._healthOk = true;
                 }
                 catch
                 {
-                    S._healthOk = false;
                     _projects = null;
                     return;
                 }

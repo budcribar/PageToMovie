@@ -359,5 +359,10 @@
     "AccountProviders": "Account & providers",
     "SettingsForActiveProject": "Settings for active project:",
     "ActiveProject": "Active Project:"
+  },
+  "ServerHealth": {
+    "Restarting": "Server is restarting — reconnecting…",
+    "StillDown": "Still can't reach the server — it may have failed to start. Check the deploy.",
+    "Recovering": "Back online — refreshing…"
   }
 }

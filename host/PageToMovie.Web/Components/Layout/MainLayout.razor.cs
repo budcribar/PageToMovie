@@ -43,6 +43,28 @@ public partial class MainLayout : IDisposable
         // Re-check on every navigation so /demo stays open to guests and studio routes re-gate.
         Nav.LocationChanged += OnLocationChanged;
         MediaFolder.Changed += OnMediaFolderChanged;
+        Health.Recovered += OnServerRecoveredAsync;
+    }
+
+    /// <summary>
+    /// Server reachable again after an outage: re-fetch the app-wide state that calls made during
+    /// the outage (activate / config / presence) could not establish, and bring the hub back.
+    /// Pages re-load their own data via the same <see cref="ServerHealthState.Recovered"/> event.
+    /// </summary>
+    private async Task OnServerRecoveredAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
+            if (Session.IsLoggedIn)
+            {
+                try { await ActiveProject.RefreshFromServerAsync(Engine); } catch { /* soft */ }
+                try { await Engine.EnsureMediaAccessAsync(); } catch { /* optional */ }
+                await Hub.EnsureStartedAsync();
+                await RefreshPresenceAsync();
+            }
+            StateHasChanged();
+        });
     }
 
     private void OnMediaFolderChanged()
@@ -74,6 +96,10 @@ public partial class MainLayout : IDisposable
         if (!string.Equals(pid, _presenceProjectId, StringComparison.OrdinalIgnoreCase))
             _presenceAccessDenied = false;
         if (_presenceAccessDenied)
+            return;
+        // Paused while the server is down — the timer keeps its cadence but does not hit a
+        // booting container; the Recovered handler runs a heartbeat as soon as it is back.
+        if (Health.IsDown)
             return;
 
         try
@@ -419,6 +445,7 @@ public partial class MainLayout : IDisposable
         if (disposing)
         {
             MediaFolder.Changed -= OnMediaFolderChanged;
+            Health.Recovered -= OnServerRecoveredAsync;
             _presenceTimer?.Dispose();
             _presenceTimer = null;
             ActiveProject.Changed -= OnActiveProjectChanged;

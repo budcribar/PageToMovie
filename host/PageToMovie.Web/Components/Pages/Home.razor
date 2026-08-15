@@ -7,6 +7,7 @@
 @inject AdminSessionService Session
 @inject IJSRuntime Js
 @inject ClientMediaFolderService MediaFolder
+@inject ServerHealthState Health
 @inject IAppLocalizer L
 @using PageToMovie.Core.Models
 @using PageToMovie.Core.Util
@@ -15,11 +16,6 @@
 
 <InlineAlert Message="@_error" />
 <InlineAlert Message="@_message" Variant="info" />
-
-@if (_healthOk is false)
-{
-    <InlineAlert Variant="warning" Message="Server not reachable. Start PageToMovie.Api, then reload this page." />
-}
 
 
 <Home_Landing IsLoggedIn="Session.IsLoggedIn" ShowEasyStart="_easyStartAvailable" />
