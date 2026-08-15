@@ -390,7 +390,7 @@
     },
     {
       "id": "hunyuan-video",
-      "displayName": "HunyuanVideo (Fal.ai)",
+      "displayName": "Hunyuan Video (Fal.ai)",
       "capability": "Video",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
@@ -843,7 +843,7 @@
     },
     {
       "id": "fal-ai/flux/dev",
-      "displayName": "Fal.ai Flux.1 Dev",
+      "displayName": "FLUX.1 [dev] (Fal.ai)",
       "capability": "Image",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
@@ -869,7 +869,7 @@
     },
     {
       "id": "fal-ai/flux/schnell",
-      "displayName": "Fal.ai Flux.1 Schnell (Fast)",
+      "displayName": "FLUX.1 [schnell] (Fal.ai)",
       "capability": "Image",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
@@ -1641,7 +1641,7 @@
     },
     {
       "id": "aimusicapi-suno",
-      "displayName": "Suno",
+      "displayName": "Suno (AI Music API)",
       "capability": "Audio",
       "provider": "AiMusicApi",
       "apiBase": "https://api.aimusicapi.ai/api/v1",
@@ -1685,7 +1685,7 @@
     },
     {
       "id": "eleven_multilingual_v2",
-      "displayName": "Multilingual voice",
+      "displayName": "Eleven Multilingual v2",
       "capability": "Voice",
       "provider": "ElevenLabs",
       "apiBase": "https://api.elevenlabs.io/v1",
@@ -1725,7 +1725,7 @@
     },
     {
       "id": "eleven_voice_clone",
-      "displayName": "Instant voice clone",
+      "displayName": "ElevenLabs Instant Voice Clone",
       "capability": "Voice",
       "provider": "ElevenLabs",
       "apiBase": "https://api.elevenlabs.io/v1",

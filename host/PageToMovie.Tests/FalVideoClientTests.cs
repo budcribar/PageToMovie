@@ -11,7 +11,7 @@ public class FalVideoClientTests
     {
         var entry = SupportedModelCatalog.Find("hunyuan-video", ModelCapability.Video);
         Assert.NotNull(entry);
-        Assert.Equal("HunyuanVideo (Fal.ai)", entry.DisplayName);
+        Assert.Equal("Hunyuan Video (Fal.ai)", entry.DisplayName);
         Assert.Equal(ModelProviderFamily.Fal, entry.Provider);
         Assert.Contains(SupportedModelCatalog.FalApiKeyEnv, entry.RequiredEnvKeys);
         Assert.False(entry.SupportsVideoContinue);
