@@ -144,10 +144,18 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
-    public void Chat_and_vision_default_to_grok_4_6()
+    public void Chat_and_vision_defaults_match_catalog_json()
     {
-        Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
-        Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
+        // Do not assert a literal model id here — that is the same bug as hardcoding grok-4.6
+        // in product code. When the on-disk catalog moves to the next chat/vision default,
+        // this test must still pass without a C# edit.
+        using var doc = ModelsCatalogJsonFile.Parse();
+        var chatDefault = ModelsCatalogJsonFile.DefaultModelIdForCapability(doc, "chat");
+        var visionDefault = ModelsCatalogJsonFile.DefaultModelIdForCapability(doc, "vision");
+        Assert.False(string.IsNullOrWhiteSpace(chatDefault), "capabilities[chat].defaultModelId missing on disk");
+        Assert.False(string.IsNullOrWhiteSpace(visionDefault), "capabilities[vision].defaultModelId missing on disk");
+        Assert.Equal(chatDefault, SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
+        Assert.Equal(visionDefault, SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
         Assert.Equal(
             SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat),
             SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Chat));
