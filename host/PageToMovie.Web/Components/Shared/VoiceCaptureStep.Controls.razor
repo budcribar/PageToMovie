@@ -10,8 +10,8 @@
     }
     else if (Host._light == 0)
     {
-        <button class="btn btn-danger" disabled="@Host._busy"
-                data-testid="voice-capture-record" @onclick="Host.RecordAsync">
+        <button type="button" class="btn btn-danger" disabled="@(Host._busy || Host._recording || Host._light > 0)"
+                data-testid="voice-capture-record" @onclick="OnRecordAsync">
             🔴 @(Host._takeUrl is null ? "Record" : "Re-record")
         </button>
 

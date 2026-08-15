@@ -126,6 +126,12 @@ public partial class VoiceCaptureStep
         _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
         if (IsScriptOnlyPhrase(p))
             return;
+        // Don't block Record on a 404 clip fetch.
+        _ = TryLoadOriginalAsync(p);
+    }
+
+    internal async Task TryLoadOriginalAsync(VoiceCapturePhrase p)
+    {
         try
         {
             var sceneUrl = await GetSceneUrlAsync(p.Scene);
@@ -133,13 +139,17 @@ public partial class VoiceCaptureStep
                 return;
             var res = await Js.InvokeAsync<ExtractUrlResult>(
                 "PageToMovieFfmpeg.extractAudioSegmentToUrlAsync", sceneUrl, p.WindowStartSec, p.WindowEndSec);
-            if (res is { Success: true }) { _originalUrl = res.Url; _renderNarratorWave = true; }
+            if (res is { Success: true } && !string.IsNullOrEmpty(res.Url))
+            {
+                _originalUrl = res.Url;
+                _renderNarratorWave = true;
+                await InvokeAsync(StateHasChanged);
+            }
         }
         catch
         {
-            // Script-only / 404 clip — record without Listen.
+            // Fork / missing clip — Record still works.
         }
-        StateHasChanged();
     }
 
     internal static bool IsScriptOnlyPhrase(VoiceCapturePhrase p) =>
@@ -296,23 +306,34 @@ public partial class VoiceCaptureStep
     {
         _error = null; _status = null; _takeUrl = null; _score = null; _regions = null;
 
-        // Red → yellow → green. Recording (and the ball) start on green, so you're not caught mid-click.
-        _light = 1; StateHasChanged(); await Task.Delay(650); // red
-        _light = 2; StateHasChanged(); await Task.Delay(650); // yellow
-        _light = 3; StateHasChanged();                        // green = go
+        // Red → yellow → green. Recording (and the scroll) start on green.
+        _light = 1;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(650);
+        _light = 2;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(650);
+        _light = 3;
+        await InvokeAsync(StateHasChanged);
 
         try
         {
             await Js.InvokeAsync<object>("PageToMovieVoiceCapture.start");
             _recording = true;
-            _teleSession++;             // fresh teleprompter element on "Go"
-            _teleStartPending = true;   // its paced scroll starts in OnAfterRenderAsync
+            _teleSession++;
+            _teleStartPending = true;
             var session = ++_recordSession;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
             _ = ClearLightAsync();
             _ = AutoStopAsync(session, (int)((_ballDurationSec + 1.0) * 1000));
         }
-        catch (Exception ex) { _error = "Microphone failed: " + ex.Message; _recording = false; _light = 0; }
+        catch (Exception ex)
+        {
+            _error = "Microphone failed: " + ex.Message;
+            _recording = false;
+            _light = 0;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     internal async Task ClearLightAsync()
@@ -347,6 +368,7 @@ public partial class VoiceCaptureStep
             }
             var mime = MimeFor(result.FileName);
             _takeUrl = $"data:{mime};base64,{result.Base64}";
+            _renderYouWave = true;
             StateHasChanged();
 
             if (!string.IsNullOrEmpty(_originalUrl))

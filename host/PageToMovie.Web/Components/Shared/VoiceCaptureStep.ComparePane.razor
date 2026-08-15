@@ -22,7 +22,7 @@
     </div>
 
     <div class="ptm-wave-row">
-        <span class="ptm-wave-label">Narrator</span>
+        <span class="ptm-wave-label">@(string.IsNullOrWhiteSpace(Host.CharacterLabel) ? "Original" : Host.CharacterLabel)</span>
         <canvas id="ptm-wave-narrator" class="ptm-wave" height="34"></canvas>
     </div>
     @if (!string.IsNullOrEmpty(Host._takeUrl))
