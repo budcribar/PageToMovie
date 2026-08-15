@@ -187,7 +187,6 @@ public sealed class Stage1Service
                 projectId,
                 force: true,
                 copyIntoAssets: true,
-                useGrok: true,
                 onProgress: onProgress,
                 ct: ct).ConfigureAwait(false);
             if (plates.Ok)

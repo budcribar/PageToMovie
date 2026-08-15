@@ -14,7 +14,7 @@ namespace PageToMovie.Engine;
 /// Cast comes from Fountain (in-memory); plates persist to source/cast_seeds.json
 /// and are mirrored into the blueprint when present.
 /// Order of attack: cast <c>source_image_pages</c> → OCR name hits in <c>book_full.txt</c>
-/// (neighbor art pages) → optional Grok vision on remaining art (early-stop at 3/character) →
+/// (neighbor art pages) → optional vision classify on remaining art (early-stop at 3/character) →
 /// heuristic fill for empties. pipeline_state.character_plates.sorted_by_character records completion.
 /// </summary>
 public sealed class CharacterBookPlateService
@@ -52,16 +52,14 @@ public sealed class CharacterBookPlateService
         bool force = false,
         bool copyIntoAssets = true,
         string? onlyCharKey = null,
-        bool useGrok = true,
+        bool useVision = true,
         string? visionModel = null,
         int maxImages = 32,
         Action<string>? onProgress = null,
         CancellationToken ct = default)
     {
         var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-        visionModel = string.IsNullOrWhiteSpace(visionModel)
-            ? ProjectModelSelection.RequireVision(cfg, "Character book plates")
-            : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Character book plates");
+        visionModel = ResolvePlateSortVisionModel(cfg, visionModel);
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var castSeedsPath = ScreenplayService.GetCastSeedsPath(_projects, projectId);
@@ -106,11 +104,24 @@ public sealed class CharacterBookPlateService
 
         var (fromPages, fromOcr, ocrPages) = await SeedPagesAndOcrAsync(
             scores, inventory, seeds, onlyCharKey, projectDir, onProgress, ct).ConfigureAwait(false);
-        var method = BuildInitialMethod(fromPages, fromOcr);
-        method = await ApplyVisionOrHeuristicAsync(
-            useGrok, onlyCharKey, method, fromPages, fromOcr,
-            inventory, scores, seeds, ocrPages, maxImages, cast, visionModel,
-            result, onProgress, ct).ConfigureAwait(false);
+        var session = new PlateSortSession
+        {
+            OnlyCharKey = onlyCharKey,
+            Method = BuildInitialMethod(fromPages, fromOcr),
+            FromPages = fromPages,
+            FromOcr = fromOcr,
+            Inventory = inventory,
+            Scores = scores,
+            Seeds = seeds,
+            OcrPages = ocrPages,
+            MaxImages = maxImages,
+            Cast = cast,
+            VisionModel = visionModel,
+            UseVision = useVision,
+            Result = result,
+            OnProgress = onProgress,
+        };
+        var method = await ApplyVisionOrHeuristicAsync(session, ct).ConfigureAwait(false);
 
         result.Method = method;
 
@@ -238,46 +249,74 @@ public sealed class CharacterBookPlateService
         return methodParts.Count > 0 ? string.Join("+", methodParts) : "heuristic";
     }
 
-    private async Task<string> ApplyVisionOrHeuristicAsync(
-        bool useGrok,
-        string? onlyCharKey,
-        string method,
-        int fromPages,
-        int fromOcr,
-        List<BookImageRow> inventory,
-        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
-        JsonObject seeds,
-        List<BookOcrPlateShortlist.PageText> ocrPages,
-        int maxImages,
-        List<CharacterClassifyHint> cast,
-        string visionModel,
-        PageToMovie.Core.Models.AttachCharacterPlatesResult result,
-        Action<string>? onProgress,
-        CancellationToken ct)
+    private async Task<string> ApplyVisionOrHeuristicAsync(PlateSortSession session, CancellationToken ct)
     {
-        var wantGrok = ComputeWantGrok(useGrok, onlyCharKey, onProgress);
+        var wantVision = ComputeWantVision(session.UseVision, session.OnlyCharKey, session.VisionModel, session.OnProgress);
         // If OCR (+ source pages) already filled every cast member to 3, skip vision API entirely
-        var ocrComplete = IsOcrCastComplete(scores, cast);
+        var ocrComplete = IsOcrCastComplete(session.Scores, session.Cast);
 
-        if (wantGrok && !ocrComplete)
-            return await RunGrokVisionSortAsync(
-                method, inventory, scores, seeds, ocrPages, maxImages, cast, visionModel,
-                onlyCharKey, result, onProgress, ct).ConfigureAwait(false);
-        if (wantGrok)
-            return CompleteOcrSkipVision(method, onProgress);
+        if (wantVision && !ocrComplete)
+            return await RunVisionSortAsync(session, ct).ConfigureAwait(false);
+        if (wantVision)
+            return CompleteOcrSkipVision(session.Method, session.OnProgress);
         if (!ocrComplete)
-            return await RunHeuristicSortAsync(
-                method, fromPages, fromOcr, scores, inventory, seeds, onlyCharKey, onProgress, ct)
-                .ConfigureAwait(false);
-        return method;
+            return await RunHeuristicSortAsync(session, ct).ConfigureAwait(false);
+        return session.Method;
     }
 
-    private bool ComputeWantGrok(bool useGrok, string? onlyCharKey, Action<string>? onProgress)
+    private bool ComputeWantVision(
+        bool useVision, string? onlyCharKey, string? visionModel, Action<string>? onProgress)
     {
-        var wantGrok = useGrok && _vision.IsConfigured && string.IsNullOrWhiteSpace(onlyCharKey);
-        if (useGrok && !_vision.IsConfigured)
-            onProgress?.Invoke("XAI_API_KEY missing — using page seeds / OCR / heuristic plate sort");
-        return wantGrok;
+        if (!useVision || !string.IsNullOrWhiteSpace(onlyCharKey))
+            return false;
+        if (VisionSortIsUsable(visionModel, _vision))
+            return true;
+        onProgress?.Invoke(VisionFallbackMessage(visionModel));
+        return false;
+    }
+
+    /// <summary>
+    /// Vision sort when the selected model is an enabled catalog Vision row and the vision
+    /// client is configured for that model's provider. Not a vendor flag.
+    /// </summary>
+    internal static bool VisionSortIsUsable(string? visionModel, IVisionClient vision)
+    {
+        if (string.IsNullOrWhiteSpace(visionModel))
+            return false;
+        var entry = SupportedModelCatalog.Find(visionModel, ModelCapability.Vision);
+        if (entry is null || !entry.Enabled)
+            return false;
+        return vision.IsConfiguredFor(visionModel);
+    }
+
+    /// <summary>
+    /// Operator-facing fallback copy. Provider key names come from the catalog row, not a hardcoded vendor env var.
+    /// </summary>
+    internal static string VisionFallbackMessage(string? visionModel)
+    {
+        if (string.IsNullOrWhiteSpace(visionModel))
+            return "No vision model selected — using page seeds / OCR / heuristic plate sort";
+        var asVision = SupportedModelCatalog.Find(visionModel, ModelCapability.Vision);
+        if (asVision is null)
+            return "Selected model is not a vision model — using page seeds / OCR / heuristic plate sort";
+        if (asVision.RequiredEnvKeys.Count > 0)
+            return $"{string.Join(" / ", asVision.RequiredEnvKeys)} missing — using page seeds / OCR / heuristic plate sort";
+        return "Vision not configured — using page seeds / OCR / heuristic plate sort";
+    }
+
+    /// <summary>
+    /// Resolve an optional vision model for plate sort. Missing / wrong-capability / disabled → null (heuristic).
+    /// </summary>
+    internal static string? ResolvePlateSortVisionModel(
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement>? cfg,
+        string? explicitModel)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitModel))
+        {
+            var entry = SupportedModelCatalog.Find(explicitModel.Trim(), ModelCapability.Vision);
+            return entry is { Enabled: true } ? entry.Id : null;
+        }
+        return ProjectModelSelection.TryVision(cfg);
     }
 
     private static bool IsOcrCastComplete(
@@ -292,39 +331,33 @@ public sealed class CharacterBookPlateService
         return true;
     }
 
-    private async Task<string> RunGrokVisionSortAsync(
-        string method,
-        List<BookImageRow> inventory,
-        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
-        JsonObject seeds,
-        List<BookOcrPlateShortlist.PageText> ocrPages,
-        int maxImages,
-        List<CharacterClassifyHint> cast,
-        string visionModel,
-        string? onlyCharKey,
-        PageToMovie.Core.Models.AttachCharacterPlatesResult result,
-        Action<string>? onProgress,
-        CancellationToken ct)
+    private async Task<string> RunVisionSortAsync(PlateSortSession session, CancellationToken ct)
     {
-        method = string.IsNullOrEmpty(method) || method == "heuristic"
+        var method = string.IsNullOrEmpty(session.Method) || session.Method == "heuristic"
             ? OcrEngineIdentity.VisionEngine
-            : method + "+" + OcrEngineIdentity.VisionEngine;
-        var toScan = BuildVisionScanList(inventory, scores, seeds, ocrPages, Math.Clamp(maxImages, 4, 64));
-        onProgress?.Invoke(
-            $"Grok vision: classifying up to {toScan.Count} book image(s) for {cast.Count} character(s) (OCR shortlist first)…");
-        result.ImagesClassified = 0;
-        result.ImagesSkippedText = 0;
+            : session.Method + "+" + OcrEngineIdentity.VisionEngine;
+        var toScan = BuildVisionScanList(
+            session.Inventory, session.Scores, session.Seeds, session.OcrPages,
+            Math.Clamp(session.MaxImages, 4, 64));
+        session.OnProgress?.Invoke(
+            $"Vision: classifying up to {toScan.Count} book image(s) for {session.Cast.Count} character(s) (OCR shortlist first)…");
+        session.Result.ImagesClassified = 0;
+        session.Result.ImagesSkippedText = 0;
 
-        await ClassifyVisionImagesAsync(toScan, scores, cast, visionModel, result, onProgress, ct)
+        await ClassifyVisionImagesAsync(
+                toScan, session.Scores, session.Cast, session.VisionModel ?? "",
+                session.Result, session.OnProgress, ct)
             .ConfigureAwait(false);
 
-        var emptyCast = CountEmptyCastMembers(scores, cast);
+        var emptyCast = CountEmptyCastMembers(session.Scores, session.Cast);
         if (emptyCast > 0)
         {
-            onProgress?.Invoke(
+            session.OnProgress?.Invoke(
                 $"{emptyCast} cast member(s) still empty — filling from pages / hero heuristic…");
             method += "+heuristic_fill";
-            await ApplyHeuristicScoresAsync(scores, inventory, seeds, onlyCharKey, onlyEmpty: true, heroOnly: false, ct)
+            await ApplyHeuristicScoresAsync(
+                    session.Scores, session.Inventory, session.Seeds, session.OnlyCharKey,
+                    onlyEmpty: true, heroOnly: false, ct)
                 .ConfigureAwait(false);
         }
 
@@ -352,7 +385,7 @@ public sealed class CharacterBookPlateService
 
             var row = toScan[i];
             onProgress?.Invoke(
-                $"Grok vision {i + 1}/{toScan.Count}: {Path.GetFileName(row.AbsPath)} (p{row.Page})…");
+                $"Vision {i + 1}/{toScan.Count}: {Path.GetFileName(row.AbsPath)} (p{row.Page})…");
             await ClassifyOneVisionImageAsync(row, scores, cast, visionModel, result, onProgress, ct)
                 .ConfigureAwait(false);
         }
@@ -422,22 +455,15 @@ public sealed class CharacterBookPlateService
         return method;
     }
 
-    private async Task<string> RunHeuristicSortAsync(
-        string method,
-        int fromPages,
-        int fromOcr,
-        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
-        List<BookImageRow> inventory,
-        JsonObject seeds,
-        string? onlyCharKey,
-        Action<string>? onProgress,
-        CancellationToken ct)
+    private async Task<string> RunHeuristicSortAsync(PlateSortSession session, CancellationToken ct)
     {
-        method = fromPages > 0 || fromOcr > 0 ? method + "+heuristic" : "heuristic";
-        onProgress?.Invoke("Heuristic plate sort (OCR neighbors + cast pages + illustration ranking)…");
+        var method = session.FromPages > 0 || session.FromOcr > 0
+            ? session.Method + "+heuristic"
+            : "heuristic";
+        session.OnProgress?.Invoke("Heuristic plate sort (OCR neighbors + cast pages + illustration ranking)…");
         await ApplyHeuristicScoresAsync(
-                scores, inventory, seeds, onlyCharKey,
-                onlyEmpty: fromPages > 0 || fromOcr > 0, ct: ct)
+                session.Scores, session.Inventory, session.Seeds, session.OnlyCharKey,
+                onlyEmpty: session.FromPages > 0 || session.FromOcr > 0, ct: ct)
             .ConfigureAwait(false);
         return method;
     }
@@ -1954,6 +1980,24 @@ public sealed class CharacterBookPlateService
                 return 20.0;
         }
         return 0.0;
+    }
+
+    private sealed class PlateSortSession
+    {
+        public string? OnlyCharKey { get; init; }
+        public required string Method { get; init; }
+        public required int FromPages { get; init; }
+        public required int FromOcr { get; init; }
+        public required List<BookImageRow> Inventory { get; init; }
+        public required Dictionary<string, List<(BookImageRow Row, double Score)>> Scores { get; init; }
+        public required JsonObject Seeds { get; init; }
+        public required List<BookOcrPlateShortlist.PageText> OcrPages { get; init; }
+        public required int MaxImages { get; init; }
+        public required List<CharacterClassifyHint> Cast { get; init; }
+        public string? VisionModel { get; init; }
+        public required bool UseVision { get; init; }
+        public required AttachCharacterPlatesResult Result { get; init; }
+        public Action<string>? OnProgress { get; init; }
     }
 
     private sealed record BookImageRow(

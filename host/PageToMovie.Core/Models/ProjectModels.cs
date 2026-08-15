@@ -556,9 +556,7 @@ public sealed class AttachCharacterPlatesRequest
     public bool CopyIntoAssets { get; set; } = true;
     /// <summary>Optional single character; empty = all on-screen cast.</summary>
     public string? CharKey { get; set; }
-    /// <summary>Use Grok vision to assign pages to cast (default true for job).</summary>
-    public bool UseGrok { get; set; } = true;
-    /// <summary>Max book images to send to Grok (cost/latency cap).</summary>
+    /// <summary>Max book images to send to vision classify (cost/latency cap).</summary>
     public int MaxImages { get; set; } = 32;
     public string VisionModel { get; set; } = "";
 }
@@ -574,7 +572,7 @@ public sealed class AttachCharacterPlatesResult
     /// <summary>After this call, character plates are sorted in scenes.json.</summary>
     public bool SortedByCharacter { get; set; }
     public string? SortedAt { get; set; }
-    /// <summary>vision | heuristic | heuristic_after_grok_empty | none (legacy: grok_vision)</summary>
+    /// <summary>vision | heuristic | heuristic_fill | none (plus OCR / source-page prefixes; legacy: grok_vision)</summary>
     public string? Method { get; set; }
     public int ImagesClassified { get; set; }
     public int ImagesSkippedText { get; set; }

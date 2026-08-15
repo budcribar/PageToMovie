@@ -34,6 +34,21 @@ public sealed class MultiProviderVisionClient : IVisionClient
     /// <summary>True when at least one provider has an API key configured.</summary>
     public bool IsConfigured => _grok.IsConfigured || _anthropic.IsConfigured || _gemini.IsConfigured;
 
+    /// <inheritdoc />
+    public bool IsConfiguredFor(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            return false;
+        try
+        {
+            return Resolve(model).IsConfigured;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public Task<string> TranscribePageAsync(
         string imagePath, int page, string model = "", CancellationToken ct = default) =>
         Resolve(model).TranscribePageAsync(imagePath, page, model, ct);

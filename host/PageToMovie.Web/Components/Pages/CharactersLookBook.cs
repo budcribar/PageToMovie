@@ -264,7 +264,7 @@ public partial class Characters
         }
 
 
-        internal async Task StartSortCharacterPlatesAsync(bool useGrok = true)
+        internal async Task StartSortCharacterPlatesAsync()
         {
             S._busy = true;
             S._error = null;
@@ -272,7 +272,7 @@ public partial class Characters
             try
             {
                 try { await S.Hub.StartAsync(); } catch (Exception hex) { S._error = $"SignalR: {hex.Message}"; }
-                await S.Engine.StartSortCharacterPlatesAsync(S._projectId, useGrok: useGrok, maxImages: 32);
+                await S.Engine.StartSortCharacterPlatesAsync(S._projectId, maxImages: 32);
                 // Progress card owns in-progress UI (one Cancel there) — no green status banner
                 S._message = null;
                 var jobs = await S.Engine.GetJobAsync();

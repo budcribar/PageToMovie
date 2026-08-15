@@ -2080,8 +2080,9 @@ public sealed class FilmJobService
     }
 
     /// <summary>
-    /// Grok vision: classify book images → which characters appear, write plates to scenes.json.
-    /// Cancellable. Falls back to heuristics if no API key.
+    /// Classify book images → which characters appear, write plates to scenes.json.
+    /// Uses the project's vision model when that catalog row is usable; otherwise heuristic.
+    /// Cancellable.
     /// </summary>
     public Task<JobSnapshot> StartSortCharacterPlatesAsync(AttachCharacterPlatesRequest req)
     {
@@ -2200,9 +2201,7 @@ public sealed class FilmJobService
             Status = StatusRunning,
             Kind = "character-plates",
             ProjectId = projectId,
-            Message = req.UseGrok
-                ? "Sorting book images onto characters with Grok vision…"
-                : "Sorting book images onto characters (heuristic)…",
+            Message = "Sorting book images onto characters…",
             Index = 0,
             Total = Math.Max(1, req.MaxImages),
             StartedAt = DateTimeOffset.UtcNow,
@@ -2214,24 +2213,21 @@ public sealed class FilmJobService
         try
         {
             await AppendLogAsync(
-                req.UseGrok
-                    ? "Character plate sort (Grok vision classifies who appears on each page)"
-                    : "Character plate sort (heuristic only)");
+                "Character plate sort (vision when the selected model is usable; otherwise heuristic)");
 
             var result = await _plates.AttachAsync(
                 projectId,
                 force: true, // job is always an explicit re-sort from UI
                 copyIntoAssets: req.CopyIntoAssets,
                 onlyCharKey: req.CharKey,
-                useGrok: req.UseGrok,
-                visionModel: await ResolveVisionModelAsync(projectId, req.VisionModel, ct).ConfigureAwait(false),
+                visionModel: string.IsNullOrWhiteSpace(req.VisionModel) ? null : req.VisionModel,
                 maxImages: req.MaxImages > 0 ? req.MaxImages : 32,
                 onProgress: line =>
                 {
                     _ = AppendLogAsync(line);
-                    // "Grok vision 3/20: …"
+                    // "Vision 3/20: …"
                     var m = CommonRegex.Match(
-                        line, @"Grok vision\s+(\d+)/(\d+)",
+                        line, @"Vision\s+(\d+)/(\d+)",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (m.Success &&
                         int.TryParse(m.Groups[1].Value, out var i) &&
