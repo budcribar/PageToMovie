@@ -95,14 +95,14 @@
             <input type="text"
                    class="form-control form-control-sm fst-italic border-secondary bg-dark text-light py-0 px-1 flex-shrink-0 spe-beat-input"
                    style="width: 100px; height: 26px; font-size: 0.8rem;"
-                   @bind="Beat.Parenthetical"
+                   @bind="ParentheticalInput"
                    @bind:after="OnChanged"
                    title="@(string.IsNullOrWhiteSpace(Beat.Parenthetical) ? "Parenthetical — short acting direction under the name, e.g. (whispering)" : Beat.Parenthetical)"
                    placeholder="(paren)" />
             <input type="text"
                    class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1 spe-beat-input"
                    style="height: 26px; font-size: 0.85rem;"
-                   @bind="Beat.SpokenText"
+                   @bind="SpokenTextInput"
                    @bind:after="OnChanged"
                    title="@(string.IsNullOrWhiteSpace(Beat.SpokenText) ? "Spoken dialogue line" : Beat.SpokenText)"
                    placeholder="Spoken dialogue…" />
@@ -127,7 +127,7 @@
             <input type="text"
                    class="form-control form-control-sm fst-italic border-secondary bg-dark text-light py-0 px-2 flex-grow-1 spe-beat-input"
                    style="height: 26px; font-size: 0.8rem;"
-                   @bind="Beat.Parenthetical"
+                   @bind="ParentheticalInput"
                    @bind:after="OnChanged"
                    title="@BeatType.Parenthetical.GetJargonHint()"
                    placeholder="(parenthetical direction)" />
