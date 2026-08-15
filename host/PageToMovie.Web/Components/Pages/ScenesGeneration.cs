@@ -622,6 +622,11 @@ public partial class Scenes
 
     internal async Task StartBatchAsync()
     {
+        if (S.IsSimpleFilm)
+        {
+            await StartSimpleMovieAsync();
+            return;
+        }
         if (S.List._selected.Count == 0) return;
         if (!S.List.CastReady)
         {
@@ -780,10 +785,82 @@ public partial class Scenes
 
     internal async Task OpenGenerateConfirmAsync()
     {
+        if (S.IsSimpleFilm)
+        {
+            await StartSimpleMovieAsync();
+            return;
+        }
         if (S.List._selected.Count == 0) return;
         if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
         _showGenerateConfirm = true;
         await S.List.RefreshCostEstimateAsync();
+    }
+
+    /// <summary>
+    /// Easy Start Step 3: existing voice-substitution job + client detect/overlay,
+    /// gated on reviewed Dialogue Timing windows. Does not start video gen.
+    /// </summary>
+    internal async Task StartSimpleMovieAsync()
+    {
+        if (string.IsNullOrEmpty(S._projectId)) return;
+        if (JobRunning)
+        {
+            S._message = "A job is already running — watch progress instead of starting another.";
+            return;
+        }
+
+        S._busy = true;
+        S._error = null;
+        S._message = null;
+        try
+        {
+            if (!S.MediaFolder.IsConnected)
+            {
+                var connected = await S.MediaFolder.ConnectFolderAsync();
+                if (!connected && !S.MediaFolder.IsConnected)
+                {
+                    S._error = "Connect your media folder so we can place your voice on the pictures.";
+                    return;
+                }
+            }
+
+            var chars = await S.Engine.GetCharactersAsync(S._projectId);
+            var charKey = VoiceSubstitutionOverlayGate.FirstRecordedCharacterKey(chars?.Characters);
+            if (string.IsNullOrWhiteSpace(charKey))
+            {
+                S._error = "Record a voice on story & voice first.";
+                return;
+            }
+
+            DialogueTimingDoc? timing = null;
+            ProjectVoiceAlignment? alignment = null;
+            try { timing = await S.Engine.GetDialogueTimingAsync(S._projectId); } catch { /* gate treats null as not reviewed */ }
+            try { alignment = await S.Engine.GetVoiceAlignmentAsync(S._projectId); } catch { /* same */ }
+            if (!VoiceSubstitutionOverlayGate.CanOverlay(alignment, timing))
+            {
+                S._error = VoiceSubstitutionOverlayGate.ReviewRequiredMessage;
+                return;
+            }
+
+            S._message = "Placing your voice…";
+            var res = await S.VoiceSub.DubMovieInMyVoiceAsync(
+                S._projectId,
+                charKey: charKey,
+                onProgress: s => { S._message = s; _ = S.InvokeAsync(S.StateHasChanged); });
+            if (res.Ok)
+                S._message = $"{res.ClipsDubbed} scene(s) in your voice"
+                             + (res.ClipsFailed > 0 ? $" · {res.ClipsFailed} skipped" : "");
+            else
+                S._error = res.Error ?? VoiceSubstitutionOverlayGate.ReviewRequiredMessage;
+        }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+        }
+        finally
+        {
+            S._busy = false;
+        }
     }
 
 
@@ -796,6 +873,11 @@ public partial class Scenes
     /// <summary>F4: full-film fill holes — all non-credits scenes, onlyMissing=true.</summary>
     internal async Task StartFillHolesMovieAsync()
     {
+        if (S.IsSimpleFilm)
+        {
+            await StartSimpleMovieAsync();
+            return;
+        }
         if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
         if (S.List._scenes is null || S.List._scenes.Count == 0) { S._error = "No scenes loaded."; return; }
         // F5: don't double-start

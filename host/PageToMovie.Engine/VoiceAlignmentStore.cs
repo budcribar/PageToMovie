@@ -43,13 +43,35 @@ public sealed class VoiceAlignmentStore
     /// <summary>Project-relative path of the alignment file (single source of the naming).</summary>
     public const string RelativePath = "assets/alignment/voice_alignment.json";
 
+    /// <summary>Same folder as alignment — Dialogue Timing review cache.</summary>
+    public const string DialogueTimingRelativePath = "assets/alignment/dialogue_timing.json";
+
     public string AlignmentPath(string projectId) =>
         Path.Combine(
             _projects.GetProjectDir(projectId),
             "assets", "alignment", "voice_alignment.json");
 
+    public string DialogueTimingPath(string projectId) =>
+        Path.Combine(
+            _projects.GetProjectDir(projectId),
+            "assets", "alignment", "dialogue_timing.json");
+
     public Task<ProjectVoiceAlignment?> LoadAsync(string projectId, CancellationToken ct = default) =>
         StreamJsonStore.LoadAsync<ProjectVoiceAlignment>(AlignmentPath(projectId), JsonOpts, ct);
+
+    public Task<DialogueTimingDoc?> LoadDialogueTimingAsync(string projectId, CancellationToken ct = default) =>
+        StreamJsonStore.LoadAsync<DialogueTimingDoc>(DialogueTimingPath(projectId), JsonOpts, ct);
+
+    /// <summary>
+    /// Easy Start catalog gate: a public title is pickable only after admin Dialogue Timing
+    /// (or measured/manual alignment) is complete — not estimate-only.
+    /// </summary>
+    public async Task<bool> IsEasyStartTimingCompleteAsync(string projectId, CancellationToken ct = default)
+    {
+        var alignment = await LoadAsync(projectId, ct).ConfigureAwait(false);
+        var timing = await LoadDialogueTimingAsync(projectId, ct).ConfigureAwait(false);
+        return VoiceSubstitutionOverlayGate.CanOverlay(alignment, timing);
+    }
 
     public async Task SaveAsync(string projectId, ProjectVoiceAlignment alignment, CancellationToken ct = default)
     {
@@ -296,6 +318,78 @@ public sealed class VoiceAlignmentStore
             clip.Segments[i].Source = matched[i].Source;
         }
     }
+
+    /// <summary>
+    /// Copy accepted Dialogue Timing windows onto the persisted alignment so overlay
+    /// reads reviewed splice points (source = <see cref="SpeechTimestampSource.Manual"/>
+    /// when the reviewer edited, otherwise keep a measured source).
+    /// </summary>
+    public static void ApplyReviewedTiming(ProjectVoiceAlignment alignment, DialogueTimingScene scene)
+    {
+        if (alignment is null || scene is null) return;
+        foreach (var row in scene.Rows)
+        {
+            if (!row.Reviewed || row.WindowEndSec <= row.WindowStartSec) continue;
+            var clipNo = row.Clip > 0 ? row.Clip : 1;
+            var clip = alignment.Find(scene.Scene, clipNo);
+            if (clip is null)
+            {
+                clip = new ClipSpeechAlignment
+                {
+                    Scene = scene.Scene,
+                    Clip = clipNo,
+                    ClipDurationSeconds = scene.SceneDurationSec,
+                };
+                alignment.Clips.Add(clip);
+            }
+
+            var seg = FindSegmentForRow(clip, row);
+            var source = SegmentSourceAfterReview(seg, row);
+            if (seg is null)
+            {
+                clip.Segments.Add(new SpeechSegment
+                {
+                    Index = clip.Segments.Count,
+                    CharacterKey = row.Speaker ?? "",
+                    DialogueText = row.ScriptText ?? "",
+                    StartSec = row.WindowStartSec,
+                    EndSec = row.WindowEndSec,
+                    Source = source,
+                });
+            }
+            else
+            {
+                seg.StartSec = row.WindowStartSec;
+                seg.EndSec = row.WindowEndSec;
+                seg.Source = source;
+            }
+        }
+    }
+
+    private static SpeechSegment? FindSegmentForRow(ClipSpeechAlignment clip, DialogueTimingRow row)
+    {
+        var text = (row.ScriptText ?? "").Trim();
+        if (text.Length > 0)
+        {
+            var byText = clip.Segments.Find(s =>
+                string.Equals((s.DialogueText ?? "").Trim(), text, StringComparison.OrdinalIgnoreCase));
+            if (byText is not null) return byText;
+        }
+        return clip.Segments.Count == 1 ? clip.Segments[0] : null;
+    }
+
+    private static string SegmentSourceAfterReview(SpeechSegment? existing, DialogueTimingRow row)
+    {
+        if (existing is not null
+            && SpeechTimestampSource.IsDetected(existing.Source)
+            && !string.Equals(existing.Source, SpeechTimestampSource.Estimate, StringComparison.OrdinalIgnoreCase)
+            && NearlyEqual(existing.StartSec, row.WindowStartSec)
+            && NearlyEqual(existing.EndSec, row.WindowEndSec))
+            return existing.Source;
+        return SpeechTimestampSource.Manual;
+    }
+
+    private static bool NearlyEqual(double a, double b) => Math.Abs(a - b) < 0.02;
 
     // ── small JSON readers ───────────────────────────────────────────────────────────────────
 

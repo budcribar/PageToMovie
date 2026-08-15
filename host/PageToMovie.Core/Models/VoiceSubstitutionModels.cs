@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PageToMovie.Core.Models;
 
@@ -206,4 +207,60 @@ public sealed class SpeechWindow
 {
     public double StartSec { get; set; }
     public double EndSec { get; set; }
+}
+
+/// <summary>
+/// Overlay may run only after splice windows are reviewed — not estimate-only.
+/// Review UI is <c>/dialogue-timing</c>; accepted windows land on
+/// <see cref="ProjectVoiceAlignment"/> as silence/transcript/manual.
+/// </summary>
+public static class VoiceSubstitutionOverlayGate
+{
+    public const string ReviewRequiredMessage =
+        "Review splice windows on Dialogue timing before placing your voice.";
+
+    /// <summary>
+    /// True when dialogue-timing rows are marked reviewed, or every alignment
+    /// segment has a measured/manual source (not <see cref="SpeechTimestampSource.Estimate"/>).
+    /// </summary>
+    public static bool CanOverlay(ProjectVoiceAlignment? alignment, DialogueTimingDoc? timing) =>
+        TimingReviewed(timing) || AlignmentReviewed(alignment);
+
+    /// <summary>
+    /// Easy Start is an entry point only when at least one public title is timing-complete.
+    /// Same count as <c>GET /api/projects/forkable</c> (empty list ⇒ hide home / nav teasers).
+    /// </summary>
+    public static bool ShowEasyStartEntry(int timingCompleteTitleCount) =>
+        timingCompleteTitleCount > 0;
+
+    public static bool TimingReviewed(DialogueTimingDoc? timing)
+    {
+        if (timing?.Scenes is not { Count: > 0 }) return false;
+        var rows = timing.Scenes
+            .SelectMany(s => s.Rows)
+            .Where(r => !string.IsNullOrWhiteSpace(r.ScriptText))
+            .ToList();
+        return rows.Count > 0 && rows.TrueForAll(r => r.Reviewed);
+    }
+
+    public static bool AlignmentReviewed(ProjectVoiceAlignment? alignment)
+    {
+        if (alignment?.Clips is not { Count: > 0 }) return false;
+        var withLines = alignment.Clips.Where(c => c.Segments.Count > 0).ToList();
+        return withLines.Count > 0 && withLines.TrueForAll(c => c.IsDetected);
+    }
+
+    /// <summary>First cast member that already has a cloned/provider voice (the Easy Start take).</summary>
+    public static string? FirstRecordedCharacterKey(IEnumerable<CharacterSummary>? characters) =>
+        characters?.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId))?.Key;
+
+    /// <summary>
+    /// "No scene list yet" only when there are truly no scenes and no clips.
+    /// A loaded shot plan or any on-disk clip means the movie step can proceed.
+    /// </summary>
+    public static bool IsMissingSceneList(IReadOnlyList<SceneSummary>? scenes)
+    {
+        if (scenes is { Count: > 0 }) return false;
+        return true;
+    }
 }

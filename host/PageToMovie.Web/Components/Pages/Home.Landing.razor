@@ -10,7 +10,7 @@
             </div>
             <h1 class="home-landing__title">@L["Home.DropABook"]</h1>
             <p class="home-landing__lede mb-0">
-                @L["Home.LandingSubtitle"]
+                @(ShowEasyStart ? L["Home.LandingSubtitle"] : L["Home.LandingSubtitleStudio"])
             </p>
             @* Actions live on the cards below — avoid duplicate Easy start / Full studio / Demos buttons here. *@
             @if (!IsLoggedIn)

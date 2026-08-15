@@ -10,6 +10,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject IAppLocalizer L
+@inject ClientVoiceSubstitutionService VoiceSub
 @using PageToMovie.Core.Models
 @using PageToMovie.Web.Services
 
@@ -136,12 +137,19 @@
 {
     <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-film-banner">
         <strong>Simple path.</strong>
-        Your voice is ready — use <strong>Generate missing</strong> (or the batch control below) to film all scenes.
+        Review splice windows, then put your voice on the existing pictures.
+        <a href="dialogue-timing" class="alert-link" data-testid="simple-film-dialogue-timing">Dialogue timing →</a>
+        <span class="text-muted"> · </span>
+        <button type="button" class="btn btn-sm btn-primary ms-1"
+                data-testid="scenes-generate-missing"
+                disabled="@(_busy || Gen.JobRunning)"
+                @onclick="Gen.StartSimpleMovieAsync">Generate missing</button>
+        <span class="text-muted"> · </span>
         <a href="simple-voice" class="alert-link">Back to story & voice</a>
     </div>
 }
 
-@if (_gateChecked && !ActiveProject.CanScenes)
+@if (_gateChecked && !ActiveProject.CanScenes && !List.HasSceneOrClipMedia && !IsSimpleFilm)
 {
     <ReadinessGateBanner Visible="true"
                          Reason="@ActiveProject.ScenesBlockedReason"

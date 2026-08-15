@@ -44,8 +44,11 @@
         <a href="cost" class="alert-link">Estimate</a> or
         <a href="scenes" class="alert-link">Film</a>.
         <button type="button" class="btn btn-link btn-sm p-0 align-baseline alert-link" @onclick="List.ExitSimplePathAsync">Exit simple → full cast</button>
-        ·
-        <a href="simple-voice" class="alert-link">Library books</a>
+        @if (_easyStartAvailable)
+        {
+            <text> · </text>
+            <a href="simple-voice" class="alert-link">Library books</a>
+        }
     </div>
 }
 

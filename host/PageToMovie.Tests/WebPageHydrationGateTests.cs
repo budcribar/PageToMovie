@@ -55,6 +55,27 @@ public class WebPageHydrationGateTests
         Assert.Equal(2, page._forkableStories.Count);
         Assert.Equal("Buster", page._forkableStories[0].Title);
         Assert.Equal("Mary10", page._forkableStories[1].Title);
+        Assert.False(page.NothingReady);
+        Assert.False(page.CatalogPending);
+    }
+
+    [Fact]
+    public async Task LoadStoriesAsync_empty_catalog_is_nothing_ready_not_a_pick_list()
+    {
+        var json = """{ "ok": true, "projects": [] }""";
+        var handler = new ReplyHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        });
+        var engine = new EngineApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") });
+        var page = new SimpleVoiceStoriesHarness(engine);
+        await page.LoadStoriesAsync();
+
+        Assert.False(page._storiesLoading);
+        Assert.Null(page._storiesError);
+        Assert.Empty(page._forkableStories);
+        Assert.True(page.NothingReady);
+        Assert.False(VoiceSubstitutionOverlayGate.ShowEasyStartEntry(page._forkableStories.Count));
     }
 
     [Fact]

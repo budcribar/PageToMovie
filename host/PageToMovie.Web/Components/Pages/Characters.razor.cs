@@ -68,6 +68,9 @@ public partial class Characters : IAsyncDisposable
 
     internal List<string> _projectIds = new();
 
+    /// <summary>True when the Easy Start catalog has a timing-complete title (same forkable list).</summary>
+    internal bool _easyStartAvailable;
+
     internal const int LookAutosaveDebounceMs = 800;
 
 
@@ -91,6 +94,9 @@ public partial class Characters : IAsyncDisposable
                 Nav.NavigateTo("simple-voice");
                 return;
             }
+
+            try { _easyStartAvailable = await Engine.HasEasyStartStoriesAsync(); }
+            catch { _easyStartAvailable = false; }
 
 
             if (string.IsNullOrEmpty(_projectId) || !ActiveProject.CanCharacters)

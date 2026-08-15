@@ -757,6 +757,16 @@ public sealed class EngineApiClient
         return await SendForkableWithTimeoutAsync(req, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// True when the Easy Start catalog has at least one timing-complete title
+    /// (<see cref="ListForkableProjectsAsync"/>). Hide every Easy Start entry when false.
+    /// </summary>
+    public async Task<bool> HasEasyStartStoriesAsync(CancellationToken ct = default)
+    {
+        var (projects, _) = await ListForkableProjectsAsync(ct).ConfigureAwait(false);
+        return VoiceSubstitutionOverlayGate.ShowEasyStartEntry(projects.Count);
+    }
+
     private void AttachForkableIdentity(HttpRequestMessage req)
     {
         if (_session is null || string.IsNullOrWhiteSpace(_session.Token))

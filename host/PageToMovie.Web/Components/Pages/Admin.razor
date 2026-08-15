@@ -38,6 +38,7 @@
                 <a href="/admin/ai-calls" class="btn btn-sm btn-outline-primary" data-testid="admin-link-ai-calls" title="AI/model call analytics — success, retries, cost, failures">🔁 AI Calls</a>
                 <a href="/admin/generation-errors" class="btn btn-sm btn-outline-primary" data-testid="admin-link-generation-errors" title="Transient-retry and partial-coverage events per call">⚠️ Generation Errors</a>
                 <a href="/admin/book-cache" class="btn btn-sm btn-outline-primary" title="Book text registry, adaptation cache, xAI file_id">📚 Book cache</a>
+                <a href="/dialogue-timing" class="btn btn-sm btn-outline-primary" data-testid="admin-link-dialogue-timing" title="Review and edit splice windows before Easy Start voice overlay">Dialogue timing</a>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="Ui.ExpandAllCards" title="Expand all card sections">📂 Expand All</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="Ui.CollapseAllCards" title="Collapse all card sections">📁 Collapse All</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="State.RefreshAsync" disabled="@_busy">Refresh</button>
