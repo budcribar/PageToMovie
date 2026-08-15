@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components;
@@ -32,7 +33,11 @@ internal static class StudioPageBootstrap
             projectIds.Exists(id => string.Equals(id, aid, StringComparison.OrdinalIgnoreCase)))
         {
             projectId = aid;
-            activeProject.Set(aid, projs.Active?.Label ?? projs.Active?.Title ?? aid);
+            activeProject.Set(
+                aid,
+                projs.Active?.Label ?? projs.Active?.Title ?? aid,
+                parentProjectId: projs.Active?.ParentProjectId,
+                studioPath: projs.Active?.StudioPath ?? StudioPath.Full);
         }
         else if (projectIds.Count > 0)
             projectId = projectIds[0];

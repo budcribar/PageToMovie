@@ -27,10 +27,10 @@
                 </button>
             </div>
         }
-        else if (Host._forkableStories.Count == 0)
+        else if (!VoiceSubstitutionOverlayGate.ShowEasyStartEntry(Host._forkableStories.Count))
         {
-            <div class="alert alert-light border small mb-3">
-                No shareable stories yet. Mark a film “Public (Forkable)” in the full studio to see it here.
+            <div class="alert alert-light border small mb-3" data-testid="simple-voice-nothing-ready">
+                Nothing ready yet.
             </div>
         }
         else

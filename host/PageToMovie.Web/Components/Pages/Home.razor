@@ -22,11 +22,13 @@
 }
 
 
-<Home_Landing IsLoggedIn="Session.IsLoggedIn" />
+<Home_Landing IsLoggedIn="Session.IsLoggedIn" ShowEasyStart="_easyStartAvailable" />
 
 @if (!Session.IsLoggedIn)
 {
-    @* Same three cards as signed-in easy home; CTAs send guests to sign-in. *@
+    @* Same cards as signed-in easy home; CTAs send guests to sign-in. *@
+    @if (_easyStartAvailable)
+    {
     <PromoCard TestId="home-simple-voice-card" Eyebrow="@L["Home.EasiestStart"]" Title="@L["Home.ReadLibraryBook"]">
         <Body>
             @L["Home.PickStoryRecordSample"]
@@ -37,6 +39,7 @@
             </a>
         </Cta>
     </PromoCard>
+    }
     <PromoCard TestId="home-full-studio-card" Eyebrow="@L["Home.Advanced"]" Title="@L["Home.FullStudio"]">
         <Body>
             @L["Home.CastEstimateFilmReview"]
@@ -58,7 +61,9 @@ else
 {
     @if (Projects.ShowEasyHome)
     {
-        @* Default home: easiest start only — advanced project picker is behind Full studio. *@
+        @* Default home: easiest start only when a timing-complete library book exists. *@
+        @if (_easyStartAvailable)
+        {
         <PromoCard TestId="home-simple-voice-card" Eyebrow="@L["Home.EasiestStart"]" Title="@L["Home.ReadLibraryBook"]">
             <Body>
                 @L["Home.PickStoryRecordSampleStock"]
@@ -69,6 +74,7 @@ else
                 </a>
             </Cta>
         </PromoCard>
+        }
 
         <PromoCard TestId="home-full-studio-card" Eyebrow="@L["Home.Advanced"]" Title="@L["Home.FullStudio"]">
             <Body>
@@ -87,12 +93,15 @@ else
     else
     {
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            @if (_easyStartAvailable)
+            {
             <button type="button"
                     class="btn btn-link btn-sm px-0"
                     data-testid="home-back-easy-start"
                     @onclick="Projects.ExitFullStudio">
                 @L["Home.BackToEasyStart"]
             </button>
+            }
             <span class="small text-muted">@L["Home.FullStudio"]</span>
         </div>
 

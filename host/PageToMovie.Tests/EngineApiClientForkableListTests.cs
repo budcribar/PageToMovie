@@ -38,6 +38,20 @@ public class EngineApiClientForkableListTests
         Assert.Equal("Mary10", projects[1].Title);
         Assert.Equal("original-buster", projects[2].Title);
         Assert.Equal("/api/projects/forkable", path);
+        Assert.True(await engine.HasEasyStartStoriesAsync());
+    }
+
+    [Fact]
+    public async Task HasEasyStartStoriesAsync_false_when_catalog_empty()
+    {
+        var handler = new CaptureHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{ "ok": true, "projects": [] }""", Encoding.UTF8, "application/json"),
+            });
+        var engine = new EngineApiClient(NewHttp(handler));
+
+        Assert.False(await engine.HasEasyStartStoriesAsync());
     }
 
     [Fact]

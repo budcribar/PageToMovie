@@ -159,6 +159,19 @@ public partial class SimpleVoice
     internal static bool ShouldResumeRecordPhase(bool isLoggedIn, bool isSimpleVoiceProject, string? projectId) =>
         isLoggedIn && isSimpleVoiceProject && !string.IsNullOrEmpty(projectId);
 
+    /// <summary>
+    /// Pick phase with an empty timing-complete catalog — no untimed titles, no pick list.
+    /// In-progress record/movie still resumes even if the catalog is now empty.
+    /// </summary>
+    internal bool NothingReady =>
+        !_storiesLoading
+        && string.IsNullOrEmpty(_storiesError)
+        && !VoiceSubstitutionOverlayGate.ShowEasyStartEntry(_forkableStories.Count)
+        && _phase == Phase.Pick;
+
+    /// <summary>Hide Easy Start chrome until the timing-complete catalog is known.</summary>
+    internal bool CatalogPending => _storiesLoading && _phase == Phase.Pick;
+
     private async Task TryResumeExistingProjectAsync()
     {
         if (!ShouldResumeRecordPhase(Session.IsLoggedIn, ActiveProject.IsSimpleVoice, ActiveProject.ProjectId))

@@ -12,6 +12,20 @@
 
 <PageTitle>Read in your voice · PageToMovie</PageTitle>
 
+@if (CatalogPending)
+{
+    <p class="small text-muted" data-testid="simple-voice-loading">Loading stories…</p>
+}
+else if (NothingReady)
+{
+    <StudioPageHeader Kicker="" Title="Nothing ready yet">
+        No library books are ready.
+    </StudioPageHeader>
+    <p class="small text-muted mb-3" data-testid="simple-voice-nothing-ready">Nothing ready yet.</p>
+    <a class="btn btn-link btn-sm px-0" href="/" data-testid="simple-voice-home">Home</a>
+}
+else
+{
 <StudioPageHeader Kicker="Easiest start" Title="Two steps · story and your voice">
     Pick a library book, record one sample, then make the movie.
     Pictures stay — you re-speak whichever character you pick.
@@ -54,3 +68,4 @@
         <SimpleVoice_MoviePhase />
     }
 </CascadingValue>
+}

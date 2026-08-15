@@ -8,7 +8,10 @@
 
 
     @* ---- Scene list ---- *@
-    @if (Host.List._scenes is null)
+    @{
+        var list = ListState ?? Host.List;
+    }
+    @if (list._scenes is null)
     {
         @if (!string.IsNullOrWhiteSpace(Host._error))
         {
@@ -21,7 +24,7 @@
         {
             <EmptyState Message="Loading scenes…" CssClass="text-muted" />
         }
-        else
+        else if (VoiceSubstitutionOverlayGate.IsMissingSceneList(list._scenes))
         {
             <EmptyState Message="No scene list yet. Rebuild the shot plan from the screenplay, then return here."
                         ActionHref="adaptation/shots"
@@ -29,7 +32,7 @@
                         CssClass="text-muted" />
         }
     }
-    else if (Host.List._scenes.Count == 0)
+    else if (list._scenes.Count == 0 && VoiceSubstitutionOverlayGate.IsMissingSceneList(list._scenes))
     {
         <EmptyState Message="No scenes in the shot plan yet."
                     ActionHref="adaptation/shots"
@@ -40,10 +43,10 @@
     {
         @* Authoritative scene/clip counts for tests, queryable in one place without counting rows. *@
         <div data-testid="scenes-status"
-             data-scene-count="@Host.List._scenes.Count"
-             data-clip-count="@Host.List._scenes.Sum(s => s.ClipCount)"
-             data-clips-on-disk="@Host.List._scenes.Sum(s => s.ClipsOnDisk)"
-             data-scenes-complete="@Host.List._scenes.Count(s => s.ClipsComplete)"
+             data-scene-count="@list._scenes.Count"
+             data-clip-count="@list._scenes.Sum(s => s.ClipCount)"
+             data-clips-on-disk="@list._scenes.Sum(s => s.ClipsOnDisk)"
+             data-scenes-complete="@list._scenes.Count(s => s.ClipsComplete)"
              class="visually-hidden" aria-hidden="true"></div>
         @* Batch generation is started from THIS all-scenes view, so its progress/message/result must
            show here too — the detail view below has its own copy for single-scene work. Without this,
@@ -80,15 +83,15 @@
         <div class="card mb-3 p-3">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <CapabilityLockedControl Enabled="Caps.VideoReady"
+                    <CapabilityLockedControl Enabled="@(Host.IsSimpleFilm || Caps.VideoReady)"
                                              BlockedReason="@StudioCapabilityState.VideoBlockedReason"
                                              SettingsHref="@StudioCapabilityState.VideoSettingsHref"
                                              TestId="scenes-generate-batch-cap">
                     <button type="button"
                             data-testid="scenes-generate-batch"
-                            class="btn batch-go @(Host.List._selected.Count > 0 && !Host.Gen.JobRunning && Host.List.CastReady ? "batch-go--ready" : "")"
-                            disabled="@(Host._busy || Host.List._selected.Count == 0 || Host.Gen.JobRunning || !Host.List.CastReady || Host.List.SelectedLockedByOther)"
-                            title="@Host.List.GenerateBatchTitle"
+                            class="btn batch-go @((Host.IsSimpleFilm || (Host.List._selected.Count > 0 && Host.List.CastReady)) && !Host.Gen.JobRunning ? "batch-go--ready" : "")"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || Host.List.SelectedLockedByOther || (!Host.IsSimpleFilm && (Host.List._selected.Count == 0 || !Host.List.CastReady)))"
+                            title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : Host.List.GenerateBatchTitle)"
                             @onclick="Host.Gen.OpenGenerateConfirmAsync">
                         @if (Host.Gen.JobRunning)
                         {

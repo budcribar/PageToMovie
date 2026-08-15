@@ -614,9 +614,13 @@ public static class ProjectEndpoints
 }
 
     private static async Task<IResult> GetProjectsForkable(ProjectStore store,
+    VoiceAlignmentStore alignmentStore,
     CancellationToken ct)
     {
         // Public catalog — sign-in is only required to fork a pick, not to see titles.
+        // Easy Start hides titles until admin Dialogue Timing is complete (reviewed /
+        // non-estimate splice windows). An empty list hides Easy Start as an entry
+        // (home / teasers / pick list). Full studio still lists the project so admin can finish.
         var all = await store.ListProjectsAsync(ct);
         var forkable = new List<object>();
         foreach (var p in all
@@ -624,6 +628,8 @@ public static class ProjectEndpoints
                         && string.IsNullOrWhiteSpace(p.ParentProjectId))
             .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase))
         {
+            if (!await alignmentStore.IsEasyStartTimingCompleteAsync(p.Id, ct).ConfigureAwait(false))
+                continue;
             var share = ProjectScreenplayShare.Inspect(p.Path);
             forkable.Add(new
             {
@@ -851,7 +857,7 @@ public static class ProjectEndpoints
     }
 }
 
-    private static async Task<IResult> PostProjectsIdDialogueTimingScene(string id, DialogueTimingScene body, IUserContext user, IOptions<PageToMovieOptions> opts, ProjectStore store, CancellationToken ct)
+    private static async Task<IResult> PostProjectsIdDialogueTimingScene(string id, DialogueTimingScene body, IUserContext user, IOptions<PageToMovieOptions> opts, ProjectStore store, VoiceAlignmentStore alignmentStore, CancellationToken ct)
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -879,6 +885,20 @@ public static class ProjectEndpoints
 
     var writeOpts = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
     await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(doc, writeOpts) + "\n", ct);
+
+    // Persist accepted splice windows onto voice_alignment.json so overlay reads reviewed timestamps.
+    try
+    {
+        var alignment = await alignmentStore.LoadAsync(id, ct).ConfigureAwait(false)
+                        ?? new ProjectVoiceAlignment { ProjectId = id };
+        VoiceAlignmentStore.ApplyReviewedTiming(alignment, body);
+        await alignmentStore.SaveAsync(id, alignment, ct).ConfigureAwait(false);
+    }
+    catch
+    {
+        /* timing save already succeeded; alignment write is best-effort */
+    }
+
     return Results.Ok(new { ok = true, scene = body.Scene, rows = body.Rows?.Count ?? 0 });
 }
 

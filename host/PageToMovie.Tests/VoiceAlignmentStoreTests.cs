@@ -282,6 +282,96 @@ public class VoiceAlignmentStoreTests
     }
 
     [Fact]
+    public void ApplyReviewedTiming_writes_manual_windows_onto_alignment()
+    {
+        var alignment = new ProjectVoiceAlignment { ProjectId = "Demo" };
+        var scene = new DialogueTimingScene
+        {
+            Scene = 1,
+            SceneDurationSec = 8,
+            Rows =
+            {
+                new DialogueTimingRow
+                {
+                    Clip = 1,
+                    Speaker = "Character_Teacher",
+                    ScriptText = "Mary, sit down.",
+                    WindowStartSec = 1.1,
+                    WindowEndSec = 2.8,
+                    Reviewed = true,
+                },
+                new DialogueTimingRow
+                {
+                    Clip = 1,
+                    ScriptText = "ignored — not reviewed",
+                    WindowStartSec = 3,
+                    WindowEndSec = 4,
+                    Reviewed = false,
+                },
+            },
+        };
+
+        VoiceAlignmentStore.ApplyReviewedTiming(alignment, scene);
+
+        var clip = alignment.Find(1, 1);
+        Assert.NotNull(clip);
+        Assert.Single(clip!.Segments);
+        Assert.Equal(1.1, clip.Segments[0].StartSec);
+        Assert.Equal(2.8, clip.Segments[0].EndSec);
+        Assert.Equal(SpeechTimestampSource.Manual, clip.Segments[0].Source);
+        Assert.True(clip.IsDetected);
+        Assert.True(VoiceSubstitutionOverlayGate.CanOverlay(alignment, timing: null));
+    }
+
+    [Fact]
+    public async Task EasyStart_timing_complete_requires_reviewed_or_measured_windows()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "ptm_align_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = tmp });
+            var projects = new ProjectStore(opts);
+            var project = await projects.CreateProjectAsync("libbook", "Library Book");
+            var store = new VoiceAlignmentStore(projects);
+
+            Assert.False(await store.IsEasyStartTimingCompleteAsync(project.Id));
+
+            var timing = new DialogueTimingDoc
+            {
+                ProjectId = project.Id,
+                Scenes =
+                {
+                    new DialogueTimingScene
+                    {
+                        Scene = 1,
+                        Rows =
+                        {
+                            new DialogueTimingRow
+                            {
+                                ScriptText = "Good morning.",
+                                WindowStartSec = 0.2,
+                                WindowEndSec = 1.5,
+                                Reviewed = true,
+                            },
+                        },
+                    },
+                },
+            };
+            Directory.CreateDirectory(Path.GetDirectoryName(store.DialogueTimingPath(project.Id))!);
+            await File.WriteAllTextAsync(
+                store.DialogueTimingPath(project.Id),
+                JsonSerializer.Serialize(timing));
+
+            Assert.True(await store.IsEasyStartTimingCompleteAsync(project.Id));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
     public void RevoiceSegmentAudioRelativePath_is_stable_and_per_segment()
     {
         Assert.Equal(

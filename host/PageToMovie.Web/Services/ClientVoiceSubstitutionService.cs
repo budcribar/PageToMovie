@@ -59,9 +59,25 @@ public sealed class ClientVoiceSubstitutionService
         Action<string>? onProgress = null,
         CancellationToken ct = default)
     {
+        var recordedKey = string.IsNullOrWhiteSpace(charKey) ? null : charKey.Trim();
+        if (string.IsNullOrWhiteSpace(recordedKey))
+        {
+            try
+            {
+                var chars = await _engine.GetCharactersAsync(projectId, ct);
+                recordedKey = VoiceSubstitutionOverlayGate.FirstRecordedCharacterKey(chars?.Characters);
+            }
+            catch { /* server defaults the key if still empty */ }
+        }
+
+        var timing = await TryGetDialogueTimingAsync(projectId, ct);
+        var existingAlignment = await TryGetVoiceAlignmentAsync(projectId, ct);
+        if (!VoiceSubstitutionOverlayGate.CanOverlay(existingAlignment, timing))
+            return new DubMovieResult(false, null, 0, 0, VoiceSubstitutionOverlayGate.ReviewRequiredMessage);
+
         onProgress?.Invoke("Generating your voice for each line…");
         var job = await _engine.StartVoiceSubstitutionAsync(
-            new StartVoiceSubstitutionRequest { ProjectId = projectId, CharKey = charKey ?? "" }, ct);
+            new StartVoiceSubstitutionRequest { ProjectId = projectId, CharKey = recordedKey ?? "" }, ct);
         if (job is null)
             return new DubMovieResult(false, null, 0, 0, "Could not start the voice job.");
 
@@ -135,7 +151,8 @@ public sealed class ClientVoiceSubstitutionService
         // STT-verified (line ↔ window) pairs from the once-per-book phrase cache, keyed by scene. When
         // a line matches one of these, we trust its verified window outright instead of guessing.
         var phrases = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
-        var confidentByScene = BuildConfidentByScene(phrases);
+        var timing = await TryGetDialogueTimingAsync(projectId, ct);
+        var confidentByScene = BuildConfidentByScene(phrases, timing);
 
         // ── Pass 1: stitch + silence-detect every scene, and learn the original narrator's words/second
         //    from the scenes we're confident about (detected windows line up 1:1 with the lines). ──
@@ -150,12 +167,62 @@ public sealed class ClientVoiceSubstitutionService
         return results;
     }
 
-    private static Dictionary<int, List<VoiceCapturePhrase>> BuildConfidentByScene(VoiceCapturePhrases? phrases) =>
-        phrases?.Phrases
+    private static Dictionary<int, List<VoiceCapturePhrase>> BuildConfidentByScene(
+        VoiceCapturePhrases? phrases,
+        DialogueTimingDoc? timing)
+    {
+        var fromTiming = ReviewedTimingPhrases(timing);
+        if (fromTiming.Count > 0)
+            return fromTiming;
+
+        return phrases?.Phrases
             .Where(pp => pp.Confident)
             .GroupBy(pp => pp.Scene)
             .ToDictionary(g => g.Key, g => g.OrderBy(pp => pp.WindowStartSec).ToList())
             ?? new Dictionary<int, List<VoiceCapturePhrase>>();
+    }
+
+    /// <summary>Reviewed Dialogue Timing rows become the trusted line↔window map for overlay.</summary>
+    private static Dictionary<int, List<VoiceCapturePhrase>> ReviewedTimingPhrases(DialogueTimingDoc? timing)
+    {
+        var map = new Dictionary<int, List<VoiceCapturePhrase>>();
+        if (timing?.Scenes is null) return map;
+        foreach (var scene in timing.Scenes)
+        {
+            var rows = scene.Rows
+                .Where(r => r.Reviewed
+                            && !string.IsNullOrWhiteSpace(r.ScriptText)
+                            && r.WindowEndSec > r.WindowStartSec)
+                .Select(r => new VoiceCapturePhrase
+                {
+                    Scene = scene.Scene,
+                    Clip = r.Clip,
+                    Text = r.ScriptText,
+                    TranscribedText = r.HeardText,
+                    WindowStartSec = r.WindowStartSec,
+                    WindowEndSec = r.WindowEndSec,
+                    MatchScore = r.MatchScore,
+                    Confident = true,
+                })
+                .OrderBy(p => p.WindowStartSec)
+                .ToList();
+            if (rows.Count > 0)
+                map[scene.Scene] = rows;
+        }
+        return map;
+    }
+
+    private async Task<DialogueTimingDoc?> TryGetDialogueTimingAsync(string projectId, CancellationToken ct)
+    {
+        try { return await _engine.GetDialogueTimingAsync(projectId, ct); }
+        catch { return null; }
+    }
+
+    private async Task<ProjectVoiceAlignment?> TryGetVoiceAlignmentAsync(string projectId, CancellationToken ct)
+    {
+        try { return await _engine.GetVoiceAlignmentAsync(projectId, ct); }
+        catch { return null; }
+    }
 
     private async Task<(List<PreparedScene> Prepared, List<double> WpsSamples)> PrepareScenesAsync(
         string projectId, ProjectVoiceAlignment alignment, CancellationToken ct)

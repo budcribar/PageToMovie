@@ -64,6 +64,11 @@ public partial class Scenes
 
     internal List<SceneSummary>? _scenes;
 
+    /// <summary>Shot plan rows or on-disk clips already exist — do not send the user to rebuild.</summary>
+    internal bool HasSceneOrClipMedia =>
+        !VoiceSubstitutionOverlayGate.IsMissingSceneList(_scenes)
+        || (_scenes?.Sum(s => s.ClipsOnDisk) > 0);
+
 
     internal HashSet<int> _selected = new();
 

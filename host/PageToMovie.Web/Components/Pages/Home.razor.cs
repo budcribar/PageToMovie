@@ -49,6 +49,12 @@ public partial class Home : IAsyncDisposable
 
     internal bool? _healthOk;
 
+    /// <summary>
+    /// True when <c>GET /api/projects/forkable</c> has at least one timing-complete title.
+    /// False until that list loads so Easy Start cards do not flash then vanish.
+    /// </summary>
+    internal bool _easyStartAvailable;
+
     internal bool _busy;
 
     internal string? _error;
@@ -89,7 +95,7 @@ public partial class Home : IAsyncDisposable
         Hub.JobLog += Jobs.OnJobLog;
         try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
         await Projects.LoadAsync();
-        await Costs.LoadDemoShowcaseAsync();
+        await Task.WhenAll(Costs.LoadDemoShowcaseAsync(), LoadEasyStartAvailabilityAsync());
         try
         {
             await Hub.StartAsync();
@@ -97,6 +103,19 @@ public partial class Home : IAsyncDisposable
         catch
         {
             // SignalR optional for browse
+        }
+    }
+
+
+    internal async Task LoadEasyStartAvailabilityAsync()
+    {
+        try
+        {
+            _easyStartAvailable = await Engine.HasEasyStartStoriesAsync();
+        }
+        catch
+        {
+            _easyStartAvailable = false;
         }
     }
 
