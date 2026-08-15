@@ -6,7 +6,7 @@ window.PageToMovieVoiceCapture = (function () {
 
   async function start() {
     if (recorder?.state === "recording") return { ok: true, already: true };
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       return { ok: false, error: "This browser cannot use the microphone. Try Chrome or Edge over https." };
     }
     chunks = [];
@@ -16,7 +16,7 @@ window.PageToMovieVoiceCapture = (function () {
         setTimeout(() => reject(new Error("Microphone timed out — click Record and allow the mic.")), 12000));
       mediaStream = await Promise.race([mic, timed]);
     } catch (err) {
-      return { ok: false, error: (err && err.message) ? err.message : "Microphone blocked" };
+      return { ok: false, error: err?.message || "Microphone blocked" };
     }
     let mime = "";
     if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
@@ -87,11 +87,11 @@ window.PageToMovieVoiceCapture = (function () {
             return;
           }
           readBlob(blob, type).then(finish).catch((err) => {
-            finish({ ok: false, error: (err && err.message) || "read failed" });
+            finish({ ok: false, error: err?.message || "read failed" });
           });
         } catch (err) {
           releaseMic();
-          finish({ ok: false, error: (err && err.message) || "stop timed out" });
+          finish({ ok: false, error: err?.message || "stop timed out" });
         }
       }, 2500);
 
@@ -102,11 +102,11 @@ window.PageToMovieVoiceCapture = (function () {
           chunks = [];
           releaseMic();
           readBlob(blob, type).then(finish).catch((err) => {
-            finish({ ok: false, error: (err && err.message) || "read failed" });
+            finish({ ok: false, error: err?.message || "read failed" });
           });
         } catch (err) {
           releaseMic();
-          finish({ ok: false, error: (err && err.message) || "stop failed" });
+          finish({ ok: false, error: err?.message || "stop failed" });
         }
       };
 
@@ -120,7 +120,7 @@ window.PageToMovieVoiceCapture = (function () {
       } catch (err) {
         clearTimeout(timer);
         releaseMic();
-        finish({ ok: false, error: (err && err.message) || "stop failed" });
+        finish({ ok: false, error: err?.message || "stop failed" });
       }
     });
   }
