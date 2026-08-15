@@ -29,8 +29,8 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-imagine-video")]
-    [InlineData("fal-ai/wan-2.1")]
-    [InlineData("veo-3.1")]
+    [InlineData("fal-ai/wan-i2v")]
+    [InlineData("veo-3.1-generate-preview")]
     public void RequireVideo_accepts_catalog_video_models(string modelId)
     {
         var id = ProjectModelSelection.RequireVideo(Cfg(("model_name", modelId)));
@@ -49,7 +49,7 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-4.5")]
-    [InlineData("grok-4")]
+    [InlineData("grok-4.3")]
     [InlineData("gemini-2.5-flash")]
     public void RequirePlanning_accepts_catalog_chat_models(string modelId)
     {
@@ -111,7 +111,7 @@ public class ProjectModelSelectionTests
     [Theory]
     [InlineData("grok-imagine-video")]
     [InlineData("grok-imagine-image")]
-    [InlineData("fal-ai/wan-2.1")]
+    [InlineData("fal-ai/wan-i2v")]
     public void RequirePlanning_rejects_non_chat_models(string modelId)
     {
         var ex = Assert.Throws<InvalidOperationException>(
@@ -216,9 +216,9 @@ public class ProjectModelSelectionTests
     public void RequirePlanning_prefers_planning_model_name_over_chat()
     {
         var id = ProjectModelSelection.RequirePlanning(Cfg(
-            ("planning_model_name", "grok-4"),
+            ("planning_model_name", "grok-4.3"),
             ("chat_model_name", "grok-4.5")));
-        Assert.Equal("grok-4", id);
+        Assert.Equal("grok-4.3", id);
     }
 
     [Fact]

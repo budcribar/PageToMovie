@@ -50,7 +50,7 @@ public class SupportsVocalsCatalogTests
     [Fact]
     public void ImageApiLimits_uses_catalog_not_provider_for_gemini()
     {
-        var n = ImageApiLimits.MaxReferenceImages("grok", "gemini-2.5-pro-image");
+        var n = ImageApiLimits.MaxReferenceImages("grok", "gemini-3-pro-image");
         Assert.Equal(14, n); // catalog value, even if provider string is wrong
     }
 

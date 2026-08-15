@@ -31,7 +31,7 @@ public class FakeVideoCatalogCapabilityTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             FakeGrokVideoClient.ValidateAgainstCatalog(
-                "fal-ai/wan-2.1",
+                "fal-ai/wan-i2v",
                 durationSeconds: 5,
                 referenceImagePaths: null,
                 continueFromVideoPath: "/tmp/prev.mp4"));
@@ -43,7 +43,7 @@ public class FakeVideoCatalogCapabilityTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             FakeGrokVideoClient.ValidateAgainstCatalog(
-                "fal-ai/wan-2.1",
+                "fal-ai/wan-i2v",
                 durationSeconds: 5,
                 referenceImagePaths: new[] { "a.png", "b.png" },
                 continueFromVideoPath: null));
@@ -54,7 +54,7 @@ public class FakeVideoCatalogCapabilityTests
     public void Wan_accepts_one_ref_and_in_range_duration()
     {
         FakeGrokVideoClient.ValidateAgainstCatalog(
-            "fal-ai/wan-2.1",
+            "fal-ai/wan-i2v",
             durationSeconds: 5,
             referenceImagePaths: new[] { "a.png" },
             continueFromVideoPath: null);
@@ -64,7 +64,7 @@ public class FakeVideoCatalogCapabilityTests
     public void Veo_allows_up_to_three_reference_images()
     {
         FakeGrokVideoClient.ValidateAgainstCatalog(
-            "veo-3.1",
+            "veo-3.1-generate-preview",
             durationSeconds: 4,
             referenceImagePaths: new[] { "a.png", "b.png", "c.png" },
             continueFromVideoPath: null);
@@ -75,7 +75,7 @@ public class FakeVideoCatalogCapabilityTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             FakeGrokVideoClient.ValidateAgainstCatalog(
-                "veo-3.1",
+                "veo-3.1-generate-preview",
                 durationSeconds: 4,
                 referenceImagePaths: new[] { "a.png", "b.png", "c.png", "d.png" },
                 continueFromVideoPath: null));
@@ -87,7 +87,7 @@ public class FakeVideoCatalogCapabilityTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             FakeGrokVideoClient.ValidateAgainstCatalog(
-                "veo-3.1",
+                "veo-3.1-generate-preview",
                 durationSeconds: 5,
                 referenceImagePaths: null,
                 continueFromVideoPath: null));
@@ -101,7 +101,7 @@ public class FakeVideoCatalogCapabilityTests
     public void Veo_accepts_allowed_durations(int seconds)
     {
         FakeGrokVideoClient.ValidateAgainstCatalog(
-            "veo-3.1",
+            "veo-3.1-generate-preview",
             durationSeconds: seconds,
             referenceImagePaths: null,
             continueFromVideoPath: null);
@@ -134,7 +134,7 @@ public class FakeVideoCatalogCapabilityTests
     [Fact]
     public void Wan_omits_maxExtensionSeconds_when_no_continue()
     {
-        var e = SupportedModelCatalog.Find("fal-ai/wan-2.1", ModelCapability.Video);
+        var e = SupportedModelCatalog.Find("fal-ai/wan-i2v", ModelCapability.Video);
         Assert.NotNull(e);
         Assert.False(e!.SupportsVideoContinue);
         Assert.Null(e.MaxExtensionSeconds);
@@ -154,14 +154,14 @@ public class FakeVideoCatalogCapabilityTests
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
             PageToMovie.Engine.ClipDurationEstimator.ResolveActualDurationForModel(
-                "fal-ai/wan-2.1", requestedSeconds: 5, isExtensionMode: true));
+                "fal-ai/wan-i2v", requestedSeconds: 5, isExtensionMode: true));
         Assert.Contains("does not support video continue", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void ResolveExtensionMax_returns_zero_for_non_continue_model()
     {
-        var n = PageToMovie.Engine.ClipDurationEstimator.ResolveExtensionMaxForModel("veo-3.1", fallbackMax: 8);
+        var n = PageToMovie.Engine.ClipDurationEstimator.ResolveExtensionMaxForModel("veo-3.1-generate-preview", fallbackMax: 8);
         Assert.Equal(0, n);
     }
 }

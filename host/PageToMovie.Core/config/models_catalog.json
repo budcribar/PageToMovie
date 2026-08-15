@@ -180,15 +180,15 @@
       ],
       "enabled": true,
       "maxInputTokens": 1050000,
-      "inputCostPerMillionTokens": 2.5,
-      "outputCostPerMillionTokens": 10.0,
-      "notes": "Replaces gpt-4o. Confirmed live via direct OpenAI API call: reasoning-family model, rejects non-default temperature (GrokChatClient self-heals by retrying without it). maxInputTokens=400,000 and max output=128,000 per published spec. Pricing is still an unverified placeholder copied from gpt-4o \u2014 update when a real source is available. One of three gpt-5.6 variants (sol/terra/luna) in this account; no plain gpt-5.6 exists.",
+      "inputCostPerMillionTokens": 5.0,
+      "outputCostPerMillionTokens": 30.0,
+      "notes": "Replaces gpt-4o. Official alias gpt-5.6 resolves to Sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $10 input / $45 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "OpenAI list price 2026-08-15: $5.00 / $30.00 per 1M tokens (<272K). Long-context >272K: $10 / $45 per 1M.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gpt-5.6-terra",
@@ -202,15 +202,15 @@
       ],
       "enabled": true,
       "maxInputTokens": 1050000,
-      "inputCostPerMillionTokens": 2.5,
-      "outputCostPerMillionTokens": 10.0,
-      "notes": "Replaces gpt-4o alongside gpt-5.6-sol. Confirmed live via direct OpenAI API call: reasoning-family model, rejects non-default temperature (GrokChatClient self-heals by retrying without it). maxInputTokens is officially unpublished by OpenAI (unlike Sol's 400,000 and Luna's 1,050,000) \u2014 128,000 kept here as a deliberately conservative placeholder floor, not a real spec; raise it if a real source turns up. Pricing is also an unverified placeholder copied from gpt-4o. One of three gpt-5.6 variants (sol/terra/luna) in this account; no plain gpt-5.6 exists.",
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 12.0,
+      "notes": "Replaces gpt-4o alongside gpt-5.6-sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $4 input / $18 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "OpenAI list price 2026-08-15: $2.00 / $12.00 per 1M tokens (<272K). Long-context >272K: $4 / $18 per 1M.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gpt-5.6-luna",
@@ -224,15 +224,15 @@
       ],
       "enabled": true,
       "maxInputTokens": 1050000,
-      "inputCostPerMillionTokens": 2.5,
-      "outputCostPerMillionTokens": 10.0,
-      "notes": "Third gpt-5.6 variant alongside sol/terra, added to try to beat sol's benchmark lead. Confirmed live via direct OpenAI API call: reasoning-family model, rejects non-default temperature (GrokChatClient self-heals by retrying without it). maxInputTokens=1,050,000 per published spec (largest of the three variants). Pricing is an unverified placeholder copied from gpt-4o \u2014 update when a real source is available.",
+      "inputCostPerMillionTokens": 0.2,
+      "outputCostPerMillionTokens": 1.2,
+      "notes": "Third gpt-5.6 variant alongside sol/terra. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $0.40 input / $1.80 output per 1M.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "OpenAI list price 2026-08-15: $0.20 / $1.20 per 1M tokens (<272K). Long-context >272K: $0.40 / $1.80 per 1M.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gpt-4o-mini",
@@ -266,17 +266,18 @@
       "requiredEnvKeys": [
         "OPENAI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "maxInputTokens": 200000,
       "inputCostPerMillionTokens": 1.1,
       "outputCostPerMillionTokens": 4.4,
-      "notes": "OpenAI high-reasoning benchmark model.",
+      "notes": "Deprecated. OpenAI shutdown 2026-10-23. Replacement: gpt-5.6-sol. Disabled rather than deleted so past project configs and benchmark history still resolve.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 100000,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Lifecycle: shutdown 2026-10-23. Token rates left as last published ($1.10 / $4.40 per 1M); do not use for new work.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15",
+      "deprecated": true
     },
     {
       "id": "grok-imagine-video",
@@ -300,8 +301,7 @@
       "maxExtensionSeconds": 10,
       "videoCostPerSecondByResolution": {
         "480p": 0.05,
-        "720p": 0.07,
-        "1080p": 0.25
+        "720p": 0.07
       },
       "supportedAspectRatios": [
         "1:1",
@@ -313,15 +313,56 @@
         "2:3"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Also uses videos/extensions for clip continue. Fresh text/image-to-video allows 1-15s; the new portion of a reference/continue call is tighter (often <=10s, not independently confirmed to the second \u2014 maxExtensionSeconds is a conservative estimate, not a documented exact figure). 1080p pricing (0.25/s) may actually belong to a separate 'Grok Imagine 1.5' variant not yet split out as its own catalog entry \u2014 base model 480p/720p rates (0.05/0.07) are confirmed against docs.x.ai. aspect_ratio/resolution are NOT accepted on videos/extensions -- the extension output always matches the source clip's aspect ratio (docs.x.ai).",
+      "notes": "Also uses videos/extensions for clip continue. Fresh text/image-to-video allows 1-15s; the new portion of a reference/continue call is tighter (often <=10s, not independently confirmed to the second \u2014 maxExtensionSeconds is a conservative estimate, not a documented exact figure). Official list price $0.050/s. 1080p $0.25 is NOT official for this id (native 1080p belongs to grok-imagine-video-1.5). aspect_ratio/resolution are NOT accepted on videos/extensions \u2014 the extension output always matches the source clip's aspect ratio (docs.x.ai).",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
       "videoExtendCostPerSecond": 0.07,
-      "pricingNotes": "Video $/sec by resolution from product catalog (verify docs.x.ai/developers pricing). As of 2026-08 xAI publishes generation pricing, not a separate ref-image or extend line item (docs.x.ai video + pricing). videoReferenceImageCost=0 means no separate ref fee. videoExtendCostPerSecond uses same billing unit as generation new seconds; set to 0.07 (720p catalog rate) for planning when resolution-specific extend rates are not published.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "docs.x.ai 2026-08-15: official list price $0.050/s. 720p catalog rate 0.07 kept as the previously confirmed docs.x.ai 720p figure; 1080p $0.25 dropped (not official for this id). videoReferenceImageCost=0 (no separate ref fee). videoExtendCostPerSecond uses 720p catalog rate.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "grok-imagine-video-1.5",
+      "displayName": "Grok Imagine Video 1.5",
+      "capability": "Video",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "videos/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 7,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 1,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 1,
+      "videoCostPerSecondByResolution": {
+        "1080p": 0.08
+      },
+      "supportedAspectRatios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "maxPromptLength": 4000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "docs.x.ai/developers/models/grok-imagine-video-1.5 2026-08-15: $0.080/sec. Native 1080p. No separate published ref-image or extend line item.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-imagine-video-edit",
@@ -338,15 +379,14 @@
       "maxPromptLength": 4000,
       "videoCostPerSecondByResolution": {
         "480p": 0.05,
-        "720p": 0.07,
-        "1080p": 0.25
+        "720p": 0.07
       },
-      "notes": "Prompt-based edit of an already-generated clip via POST videos/edits: takes an existing video + a text instruction, returns a new video. Output always inherits the source clip's duration and resolution (not independently configurable) and input is capped at 8.7s by xAI. video can be a Files API file_id or a url/data URI; this app tries a stored file_id (from generation-time storage_options) first and falls back to a base64 data URI of the local clip file on any failure.",
+      "notes": "Prompt-based edit of an already-generated clip via POST videos/edits: takes an existing video + a text instruction, returns a new video. This catalog id is NOT an official xAI model id \u2014 the official edit path uses grok-imagine-video. Id left unchanged because the app's video-edit capability default and clients key on grok-imagine-video-edit. Output always inherits the source clip's duration and resolution (not independently configurable) and input is capped at 8.7s by xAI. video can be a Files API file_id or a url/data URI.",
       "providerId": "grok",
       "providerLabel": "xAI",
-      "pricingNotes": "xAI has not published edit-specific pricing as of 2026-08. videoCostPerSecondByResolution is proxied from grok-imagine-video's own generation rate (same provider/model family) as a labeled estimate, not confirmed edit pricing — verify against docs.x.ai before relying on this for cost reporting.",
-      "lastVerifiedAt": "2026-08-08",
-      "pricingLastReviewedAt": "2026-08-08"
+      "pricingNotes": "xAI has not published a separate edit model or edit-specific price as of 2026-08-15. Official edit path is grok-imagine-video. videoCostPerSecondByResolution is proxied from grok-imagine-video generation rates (1080p $0.25 dropped \u2014 not official). Labeled estimate only.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "hunyuan-video",
@@ -365,12 +405,14 @@
       "maxReferenceImages": 1,
       "supportsVideoReview": false,
       "videoCostPerSecondByResolution": {
-        "720p": 0,
-        "1080p": 0
+        "480p": 0,
+        "580p": 0,
+        "720p": 0
       },
       "videoBaseCostByResolution": {
-        "720p": 0.4,
-        "1080p": 0.4
+        "480p": 0.4,
+        "580p": 0.4,
+        "720p": 0.4
       },
       "numInferenceSteps": 30,
       "shortClipFrameCount": 85,
@@ -380,7 +422,7 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Open-weights 13B DiT video generation model hosted on Fal.ai serverless GPUs. Billed as a flat ~$0.40/video (frame-count-based generation, not duration-based) \u2014 NOT per-second; a prior per-second rate here (0.005/s) underpriced a 5s clip by ~16x ($0.025 vs the real ~$0.40 flat fee). Single init/reference image only (true i2v) \u2014 not Grok-style multi-plate identity conditioning; attaching more than one is misleading. Deliberately no min/max/absMaxClipDurationSeconds: the real API parameter is num_frames (85 or 129) + fps, not seconds \u2014 forcing a seconds-shaped min/max onto a frame-count model would itself be a wrong approximation; now represented directly via shortClipFrameCount/longClipFrameCount (the model's real NumberofFramesEnum: 85 or 129, default 129) rather than a generic duration bound. numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/hunyuan-video/api. Supports 16:9 or 9:16 aspect ratio (fal.ai/models/fal-ai/hunyuan-video/api).",
+      "notes": "Open-weights 13B DiT video generation model hosted on Fal.ai serverless GPUs. Billed as a flat ~$0.40/video (frame-count-based generation, not duration-based) \u2014 NOT per-second. Official resolutions 480p / 580p / 720p only (no 1080p). Single init/reference image only (true i2v). Real API parameter is num_frames (85 or 129) + fps, not seconds \u2014 represented via shortClipFrameCount/longClipFrameCount. numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/hunyuan-video/api. Supports 16:9 or 9:16.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "minClipDurationSeconds": 1,
@@ -389,17 +431,98 @@
       "maxPromptLength": 1000,
       "maxReferenceImageDimension": 1280,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Update from vendor pricing page when rates change; Engine has no USD fallbacks.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "fal.ai hunyuan-video 2026-08-15: $0.40/video (unchanged). Official resolutions 480p/580p/720p only.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
-      "id": "fal-ai/wan-2.1",
-      "displayName": "Wan 2.1 / 2.7 (Fal.ai)",
+      "id": "fal-ai/hunyuan-video-v1.5/text-to-video",
+      "displayName": "Hunyuan Video 1.5 T2V (Fal.ai)",
       "capability": "Video",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
-      "endpointPath": "fal-ai/wan-2.1/image-to-video",
+      "endpointPath": "fal-ai/hunyuan-video-v1.5/text-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "maxReferenceImages": 0,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 1,
+      "maxClipDurationSeconds": 5,
+      "absMaxClipDurationSeconds": 5,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.075,
+        "720p": 0.075
+      },
+      "numInferenceSteps": 28,
+      "longClipFrameCount": 121,
+      "shortClipFrameCount": 121,
+      "supportedAspectRatios": [
+        "16:9",
+        "9:16"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Tencent Hunyuan Video 1.5 text-to-video on Fal.ai. Official param is num_frames (1\u2013121, default 121), not seconds \u2014 seconds here are a planning bound. numInferenceSteps default 28. Resolution default 480p. Text-to-video only; use the I2V sibling for image-to-video (do not rely on FalVideoClient's text-endpoint + '-image-to-video' rewrite for this id).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 1000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/fal-ai/hunyuan-video-v1.5/text-to-video 2026-08-15: $0.075/s (listing figure matches I2V $0.075/s).",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/hunyuan-video-v1.5/image-to-video",
+      "displayName": "Hunyuan Video 1.5 I2V (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/hunyuan-video-v1.5/image-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 1,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 1,
+      "maxClipDurationSeconds": 5,
+      "absMaxClipDurationSeconds": 5,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.075,
+        "720p": 0.075
+      },
+      "numInferenceSteps": 28,
+      "longClipFrameCount": 121,
+      "shortClipFrameCount": 121,
+      "supportedAspectRatios": [
+        "16:9",
+        "9:16"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Tencent Hunyuan Video 1.5 image-to-video on Fal.ai. $0.075/s. Single init image. Official param is num_frames (1\u2013121, default 121); seconds are a planning bound. numInferenceSteps default 28.",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 1000,
+      "maxReferenceImageDimension": 1280,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/fal-ai/hunyuan-video-v1.5/image-to-video 2026-08-15: $0.075/s.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/wan-i2v",
+      "displayName": "Wan 2.1 (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/wan-i2v",
       "requiredEnvKeys": [
         "FAL_API_KEY",
         "FAL_KEY"
@@ -414,13 +537,11 @@
       "absMaxClipDurationSeconds": 6,
       "videoCostPerSecondByResolution": {
         "480p": 0,
-        "720p": 0,
-        "1080p": 0
+        "720p": 0
       },
       "videoBaseCostByResolution": {
         "480p": 0.2,
-        "720p": 0.4,
-        "1080p": 0.4
+        "720p": 0.4
       },
       "numInferenceSteps": 30,
       "supportedAspectRatios": [
@@ -430,23 +551,101 @@
         "1:1"
       ],
       "defaultAspectRatio": "auto",
-      "notes": "Alibaba Wan 2.1 open-weights image-to-video model hosted on Fal.ai serverless GPUs. Billed as a flat fee per video (frame-count-based generation, not duration-based), not per-second \u2014 a prior per-second rate here (0.025/s) underpriced a 5s 720p clip by ~3x ($0.125 vs the real ~$0.40 flat fee). 1080p flat fee not independently documented; assumed equal to 720p pending confirmation. Duration is a narrow ~5-6s band (81-100 frames @ 5-24fps typical), NOT the generic 3-10s range \u2014 approximated here in seconds even though frames+fps is the more precise real parameter. Single init/reference image only (true i2v) \u2014 not Grok-style multi-plate identity conditioning; attaching more than one is misleading. numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/wan-i2v/api. Deliberately no shortClipFrameCount/longClipFrameCount: Wan's real num_frames (default 81, range 81-100 per fal-ai/wan-i2v) is a continuous range, not Hunyuan's discrete short/long enum, and FalVideoClient does not send an explicit num_frames override for Wan today \u2014 this entry stays duration-native via min/max/absMaxClipDurationSeconds above instead. \"auto\" (default) infers aspect ratio from the input image (fal.ai/models/fal-ai/wan-i2v/api).",
+      "notes": "Alibaba Wan 2.1 open-weights image-to-video on Fal.ai. Official current I2V id is fal-ai/wan-i2v (catalog id remapped from fal-ai/wan-2.1; that page 404s). Official 2.1 pricing is a flat fee per video: 480p $0.20, 720p $0.40 (no 1080p). Duration is a narrow ~5-6s band (81-100 frames @ 5-24fps typical). Single init/reference image only (true i2v). numInferenceSteps default 30 confirmed against fal.ai/models/fal-ai/wan-i2v/api. \"auto\" (default) infers aspect ratio from the input image. Wan 2.7 is a separate catalog row.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxPromptLength": 800,
       "maxReferenceImageDimension": 2000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Flat base $/video from fal.ai wan pricing pages (per generation). per-sec=0. Refs are the single init image included in generation price \u2192 videoReferenceImageCost=0. No continue \u2192 no extend rate.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "fal.ai wan-i2v 2026-08-15: flat $0.20/video (480p), $0.40/video (720p). No 1080p. per-sec=0. Refs are the single init image included in generation price \u2192 videoReferenceImageCost=0.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
-      "id": "veo-3.1",
+      "id": "fal-ai/wan/v2.7/image-to-video",
+      "displayName": "Wan 2.7 I2V (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/wan/v2.7/image-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 1,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 2,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "videoCostPerSecondByResolution": {
+        "720p": 0.1,
+        "1080p": 0.15
+      },
+      "supportedAspectRatios": [
+        "auto",
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "defaultAspectRatio": "auto",
+      "notes": "Alibaba Wan 2.7 image-to-video on Fal.ai. 2\u201315s. 720p $0.10/s, 1080p $0.15/s. Single init/reference image. Distinct from the Wan 2.1 row (fal-ai/wan-i2v).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 800,
+      "maxReferenceImageDimension": 2000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/fal-ai/wan/v2.7/image-to-video 2026-08-15: 720p $0.10/s, 1080p $0.15/s.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/wan/v2.7/text-to-video",
+      "displayName": "Wan 2.7 T2V (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/wan/v2.7/text-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "maxReferenceImages": 0,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 2,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "videoCostPerSecondByResolution": {
+        "720p": 0.1,
+        "1080p": 0.15
+      },
+      "supportedAspectRatios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Alibaba Wan 2.7 text-to-video on Fal.ai. Same $/s as I2V: 720p $0.10/s, 1080p $0.15/s. 2\u201315s. Text-to-video only; use the I2V sibling for image-to-video.",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 800,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/fal-ai/wan/v2.7/text-to-video 2026-08-15: 720p $0.10/s, 1080p $0.15/s.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "veo-3.1-generate-preview",
       "displayName": "Google Veo 3.1",
       "capability": "Video",
       "provider": "Google",
       "apiBase": "https://generativelanguage.googleapis.com/v1beta",
-      "endpointPath": "models/veo-3.1:predictLongRunning",
+      "endpointPath": "models/veo-3.1-generate-preview:predictLongRunning",
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
@@ -472,14 +671,55 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image 'ingredients' reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images, so maxReferenceImages is 0 here (fail loud) until ingredients support is actually built. Confirmed via Gemini video docs / AI Studio Veo / Cloud Veo 3.1 pages, not yet verified against a live account. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16.",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id is veo-3.1-generate-preview (catalog id remapped from veo-3.1 so the client URL matches). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image ingredients reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Vertex/Gemini Veo published $/sec class rates in catalog; confirm cloud.google.com Veo pricing. Ref images: no separate published add-on in our matrix \u2192 0. No continue \u2192 no extend rate.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged). Official model id veo-3.1-generate-preview.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "veo-3.1-fast-generate-preview",
+      "displayName": "Google Veo 3.1 Fast",
+      "capability": "Video",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/veo-3.1-fast-generate-preview:predictLongRunning",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 4,
+      "maxClipDurationSeconds": 8,
+      "absMaxClipDurationSeconds": 8,
+      "allowedDurationsSeconds": [
+        4,
+        6,
+        8
+      ],
+      "videoCostPerSecondByResolution": {
+        "720p": 0.1,
+        "1080p": 0.12
+      },
+      "supportedAspectRatios": [
+        "16:9",
+        "9:16"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-fast-generate-preview. Duration 4/6/8s copied from the Veo 3.1 family (same discrete set as veo-3.1-generate-preview).",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "maxPromptLength": 4000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.10/s 720p, $0.12/s 1080p.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-imagine-image-quality",
@@ -530,12 +770,36 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
-      "id": "gemini-2.5-pro-image",
-      "displayName": "Gemini 2.5 Pro Image",
+      "id": "grok-imagine-image-2.0",
+      "displayName": "Grok Imagine Image 2.0",
+      "capability": "Image",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "images/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.04,
+      "maxReferenceImages": 3,
+      "notes": "xAI's recommended image model. Text/image \u2192 image. Reference-image cap copied from the Imagine Image family (hard cap 3) pending a distinct 2.0 published cap.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "maxPromptLength": 4000,
+      "pricingNotes": "docs.x.ai/developers/models/grok-imagine-image-2.0 2026-08-15: $0.04/image.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "displayName": "Gemini 3 Pro Image (Nano Banana Pro)",
       "capability": "Image",
       "provider": "Google",
       "apiBase": "https://generativelanguage.googleapis.com/v1beta",
-      "endpointPath": "models/gemini-2.5-pro:generateContent",
+      "endpointPath": "models/gemini-3-pro-image:generateContent",
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
@@ -545,13 +809,13 @@
       "supportsVideoReview": false,
       "imageCostPerImage": 0.134,
       "maxReferenceImages": 14,
-      "notes": "Wired via GeminiImageClient. Supports up to 14 reference images (documented soft max; older Flash image paths may be lower).",
+      "notes": "Wired via GeminiImageClient. Official generateContent model is gemini-3-pro-image (Nano Banana Pro). Catalog id remapped from the non-official gemini-2.5-pro-image. Supports up to 14 reference images (documented soft max; older Flash image paths may be lower).",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
-      "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.134/image (unchanged). Official model id gemini-3-pro-image.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/flux/dev",
@@ -569,15 +833,15 @@
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.025,
-      "notes": "Open-source Flux.1 Dev model via Fal.ai serverless GPU (~$0.025/image).",
+      "notes": "Open-source Flux.1 Dev via Fal.ai. Official price is $0.025 per megapixel (not a flat per-image fee). imageCostPerImage holds the 1 MP rate for catalog planning.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxReferenceImages": 1,
       "maxPromptLength": 1000,
       "maxReferenceImageDimension": 1536,
-      "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "fal.ai/models/fal-ai/flux/dev 2026-08-15: $0.025 per megapixel. imageCostPerImage=0.025 is the 1 MP rate (schema has no per-MP field).",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/flux/schnell",
@@ -595,15 +859,67 @@
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.003,
-      "notes": "Ultra-fast open-source Flux.1 Schnell model via Fal.ai (~$0.003/image).",
+      "notes": "Ultra-fast open-source Flux.1 Schnell via Fal.ai. Official price is $0.003 per megapixel (not a flat per-image fee). imageCostPerImage holds the 1 MP rate for catalog planning.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxReferenceImages": 1,
       "maxPromptLength": 1000,
       "maxReferenceImageDimension": 1536,
-      "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "fal.ai/models/fal-ai/flux/schnell 2026-08-15: $0.003 per megapixel. imageCostPerImage=0.003 is the 1 MP rate (schema has no per-MP field).",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/flux-2",
+      "displayName": "FLUX.2 [dev] (Fal.ai)",
+      "capability": "Image",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/flux-2",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.012,
+      "notes": "FLUX.2 [dev] via Fal.ai. Official price $0.012 per megapixel. imageCostPerImage holds the 1 MP rate (schema has no per-MP field).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxReferenceImages": 1,
+      "maxPromptLength": 1000,
+      "maxReferenceImageDimension": 1536,
+      "pricingNotes": "fal.ai/models/fal-ai/flux-2 2026-08-15: $0.012/MP.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/flux-2/klein/9b",
+      "displayName": "FLUX.2 [klein] 9B (Fal.ai)",
+      "capability": "Image",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/flux-2/klein/9b",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.006,
+      "notes": "FLUX.2 [klein] 9B via Fal.ai. Official price $0.006 per megapixel. imageCostPerImage holds the 1 MP rate (schema has no per-MP field).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxReferenceImages": 1,
+      "maxPromptLength": 1000,
+      "maxReferenceImageDimension": 1536,
+      "pricingNotes": "fal.ai/models/fal-ai/flux-2/klein/9b 2026-08-15: $0.006/MP.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-4.6",
@@ -623,12 +939,37 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "xAI flagship (2026-08-12): 500k context, configurable reasoning, same $2/$6 as grok-4.5. Stage planning, cast scrub, screenplay helpers. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat). Long-context surcharge (≥200k tokens): $4 in / $12 out — not modeled here.",
+      "notes": "xAI flagship (2026-08-12): 500k context, configurable reasoning, same $2/$6 as grok-4.5. Stage planning, cast scrub, screenplay helpers. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat). Long-context surcharge (\u2265200k tokens): $4 in / $12 out \u2014 not modeled here.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "pricingNotes": "docs.x.ai/developers/models 2026-08-12: $2.00 / $6.00 per 1M tokens (short context). Cached input $0.50.",
       "lastVerifiedAt": "2026-08-12",
       "pricingLastReviewedAt": "2026-08-12"
+    },
+    {
+      "id": "grok-4.3",
+      "displayName": "Grok 4.3",
+      "capability": "Chat",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 1.25,
+      "outputCostPerMillionTokens": 2.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Official replacement for retired grok-4-*. Alias grok-4.3-latest. Chat + vision + reasoning. Context 1,000,000. Price is the <200k tier. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat).",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "docs.x.ai/developers/models/grok-4.3 2026-08-15: $1.25 / $2.50 per 1M tokens (<200k). Alias grok-4.3-latest.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-4.5",
@@ -665,7 +1006,7 @@
       "requiredEnvKeys": [
         "XAI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "maxInputTokens": 256000,
       "maxOutputTokens": 128000,
       "inputCostPerMillionTokens": 3.0,
@@ -673,12 +1014,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "maxOutputTokens=128000 confirmed via docs.x.ai/developers/rest-api-reference/inference/chat: max_completion_tokens defaults to 128,000 when unset, platform-wide (not a per-model published figure) \u2014 see grok-4.5 note for full citation detail.",
+      "notes": "Not on the current official xAI model list (docs page 404). Disabled rather than deleted so past project configs still resolve. Official replacement is grok-4.3. Do not trust the leftover $3/$15 / 256k figures \u2014 they are unconfirmed and no longer official.",
       "providerId": "grok",
       "providerLabel": "xAI",
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Unconfirmed / not on official list as of 2026-08-15. Do not use leftover $3/$15 per 1M or 256k context for cost planning. Replacement: grok-4.3.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15",
+      "deprecated": true
     },
     {
       "id": "grok-4.20-reasoning",
@@ -691,19 +1033,19 @@
         "XAI_API_KEY"
       ],
       "enabled": true,
-      "maxInputTokens": 256000,
+      "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
-      "inputCostPerMillionTokens": 3.0,
-      "outputCostPerMillionTokens": 15.0,
+      "inputCostPerMillionTokens": 1.25,
+      "outputCostPerMillionTokens": 2.5,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "xAI's actual latest generation, newer than grok-4.5 despite the lower-looking version number (4.20 > 4.5 as sequential minor releases, not decimals) \u2014 discovered via direct xAI model-list API call, not previously in this catalog. Its own aliases tag it beta/experimental (grok-4.20-beta, grok-4.20-experimental-beta-...), so treat results with more caution than the established grok-4/grok-4.5. Confirmed live: accepts temperature normally, but REJECTS reasoning_effort outright (\"does not support parameter reasoningEffort\", camelCase/no-underscore in the error text \u2014 GrokChatClient's self-heal matches both spellings) \u2014 it appears to always reason without an exposed effort dial. context_length confirmed 1,000,000 via API; pricing is an unverified placeholder copied from grok-4 (xAI's own price fields use an internal unit not yet decoded to $/M). maxOutputTokens=128000 confirmed via docs.x.ai/developers/rest-api-reference/inference/chat: max_completion_tokens defaults to 128,000 when unset platform-wide (per max_completion_tokens's own definition this excludes reasoning tokens, so this is the visible-JSON-output ceiling even for the reasoning variant \u2014 not a per-model published figure).",
+      "notes": "xAI reasoning model. Catalog slug grok-4.20-reasoning kept because the app keys on it; canonical official id is grok-4.20-0309-reasoning (alias grok-4.20-reasoning still resolves). Vision-capable. Context 1,000,000. Price is the <200k tier. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat).",
       "providerId": "grok",
       "providerLabel": "xAI",
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "docs.x.ai 2026-08-15: $1.25 / $2.50 per 1M tokens (<200k). Canonical id grok-4.20-0309-reasoning; alias grok-4.20-reasoning.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "claude-sonnet-5",
@@ -743,17 +1085,67 @@
       "enabled": true,
       "maxInputTokens": 1000000,
       "maxOutputTokens": 128000,
-      "inputCostPerMillionTokens": 2.0,
-      "outputCostPerMillionTokens": 10.0,
+      "inputCostPerMillionTokens": 5.0,
+      "outputCostPerMillionTokens": 25.0,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Anthropic's flagship, one tier above claude-sonnet-5, added to try to beat gpt-5.6-sol's benchmark lead. Wired via AnthropicChatClient. Confirmed live via direct Anthropic API call: rejects temperature entirely like sonnet-5 (self-healed); supports adaptive thinking + output_config.effort for reasoningEffort. maxInputTokens/pricing are unverified placeholders copied from claude-sonnet-5 \u2014 update when a real source is available. maxOutputTokens=128000 confirmed via platform.claude.com/docs/en/about-claude/models/overview (Claude Opus 5 max output: 128k tokens).",
+      "notes": "Anthropic Opus 5. Wired via AnthropicChatClient. Confirmed live: rejects temperature entirely like sonnet-5 (self-healed); supports adaptive thinking + output_config.effort for reasoningEffort. Context 1M unchanged. maxOutputTokens=128000 confirmed via platform.claude.com/docs/en/about-claude/models/overview.",
       "providerId": "anthropic",
       "providerLabel": "Anthropic",
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Anthropic list price 2026-08-15: $5.00 / $25.00 per 1M tokens. Context 1M.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "claude-fable-5",
+      "displayName": "Claude Fable 5",
+      "capability": "Chat",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 10.0,
+      "outputCostPerMillionTokens": 50.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Current public Anthropic flagship (GA 2026-06-09). Wired via AnthropicChatClient. Chat + vision; adaptive thinking always on. Context 1M; max output 128k. Do not confuse with claude-mythos-5 (not GA \u2014 not in this catalog).",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "platform.claude.com / anthropic.com/pricing 2026-08-15: $10 input / $50 output per 1M. 1M context, 128k max out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "displayName": "Claude Haiku 4.5",
+      "capability": "Chat",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 64000,
+      "inputCostPerMillionTokens": 1.0,
+      "outputCostPerMillionTokens": 5.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Wired via AnthropicChatClient. Chat + vision; extended thinking. Canonical snapshot id claude-haiku-4-5-20251001. Context 200k; max output 64k.",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "platform.claude.com / anthropic.com/pricing 2026-08-15: $1 input / $5 output per 1M. 200k context, 64k max out. Canonical id claude-haiku-4-5-20251001.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-2.5-flash",
@@ -766,19 +1158,19 @@
         "GEMINI_API_KEY"
       ],
       "enabled": true,
-      "maxInputTokens": 1000000,
-      "inputCostPerMillionTokens": 2.0,
-      "outputCostPerMillionTokens": 12.0,
+      "maxInputTokens": 1048576,
+      "inputCostPerMillionTokens": 0.3,
+      "outputCostPerMillionTokens": 2.5,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired via GeminiChatClient. Supports Native Multimodal MP4 Video Review. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\") \u2014 GeminiChatClient was already silently falling back to gemini-2.5-flash on that 404, so this just makes the catalog match what was actually running.",
+      "notes": "Wired via GeminiChatClient. Supports native multimodal MP4 video review. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\") \u2014 GeminiChatClient was already silently falling back to gemini-2.5-flash on that 404, so this just makes the catalog match what was actually running.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Google Gemini API list price 2026-08-15: $0.30 input / $2.50 output per 1M tokens. Context 1,048,576 in / 65,536 out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.6-flash",
@@ -791,19 +1183,69 @@
         "GEMINI_API_KEY"
       ],
       "enabled": true,
-      "maxInputTokens": 1000000,
-      "inputCostPerMillionTokens": 2.0,
-      "outputCostPerMillionTokens": 12.0,
+      "maxInputTokens": 1048576,
+      "inputCostPerMillionTokens": 0.75,
+      "outputCostPerMillionTokens": 3.75,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired via GeminiChatClient. Reasoning/\"thinking\" model per Google's own model metadata (thinking: true) \u2014 same class as OpenAI's o-series; watch for similar quirks (temperature/param rejection, thinking tokens counting toward output budget). Pricing copied from gemini-2.5-flash as a placeholder \u2014 not verified against a real source, update when known.",
+      "notes": "Wired via GeminiChatClient. Reasoning/\"thinking\" model per Google's own model metadata (thinking: true). Promo list price through 2026-12-31; standard rate after that is not re-stated on this row (see gemini-3.7-flash for the same promo window).",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
-      "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "pricingNotes": "Google Gemini API promo through 2026-12-31: $0.75 / $3.75 per 1M tokens. Context 1,048,576 in / 65,536 out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "displayName": "Gemini 3.7 Flash",
+      "capability": "Chat",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-3.7-flash:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 0.75,
+      "outputCostPerMillionTokens": 3.75,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "Wired via GeminiChatClient. Stable latest Flash as of Aug 2026. Chat + vision (text/image/video/audio/PDF) with thinking. Promo $0.75 / $3.75 per 1M through 2026-12-31, then $1.50 / $7.50.",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "ai.google.dev/gemini-api/docs/pricing 2026-08-15: $0.75 in / $3.75 out per 1M through 2026-12-31, then $1.50 / $7.50. Context 1,048,576 in / 65,536 out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "displayName": "Gemini 3.5 Flash Lite",
+      "capability": "Chat",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-3.5-flash-lite:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 0.3,
+      "outputCostPerMillionTokens": 2.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "Wired via GeminiChatClient. Chat + vision. Context 1,048,576. Same $0.30 / $2.50 per 1M as gemini-2.5-flash.",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.30 / $2.50 per 1M tokens. Context 1,048,576.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.1-pro-preview",
@@ -847,13 +1289,63 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "GrokVisionClient: book-page OCR, cast-on-image classify, and multi-image frame review. Same id as chat sibling (Chat↔Vision overlap).",
+      "notes": "GrokVisionClient: book-page OCR, cast-on-image classify, and multi-image frame review. Same id as chat sibling (Chat\u2194Vision overlap).",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxOutputTokens": 128000,
       "lastVerifiedAt": "2026-08-12",
       "pricingNotes": "Same token rates as chat sibling (docs.x.ai/developers/models 2026-08-12).",
       "pricingLastReviewedAt": "2026-08-12"
+    },
+    {
+      "id": "grok-4.3",
+      "displayName": "Grok 4.3 (vision)",
+      "capability": "Vision",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 1.25,
+      "outputCostPerMillionTokens": 2.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "GrokVisionClient: book-page OCR, cast-on-image classify, and multi-image frame review. Same id as chat sibling (Chat\u2194Vision overlap). Official replacement for retired grok-4-*.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "Same token rates as chat sibling (docs.x.ai 2026-08-15): $1.25 / $2.50 per 1M (<200k).",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "grok-4.20-reasoning",
+      "displayName": "Grok 4.20 (Reasoning, vision)",
+      "capability": "Vision",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 1.25,
+      "outputCostPerMillionTokens": 2.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Vision sibling of grok-4.20-reasoning. Catalog slug kept; canonical official id grok-4.20-0309-reasoning. Same id as chat sibling (Chat\u2194Vision overlap).",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "Same token rates as chat sibling (docs.x.ai 2026-08-15): $1.25 / $2.50 per 1M (<200k).",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-4.5",
@@ -906,6 +1398,56 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "claude-fable-5",
+      "displayName": "Claude Fable 5 (vision)",
+      "capability": "Vision",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 10.0,
+      "outputCostPerMillionTokens": 50.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Adaptive thinking always on.",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "Same token rates as chat sibling (Anthropic 2026-08-15): $10 / $50 per 1M. 1M context, 128k max out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "displayName": "Claude Haiku 4.5 (vision)",
+      "capability": "Vision",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 64000,
+      "inputCostPerMillionTokens": 1.0,
+      "outputCostPerMillionTokens": 5.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Extended thinking. Canonical snapshot id claude-haiku-4-5-20251001.",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "Same token rates as chat sibling (Anthropic 2026-08-15): $1 / $5 per 1M. 200k context, 64k max out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
       "id": "gemini-2.5-flash",
       "displayName": "Gemini 2.5 Flash (vision)",
       "capability": "Vision",
@@ -916,9 +1458,9 @@
         "GEMINI_API_KEY"
       ],
       "enabled": true,
-      "maxInputTokens": 1000000,
-      "inputCostPerMillionTokens": 2.0,
-      "outputCostPerMillionTokens": 12.0,
+      "maxInputTokens": 1048576,
+      "inputCostPerMillionTokens": 0.3,
+      "outputCostPerMillionTokens": 2.5,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
@@ -926,9 +1468,59 @@
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
-      "lastVerifiedAt": "2026-08-05",
-      "pricingNotes": "Same token rates as chat sibling; verify provider pricing page.",
-      "pricingLastReviewedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15",
+      "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15): $0.30 / $2.50 per 1M. Context 1,048,576 in / 65,536 out.",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "displayName": "Gemini 3.7 Flash (vision)",
+      "capability": "Vision",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-3.7-flash:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 0.75,
+      "outputCostPerMillionTokens": 3.75,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Text/image/video/audio/PDF; thinking.",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15 promo through 2026-12-31): $0.75 / $3.75 per 1M. Context 1,048,576 in / 65,536 out.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "displayName": "Gemini 3.5 Flash Lite (vision)",
+      "capability": "Vision",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-3.5-flash-lite:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 0.3,
+      "outputCostPerMillionTokens": 2.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap).",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15): $0.30 / $2.50 per 1M. Context 1,048,576.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/musicgen",
@@ -945,13 +1537,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "maxAudioDurationSeconds": 30,
-      "notes": "Meta MusicGen model hosted on Fal.ai. Pure instrumental background scoring with zero vocal hallucination.",
+      "maxAudioDurationSeconds": 40,
+      "notes": "Meta MusicGen model hosted on Fal.ai. Pure instrumental background scoring with zero vocal hallucination. Official duration 4\u201340s.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/udio",
@@ -964,25 +1556,26 @@
         "FAL_API_KEY",
         "FAL_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 60,
-      "notes": "Udio model hosted on Fal.ai. High-fidelity 44.1kHz studio music scoring with rich dynamic range.",
+      "notes": "Official Fal page 404 as of 2026-08-15. Disabled rather than deleted so past project configs still resolve.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15",
+      "deprecated": true
     },
     {
-      "id": "fal-ai/minimax/music",
+      "id": "fal-ai/minimax-music",
       "displayName": "MiniMax Music",
       "capability": "Audio",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
-      "endpointPath": "fal-ai/minimax/music",
+      "endpointPath": "fal-ai/minimax-music",
       "requiredEnvKeys": [
         "FAL_API_KEY",
         "FAL_KEY"
@@ -992,12 +1585,62 @@
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 60,
-      "notes": "MiniMax Music model hosted on Fal.ai for cinematic themes and dynamic background scores.",
+      "notes": "First-gen MiniMax Music on Fal.ai. Official id remapped from fal-ai/minimax/music (that page 404s) to fal-ai/minimax-music. Successors: fal-ai/minimax-music/v2.6 and minimax/music-3.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15"
+    },
+    {
+      "id": "fal-ai/minimax-music/v2.6",
+      "displayName": "MiniMax Music 2.6 (Fal.ai)",
+      "capability": "Audio",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/minimax-music/v2.6",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 60,
+      "notes": "MiniMax Music 2.6 on Fal.ai. Official price $0.15/audio. Prompt 10\u20132000 characters; lyrics max 3500. Official listing does not publish a max duration \u2014 60s is a planning bound copied from the first-gen MiniMax Music row, not a verified 2.6 spec. Official text: complete tracks with singing \u2192 supportsVocals=true.",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "supportsVocals": true,
+      "maxPromptLength": 2000,
+      "pricingNotes": "fal.ai/models/fal-ai/minimax-music/v2.6 2026-08-15: $0.15/audio.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "minimax/music-3",
+      "displayName": "MiniMax Music 3 (Fal.ai)",
+      "capability": "Audio",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "minimax/music-3",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 300,
+      "notes": "MiniMax Music 3 on Fal.ai (official id minimax/music-3). Up to 5 minutes. $0.002/s. supportsVocals=true (MiniMax Music product line; 2.6 officially sings).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "supportsVocals": true,
+      "maxPromptLength": 1000,
+      "pricingNotes": "fal.ai/models/minimax/music-3 2026-08-15: $0.002/s. Up to 5 min.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/stable-audio-2.0",
@@ -1010,17 +1653,43 @@
         "FAL_API_KEY",
         "FAL_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 180,
-      "notes": "Stability AI Stable Audio 2.0 hosted on Fal.ai with improved stereo width and multi-minute structural coherence.",
+      "notes": "Official Fal page 404 as of 2026-08-15. Disabled rather than deleted. Successor is fal-ai/stable-audio-25/text-to-audio (Stable Audio 2.5).",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15",
+      "deprecated": true
+    },
+    {
+      "id": "fal-ai/stable-audio-25/text-to-audio",
+      "displayName": "Stable Audio 2.5 (Fal.ai)",
+      "capability": "Audio",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/stable-audio-25/text-to-audio",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 190,
+      "notes": "Stability AI Stable Audio 2.5 on Fal.ai. Official duration 1\u2013190s. $0.2/audio. Successor to the disabled fal-ai/stable-audio-2.0 row.",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "supportsVocals": false,
+      "maxPromptLength": 1000,
+      "pricingNotes": "fal.ai/models/fal-ai/stable-audio-25/text-to-audio 2026-08-15: $0.2/audio. 1\u2013190s.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "suno-v5-5",
@@ -1036,13 +1705,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "maxAudioDurationSeconds": 240,
-      "notes": "Model: Suno v5.5. Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. Documented duration 10-360s on V5_5 custom mode.",
+      "maxAudioDurationSeconds": 360,
+      "notes": "Model: Suno v5.5 (official enum V5_5). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. Custom-mode duration 10\u2013360s; prompt 5000 characters in custom mode.",
       "providerId": "suno",
       "providerLabel": "Suno API (sunoapi.org)",
       "supportsVocals": true,
-      "maxPromptLength": 3000,
-      "lastVerifiedAt": "2026-08-05"
+      "maxPromptLength": 5000,
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "aimusicapi-suno",
@@ -1050,7 +1719,7 @@
       "capability": "Audio",
       "provider": "AiMusicApi",
       "apiBase": "https://api.aimusicapi.ai/api/v1",
-      "endpointPath": "suno/create",
+      "endpointPath": "sonic/create",
       "requiredEnvKeys": [
         "AIMUSICAPI_API_KEY"
       ],
@@ -1058,13 +1727,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Model: Suno. Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. No documented duration control; client mix trims to scene length.",
+      "notes": "Model: Suno (latest reseller model id sonic-v5-5). Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. Official create path /api/v1/sonic/create. No documented duration control; client mix trims to scene length.",
       "providerId": "aimusicapi",
       "providerLabel": "AI Music API (aimusicapi.ai)",
       "supportsVocals": true,
       "maxAudioDurationSeconds": 240,
       "maxPromptLength": 3000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "elevenlabs-music",
@@ -1102,11 +1771,31 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Spoken dialogue from a personal clone sample on Cast.",
+      "notes": "Spoken dialogue from a personal clone sample on Cast. Official ElevenLabs TTS character limit 10,000.",
+      "providerId": "elevenlabs",
+      "providerLabel": "ElevenLabs",
+      "maxPromptLength": 10000,
+      "lastVerifiedAt": "2026-08-15"
+    },
+    {
+      "id": "eleven_v3",
+      "displayName": "Eleven v3",
+      "capability": "Voice",
+      "provider": "ElevenLabs",
+      "apiBase": "https://api.elevenlabs.io/v1",
+      "endpointPath": "text-to-speech",
+      "requiredEnvKeys": [
+        "ElevenLabs_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "ElevenLabs flagship TTS. 70+ languages. Official character limit 5000. Spoken dialogue from a personal clone sample on Cast.",
       "providerId": "elevenlabs",
       "providerLabel": "ElevenLabs",
       "maxPromptLength": 5000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "eleven_voice_clone",
@@ -1177,6 +1866,30 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "fal-ai/minimax/speech-2.8-hd",
+      "displayName": "MiniMax Speech 2.8 HD (Fal.ai)",
+      "capability": "Voice",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "fal-ai/minimax/speech-2.8-hd",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "costPerThousandCharsUsd": 0.1,
+      "maxPromptLength": 5000,
+      "notes": "Text-to-speech via Fal.ai (fal.ai/models/fal-ai/minimax/speech-2.8-hd). $0.10/1000 characters. Speak-shaped Voice row (not a clone step).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "pricingNotes": "fal.ai/models/fal-ai/minimax/speech-2.8-hd 2026-08-15: $0.10/1000 chars.",
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
       "id": "fal-ai/sync-lipsync/v2/pro",
       "displayName": "Sync Lipsync 2 Pro (Fal.ai)",
       "capability": "LipSync",
@@ -1214,11 +1927,14 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Newest Sync Labs model on Fal.ai (fal.ai/models/fal-ai/sync-lipsync/v3), same core video_url/audio_url/sync_mode input as v2 Pro plus an optional `options` object (model_mode: lips/face/head/lipsync/emotion/talking_head, prompt: emotion tag, temperature, active_speaker_detection, occlusion_detection_enabled) that this app's client does not yet expose. Pricing not confirmed \u2014 fal.ai's pricing page returned HTTP 429 during research and no third-party source for v3 specifically was found; left null rather than guessed. Not the capability default until pricing is confirmed.",
+      "notes": "Newest Sync Labs model on Fal.ai (fal.ai/models/fal-ai/sync-lipsync/v3), same core video_url/audio_url/sync_mode input as v2 Pro plus an optional `options` object (model_mode, prompt, temperature, active_speaker_detection, occlusion_detection_enabled) that this app's client does not yet expose.",
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15",
+      "costPerMinuteUsd": 8.0,
+      "pricingNotes": "fal.ai sync-lipsync/v3 2026-08-15: $8/minute of output video.",
+      "pricingLastReviewedAt": "2026-08-15"
     }
   ],
   "task_rankings": {

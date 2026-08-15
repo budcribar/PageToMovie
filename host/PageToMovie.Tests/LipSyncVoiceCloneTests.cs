@@ -85,12 +85,12 @@ public class LipSyncVoiceCloneTests
     }
 
     [Fact]
-    public void Voice_capability_has_exactly_one_clone_shaped_and_one_speak_shaped_fal_entry()
+    public void Voice_capability_has_exactly_one_clone_shaped_and_at_least_one_speak_shaped_fal_entry()
     {
         var falVoice = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
             .Where(e => e.Provider == ModelProviderFamily.Fal).ToList();
         Assert.Single(falVoice, e => e.IsVoiceCloneStep);
-        Assert.Single(falVoice, e => !e.IsVoiceCloneStep);
+        Assert.Contains(falVoice, e => !e.IsVoiceCloneStep);
     }
 
     [Fact]

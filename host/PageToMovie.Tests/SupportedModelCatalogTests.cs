@@ -49,8 +49,8 @@ public class SupportedModelCatalogTests
     [Theory]
     [InlineData("grok-imagine-video", 7)]   // multi-plate identity conditioning
     [InlineData("hunyuan-video", 1)]        // single init/reference image only (true i2v)
-    [InlineData("fal-ai/wan-2.1", 1)]       // single init/reference image only (true i2v)
-    [InlineData("veo-3.1", 3)]              // Vertex Veo 3.1: up to 3 asset reference images
+    [InlineData("fal-ai/wan-i2v", 1)]       // single init/reference image only (true i2v)
+    [InlineData("veo-3.1-generate-preview", 3)] // Gemini API Veo 3.1: up to 3 asset reference images
     public void MaxReferenceImages_MatchesRealPerModelCapability(string modelId, int expectedMax)
     {
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
@@ -60,7 +60,7 @@ public class SupportedModelCatalogTests
     [Theory]
     [InlineData("grok-imagine-image-quality", 3)]  // Grok Imagine multi-image edit hard cap
     [InlineData("grok-imagine-image", 3)]          // Grok Imagine multi-image edit hard cap
-    [InlineData("gemini-2.5-pro-image", 14)]       // documented soft max for Gemini 3 image family
+    [InlineData("gemini-3-pro-image", 14)]         // documented soft max for Gemini 3 image family
     public void MaxReferenceImages_MatchesRealPerModelCapability_ForImageModels(string modelId, int expectedMax)
     {
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Image);
@@ -69,7 +69,7 @@ public class SupportedModelCatalogTests
 
     [Theory]
     [InlineData("hunyuan-video", 30)]
-    [InlineData("fal-ai/wan-2.1", 30)]
+    [InlineData("fal-ai/wan-i2v", 30)]
     public void NumInferenceSteps_MatchesRealPerModelFalDefault(string modelId, int expectedSteps)
     {
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
@@ -91,7 +91,7 @@ public class SupportedModelCatalogTests
         // Wan-2.1 stays duration-native (min/max/absMaxClipDurationSeconds) — it does not get a
         // short/long frame-count ladder like Hunyuan since FalVideoClient doesn't send an explicit
         // num_frames override for it today.
-        var entry = SupportedModelCatalog.ResolveOrDefault("fal-ai/wan-2.1", ModelCapability.Video);
+        var entry = SupportedModelCatalog.ResolveOrDefault("fal-ai/wan-i2v", ModelCapability.Video);
         Assert.Null(entry.ShortClipFrameCount);
         Assert.Null(entry.LongClipFrameCount);
         Assert.Equal(5, entry.MinClipDurationSeconds);
@@ -103,7 +103,7 @@ public class SupportedModelCatalogTests
     {
         // A model with no catalog entry (or one that predates these fields) must resolve to null
         // so callers (FalVideoClient) know to fall back to their own hardcoded defaults.
-        var entry = SupportedModelCatalog.ResolveOrDefault("veo-3.1", ModelCapability.Video);
+        var entry = SupportedModelCatalog.ResolveOrDefault("veo-3.1-generate-preview", ModelCapability.Video);
         Assert.Null(entry.NumInferenceSteps);
         Assert.Null(entry.ShortClipFrameCount);
         Assert.Null(entry.LongClipFrameCount);
@@ -196,7 +196,7 @@ public class SupportedModelCatalogTests
     [Fact]
     public void Gemini_veo_is_selectable_as_a_video_model()
     {
-        var m = SupportedModelCatalog.Find("veo-3.1", ModelCapability.Video);
+        var m = SupportedModelCatalog.Find("veo-3.1-generate-preview", ModelCapability.Video);
         Assert.NotNull(m);
         Assert.True(m!.Enabled, "should be selectable on the Configuration page");
         Assert.Equal(ModelProviderFamily.Google, m.Provider);
@@ -220,7 +220,7 @@ public class SupportedModelCatalogTests
     [Fact]
     public void Gemini_image_is_selectable_as_a_portrait_model()
     {
-        var m = SupportedModelCatalog.Find("gemini-2.5-pro-image", ModelCapability.Image);
+        var m = SupportedModelCatalog.Find("gemini-3-pro-image", ModelCapability.Image);
         Assert.NotNull(m);
         Assert.True(m!.Enabled);
         Assert.Equal("gemini", m.ProviderId);
@@ -256,8 +256,8 @@ public class SupportedModelCatalogTests
         // operator-facing hint text should say so, not describe them as unwired.
         foreach (var (id, cap) in new[]
         {
-            ("veo-3.1", ModelCapability.Video),
-            ("gemini-2.5-pro-image", ModelCapability.Image),
+            ("veo-3.1-generate-preview", ModelCapability.Video),
+            ("gemini-3-pro-image", ModelCapability.Image),
             ("claude-sonnet-5", ModelCapability.Chat),
             ("gemini-2.5-flash", ModelCapability.Chat),
         })
@@ -291,7 +291,7 @@ public class SupportedModelCatalogTests
     [InlineData("grok-4.5", ModelCapability.Chat, 500_000)]
     [InlineData("grok-4", ModelCapability.Chat, 256_000)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 1_000_000)]
-    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 1_000_000)]
+    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 1_048_576)]
     public void Chat_models_carry_real_context_window(string id, ModelCapability cap, int expectedMaxInputTokens)
     {
         // Provider-documented context windows (2026-07) — BookToFountainConverter.
@@ -317,7 +317,7 @@ public class SupportedModelCatalogTests
     [InlineData("grok-4.5", ModelCapability.Chat, 2.00, 6.00)]
     [InlineData("grok-4", ModelCapability.Chat, 3.00, 15.00)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 2.00, 10.00)]
-    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 2.00, 12.00)]
+    [InlineData("gemini-2.5-flash", ModelCapability.Chat, 0.30, 2.50)]
     public void Chat_models_carry_real_token_pricing(
         string id, ModelCapability cap, double expectedInput, double expectedOutput)
     {
@@ -338,9 +338,10 @@ public class SupportedModelCatalogTests
         Assert.NotNull(grok?.VideoCostPerSecondByResolution);
         Assert.Equal(0.05, grok!.VideoCostPerSecondByResolution!["480p"]);
         Assert.Equal(0.07, grok.VideoCostPerSecondByResolution["720p"]);
-        Assert.Equal(0.25, grok.VideoCostPerSecondByResolution["1080p"]);
+        Assert.False(grok.VideoCostPerSecondByResolution.ContainsKey("1080p"),
+            "1080p $0.25 is not official for grok-imagine-video (native 1080p is grok-imagine-video-1.5)");
 
-        var veo = SupportedModelCatalog.Find("veo-3.1", ModelCapability.Video);
+        var veo = SupportedModelCatalog.Find("veo-3.1-generate-preview", ModelCapability.Video);
         Assert.NotNull(veo?.VideoCostPerSecondByResolution);
         Assert.Equal(0.40, veo!.VideoCostPerSecondByResolution!["720p"]);
         Assert.Equal(0.40, veo.VideoCostPerSecondByResolution["1080p"]);
@@ -351,7 +352,7 @@ public class SupportedModelCatalogTests
     {
         Assert.Equal(0.05, SupportedModelCatalog.Find("grok-imagine-image-quality", ModelCapability.Image)?.ImageCostPerImage);
         Assert.Equal(0.02, SupportedModelCatalog.Find("grok-imagine-image", ModelCapability.Image)?.ImageCostPerImage);
-        Assert.Equal(0.134, SupportedModelCatalog.Find("gemini-2.5-pro-image", ModelCapability.Image)?.ImageCostPerImage);
+        Assert.Equal(0.134, SupportedModelCatalog.Find("gemini-3-pro-image", ModelCapability.Image)?.ImageCostPerImage);
     }
 
     [Fact]
@@ -453,13 +454,13 @@ public class SupportedModelCatalogTests
         new[] { "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3" }, "16:9")]
     // Google Veo 3.1 via Gemini API (ai.google.dev/gemini-api/docs/veo): landscape 16:9 (default)
     // or portrait 9:16 only.
-    [InlineData("veo-3.1", ModelCapability.Video, new[] { "16:9", "9:16" }, "16:9")]
+    [InlineData("veo-3.1-generate-preview", ModelCapability.Video, new[] { "16:9", "9:16" }, "16:9")]
     // Fal.ai HunyuanVideo (fal.ai/models/fal-ai/hunyuan-video/api): aspect_ratio 16:9 or 9:16,
     // default 16:9.
     [InlineData("hunyuan-video", ModelCapability.Video, new[] { "16:9", "9:16" }, "16:9")]
     // Fal.ai Wan 2.1 image-to-video (fal.ai/models/fal-ai/wan-i2v/api): auto (infer from input
     // image, default), 16:9, 9:16, or 1:1.
-    [InlineData("fal-ai/wan-2.1", ModelCapability.Video,
+    [InlineData("fal-ai/wan-i2v", ModelCapability.Video,
         new[] { "auto", "16:9", "9:16", "1:1" }, "auto")]
     public void Video_models_carry_real_per_model_aspect_ratios(
         string id, ModelCapability cap, string[] expectedSupported, string expectedDefault)

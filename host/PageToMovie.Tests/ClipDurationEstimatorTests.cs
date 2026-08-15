@@ -130,9 +130,9 @@ public class ClipDurationEstimatorTests
     [Fact]
     public void ResolveBoundsForModel_ReturnsNarrowRealRangeForWan()
     {
-        // fal-ai/wan-2.1's real usable range is a narrow ~5-6s band (81-100 frames @ 5-24fps),
+        // fal-ai/wan-i2v's real usable range is a narrow ~5-6s band (81-100 frames @ 5-24fps),
         // not the generic 3-10s default.
-        var (min, max, absMax) = ClipDurationEstimator.ResolveBoundsForModel("fal-ai/wan-2.1");
+        var (min, max, absMax) = ClipDurationEstimator.ResolveBoundsForModel("fal-ai/wan-i2v");
         Assert.Equal(5, min);
         Assert.Equal(6, max);
         Assert.Equal(6, absMax);
@@ -146,9 +146,9 @@ public class ClipDurationEstimatorTests
     [InlineData(9, 8)]  // above the highest allowed value clamps down to it
     public void ResolveActualDurationForModel_SnapsToVeoDiscreteDurations(int requested, int expected)
     {
-        // veo-3.1 documents exactly 4/6/8 seconds, not a continuous range — a plain min/max clamp
+        // veo-3.1-generate-preview documents exactly 4/6/8 seconds, not a continuous range — a plain min/max clamp
         // would let e.g. 7 through unchanged, which Veo does not accept.
-        var actual = ClipDurationEstimator.ResolveActualDurationForModel("veo-3.1", requested);
+        var actual = ClipDurationEstimator.ResolveActualDurationForModel("veo-3.1-generate-preview", requested);
         Assert.Equal(expected, actual);
     }
 
