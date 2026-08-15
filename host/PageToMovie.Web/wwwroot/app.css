@@ -123,7 +123,8 @@ html, body {
     background-color: var(--fs-bg-main);
     color: var(--fs-text-primary);
     -webkit-font-smoothing: antialiased;
-    transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+    /* Do not transition background — new views / theme apply would flash Bootstrap white. */
+    transition: color 0.25s ease, border-color 0.25s ease;
 }
 
 /* Voice capture — unscoped so ScriptPane / ComparePane children actually get these. */
@@ -145,6 +146,8 @@ html, body {
 .ptm-red-off { background: #3a1310; } .ptm-red-on { background: #ff3b30; box-shadow: 0 0 14px #ff3b30; }
 .ptm-yellow-off { background: #3a3210; } .ptm-yellow-on { background: #ffcc00; box-shadow: 0 0 14px #ffcc00; }
 .ptm-green-off { background: #123a1f; } .ptm-green-on { background: #34c759; box-shadow: 0 0 14px #34c759; }
+.ptm-script-line { min-width: 0; }
+.ptm-script-line .tele-viewport { flex: 1 1 auto; min-width: 0; }
 .tele-viewport { position: relative; overflow: hidden; height: 1.9em; width: 100%; }
 .tele-pointer { position: absolute; left: 28%; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
     background: #ffc107; box-shadow: 0 0 10px #ffc107; z-index: 2; }
@@ -188,7 +191,7 @@ code, kbd, samp, pre, .font-monospace, .code-token, .badge-code, pre code {
     border: 1px solid var(--fs-border-color);
     border-radius: 12px;
     box-shadow: var(--fs-shadow-card);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
     color: var(--fs-text-primary);
 }
 
@@ -535,7 +538,9 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 .list-group-item-action:hover,
-.list-group-item-action:focus {
+.list-group-item-action:focus,
+.list-group-item-action:active,
+.list-group-item-action:active:focus {
     background-color: var(--fs-bg-card-hover);
     color: var(--fs-text-primary) !important;
 }

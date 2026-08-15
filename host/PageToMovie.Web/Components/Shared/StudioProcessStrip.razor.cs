@@ -31,6 +31,15 @@ public partial class StudioProcessStrip
     /// </summary>
     [Parameter] public bool FullStudio { get; set; }
 
+    /// <summary>
+    /// In-page Back for Easy Start: /simple-voice step 2 and 3 share one route, so
+    /// <see cref="NavigationManager.NavigateTo"/> to "simple-voice" is a no-op.
+    /// </summary>
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    /// <summary>In-page jump to the story list when the Story step is clicked on /simple-voice.</summary>
+    [Parameter] public EventCallback OnBackToStory { get; set; }
+
     /// <summary>Step 0 only while personal studio keys are missing (BYOK).</summary>
     private bool NeedsSetup =>
         ActiveProject.Status is { XaiConfigured: false };
@@ -161,10 +170,24 @@ public partial class StudioProcessStrip
     private bool CanGoBack => !string.IsNullOrWhiteSpace(PrevStep.Href);
     private bool CanGoNext => !string.IsNullOrWhiteSpace(NextStep.Href);
 
-    private void GoBack()
+    /// <summary>Story step is the same URL as the record step — handle it in-page when asked.</summary>
+    private bool HandleStoryInPage => OnBackToStory.HasDelegate && UseSimple && ActiveKey is "cast" or "film";
+
+    private async Task GoBack()
     {
+        if (OnBack.HasDelegate)
+        {
+            await OnBack.InvokeAsync();
+            return;
+        }
         if (PrevStep.Href is { Length: > 0 } href)
             Nav.NavigateTo(href);
+    }
+
+    private async Task OnStoryStepClick()
+    {
+        if (HandleStoryInPage)
+            await OnBackToStory.InvokeAsync();
     }
 
     private void GoNext()

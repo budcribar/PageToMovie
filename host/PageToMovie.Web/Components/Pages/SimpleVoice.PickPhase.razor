@@ -14,6 +14,10 @@
         {
             <p class="small text-muted" data-testid="simple-voice-loading">Loading stories…</p>
         }
+        else if (Busy)
+        {
+            <p class="small text-muted mb-3" data-testid="simple-voice-opening">Opening story…</p>
+        }
         else if (!string.IsNullOrWhiteSpace(Host._storiesError))
         {
             <div class="alert alert-warning py-2 small mb-3" data-testid="simple-voice-stories-error">

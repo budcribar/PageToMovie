@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using PageToMovie.Core.Models;
 using PageToMovie.Web.Components.Pages;
 using PageToMovie.Web.Services;
 using Xunit;
@@ -98,6 +99,49 @@ public class WebPageHydrationGateTests
         bool loggedIn, bool simpleVoice, string? projectId, bool expected)
     {
         Assert.Equal(expected, SimpleVoice.ShouldResumeRecordPhase(loggedIn, simpleVoice, projectId));
+    }
+
+    [Fact]
+    public void SimpleVoice_strip_back_from_record_returns_to_story_pick()
+    {
+        var page = new SimpleVoiceStoriesHarness(CatalogEngine());
+        page._phase = SimpleVoice.Phase.Record;
+        page._needsCharacterPick = true;
+        Assert.Equal(SimpleVoice.BackTarget.Pick, page.ComputeBackTarget());
+
+        page.OnStripBack();
+        Assert.Equal(SimpleVoice.Phase.Pick, page._phase);
+    }
+
+    [Fact]
+    public void SimpleVoice_strip_back_from_voice_returns_to_character_when_user_picked()
+    {
+        var page = new SimpleVoiceStoriesHarness(CatalogEngine());
+        page._phase = SimpleVoice.Phase.Record;
+        page._needsCharacterPick = false;
+        page._narratorCandidates = new()
+        {
+            new CharacterSummary { Key = "Character_Teacher", DisplayName = "Teacher" },
+            new CharacterSummary { Key = "Character_Mary", DisplayName = "Mary" },
+        };
+        Assert.Equal(SimpleVoice.BackTarget.Character, page.ComputeBackTarget());
+
+        page.OnStripBack();
+        Assert.True(page._needsCharacterPick);
+        Assert.Equal(SimpleVoice.Phase.Record, page._phase);
+    }
+
+    [Fact]
+    public void SimpleVoice_strip_back_from_movie_returns_to_voice()
+    {
+        var page = new SimpleVoiceStoriesHarness(CatalogEngine());
+        page._phase = SimpleVoice.Phase.Movie;
+        page._dubbedUrl = "blob:movie";
+        Assert.Equal(SimpleVoice.BackTarget.Voice, page.ComputeBackTarget());
+
+        page.OnStripBack();
+        Assert.Equal(SimpleVoice.Phase.Done, page._phase);
+        Assert.Null(page._dubbedUrl);
     }
 
     private static EngineApiClient CatalogEngine()

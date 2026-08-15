@@ -11,6 +11,7 @@
     function apply(pref) {
         const resolved = resolve(pref);
         document.documentElement.dataset.theme = resolved;
+        document.documentElement.setAttribute("data-bs-theme", resolved);
         try { localStorage.setItem('fs.themePref', pref || 'dark'); } catch (e) { /* ignore */ }
         return resolved;
     }
@@ -23,5 +24,6 @@
         apply(localStorage.getItem('fs.themePref') || 'dark');
     } catch (e) {
         document.documentElement.dataset.theme = 'dark';
+        document.documentElement.setAttribute('data-bs-theme', 'dark');
     }
 })();

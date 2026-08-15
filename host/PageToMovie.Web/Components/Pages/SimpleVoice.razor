@@ -25,7 +25,7 @@
     </div>
 }
 
-<StudioProcessStrip Active="@StripActive" SimpleMode="true" />
+<StudioProcessStrip Active="@StripActive" SimpleMode="true" OnBack="OnStripBack" OnBackToStory="BackToPick" />
 
 <InlineAlert Message="@_error" data-testid="simple-voice-error" />
 @if (string.IsNullOrEmpty(_error))
@@ -38,12 +38,12 @@
 <CascadingValue Value="this" IsFixed="true">
     @if (_phase == Phase.Pick)
     {
-        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" />
+        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
     }
     else if (!Session.IsLoggedIn)
     {
         @* Record/movie need a session; bounce to pick + sign-in. *@
-        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" />
+        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
     }
     else if (_phase is Phase.Record or Phase.Done)
     {

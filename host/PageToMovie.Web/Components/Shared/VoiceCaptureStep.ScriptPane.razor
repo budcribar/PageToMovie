@@ -1,21 +1,21 @@
-@* Shared extract of VoiceCaptureStep — one traffic-light box, then the scrolling line *@
+@* Shared extract of VoiceCaptureStep — lights on the same line as the scrolling phrase *@
 @using Microsoft.AspNetCore.Components
 
 @{ var words = VoiceCaptureStep.SplitWords(Host.CurrentPhrase.Text); }
 @{ var inTele = Host._recording || Host._light > 0 || Host._listening; }
 
-<div class="mb-1">
-    <div class="ptm-light-box-h mb-2" data-testid="voice-capture-light">
+<div class="d-flex align-items-center gap-2 mb-1 ptm-script-line">
+    <div class="ptm-light-box-h" data-testid="voice-capture-light">
         <span class="ptm-light-sm @(Host._light == 1 ? "ptm-red-on" : "ptm-red-off")"></span>
         <span class="ptm-light-sm @(Host._light == 2 ? "ptm-yellow-on" : "ptm-yellow-off")"></span>
         <span class="ptm-light-sm @(Host._light == 3 ? "ptm-green-on" : "ptm-green-off")"></span>
     </div>
-    <div class="tele-viewport">
+    <div class="tele-viewport flex-grow-1">
         <div class="tele-pointer"></div>
         <div id="tele-text" @key="Host._teleSession" class="tele-text fs-5">
-            @foreach (var w in words)
+            @for (var wi = 0; wi < words.Count; wi++)
             {
-                <span class="tele-w">@w</span>
+                <span class="tele-w" style="@Host.WordStyle(wi)">@words[wi]</span>
             }
         </div>
     </div>

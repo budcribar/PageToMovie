@@ -722,16 +722,30 @@ window.PageToMovieFfmpeg = {
      * Play an audio URL and resolve when it finishes (or errors). Used by the voice-capture
      * "Listen" step so the teleprompter can scroll in sync with the original playback.
      */
-    playAudioAsync: function (url) {
+    playAudioAsync: function (url, timeoutMs) {
         return new Promise(function (resolve) {
             if (!url) { resolve(false); return; }
+            var settled = false;
+            var done = function (ok) {
+                if (settled) return;
+                settled = true;
+                resolve(!!ok);
+            };
             try {
                 const a = new Audio(url);
-                a.onended = function () { resolve(true); };
-                a.onerror = function () { resolve(false); };
+                a.onended = function () { done(true); };
+                a.onerror = function () { done(false); };
+                var ms = typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : 30000;
+                var timer = setTimeout(function () {
+                    try { a.pause(); } catch (_) { /* ignore */ }
+                    done(true);
+                }, ms);
                 const playResult = a.play();
-                Promise.resolve(playResult).catch(function () { resolve(false); });
-            } catch { /* audio element or play() failed */ resolve(false); }
+                Promise.resolve(playResult).catch(function () {
+                    clearTimeout(timer);
+                    done(false);
+                });
+            } catch { /* audio element or play() failed */ done(false); }
         });
     },
 
