@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.UiTests;
 
@@ -42,6 +44,53 @@ public class HomeFlowTests
             await page.GetByTestId("nav-studio").ClickAsync();
             await AssertSelectedProjectLabelAsync(page, newName, 20_000);
             await Assertions.Expect(page.GetByTestId("home-project-picker")).Not.ToContainTextAsync(originalName);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Delete_confirm_is_a_modal_that_names_the_selected_project()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            var leftover = "Keep_" + Guid.NewGuid().ToString("N")[..6];
+            var chosen = "Drop_" + Guid.NewGuid().ToString("N")[..6];
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl, leftover);
+
+            await page.GetByTestId("nav-studio").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = 20_000 });
+            await page.GetByTestId("home-new-project").ClickAsync();
+            await page.GetByTestId("home-new-project-name").FillAsync(chosen);
+            await page.GetByTestId("home-create-project").ClickAsync();
+            await page.WaitForURLAsync(
+                new Regex("adaptation/import", RegexOptions.IgnoreCase, CommonRegex.Timeout),
+                new() { Timeout = 60_000 });
+
+            await page.GetByTestId("nav-studio").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            // Active is the just-created project; switch the picker to the other one, then Delete.
+            await page.GetByTestId("home-project-picker").SelectOptionAsync(new SelectOptionValue { Label = leftover });
+            await AssertSelectedProjectLabelAsync(page, leftover, 15_000);
+
+            await page.GetByTestId("home-manage-projects").ClickAsync();
+            await page.GetByTestId("home-delete-project").ClickAsync();
+
+            var modal = page.GetByTestId("home-delete-project-modal");
+            await Assertions.Expect(modal).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            await Assertions.Expect(page.GetByTestId("home-delete-project-label")).ToHaveTextAsync(leftover);
+            await Assertions.Expect(modal).Not.ToContainTextAsync(chosen);
+
+            await page.GetByTestId("home-delete-project-cancel").ClickAsync();
+            await Assertions.Expect(modal).ToBeHiddenAsync();
+
+            await page.GetByTestId("home-delete-project").ClickAsync();
+            await Assertions.Expect(modal).ToBeVisibleAsync();
+            await page.GetByTestId("home-delete-project-confirm").ClickAsync();
+            await Assertions.Expect(modal).ToBeHiddenAsync(new() { Timeout = 20_000 });
+            await Assertions.Expect(page.GetByTestId("home-project-picker")).Not.ToContainTextAsync(leftover);
+            await AssertSelectedProjectLabelAsync(page, chosen, 15_000);
         }
         finally { await ctx.CloseAsync(); }
     }

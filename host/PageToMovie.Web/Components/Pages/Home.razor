@@ -130,3 +130,56 @@ else
 
 
 <ProjectCollaboratorsModal IsOpen="Projects._showCollaboratorsModal" ProjectId="Projects._collaboratorsProjectId" OnClose="Projects.CloseCollaboratorsModal" />
+
+@if (Projects._deleteId is not null)
+{
+    @* Centered overlay — same family as new-project / collaborators. Do not inline this in the
+       Manage panel (that sat below the fold after checkpoints). *@
+    <div class="modal-backdrop fade show" style="z-index: 1050;" @onclick="Projects.CancelDelete"></div>
+    <div class="modal fade show d-block"
+         tabindex="-1"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="home-delete-project-title"
+         style="z-index: 1055;"
+         data-testid="home-delete-project-modal">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content bg-dark text-white border-secondary shadow">
+                <div class="modal-header border-secondary py-2">
+                    <h5 class="modal-title fs-6 mb-0" id="home-delete-project-title">Delete project?</h5>
+                    <button type="button"
+                            class="btn-close btn-close-white"
+                            disabled="@_busy"
+                            aria-label="Cancel"
+                            @onclick="Projects.CancelDelete"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">
+                        Delete <strong data-testid="home-delete-project-label">@Projects._deleteLabel</strong>
+                        @if (!string.Equals(Projects._deleteLabel, Projects._deleteId, StringComparison.Ordinal))
+                        {
+                            <span class="text-white-50"> (<span class="font-monospace" data-testid="home-delete-project-id">@Projects._deleteId</span>)</span>
+                        }
+                        ? This removes the project and all its files.
+                    </p>
+                </div>
+                <div class="modal-footer border-secondary py-2">
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            data-testid="home-delete-project-cancel"
+                            disabled="@_busy"
+                            @onclick="Projects.CancelDelete">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            class="btn btn-danger btn-sm"
+                            data-testid="home-delete-project-confirm"
+                            disabled="@_busy"
+                            @onclick="Projects.ConfirmDeleteAsync">
+                        Delete project
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

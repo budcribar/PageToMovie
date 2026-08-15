@@ -8,9 +8,9 @@
 <div class="card mb-3 home-studio-card" data-testid="home-studio-card">
     <div class="card-body py-3">
         @{
-            var activeMeta = Host.Projects._projects.Projects.FirstOrDefault(p =>
-                string.Equals(p.Id, Host.Projects._projects.Active?.Id, StringComparison.OrdinalIgnoreCase));
-            var hasActive = ActiveProject.HasProject || !string.IsNullOrWhiteSpace(Host.Projects._projects.Active?.Id);
+            var selectedId = Host.Projects.SelectedProjectId;
+            var activeMeta = Host.Projects.FindProject(selectedId);
+            var hasActive = ActiveProject.HasProject || !string.IsNullOrWhiteSpace(selectedId);
         }
         @if (hasActive)
         {
@@ -20,7 +20,7 @@
                 <select class="form-select form-select-sm home-project-select flex-grow-1"
                         style="min-width: 10rem; max-width: 22rem;"
                         data-testid="home-project-picker"
-                        value="@(Host.Projects._projects.Active?.Id ?? ActiveProject.ProjectId)"
+                        value="@selectedId"
                         disabled="@Host._busy"
                         title="Project"
                         aria-label="Project"
@@ -76,9 +76,8 @@
                 <div class="home-manage-panel mb-3 p-2 rounded border border-secondary border-opacity-25"
                      data-testid="home-manage-panel">
                     @{
-                        var id = Host.Projects._projects.Active?.Id ?? ActiveProject.ProjectId ?? "";
-                        var p = activeMeta ?? Host.Projects._projects.Projects.FirstOrDefault(x =>
-                            string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+                        var id = selectedId ?? "";
+                        var p = activeMeta ?? Host.Projects.FindProject(id);
                         var canManage = Host.Projects.CanManageProject(p);
                     }
                     @if (p is not null)
@@ -151,7 +150,8 @@
                                     </button>
                                 }
                                 <button type="button" class="btn btn-sm btn-outline-danger ms-auto" disabled="@Host._busy"
-                                        @onclick="() => Host.Projects.BeginDeleteAsync(id, p.Label ?? p.Title ?? id)">
+                                        data-testid="home-delete-project"
+                                        @onclick="Host.Projects.BeginDeleteAsync">
                                     Delete
                                 </button>
                             </div>
@@ -267,19 +267,6 @@
                         </button>
                     </div>
                     <div class="form-text text-muted mt-1">Changes the display name only — project id stays the same.</div>
-                </div>
-            }
-
-            @if (Host.Projects._deleteId is not null)
-            {
-                <div class="border border-danger border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm">
-                    <p class="small mb-2 text-white">
-                        Delete <strong>@Host.Projects._deleteLabel</strong>? This removes the project folder and all its files.
-                    </p>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-danger btn-sm" disabled="@Host._busy" @onclick="Host.Projects.ConfirmDeleteAsync">Delete project</button>
-                        <button class="btn btn-outline-secondary btn-sm" disabled="@Host._busy" @onclick="Host.Projects.CancelDelete">Cancel</button>
-                    </div>
                 </div>
             }
 
