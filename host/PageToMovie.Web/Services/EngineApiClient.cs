@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using PageToMovie.Core.Auth;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Web.Services;
 
@@ -567,7 +568,7 @@ public sealed class EngineApiClient
         Func<long, long?, Task>? onProgress,
         CancellationToken ct = default)
         => await DownloadZipBodyWithProgressAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/export",
             $"PageToMovie_{projectId}.zip",
             ExportFailedMessage,
             onProgress,
@@ -578,7 +579,7 @@ public sealed class EngineApiClient
         Func<long, long?, Task>? onProgress,
         CancellationToken ct = default)
         => await DownloadZipBodyWithProgressAsync(
-            $"/api/admin/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"{ProjectIdRouting.AdminProjectApi(projectId)}/export",
             $"PageToMovie_{projectId}.zip",
             ExportFailedMessage,
             onProgress,
@@ -588,7 +589,7 @@ public sealed class EngineApiClient
         string projectId,
         CancellationToken ct = default)
         => await DownloadZipAsync(
-            $"/api/admin/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"{ProjectIdRouting.AdminProjectApi(projectId)}/export",
             $"PageToMovie_{projectId}.zip", ExportFailedMessage, ct);
 
     /// <summary>User-mode project export (no admin) — same server zip as the admin export, gated on
@@ -598,7 +599,7 @@ public sealed class EngineApiClient
         string projectId,
         CancellationToken ct = default)
         => await DownloadZipAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/export",
             $"PageToMovie_{projectId}.zip", ExportFailedMessage, ct);
 
     /// <summary>
@@ -698,7 +699,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/contribution-diff";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/contribution-diff";
         if (!string.IsNullOrWhiteSpace(originProjectId))
             url += $"?originProjectId={Uri.EscapeDataString(originProjectId)}";
 
@@ -712,7 +713,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/contribution-sync-media");
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/contribution-sync-media");
         req.Content = JsonContent.Create(new { ParentProjectId = parentProjectId }, options: JsonOpts);
         return await SendJsonAsync<MediaSyncResultDto>(req, ct);
     }
@@ -723,7 +724,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/visibility");
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/visibility");
         req.Content = JsonContent.Create(new { visibilityMode }, options: JsonOpts);
         var res = await _http.SendAsync(req, ct);
         return res.IsSuccessStatusCode;
@@ -734,7 +735,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/fork");
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/fork");
         return await SendJsonAsync<ForkResultDto>(req, ct);
     }
 
@@ -835,7 +836,7 @@ public sealed class EngineApiClient
     {
         SyncIdentityHeaders();
         using var req = new HttpRequestMessage(
-            HttpMethod.Delete, $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}");
+            HttpMethod.Delete, $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}");
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
@@ -850,8 +851,8 @@ public sealed class EngineApiClient
     {
         SyncIdentityHeaders();
         var path = credits
-            ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/credits"
-            : $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes";
+            ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/credits"
+            : $"{ProjectIdRouting.ProjectApi(projectId)}/scenes";
         using var req = new HttpRequestMessage(HttpMethod.Post, path);
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -885,7 +886,7 @@ public sealed class EngineApiClient
     {
         SyncIdentityHeaders();
         using var req = new HttpRequestMessage(
-            HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/git/commit")
+            HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/git/commit")
         {
             // ForceCommit: a named checkpoint must always land with the user's chosen message, even
             // when nothing has changed since the last commit — unlike the auto-commit-after-save path
@@ -904,7 +905,7 @@ public sealed class EngineApiClient
         try
         {
             var dto = await _http.GetFromJsonAsync<CheckpointHistoryEnvelope>(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/git/history?limit={limit}", JsonOpts, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/git/history?limit={limit}", JsonOpts, ct);
             return dto?.History ?? new List<CheckpointDto>();
         }
         catch
@@ -918,7 +919,7 @@ public sealed class EngineApiClient
     {
         SyncIdentityHeaders();
         using var req = new HttpRequestMessage(
-            HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/git/revert/{Uri.EscapeDataString(commitHash)}");
+            HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/git/revert/{Uri.EscapeDataString(commitHash)}");
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
@@ -938,7 +939,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/sync-origin")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/sync-origin")
         {
             Content = JsonContent.Create(new { ParentProjectId = parentProjectId }, options: JsonOpts)
         };
@@ -956,7 +957,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/push")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/push")
         {
             Content = JsonContent.Create(new
             {
@@ -1052,7 +1053,7 @@ public sealed class EngineApiClient
     public async Task<byte[]?> GetWipMovieBytesAsync(string projectId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/projects/{Uri.EscapeDataString(projectId)}/movie/wip");
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{ProjectIdRouting.ProjectApi(projectId)}/movie/wip");
         var res = await _http.SendAsync(req, ct);
         if (!res.IsSuccessStatusCode) return null;
         return await res.Content.ReadAsByteArrayAsync(ct);
@@ -1131,7 +1132,7 @@ public sealed class EngineApiClient
         string projectId, string charKey, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/book-candidates";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/book-candidates";
         var dto = await _http.GetFromJsonAsync<BookCandidateEnvelopeDto>(url, JsonOpts, ct);
         return dto?.Candidates ?? new List<RankedBookCandidateDto>();
     }
@@ -1140,7 +1141,7 @@ public sealed class EngineApiClient
         string projectId, string charKey, List<string> imagePaths, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/set-book-refs";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/set-book-refs";
         using var req = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = JsonContent.Create(new { ImagePaths = imagePaths }, options: JsonOpts),
@@ -1297,7 +1298,7 @@ public sealed class EngineApiClient
     public async Task<SendInviteResult?> SendProjectInviteAsync(
         string projectId, string? targetHandle, string? targetEmail, CancellationToken ct = default)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/invites")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/invites")
         {
             Content = JsonContent.Create(new { ProjectId = projectId, TargetHandle = targetHandle, TargetEmail = targetEmail }, options: JsonOpts),
         };
@@ -1396,7 +1397,7 @@ public sealed class EngineApiClient
     public async Task<ProjectRulesDocument?> GetProjectRulesAsync(string projectId, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get,
-            $"/api/admin/learning/project-rules/{Uri.EscapeDataString(projectId)}");
+            $"/api/admin/learning/project-rules/{ProjectIdRouting.ToUrlPath(projectId)}");
         var env = await SendJsonAsync<ProjectRulesEnvelope>(req, ct);
         return env?.Rules;
     }
@@ -1405,7 +1406,7 @@ public sealed class EngineApiClient
         string projectId, int minFails = 3, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"/api/admin/learning/project-rules/{Uri.EscapeDataString(projectId)}/suggest?minFails={minFails}");
+            $"/api/admin/learning/project-rules/{ProjectIdRouting.ToUrlPath(projectId)}/suggest?minFails={minFails}");
         var env = await SendJsonAsync<ProjectRulesEnvelope>(req, ct);
         return env?.Rules;
     }
@@ -1414,7 +1415,7 @@ public sealed class EngineApiClient
         string projectId, string suggestionId, string? text = null, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"/api/admin/learning/project-rules/{Uri.EscapeDataString(projectId)}/approve")
+            $"/api/admin/learning/project-rules/{ProjectIdRouting.ToUrlPath(projectId)}/approve")
         {
             Content = JsonContent.Create(new ApproveProjectRuleRequest
             {
@@ -1430,7 +1431,7 @@ public sealed class EngineApiClient
         string projectId, string suggestionId, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"/api/admin/learning/project-rules/{Uri.EscapeDataString(projectId)}/reject")
+            $"/api/admin/learning/project-rules/{ProjectIdRouting.ToUrlPath(projectId)}/reject")
         {
             Content = JsonContent.Create(new RejectProjectRuleRequest { SuggestionId = suggestionId }, options: JsonOpts),
         };
@@ -1553,7 +1554,7 @@ public sealed class EngineApiClient
     public async Task ActivateProjectAsync(string projectId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/activate")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/activate")
         {
             Content = JsonContent.Create(new { }, options: JsonOpts)
         };
@@ -1581,7 +1582,7 @@ public sealed class EngineApiClient
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/studio-path",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/studio-path",
             new SetStudioPathRequest { StudioPath = studioPath },
             JsonOpts,
             ct);
@@ -1599,7 +1600,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/rename",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/rename",
             new RenameProjectRequest { Title = newTitle, Name = newTitle },
             JsonOpts,
             ct);
@@ -1633,7 +1634,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        using var req = new HttpRequestMessage(HttpMethod.Delete, $"/api/projects/{Uri.EscapeDataString(projectId)}");
+        using var req = new HttpRequestMessage(HttpMethod.Delete, $"{ProjectIdRouting.ProjectApi(projectId)}");
         return await SendJsonAsync<ProjectsDto>(req, ct);
     }
 
@@ -1663,7 +1664,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/acl", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/acl", ct);
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadFromJsonAsync<ProjectAclClientDto>(JsonOpts, ct);
         }
@@ -1677,7 +1678,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}", ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.NoContent) return null;
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadFromJsonAsync<ProjectLeaseClientDto>(JsonOpts, ct);
@@ -1690,7 +1691,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/acl/key-mode",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/acl/key-mode",
             new { keyMode }, JsonOpts, ct);
         if (resp.IsSuccessStatusCode) return (true, null);
         return (false, await resp.Content.ReadAsStringAsync(ct));
@@ -1701,7 +1702,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/acquire",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/acquire",
             null, ct);
         return resp.IsSuccessStatusCode;
     }
@@ -1713,7 +1714,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/release",
+                $"{ProjectIdRouting.ProjectApi(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/release",
                 null, ct);
         }
         catch { /* soft */ }
@@ -1726,7 +1727,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/release-all", null, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/leases/release-all", null, ct);
         }
         catch { /* soft */ }
     }
@@ -1737,20 +1738,25 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence/leave", null, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/presence/leave", null, ct);
         }
         catch { /* soft */ }
     }
 
-    public async Task PresenceHeartbeatAsync(string projectId, CancellationToken ct = default)
+    /// <returns>HTTP status, or <c>null</c> if the request did not complete.</returns>
+    public async Task<int?> PresenceHeartbeatAsync(string projectId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
         try
         {
-            await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence/heartbeat", null, ct);
+            using var resp = await _http.PostAsync(
+                $"{ProjectIdRouting.ProjectApi(projectId)}/presence/heartbeat", null, ct);
+            return (int)resp.StatusCode;
         }
-        catch { /* soft */ }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<List<ProjectPresenceClientDto>> ListPresenceAsync(
@@ -1760,7 +1766,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             return await _http.GetFromJsonAsync<List<ProjectPresenceClientDto>>(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence", JsonOpts, ct)
+                $"{ProjectIdRouting.ProjectApi(projectId)}/presence", JsonOpts, ct)
                 ?? new();
         }
         catch { return new(); }
@@ -1772,7 +1778,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/rev", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/rev", ct);
             if (!resp.IsSuccessStatusCode) return null;
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
@@ -1789,7 +1795,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/rev/bump", null, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/rev/bump", null, ct);
         }
         catch { /* soft */ }
     }
@@ -1994,7 +2000,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/voice-alignment", ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/voice-alignment", ct);
         if (!resp.IsSuccessStatusCode) return null;
         var res = await resp.Content.ReadFromJsonAsync<VoiceAlignmentResponseDto>(JsonOpts, ct);
         return res?.Alignment;
@@ -2006,7 +2012,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/voice-alignment/timestamps",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/voice-alignment/timestamps",
             updates, JsonOpts, ct);
         if (!resp.IsSuccessStatusCode)
         {
@@ -2060,7 +2066,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/voice-capture/phrases", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/voice-capture/phrases", ct);
             if (!resp.IsSuccessStatusCode) return null;
             var dto = await resp.Content.ReadFromJsonAsync<VoiceCapturePhrasesResponseDto>(JsonOpts, ct);
             return dto?.Phrases;
@@ -2076,7 +2082,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.PostAsJsonAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/voice-capture/phrases", phrases, JsonOpts, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/voice-capture/phrases", phrases, JsonOpts, ct);
             return resp.IsSuccessStatusCode;
         }
         catch { return false; }
@@ -2098,7 +2104,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         SyncIdentityHeaders();
         try
         {
-            var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/voice-capture/narrator-lines";
+            var url = $"{ProjectIdRouting.ProjectApi(projectId)}/voice-capture/narrator-lines";
             if (!string.IsNullOrWhiteSpace(charKey))
                 url += $"?charKey={Uri.EscapeDataString(charKey.Trim())}";
             using var resp = await _http.GetAsync(url, ct);
@@ -2131,7 +2137,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/dialogue/lines", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/dialogue/lines", ct);
             if (!resp.IsSuccessStatusCode) return new();
             var dto = await resp.Content.ReadFromJsonAsync<DialogueLinesResponseDto>(JsonOpts, ct);
             return dto?.Scenes ?? new();
@@ -2146,7 +2152,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/dialogue/timing", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/dialogue/timing", ct);
             if (!resp.IsSuccessStatusCode) return null;
             var dto = await resp.Content.ReadFromJsonAsync<DialogueTimingResponseDto>(JsonOpts, ct);
             return dto?.Timing;
@@ -2161,7 +2167,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.PostAsJsonAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/dialogue/timing/scene", scene, JsonOpts, ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/dialogue/timing/scene", scene, JsonOpts, ct);
             return resp.IsSuccessStatusCode;
         }
         catch { return false; }
@@ -2263,7 +2269,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<ScenesListDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes",
             JsonOpts,
             ct);
     }
@@ -2273,13 +2279,13 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         int sceneNumber,
         CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<SceneDetailDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}",
             JsonOpts,
             ct);
 
     public string ClipVideoUrl(string projectId, int sceneNumber, int clipNumber) =>
         BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/video");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/video");
 
     /// <summary>True if the clip/media URL returns 2xx. GET + Range so we never HEAD (405).</summary>
     public async Task<bool> MediaUrlReachableAsync(string url, CancellationToken ct = default)
@@ -2303,13 +2309,13 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// client-side rendering of the credits clip.</summary>
     public async Task<CreditsContentDto?> GetCreditsContentAsync(string projectId, CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<CreditsContentDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/credits-content", JsonOpts, ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/credits-content", JsonOpts, ct);
 
     /// <summary>Archived prompt versions for one clip (for ClipPromptCompareViewer).</summary>
     public async Task<ClipPromptHistoryEnvelope?> GetClipPromptHistoryAsync(
         string projectId, int sceneNumber, int clipNumber, CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<ClipPromptHistoryEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/prompt-history",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/prompt-history",
             JsonOpts,
             ct);
 
@@ -2325,7 +2331,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<SceneGitHistoryEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/history",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/history",
             JsonOpts,
             ct);
     }
@@ -2342,7 +2348,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/revert/{Uri.EscapeDataString(commitHash)}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/revert/{Uri.EscapeDataString(commitHash)}",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2360,7 +2366,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<UncommittedStatusEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/git/status",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/git/status",
             JsonOpts,
             ct);
     }
@@ -2370,7 +2376,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/git/commit",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/git/commit",
             new { message },
             JsonOpts,
             ct);
@@ -2389,7 +2395,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<ClipVersionsEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions",
             JsonOpts,
             ct);
     }
@@ -2412,7 +2418,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<ClipMediaStatusEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/media-status",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/media-status",
             JsonOpts,
             ct);
     }
@@ -2422,7 +2428,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}/promote",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}/promote",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2433,7 +2439,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.DeleteAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}",
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
     }
@@ -2443,7 +2449,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<ClipVersionsEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/trash",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/trash",
             JsonOpts,
             ct);
     }
@@ -2453,7 +2459,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}/restore",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/{Uri.EscapeDataString(versionId)}/restore",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2464,7 +2470,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/trash/empty",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/versions/trash/empty",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2483,7 +2489,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<MusicVersionsEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/music-versions",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/music-versions",
             JsonOpts,
             ct);
     }
@@ -2493,7 +2499,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}/promote",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}/promote",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2504,7 +2510,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.DeleteAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}",
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
     }
@@ -2514,7 +2520,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<MusicVersionsEnvelope>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/music-versions/trash",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/music-versions/trash",
             JsonOpts,
             ct);
     }
@@ -2524,7 +2530,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}/restore",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/music-versions/{Uri.EscapeDataString(takeId)}/restore",
             null,
             ct);
         return await ReadEnvelopeAsync<SceneRevertEnvelope>(resp, ct);
@@ -2532,11 +2538,11 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public string CompositeVideoUrl(string projectId, int sceneNumber) =>
         BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/composite");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/composite");
 
     /// <summary>Stream URL for the WIP full movie (range requests enabled; login via access_token).</summary>
     public string WipMovieUrl(string projectId) =>
-        BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(projectId)}/movie/wip");
+        BrowserMediaPath($"{ProjectIdRouting.ProjectApi(projectId)}/movie/wip");
 
     /// <summary>Public share URL path for WIP (no login). Creates or reuses an active token.</summary>
     public async Task<WipShareLinkDto?> CreateWipShareLinkAsync(
@@ -2545,7 +2551,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         using var req = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/movie/wip/share");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/movie/wip/share");
         return await SendJsonAsync<WipShareLinkDto>(req, ct);
     }
 
@@ -2566,7 +2572,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             return await _http.GetFromJsonAsync<WipMovieMetaDto>(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/movie/wip/meta",
+                $"{ProjectIdRouting.ProjectApi(projectId)}/movie/wip/meta",
                 JsonOpts,
                 ct);
         }
@@ -2574,7 +2580,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         {
             // Tolerate older servers that returned url as bool, etc.
             using var resp = await _http.GetAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/movie/wip/meta", ct);
+                $"{ProjectIdRouting.ProjectApi(projectId)}/movie/wip/meta", ct);
             if (!resp.IsSuccessStatusCode) return null;
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
@@ -2626,7 +2632,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         try
         {
             using var resp = await _http.PostAsJsonAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/film-build",
+                $"{ProjectIdRouting.ProjectApi(projectId)}/film-build",
                 body,
                 JsonOpts,
                 ct);
@@ -2688,7 +2694,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<YouTubeUploadInfo?> GetYouTubeUploadInfoAsync(string projectId, CancellationToken ct = default)
     {
         var dto = await _http.GetFromJsonAsync<YouTubeUploadInfoDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/movie/youtube",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/movie/youtube",
             JsonOpts,
             ct);
         return dto?.Upload;
@@ -2696,7 +2702,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public async Task<AdaptationDto?> GetAdaptationAsync(string projectId, CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<AdaptationDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation",
             JsonOpts,
             ct);
 
@@ -2715,7 +2721,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task RegisterMediaAsync(string projectId, MediaRegisterRequest body, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/media/register")
+            $"{ProjectIdRouting.ProjectApi(projectId)}/media/register")
         {
             Content = JsonContent.Create(body, options: JsonOpts),
         };
@@ -2842,7 +2848,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         var q = rebuild ? "?rebuild=true" : "";
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/review/index{q}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/review/index{q}",
             ct);
         await EnsureOkAsync(resp, ct);
         var dto = await resp.Content.ReadFromJsonAsync<ReviewIndexEnvelope>(JsonOpts, ct);
@@ -2862,7 +2868,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/auto-review",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/auto-review",
             ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
@@ -2873,7 +2879,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public async Task<MovieAutoReviewEnvelope?> GetMovieReviewReportAsync(string projectId, CancellationToken ct = default)
     {
-        using var resp = await _http.GetAsync($"/api/projects/{Uri.EscapeDataString(projectId)}/review/movie", ct);
+        using var resp = await _http.GetAsync($"{ProjectIdRouting.ProjectApi(projectId)}/review/movie", ct);
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<MovieAutoReviewEnvelope>(JsonOpts, ct);
     }
@@ -2884,7 +2890,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/review/movie",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/review/movie",
             new { Keyframes = keyframes.ToList() },
             JsonOpts,
             ct);
@@ -2914,7 +2920,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             content = form;
         }
 
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/verify-dialogue";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/verify-dialogue";
         if (force) url += "?force=true";
 
         using var resp = await _http.PostAsync(
@@ -2974,7 +2980,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// ClientMediaFolderService.PrepareExtendSourceAsync) — the server writes that to a distinct,
     /// single-use path instead of replacing the clip's own official video.</summary>
     public static string ClipUploadUrl(string projectId, int scene, int clip, string? kind = null) =>
-        $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/upload" +
+        $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/upload" +
         (string.IsNullOrEmpty(kind) ? "" : $"?kind={Uri.EscapeDataString(kind)}");
 
     /// <summary>Queues background-music generation for a scene (job-tracked, client saves the
@@ -3010,7 +3016,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/auto-review/apply",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/auto-review/apply",
             new ApplyClipAutoReviewRequest
             {
                 ProjectId = projectId,
@@ -3036,7 +3042,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/artifacts/index",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/artifacts/index",
             content: null,
             ct);
         if (!resp.IsSuccessStatusCode)
@@ -3090,7 +3096,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/clips/review",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/clips/review",
             new ClipReviewRequest
             {
                 ProjectId = projectId,
@@ -3111,7 +3117,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips",
             fields,
             JsonOpts,
             ct);
@@ -3126,7 +3132,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}",
             fields,
             JsonOpts,
             ct);
@@ -3140,7 +3146,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.DeleteAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}",
             ct);
         await EnsureOkAsync(resp, ct);
     }
@@ -3152,7 +3158,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/approve",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/approve",
             new SceneApproveRequest
             {
                 ProjectId = projectId,
@@ -3166,13 +3172,13 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public async Task<EditLogDto?> GetEditLogAsync(string projectId, CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<EditLogDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/edit-log",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/edit-log",
             JsonOpts,
             ct);
 
     public async Task<ClipReviewsDto?> GetClipReviewsAsync(string projectId, CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<ClipReviewsDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/clip-reviews",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/clip-reviews",
             JsonOpts,
             ct);
 
@@ -3188,7 +3194,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         form.Add(streamContent, "file", fileName);
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation/upload",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation/upload",
             form,
             ct);
         await EnsureOkAsync(resp, ct);
@@ -3209,7 +3215,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain");
         form.Add(streamContent, "file", fileName);
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation/import-fountain",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation/import-fountain",
             form,
             ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -3222,7 +3228,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId,
         CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<ScreenplayDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay",
             JsonOpts,
             ct);
 
@@ -3232,7 +3238,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay",
             new { text },
             JsonOpts,
             ct);
@@ -3249,7 +3255,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         object payload = text is null ? new { } : new { text };
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay/sign-off",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay/sign-off",
             payload,
             JsonOpts,
             ct);
@@ -3264,7 +3270,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay/from-book",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay/from-book",
             null,
             ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -3276,7 +3282,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<VisualMediumDto?> GetVisualMediumAsync(string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/visual-medium", ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/visual-medium", ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException(TryError(body) ?? resp.ReasonPhrase ?? "visual-medium failed");
@@ -3287,7 +3293,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId, string visualMedium, CancellationToken ct = default)
     {
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/visual-medium",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/visual-medium",
             new { visualMedium },
             JsonOpts,
             ct);
@@ -3305,7 +3311,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId, string? visualMedium = null, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation/reskin",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation/reskin",
             new { visualMedium },
             JsonOpts,
             ct);
@@ -3322,7 +3328,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation/embellish", content: null, ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation/embellish", content: null, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException(TryError(body) ?? resp.ReasonPhrase ?? "enrichment failed");
@@ -3337,7 +3343,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/adaptation/trim", content: null, ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/adaptation/trim", content: null, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException(TryError(body) ?? resp.ReasonPhrase ?? "trim failed");
@@ -3347,7 +3353,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<FilmRuntimeDto?> GetFilmRuntimeAsync(string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/film-runtime", ct);
+            $"{ProjectIdRouting.ProjectApi(projectId)}/film-runtime", ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException(TryError(body) ?? resp.ReasonPhrase);
@@ -3358,7 +3364,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string projectId, int targetMinutes, CancellationToken ct = default)
     {
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/film-runtime",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/film-runtime",
             new { targetMinutes },
             JsonOpts,
             ct);
@@ -3384,7 +3390,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         if (!string.IsNullOrWhiteSpace(heading))
             qs.Add($"heading={Uri.EscapeDataString(heading)}");
         var url =
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay/book-context?{string.Join("&", qs)}";
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay/book-context?{string.Join("&", qs)}";
 
         using var resp = await _http.PostAsJsonAsync(
             url,
@@ -3413,7 +3419,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             q.Add($"assumeAvgRetries={r.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         var qs = q.Count > 0 ? "?" + string.Join("&", q) : "";
         return await _http.GetFromJsonAsync<CostDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/cost{qs}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/cost{qs}",
             JsonOpts,
             ct);
     }
@@ -3429,7 +3435,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/cost/take-reason",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/cost/take-reason",
             new { scene, clip, reason, takeIndex },
             JsonOpts,
             ct);
@@ -3464,7 +3470,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         SyncIdentityHeaders();
         var qs = allUsers ? "?all=true" : "";
         return await _http.GetFromJsonAsync<CostByProviderDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/cost/by-provider{qs}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/cost/by-provider{qs}",
             JsonOpts,
             ct);
     }
@@ -3549,7 +3555,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<string?> GetResolutionLockAsync(string projectId, CancellationToken ct = default)
     {
         var dto = await _http.GetFromJsonAsync<ResolutionLockDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/resolution-lock",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/resolution-lock",
             JsonOpts,
             ct);
         return dto?.Locked;
@@ -3558,7 +3564,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<CostBackfillDto?> BackfillCostAsync(string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/cost/backfill",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/cost/backfill",
             new { },
             ct);
         await EnsureOkAsync(resp, ct);
@@ -3570,7 +3576,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         if (string.IsNullOrWhiteSpace(projectId))
             throw new InvalidOperationException("project required");
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/config",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/config",
             ct);
         if (!resp.IsSuccessStatusCode)
         {
@@ -3646,7 +3652,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PutAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/config",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/config",
             updates,
             JsonOpts,
             ct);
@@ -3662,7 +3668,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         // Async job path (avoids reverse-proxy 502 on multi-minute AI cast extract).
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/extract-cast",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/extract-cast",
             new { projectId, force, model },
             JsonOpts,
             ct);
@@ -3685,7 +3691,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<CharactersDto?> GetCharactersAsync(string projectId, CancellationToken ct = default)
     {
         var dto = await _http.GetFromJsonAsync<CharactersDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters",
             JsonOpts,
             ct);
         // API returns root-relative /api/... paths; browser would hit Blazor host (7206), not Engine API (5088).
@@ -3731,7 +3737,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<LocationsDto?> GetLocationsAsync(string projectId, CancellationToken ct = default)
     {
         return await _http.GetFromJsonAsync<LocationsDto>(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations",
             JsonOpts,
             ct);
     }
@@ -3744,7 +3750,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/look",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/look",
             new UpdateLocationLookRequest
             {
                 Description = description,
@@ -3757,8 +3763,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public string LocationRefUrl(string projectId, string locKey) =>
         AbsolutizeMediaUrl(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref")
-        ?? $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref";
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref")
+        ?? $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref";
 
     /// <summary>Upload and lock an operator-provided location set plate.</summary>
     public async Task UploadLocationRefAsync(
@@ -3778,7 +3784,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             _ => "image/png",
         };
         await UploadFileFormAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/upload-ref",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/upload-ref",
             content, fileName, contentType, ct);
     }
 
@@ -3904,15 +3910,15 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public string CharacterRefUrl(string projectId, string charKey) =>
         BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/ref");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/ref");
 
     public string CharacterVariantUrl(string projectId, string charKey, int index) =>
         BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/variants/{index}");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/variants/{index}");
 
     public string CharacterBookRefUrl(string projectId, string charKey, int index) =>
         BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/bookrefs/{index}");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/bookrefs/{index}");
 
     public async Task UpdateCharacterVoiceAsync(
         string projectId,
@@ -3922,7 +3928,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice",
             new UpdateCharacterVoiceRequest
             {
                 ProjectId = projectId,
@@ -3971,7 +3977,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             q.Add("sampleText=" + Uri.EscapeDataString(sampleText));
         var qs = q.Count > 0 ? "?" + string.Join("&", q) : "";
         using var resp = await _http.GetAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/audio/status{qs}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/audio/status{qs}",
             ct);
         if (!resp.IsSuccessStatusCode) return null;
         return await resp.Content.ReadFromJsonAsync<VoicePreviewStatusDto>(JsonOpts, ct);
@@ -3981,7 +3987,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public string CharacterVoiceAudioUrl(string projectId, string charKey, long cacheBust = 0)
     {
         var url = BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/audio");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/audio");
         if (cacheBust > 0)
             url += (url.Contains('?', StringComparison.Ordinal) ? "&" : "?") + "t=" + cacheBust;
         return url;
@@ -4005,7 +4011,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             _ => "audio/webm",
         };
         await UploadFileFormAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample",
             content, fileName, contentType, ct);
     }
 
@@ -4026,7 +4032,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public string CharacterVoiceCloneSampleUrl(string projectId, string charKey, long cacheBust = 0)
     {
         var url = BrowserMediaPath(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample");
         if (cacheBust > 0)
             url += (url.Contains('?', StringComparison.Ordinal) ? "&" : "?") + "t=" + cacheBust;
         return url;
@@ -4038,7 +4044,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.DeleteAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/clone-sample",
             ct);
         await EnsureOkAsync(resp, ct);
     }
@@ -4053,7 +4059,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/apply-clone",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/apply-clone",
             new { },
             JsonOpts,
             ct);
@@ -4082,7 +4088,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         SyncIdentityHeaders();
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/speak",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/speak",
             new { text, voiceId, model },
             JsonOpts,
             ct);
@@ -4116,7 +4122,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/delete-image",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/delete-image",
             new DeleteCharacterImageRequest { Kind = kind, Index = index },
             JsonOpts,
             ct);
@@ -4132,7 +4138,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/look",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/look",
             new UpdateCharacterLookRequest
             {
                 ProjectId = projectId,
@@ -4233,7 +4239,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/lock-variant?index={variantIndex}",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/lock-variant?index={variantIndex}",
             new { },
             JsonOpts,
             ct);
@@ -4242,13 +4248,13 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
 
     public string LocationVariantUrl(string projectId, string locKey, int index) =>
         AbsolutizeMediaUrl(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}")
-        ?? $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}";
+            $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}")
+        ?? $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}";
 
 
     public async Task<bool> AugmentProjectMusicAsync(string projectId, string? model = null, CancellationToken ct = default)
     {
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/augment-music";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/augment-music";
         if (!string.IsNullOrWhiteSpace(model))
         {
             url += $"?model={Uri.EscapeDataString(model)}";
@@ -4265,7 +4271,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/attach-book-plates",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/attach-book-plates",
             new AttachCharacterPlatesRequest
             {
                 ProjectId = projectId,
@@ -4381,7 +4387,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/lock-variant",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/lock-variant",
             new { index, overrideStyle, overrideReason },
             ct);
         await EnsureOkAsync(resp, ct);
@@ -4396,7 +4402,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/lock-bookref",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/lock-bookref",
             new { index, overrideStyle, overrideReason },
             ct);
         await EnsureOkAsync(resp, ct);
@@ -4408,7 +4414,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/unlock",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/unlock",
             new { },
             ct);
         await EnsureOkAsync(resp, ct);
@@ -4432,7 +4438,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             _ => "image/png",
         };
         await UploadFileFormAsync(
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/upload-ref",
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/upload-ref",
             content, fileName, contentType, ct);
     }
 
@@ -4536,7 +4542,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
             form.Add(content, "file", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
             using var resp = await _http.PostAsync(
-                $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/fork-fallback",
+                $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/fork-fallback",
                 form, ct);
             return resp.IsSuccessStatusCode;
         }
@@ -4561,7 +4567,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     public async Task<byte[]?> GetCharacterImageAsync(string projectId, string characterKey, string? imageKind = null, CancellationToken ct = default)
     {
         var kind = string.IsNullOrWhiteSpace(imageKind) ? "portrait" : imageKind.Trim();
-        var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(characterKey)}/image?kind={Uri.EscapeDataString(kind)}";
+        var url = $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(characterKey)}/image?kind={Uri.EscapeDataString(kind)}";
         try { return await _http.GetByteArrayAsync(url, ct).ConfigureAwait(false); }
         catch { return null; }
     }
