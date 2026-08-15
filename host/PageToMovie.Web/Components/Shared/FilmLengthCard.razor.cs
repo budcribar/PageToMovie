@@ -213,7 +213,9 @@ public sealed partial class FilmLengthCard : IDisposable
                 throw new InvalidOperationException("Save failed.");
             _natural = dto.NaturalMinutes > 0 ? dto.NaturalMinutes : _natural;
             _target = dto.TargetMinutes > 0 ? dto.TargetMinutes : minutes;
-            try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target); } catch { /* soft */ }
+            // Remember an explicit shortening as the user's preference; choosing the natural
+            // length ("Use estimate") is not a length preference and must not seed other books.
+            try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target == _natural ? null : _target); } catch { /* soft */ }
             return true;
         }
         catch (OperationCanceledException)
