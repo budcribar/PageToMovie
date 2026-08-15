@@ -947,31 +947,6 @@
       "pricingLastReviewedAt": "2026-08-12"
     },
     {
-      "id": "grok-4.3",
-      "displayName": "Grok 4.3",
-      "capability": "Chat",
-      "provider": "Xai",
-      "apiBase": "https://api.x.ai/v1",
-      "endpointPath": "chat/completions",
-      "requiredEnvKeys": [
-        "XAI_API_KEY"
-      ],
-      "enabled": true,
-      "maxInputTokens": 1000000,
-      "maxOutputTokens": 128000,
-      "inputCostPerMillionTokens": 1.25,
-      "outputCostPerMillionTokens": 2.5,
-      "supportsVideoContinue": false,
-      "supportsReferenceImages": false,
-      "supportsVideoReview": false,
-      "notes": "Official replacement for retired grok-4-*. Alias grok-4.3-latest. Chat + vision + reasoning. Context 1,000,000. Price is the <200k tier. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat).",
-      "providerId": "grok",
-      "providerLabel": "xAI",
-      "pricingNotes": "docs.x.ai/developers/models/grok-4.3 2026-08-15: $1.25 / $2.50 per 1M tokens (<200k). Alias grok-4.3-latest.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
-    },
-    {
       "id": "grok-4.5",
       "displayName": "Grok 4.5",
       "capability": "Chat",
@@ -1014,10 +989,10 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Not on the current official xAI model list (docs page 404). Disabled rather than deleted so past project configs still resolve. Official replacement is grok-4.3. Do not trust the leftover $3/$15 / 256k figures \u2014 they are unconfirmed and no longer official.",
+      "notes": "Not on the current official xAI model list (docs page 404). Disabled rather than deleted so past project configs still resolve. Do not trust the leftover $3/$15 / 256k figures \u2014 they are unconfirmed and no longer official.",
       "providerId": "grok",
       "providerLabel": "xAI",
-      "pricingNotes": "Unconfirmed / not on official list as of 2026-08-15. Do not use leftover $3/$15 per 1M or 256k context for cost planning. Replacement: grok-4.3.",
+      "pricingNotes": "Unconfirmed / not on official list as of 2026-08-15. Do not use leftover $3/$15 per 1M or 256k context for cost planning.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15",
       "deprecated": true
@@ -1223,31 +1198,6 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
-      "id": "gemini-3.5-flash-lite",
-      "displayName": "Gemini 3.5 Flash Lite",
-      "capability": "Chat",
-      "provider": "Google",
-      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
-      "endpointPath": "models/gemini-3.5-flash-lite:generateContent",
-      "requiredEnvKeys": [
-        "GEMINI_API_KEY"
-      ],
-      "enabled": true,
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "inputCostPerMillionTokens": 0.3,
-      "outputCostPerMillionTokens": 2.5,
-      "supportsVideoContinue": false,
-      "supportsReferenceImages": false,
-      "supportsVideoReview": true,
-      "notes": "Wired via GeminiChatClient. Chat + vision. Context 1,048,576. Same $0.30 / $2.50 per 1M as gemini-2.5-flash.",
-      "providerId": "gemini",
-      "providerLabel": "Google",
-      "pricingNotes": "Google Gemini API 2026-08-15: $0.30 / $2.50 per 1M tokens. Context 1,048,576.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
-    },
-    {
       "id": "gemini-3.1-pro-preview",
       "displayName": "Gemini 3.1 Pro (Preview)",
       "capability": "Chat",
@@ -1296,31 +1246,6 @@
       "lastVerifiedAt": "2026-08-12",
       "pricingNotes": "Same token rates as chat sibling (docs.x.ai/developers/models 2026-08-12).",
       "pricingLastReviewedAt": "2026-08-12"
-    },
-    {
-      "id": "grok-4.3",
-      "displayName": "Grok 4.3 (vision)",
-      "capability": "Vision",
-      "provider": "Xai",
-      "apiBase": "https://api.x.ai/v1",
-      "endpointPath": "chat/completions",
-      "requiredEnvKeys": [
-        "XAI_API_KEY"
-      ],
-      "enabled": true,
-      "maxInputTokens": 1000000,
-      "maxOutputTokens": 128000,
-      "inputCostPerMillionTokens": 1.25,
-      "outputCostPerMillionTokens": 2.5,
-      "supportsVideoContinue": false,
-      "supportsReferenceImages": false,
-      "supportsVideoReview": false,
-      "notes": "GrokVisionClient: book-page OCR, cast-on-image classify, and multi-image frame review. Same id as chat sibling (Chat\u2194Vision overlap). Official replacement for retired grok-4-*.",
-      "providerId": "grok",
-      "providerLabel": "xAI",
-      "pricingNotes": "Same token rates as chat sibling (docs.x.ai 2026-08-15): $1.25 / $2.50 per 1M (<200k).",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-4.20-reasoning",
@@ -1494,31 +1419,6 @@
       "providerId": "gemini",
       "providerLabel": "Google",
       "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15 promo through 2026-12-31): $0.75 / $3.75 per 1M. Context 1,048,576 in / 65,536 out.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
-    },
-    {
-      "id": "gemini-3.5-flash-lite",
-      "displayName": "Gemini 3.5 Flash Lite (vision)",
-      "capability": "Vision",
-      "provider": "Google",
-      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
-      "endpointPath": "models/gemini-3.5-flash-lite:generateContent",
-      "requiredEnvKeys": [
-        "GEMINI_API_KEY"
-      ],
-      "enabled": true,
-      "maxInputTokens": 1048576,
-      "maxOutputTokens": 65536,
-      "inputCostPerMillionTokens": 0.3,
-      "outputCostPerMillionTokens": 2.5,
-      "supportsVideoContinue": false,
-      "supportsReferenceImages": false,
-      "supportsVideoReview": true,
-      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap).",
-      "providerId": "gemini",
-      "providerLabel": "Google",
-      "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15): $0.30 / $2.50 per 1M. Context 1,048,576.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
     },

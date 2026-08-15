@@ -49,7 +49,7 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-4.5")]
-    [InlineData("grok-4.3")]
+    [InlineData("grok-4.6")]
     [InlineData("gemini-2.5-flash")]
     public void RequirePlanning_accepts_catalog_chat_models(string modelId)
     {
@@ -216,9 +216,9 @@ public class ProjectModelSelectionTests
     public void RequirePlanning_prefers_planning_model_name_over_chat()
     {
         var id = ProjectModelSelection.RequirePlanning(Cfg(
-            ("planning_model_name", "grok-4.3"),
+            ("planning_model_name", "grok-4.6"),
             ("chat_model_name", "grok-4.5")));
-        Assert.Equal("grok-4.3", id);
+        Assert.Equal("grok-4.6", id);
     }
 
     [Fact]
