@@ -32,12 +32,12 @@ public class LipSyncVoiceCloneTests
     }
 
     [Fact]
-    public void LipSync_v3_entry_exists_with_unconfirmed_pricing_left_null()
+    public void LipSync_v3_entry_exists_with_published_per_minute_price()
     {
         var m = SupportedModelCatalog.Find("fal-ai/sync-lipsync/v3", ModelCapability.LipSync);
         Assert.NotNull(m);
         Assert.True(m!.Enabled);
-        Assert.Null(m.CostPerMinuteUsd);
+        Assert.Equal(8.0, m.CostPerMinuteUsd);
     }
 
     [Fact]
