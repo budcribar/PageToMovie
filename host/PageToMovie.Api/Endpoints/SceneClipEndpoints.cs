@@ -574,19 +574,8 @@ public static class SceneClipEndpoints
         return denied;
     try
     {
-        var path = store.ResolveClipVideoPath(id, sceneNumber, clipNumber);
-        string? parentId = null;
-        if (path is null)
-        {
-            try
-            {
-                var proj = await store.GetProjectAsync(id, ct);
-                parentId = proj?.ParentProjectId;
-                if (!string.IsNullOrWhiteSpace(parentId))
-                    path = store.ResolveClipVideoPath(parentId, sceneNumber, clipNumber);
-            }
-            catch { /* fall through */ }
-        }
+        var (path, parentId) = await ResolveClipVideoPathWithParentAsync(
+            store, id, sceneNumber, clipNumber, ct);
         var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
             ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
         var exists = path is not null || !string.IsNullOrWhiteSpace(fileId);
@@ -617,6 +606,25 @@ public static class SceneClipEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task<(string? Path, string? ParentId)> ResolveClipVideoPathWithParentAsync(
+        ProjectStore store, string id, int sceneNumber, int clipNumber, CancellationToken ct)
+    {
+        var path = store.ResolveClipVideoPath(id, sceneNumber, clipNumber);
+        if (path is not null)
+            return (path, null);
+
+        string? parentId = null;
+        try
+        {
+            var proj = await store.GetProjectAsync(id, ct);
+            parentId = proj?.ParentProjectId;
+            if (!string.IsNullOrWhiteSpace(parentId))
+                path = store.ResolveClipVideoPath(parentId, sceneNumber, clipNumber);
+        }
+        catch { /* fall through */ }
+        return (path, parentId);
+    }
 
     private static async Task MarkForkFallbackNeededAsync(
         ProjectStore store, string projectId, string? parentId, int scene, int clip, CancellationToken ct)
