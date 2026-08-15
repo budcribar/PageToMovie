@@ -244,6 +244,47 @@ public partial class Home
                 _projects.Active = p;
         }
 
+        /// <summary>
+        /// Drop a deleted id from the in-memory list so the picker cannot keep showing it
+        /// while a refetch or cache catch-up is still pending.
+        /// </summary>
+        internal static void RemoveDeletedFromList(ProjectsDto? dto, string? deletedId)
+        {
+            if (dto is null || string.IsNullOrWhiteSpace(deletedId)) return;
+            dto.Projects ??= new List<ProjectInfo>();
+            dto.Projects.RemoveAll(p =>
+                string.Equals(p.Id, deletedId, StringComparison.OrdinalIgnoreCase));
+            if (dto.Active is not null &&
+                string.Equals(dto.Active.Id, deletedId, StringComparison.OrdinalIgnoreCase))
+                dto.Active = null;
+        }
+
+        /// <summary>
+        /// Next picker target after a delete: prefer the list Active when it is still present,
+        /// otherwise the first remaining row. Null means empty-studio (no projects left).
+        /// </summary>
+        internal static ProjectInfo? PickNextAfterDelete(
+            IEnumerable<ProjectInfo>? projects,
+            ProjectInfo? listActive,
+            string? deletedId)
+        {
+            if (projects is null) return null;
+            var remaining = projects
+                .Where(p =>
+                    !string.IsNullOrWhiteSpace(p.Id)
+                    && !string.Equals(p.Id, deletedId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (remaining.Count == 0) return null;
+            if (!string.IsNullOrWhiteSpace(listActive?.Id)
+                && !string.Equals(listActive.Id, deletedId, StringComparison.OrdinalIgnoreCase))
+            {
+                var preferred = remaining.FirstOrDefault(p =>
+                    string.Equals(p.Id, listActive.Id, StringComparison.OrdinalIgnoreCase));
+                if (preferred is not null) return preferred;
+            }
+            return remaining[0];
+        }
+
 
         internal async Task LoadAsync()
         {
@@ -543,18 +584,62 @@ public partial class Home
         {
             if (_deleteId is null || !CanConfirmDelete) return;
             var id = _deleteId;
+            var deletedLabel = _deleteLabel;
             S._busy = true;
             S._error = null;
             try
             {
                 var result = await S.Engine.DeleteProjectAsync(id);
-                _projects = result ?? await S.Engine.GetProjectsAsync();
-                await S.ActiveProject.RefreshFromServerAsync(S.Engine);
-                S._message = $"Deleted “{_deleteLabel}”";
+                // Never leave _projects null (Home treats that as the loading card).
+                _projects = result ?? await S.Engine.GetProjectsAsync() ?? new ProjectsDto { Ok = true };
+                // Drop locally even if the delete payload / GET list is briefly stale —
+                // RefreshFromServerAsync will not move ActiveProject.ProjectId when it is
+                // already set, so a leftover id would keep the picker on the deleted row.
+                RemoveDeletedFromList(_projects, id);
+                var next = PickNextAfterDelete(_projects.Projects, _projects.Active, id);
+                await ApplyPickerSelectionAfterDeleteAsync(next);
+                S._message = $"Deleted “{deletedLabel}”";
                 CancelDelete();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
+        }
+
+        /// <summary>
+        /// Move the picker off the deleted id immediately. Persist + readiness are best-effort —
+        /// delete already succeeded, so a follow-up activate failure must not reopen the modal
+        /// or leave the deleted id selected.
+        /// </summary>
+        internal async Task ApplyPickerSelectionAfterDeleteAsync(ProjectInfo? next)
+        {
+            if (next?.Id is { Length: > 0 } nextId)
+            {
+                BindLocalActive(nextId);
+                S.ActiveProject.Set(
+                    nextId,
+                    ProjectDisplayLabel(next, nextId),
+                    next.ParentProjectId,
+                    next.StudioPath);
+                try
+                {
+                    await S.ActiveProject.SelectAsync(
+                        S.Engine,
+                        nextId,
+                        ProjectDisplayLabel(next, nextId),
+                        next.ParentProjectId,
+                        next.StudioPath);
+                    await S.Costs.RefreshProjectCostAsync();
+                }
+                catch
+                {
+                    // Local selection already moved off the deleted id.
+                }
+                return;
+            }
+
+            S.ActiveProject.Clear();
+            if (_projects is not null)
+                _projects.Active = null;
         }
 
 

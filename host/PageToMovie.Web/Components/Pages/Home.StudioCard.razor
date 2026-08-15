@@ -11,6 +11,7 @@
             var selectedId = Host.Projects.SelectedProjectId;
             var activeMeta = Host.Projects.FindProject(selectedId);
             var hasActive = ActiveProject.HasProject || !string.IsNullOrWhiteSpace(selectedId);
+            var pickerKey = $"picker:{selectedId}:{Host.Projects._projects?.Projects?.Count ?? 0}";
         }
         @if (hasActive)
         {
@@ -20,6 +21,7 @@
                 <select class="form-select form-select-sm home-project-select flex-grow-1"
                         style="min-width: 10rem; max-width: 22rem;"
                         data-testid="home-project-picker"
+                        @key="pickerKey"
                         value="@selectedId"
                         disabled="@Host._busy"
                         title="Project"
