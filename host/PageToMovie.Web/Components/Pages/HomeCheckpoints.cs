@@ -24,19 +24,15 @@ public partial class Home
 
         internal List<CheckpointDto> _checkpoints = new();
 
+        /// <summary>Named-checkpoints list inside Manage; collapsed by default.</summary>
         internal bool _showCheckpoints;
 
         internal async Task ToggleCheckpointsAsync()
         {
             _showCheckpoints = !_showCheckpoints;
-            S._error = null;
-            S._message = null;
+            S.StateHasChanged();
             if (_showCheckpoints)
-            {
-                S.Projects._showRename = false;
-                S.Import._showImport = false;
                 await LoadCheckpointsAsync();
-            }
         }
 
 

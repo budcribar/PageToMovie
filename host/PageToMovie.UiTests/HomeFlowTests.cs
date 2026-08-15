@@ -108,6 +108,9 @@ public class HomeFlowTests
             await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = 20_000 });
 
             await page.GetByTestId("home-manage-projects").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("home-checkpoints")).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(page.GetByTestId("home-checkpoint-name")).ToHaveCountAsync(0);
+
             await page.GetByTestId("home-checkpoints").ClickAsync();
             await Assertions.Expect(page.GetByTestId("home-checkpoints-panel")).ToBeVisibleAsync(new() { Timeout = 15_000 });
 
@@ -115,8 +118,10 @@ public class HomeFlowTests
             await page.GetByTestId("home-checkpoint-name").FillAsync(checkpointName);
             await page.GetByTestId("home-checkpoint-save").ClickAsync();
 
-            var listItem = page.GetByTestId("home-checkpoint-list").GetByText(checkpointName);
+            var list = page.GetByTestId("home-checkpoint-list");
+            var listItem = list.GetByText(checkpointName);
             await Assertions.Expect(listItem).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await AssertCheckpointListScrollsAsync(list);
 
             // Navigate away and back — the checkpoint is a real git commit on the server, not client state.
             await page.GetByTestId("nav-configuration").ClickAsync();
@@ -132,6 +137,49 @@ public class HomeFlowTests
             await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = 20_000 });
         }
         finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Named_checkpoints_start_collapsed_and_expand_from_the_header()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl,
+                "CpFold_" + Guid.NewGuid().ToString("N")[..6]);
+
+            await page.GetByTestId("nav-studio").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            await page.GetByTestId("home-manage-projects").ClickAsync();
+            var header = page.GetByTestId("home-checkpoints");
+            await Assertions.Expect(header).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(header).ToHaveAttributeAsync("aria-expanded", "false");
+            await Assertions.Expect(page.GetByTestId("home-checkpoints-panel")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByTestId("home-checkpoint-name")).ToHaveCountAsync(0);
+
+            await header.ClickAsync();
+            await Assertions.Expect(header).ToHaveAttributeAsync("aria-expanded", "true");
+            await Assertions.Expect(page.GetByTestId("home-checkpoints-panel")).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByTestId("home-checkpoint-name")).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByTestId("home-checkpoint-save")).ToBeVisibleAsync();
+
+            await header.ClickAsync();
+            await Assertions.Expect(header).ToHaveAttributeAsync("aria-expanded", "false");
+            await Assertions.Expect(page.GetByTestId("home-checkpoints-panel")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByTestId("home-checkpoint-name")).ToHaveCountAsync(0);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    private static async Task AssertCheckpointListScrollsAsync(ILocator list)
+    {
+        var overflowY = await list.EvaluateAsync<string>("el => getComputedStyle(el).overflowY");
+        Assert.True(overflowY is "auto" or "scroll",
+            $"Expected the expanded checkpoint list to scroll, but overflow-y was '{overflowY}'.");
+        var maxHeightPx = await list.EvaluateAsync<double>("el => parseFloat(getComputedStyle(el).maxHeight)");
+        Assert.True(maxHeightPx > 0 && maxHeightPx < 10_000,
+            $"Expected a bounded max-height on the checkpoint list, but was '{maxHeightPx}'.");
     }
 
     /// <summary>Blazor sets the DOM `.selected` property on the option, not the HTML attribute, so a

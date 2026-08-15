@@ -1125,6 +1125,26 @@ hr {
     color: var(--fs-text-muted);
     margin-bottom: 0.35rem;
 }
+.home-manage-section__toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0;
+    margin-bottom: 0.35rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.home-manage-section__toggle .home-manage-section__title {
+    margin-bottom: 0;
+}
+.home-checkpoint-list {
+    max-height: 12rem;
+    overflow: auto;
+}
 
 /* Book sub-steps — a light pill drill-down under the top-level "Book" step. */
 .ptm-substrip {

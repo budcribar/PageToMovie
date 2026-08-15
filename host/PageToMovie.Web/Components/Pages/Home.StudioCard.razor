@@ -228,8 +228,19 @@
                             </div>
 
                             <div class="home-manage-section" data-testid="home-checkpoints-section">
-                                <div class="home-manage-section__title">Named checkpoints</div>
-                                <Home_CheckpointsPanel />
+                                <button type="button"
+                                        class="home-manage-section__toggle"
+                                        data-testid="home-checkpoints"
+                                        aria-expanded="@(Host.Checkpoints._showCheckpoints ? "true" : "false")"
+                                        @onclick="Host.Checkpoints.ToggleCheckpointsAsync">
+                                    <span class="home-manage-section__title mb-0">Named checkpoints</span>
+                                    <span class="small text-muted" data-testid="home-checkpoint-count">@Host.Checkpoints._checkpoints.Count</span>
+                                    <span class="small text-muted ms-auto" aria-hidden="true">@(Host.Checkpoints._showCheckpoints ? "▴" : "▾")</span>
+                                </button>
+                                @if (Host.Checkpoints._showCheckpoints)
+                                {
+                                    <Home_CheckpointsPanel />
+                                }
                             </div>
                         }
                     }
