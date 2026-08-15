@@ -39,7 +39,7 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-imagine-image")]
-    [InlineData("grok-imagine-image-quality")]
+    [InlineData("grok-imagine-image-2.0")]
     [InlineData("fal-ai/flux/dev")]
     public void RequireImage_accepts_catalog_image_models(string modelId)
     {

@@ -260,6 +260,25 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
+    public void Image_default_is_grok_imagine_image_2_0_and_quality_is_disabled()
+    {
+        Assert.Equal("grok-imagine-image-2.0", SupportedModelCatalog.DefaultModelIdForCapability("image"));
+        var quality = SupportedModelCatalog.Find("grok-imagine-image-quality", ModelCapability.Image);
+        var fast = SupportedModelCatalog.Find("grok-imagine-image", ModelCapability.Image);
+        var two = SupportedModelCatalog.Find("grok-imagine-image-2.0", ModelCapability.Image);
+        Assert.NotNull(quality);
+        Assert.NotNull(fast);
+        Assert.NotNull(two);
+        Assert.False(quality!.Enabled);
+        Assert.True(quality.Deprecated);
+        Assert.True(fast!.Enabled);
+        Assert.True(two!.Enabled);
+        Assert.DoesNotContain(
+            SupportedModelCatalog.ForCapability(ModelCapability.Image),
+            e => e.Id.Equals("grok-imagine-image-quality", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void No_anthropic_image_model_exists()
     {
         // Anthropic has no image-generation API — there should never be a Claude entry

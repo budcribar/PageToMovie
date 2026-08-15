@@ -48,6 +48,23 @@ public class ProjectCatalogModelHealTests
     }
 
     [Fact]
+    public void Apply_rewrites_disabled_image_quality_to_catalog_default()
+    {
+        var cfg = Cfg(
+            ("image_model_name", "grok-imagine-image-quality"),
+            ("model_selections", new Dictionary<string, string> { ["image"] = "grok-imagine-image-quality" }),
+            ("model_name", "grok-imagine-video"));
+
+        Assert.True(ProjectCatalogModelHeal.Apply(cfg));
+        var expected = SupportedModelCatalog.DefaultModelIdForCapability("image");
+        Assert.Equal("grok-imagine-image-2.0", expected);
+        Assert.Equal(expected, cfg["image_model_name"].GetString());
+        Assert.Equal(expected, cfg["model_selections"].GetProperty("image").GetString());
+        Assert.Equal("grok-imagine-video", cfg["model_name"].GetString());
+        Assert.Equal(expected, ProjectModelSelection.RequireImage(cfg));
+    }
+
+    [Fact]
     public void Apply_leaves_enabled_stored_id_alone()
     {
         var cfg = Cfg(
