@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/doc/">
+    <File Path="../README.md" />
     <File Path="docs/async-io-pass-plan.md" />
     <File Path="docs/loadsim-soak.md" />
     <File Path="docs/multi-user-100-plan.md" />
