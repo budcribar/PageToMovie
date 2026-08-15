@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+/* System stacks — do not pull Google Fonts (those woff2 hashes 404 when gstatic is blocked). */
 
 /* Master Executive Theme — PageToMovie UI (dark default, light via [data-theme]).
    feature/prototype-look-feel: cinema steel accents (prototype-inspired). */
@@ -119,7 +119,7 @@
 }
 
 html, body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background-color: var(--fs-bg-main);
     color: var(--fs-text-primary);
     -webkit-font-smoothing: antialiased;
@@ -127,7 +127,7 @@ html, body {
 }
 
 h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
-    font-family: 'Outfit', 'Inter', sans-serif;
+    font-family: Outfit, Inter, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--fs-text-primary);
@@ -178,7 +178,7 @@ code, kbd, samp, pre, .font-monospace, .code-token, .badge-code, pre code {
     border-bottom: 1px solid var(--fs-border-color);
     color: var(--fs-text-primary);
     font-weight: 600;
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     padding: 0.85rem 1.25rem;
 }
 
@@ -953,7 +953,7 @@ hr {
     margin-bottom: 0.35rem;
 }
 .ptm-adapt-title {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     letter-spacing: -0.02em;
     font-size: clamp(1.5rem, 2.5vw, 1.85rem);
@@ -1022,7 +1022,7 @@ hr {
     justify-content: center;
     font-size: 0.75rem;
     font-weight: 700;
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     background: rgba(107, 140, 174, 0.15);
     color: var(--fs-accent-indigo);
     border: 1px solid rgba(107, 140, 174, 0.35);
@@ -1039,7 +1039,7 @@ hr {
     min-width: 0;
 }
 .ptm-step__label {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     font-size: 0.92rem;
     letter-spacing: -0.01em;
@@ -1101,7 +1101,7 @@ hr {
     margin: 0 0 1.35rem;
 }
 .ptm-substrip__lead {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     font-size: 0.8rem;
     letter-spacing: 0.02em;
@@ -1701,7 +1701,7 @@ h1:focus {
     margin-bottom: 0.35rem;
 }
 .ptm-path-step__title {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--fs-text-primary);
@@ -1724,7 +1724,7 @@ h1:focus {
     box-shadow: var(--fs-shadow-card);
 }
 .home-hero--cinema .display-6 {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     letter-spacing: -0.03em;
 }
 .home-hero__badge {
@@ -1819,7 +1819,7 @@ h1:focus {
     min-width: 0;
 }
 .home-top__title {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-size: 1.15rem;
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -1968,7 +1968,7 @@ h1:focus {
     margin-bottom: 0.5rem;
 }
 .ptm-dropzone__title {
-    font-family: 'Outfit', sans-serif;
+    font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-size: 1.2rem;
     font-weight: 600;
     letter-spacing: -0.02em;

@@ -6,23 +6,32 @@ window.PageToMovieVoiceCapture = (function () {
 
   async function start() {
     if (recorder?.state === "recording") return { ok: true, already: true };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return { ok: false, error: "This browser cannot use the microphone. Try Chrome or Edge over https." };
+    }
     chunks = [];
-    const mic = navigator.mediaDevices.getUserMedia({ audio: true });
-    const timed = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Microphone timed out — click Record and allow the mic.")), 12000));
-    mediaStream = await Promise.race([mic, timed]);
+    try {
+      const mic = navigator.mediaDevices.getUserMedia({ audio: true });
+      const timed = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Microphone timed out — click Record and allow the mic.")), 12000));
+      mediaStream = await Promise.race([mic, timed]);
+    } catch (err) {
+      return { ok: false, error: (err && err.message) ? err.message : "Microphone blocked" };
+    }
     let mime = "";
     if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
       mime = "audio/webm;codecs=opus";
     } else if (MediaRecorder.isTypeSupported("audio/webm")) {
       mime = "audio/webm";
+    } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+      mime = "audio/mp4";
     }
     recorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream);
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
     recorder.start(200);
-    return { ok: true, mimeType: recorder.mimeType || "audio/webm" };
+    return { ok: true, mimeType: recorder.mimeType || mime || "audio/webm" };
   }
 
   function stop() {

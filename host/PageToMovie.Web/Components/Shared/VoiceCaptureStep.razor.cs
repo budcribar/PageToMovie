@@ -124,7 +124,9 @@ public partial class VoiceCaptureStep
 
         var p = CurrentPhrase;
         _ballDurationSec = p.DurationSec >= 0.4 ? p.DurationSec : ClientVoiceCaptureService.EstimatePhraseDurationSec(p.Text);
-        _ = TryLoadOriginalAsync(p);
+        // Don't hammer dead fork clip URLs on load — that 404s and can stall the recorder.
+        if (!IsScriptOnlyPhrase(p))
+            _ = TryLoadOriginalAsync(p);
     }
 
     internal async Task TryLoadOriginalAsync(VoiceCapturePhrase p)
@@ -308,12 +310,24 @@ public partial class VoiceCaptureStep
         _takeUrl = null;
         _score = null;
         _regions = null;
+        _busy = false;
+        _recordSession = Math.Max(0, _recordSession);
         _status = "Allow the microphone if the browser asks…";
         await InvokeAsync(StateHasChanged);
 
+        VoiceCaptureStartResult? started = null;
         try
         {
-            await Js.InvokeAsync<object>("PageToMovieVoiceCapture.start");
+            started = await Js.InvokeAsync<VoiceCaptureStartResult>("PageToMovieVoiceCapture.start");
+        }
+        catch (JSException jex)
+        {
+            _error = "Microphone failed: " + jex.Message;
+            _status = null;
+            _light = 0;
+            _recording = false;
+            await InvokeAsync(StateHasChanged);
+            return;
         }
         catch (Exception ex)
         {
@@ -325,11 +339,19 @@ public partial class VoiceCaptureStep
             return;
         }
 
+        if (started is not { Ok: true })
+        {
+            _error = started?.Error ?? "Could not access the microphone. Check the padlock → Site settings → Microphone.";
+            _status = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         _status = null;
         _light = 1;
         await InvokeAsync(StateHasChanged);
         await Task.Delay(650);
-        if (_recordSession < 0) return; // cancelled
+        if (_recordSession < 0) return;
         _light = 2;
         await InvokeAsync(StateHasChanged);
         await Task.Delay(650);
@@ -525,4 +547,5 @@ public partial class VoiceCaptureStep
     private sealed class ExtractUrlResult { public bool Success { get; set; } public string? Url { get; set; } public string? Error { get; set; } }
     private sealed class RhythmResult { public bool Success { get; set; } public int Score { get; set; } public List<double>? Regions { get; set; } public string? Error { get; set; } }
     private sealed class VoiceCaptureStopResult { public bool Ok { get; set; } public string? Error { get; set; } public string? Base64 { get; set; } public string? FileName { get; set; } }
+    private sealed class VoiceCaptureStartResult { public bool Ok { get; set; } public string? MimeType { get; set; } public string? Error { get; set; } }
 }
