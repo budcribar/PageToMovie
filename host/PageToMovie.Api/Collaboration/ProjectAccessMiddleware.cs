@@ -1,8 +1,7 @@
-using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.Collaboration;
-
 using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Api.Collaboration;
 
 /// <summary>
@@ -12,19 +11,6 @@ namespace PageToMovie.Api.Collaboration;
 /// </summary>
 public sealed class ProjectAccessMiddleware
 {
-    private static readonly Regex ProjectPath = new(@"^/api/projects/(?<id>[^/]+)(?<rest>/.*)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
-
-    private static readonly HashSet<string> CollectionOnly = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "", "/",
-    };
-
-    // Paths under a project that allow Viewer on write? none — writes need Editor.
-    private static readonly HashSet<string> AnonymousOk = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // none for project-scoped
-    };
-
     private readonly RequestDelegate _next;
 
     public ProjectAccessMiddleware(RequestDelegate next) => _next = next;
@@ -32,23 +18,28 @@ public sealed class ProjectAccessMiddleware
     public async Task InvokeAsync(HttpContext context, IProjectAclService acl, IUserContext user)
     {
         var path = context.Request.Path.Value ?? "";
-        if (!path.StartsWith("/api/projects", StringComparison.OrdinalIgnoreCase))
+        var isUserProjects = path.StartsWith("/api/projects", StringComparison.OrdinalIgnoreCase);
+        var isAdminProjects = path.StartsWith("/api/admin/projects", StringComparison.OrdinalIgnoreCase);
+        if (!isUserProjects && !isAdminProjects)
         {
             await _next(context);
             return;
         }
 
-        var m = ProjectPath.Match(path);
-        if (!m.Success)
+        // owner/Name arrives as two segments once %2F is decoded (or sent unencoded).
+        // Collapse to owner%2FName so {id}/{projectId} route templates still match.
+        if (ProjectIdRouting.TryRewriteRequestPath(path, out var rewritten))
         {
-            // /api/projects or /api/projects/ with no id → collection (create/list)
+            context.Request.Path = rewritten;
+            path = rewritten;
+        }
+
+        if (!isUserProjects || !ProjectIdRouting.TryExtractProjectId(path, out var projectId))
+        {
+            // Admin project URLs: rewrite only. /api/projects collection (create/list): pass through.
             await _next(context);
             return;
         }
-
-        var projectIdRaw = Uri.UnescapeDataString(m.Groups["id"].Value);
-        // project ids are often owner%2Fname → owner/name
-        var projectId = projectIdRaw;
 
         // Skip ACL file bootstrap endpoints that only need auth? Still require access.
         var method = context.Request.Method.ToUpperInvariant();

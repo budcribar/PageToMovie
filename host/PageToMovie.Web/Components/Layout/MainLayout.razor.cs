@@ -14,6 +14,7 @@ using PageToMovie.Web.Services;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Web.Components.Layout;
 
@@ -27,6 +28,7 @@ public partial class MainLayout : IDisposable
     internal List<string> _presenceOthers = new();
     private System.Threading.Timer? _presenceTimer;
     internal string? _presenceProjectId;
+    private bool _presenceAccessDenied;
     private bool _disposed;
 
     private const string AdminToken = "admin";
@@ -64,11 +66,28 @@ public partial class MainLayout : IDisposable
         {
             _presenceOthers = new();
             _presenceProjectId = null;
+            _presenceAccessDenied = false;
+            StopPresenceTimer();
             return;
         }
+
+        if (!string.Equals(pid, _presenceProjectId, StringComparison.OrdinalIgnoreCase))
+            _presenceAccessDenied = false;
+        if (_presenceAccessDenied)
+            return;
+
         try
         {
-            await Engine.PresenceHeartbeatAsync(pid);
+            var status = await Engine.PresenceHeartbeatAsync(pid);
+            if (ProjectIdRouting.ShouldStopPresencePolling(status))
+            {
+                _presenceAccessDenied = true;
+                _presenceProjectId = pid;
+                _presenceOthers = new();
+                StopPresenceTimer();
+                return;
+            }
+
             var list = await Engine.ListPresenceAsync(pid);
             var me = (Session.UserId ?? "").Trim();
             _presenceOthers = list
@@ -91,6 +110,12 @@ public partial class MainLayout : IDisposable
     {
         if (_presenceTimer is not null) return;
         _presenceTimer = new System.Threading.Timer(PresenceTick, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+    }
+
+    private void StopPresenceTimer()
+    {
+        _presenceTimer?.Dispose();
+        _presenceTimer = null;
     }
 
     private async void PresenceTick(object? state)

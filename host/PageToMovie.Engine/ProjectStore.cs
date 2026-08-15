@@ -2634,7 +2634,7 @@ public sealed partial class ProjectStore
         var bookRefs = CollectSeedPlatePaths(info);
         var clonePath = GetVoiceCloneSamplePath(projectId, key);
         var hasClone = File.Exists(clonePath);
-        var charUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}";
+        var charUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(key)}";
 
         return new CharacterSummary
         {
@@ -2706,7 +2706,7 @@ public sealed partial class ProjectStore
         var hasPreferred = hasRef;
         string? preferredLabel = hasRef ? "locked" : null;
         string? preferredUrl = hasRef
-            ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/ref"
+            ? $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(key)}/ref"
             : null;
         if (!hasPreferred && !voiceOnly)
         {
@@ -2717,7 +2717,7 @@ public sealed partial class ProjectStore
                 hasPreferred = true;
                 preferredLabel = "best so far (variant 1)";
                 preferredUrl =
-                    $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/1";
+                    $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/1";
             }
         }
         return (hasRef, refName, (hasPreferred, preferredLabel, preferredUrl));
@@ -2749,7 +2749,7 @@ public sealed partial class ProjectStore
                 FileName = Path.GetFileName(rel),
                 Exists = exists,
                 Url = exists
-                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/bookrefs/{i}"
+                    ? $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(key)}/bookrefs/{i}"
                     : null,
             });
         }
@@ -2771,7 +2771,7 @@ public sealed partial class ProjectStore
                 FileName = fileName,
                 Exists = exists,
                 Url = exists
-                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/{idx}"
+                    ? $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/{idx}"
                     : null,
             });
         }
@@ -3372,7 +3372,7 @@ public sealed partial class ProjectStore
             row.Locked = true;
             row.HasPreferred = true;
             row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
-            row.PreferredUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
+            row.PreferredUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
         }
 
         var dir = Path.Combine(GetProjectDir(projectId), LocationAssetsRelativeDir);
@@ -3389,7 +3389,7 @@ public sealed partial class ProjectStore
                 RelativePath = Path.Combine(LocationAssetsRelativeDir, name).Replace('\\', '/'),
                 Index = i,
                 Exists = true,
-                Url = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/variants/{i}",
+                Url = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/variants/{i}",
             });
         }
     }
@@ -5866,7 +5866,7 @@ public sealed partial class ProjectStore
             HasBackgroundMusic = hasMusic,
             MusicScore = ReadMusicScore(sEl),
             CompositeUrl = compositeOk
-                ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/composite"
+                ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/composite"
                 : null,
             CharactersOnScreen = JsonStringList(sEl, StoreLit.CharactersOnScreen),
             LocationIds = JsonStringList(sEl, StoreLit.LocationIds),
@@ -6003,7 +6003,7 @@ public sealed partial class ProjectStore
             SizeBytes = size,
             FileName = onDisk ? resolvedFileName : null,
             VideoUrl = onDisk
-                ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
+                ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                 : null,
             DialogueVerification = dialogueVer,
             Stage1BeatId = stage1BeatId,

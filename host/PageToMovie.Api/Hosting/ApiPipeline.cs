@@ -16,6 +16,9 @@ internal static class ApiPipeline
     public static async Task UseFilmStudioPipelineAsync(this WebApplication app)
     {
         app.UseMiddleware<ProjectAccessMiddleware>();
+        // Rewrite owner/Name → owner%2FName happens in the access middleware. Routing
+        // already ran once on the original path; rematch so {id} captures the composite id.
+        app.UseRouting();
 
         if (ApiRuntime.UseFakes)
             app.Logger.LogWarning("DEV: fakes mode — login bypass ENABLED (auto dev-user sign-in via /api/auth/dev-login; provider calls resolve to fakes)");

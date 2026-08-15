@@ -1,3 +1,5 @@
+using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Engine.VoiceApply;
 
 /// <summary>Shared helper: write TTS preview under assets/characters/{key}/voice_preview_tts.*.</summary>
@@ -38,7 +40,7 @@ public sealed class VoicePreviewStore
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var rel = Path.GetRelativePath(projectDir, dest).Replace('\\', '/');
         var url =
-            $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/tts-preview";
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/tts-preview";
         return (rel, url);
     }
 
