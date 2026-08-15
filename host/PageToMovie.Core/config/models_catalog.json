@@ -756,19 +756,20 @@
       "requiredEnvKeys": [
         "XAI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.02,
       "maxReferenceImages": 3,
-      "notes": "Grok Imagine multi-image edit hard cap is 3 references.",
+      "notes": "Grok Imagine multi-image edit hard cap is 3 references. Disabled 2026-08-15 (image default is now grok-imagine-image-2.0). Id kept so existing projects migrate on open.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-05",
-      "pricingLastReviewedAt": "2026-08-05"
+      "lastVerifiedAt": "2026-08-15",
+      "pricingLastReviewedAt": "2026-08-05",
+      "deprecated": true
     },
     {
       "id": "grok-imagine-image-2.0",

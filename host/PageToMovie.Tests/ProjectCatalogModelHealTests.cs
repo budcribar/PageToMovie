@@ -47,12 +47,14 @@ public class ProjectCatalogModelHealTests
         Assert.Equal(expected, ProjectModelSelection.RequireVideoReview(cfg));
     }
 
-    [Fact]
-    public void Apply_rewrites_disabled_image_quality_to_catalog_default()
+    [Theory]
+    [InlineData("grok-imagine-image-quality")]
+    [InlineData("grok-imagine-image")]
+    public void Apply_rewrites_disabled_prior_image_ids_to_catalog_default(string stored)
     {
         var cfg = Cfg(
-            ("image_model_name", "grok-imagine-image-quality"),
-            ("model_selections", new Dictionary<string, string> { ["image"] = "grok-imagine-image-quality" }),
+            ("image_model_name", stored),
+            ("model_selections", new Dictionary<string, string> { ["image"] = stored }),
             ("model_name", "grok-imagine-video"));
 
         Assert.True(ProjectCatalogModelHeal.Apply(cfg));

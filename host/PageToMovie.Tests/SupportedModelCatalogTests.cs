@@ -260,7 +260,7 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
-    public void Image_default_is_grok_imagine_image_2_0_and_quality_is_disabled()
+    public void Image_default_is_grok_imagine_image_2_0_and_prior_imagine_rows_are_disabled()
     {
         Assert.Equal("grok-imagine-image-2.0", SupportedModelCatalog.DefaultModelIdForCapability("image"));
         var quality = SupportedModelCatalog.Find("grok-imagine-image-quality", ModelCapability.Image);
@@ -271,11 +271,12 @@ public class SupportedModelCatalogTests
         Assert.NotNull(two);
         Assert.False(quality!.Enabled);
         Assert.True(quality.Deprecated);
-        Assert.True(fast!.Enabled);
+        Assert.False(fast!.Enabled);
+        Assert.True(fast.Deprecated);
         Assert.True(two!.Enabled);
-        Assert.DoesNotContain(
-            SupportedModelCatalog.ForCapability(ModelCapability.Image),
-            e => e.Id.Equals("grok-imagine-image-quality", StringComparison.OrdinalIgnoreCase));
+        var enabledImage = SupportedModelCatalog.ForCapability(ModelCapability.Image);
+        Assert.DoesNotContain(enabledImage, e => e.Id.Equals("grok-imagine-image-quality", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(enabledImage, e => e.Id.Equals("grok-imagine-image", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
