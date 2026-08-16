@@ -100,6 +100,8 @@ public partial class AdaptationScreenplay
             S.Busy = true;
             S.BusyMessage = "Saving…";
             S.Error = null;
+            S.Message = null;
+            S.Jobs.Job = null;
             // Paint progress before the long sign-off call (includes cast build on the server)
             await S.InvokeAsync(S.StateHasChanged);
 

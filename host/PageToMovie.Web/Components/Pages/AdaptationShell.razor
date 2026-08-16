@@ -52,7 +52,7 @@
 }
 @* Hide completion/status noise while Import or a job is still running, and don't restate the
    outcome when the job panel below is already showing this exact message (one fact, one place). *@
-@if (!string.IsNullOrEmpty(Host.Message) && !Host.SuppressGuidanceBanners && !MessageDuplicatesJobPanel)
+@if (!string.IsNullOrEmpty(Host.Message) && !Host.SuppressGuidanceBanners && !MessageDuplicatesJobPanel && !Host.Busy)
 {
     <InlineAlert Variant="info" Message="@Host.Message" />
 }
@@ -89,7 +89,7 @@
                      Total="jobTot"
                      Percent="runPct"
                      StartedAt="Host.Jobs.Job.StartedAt"
-                     ShowCancel="@(Host.Jobs.JobRunning || Host.Busy)"
+                     ShowCancel="@Host.Jobs.JobRunning"
                      CancelDisabled="false"
                      OnCancel="Host.Jobs.CancelAsync"
                      Kind="@Host.Jobs.Job.Kind"

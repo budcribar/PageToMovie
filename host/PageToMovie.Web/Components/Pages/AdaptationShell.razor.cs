@@ -10,7 +10,7 @@ public partial class AdaptationShell
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private bool ShowJobPanel =>
-        AdaptationPageBase.AdaptationStepUi.ShowJobPanel(Session.IsAdmin, Host.Jobs.Job, Step);
+        !Host.Busy && AdaptationPageBase.AdaptationStepUi.ShowJobPanel(Session.IsAdmin, Host.Jobs.Job, Step);
 
     /// <summary>
     /// True when the generic message banner would just restate what the finished job panel already
