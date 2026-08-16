@@ -37,6 +37,25 @@ Canonical plan: [`docs/max-master-adaptation-plan.md`](docs/max-master-adaptatio
 
 ---
 
+## UI Protection & Page Freeze Policy (Mandatory)
+
+To prevent unexpected UI changes across coding sessions:
+
+1. **Protected Pages List:**
+   - **Film & Scenes Hub:** `Scenes.razor`, `ScenesSceneDetail.razor`, `ScenesClipTable.razor`, `ScenesSceneIndex.razor`, `ScenesClipInspector.razor`
+   - **Screenplay & Beat Editor:** `AdaptationScreenplay.razor`, `AdaptationShots.razor`
+   - **Characters & Locations:** `Characters.razor`, `Locations.razor`
+   - **Home & Review:** `Home.razor`, `Review.razor`
+
+2. **Strict Edit Barrier:**
+   - Coding agents must **NEVER modify, refactor, restructure, or remove elements** from any protected page unless the user explicitly requests changes to that specific page in the prompt.
+   - Backend, engine, or API updates must work with existing component contracts without altering protected Razor layouts or control flows.
+
+3. **Discussion-First Pre-Check:**
+   - If a backend change requires a UI tweak, the agent must **explain the change and ask for user approval** before editing any file on the protected list.
+
+---
+
 ## General solutions only (any book / any cast)
 
 **Film Studio is a product for arbitrary stories and casts — not a single-title app.**
