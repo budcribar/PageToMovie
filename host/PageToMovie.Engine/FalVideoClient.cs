@@ -42,7 +42,8 @@ public sealed class FalVideoClient : IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null)
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null)
     {
         var apiKey = ResolveApiKey()
             ?? throw new InvalidOperationException($"Fal.ai API key is missing. Set {SupportedModelCatalog.FalApiKeyEnv} in environment or Configuration.");
@@ -61,7 +62,7 @@ public sealed class FalVideoClient : IVideoClient
         var payload = new Dictionary<string, object?>
         {
             ["prompt"] = prompt,
-            ["aspect_ratio"] = ResolveAspectRatio(model),
+            ["aspect_ratio"] = ResolveAspectRatio(model, aspectRatio),
         };
         ApplyFrameCountParams(payload, catalogEntry, durationSeconds);
         if (catalogEntry.NumInferenceSteps is { } steps)
@@ -228,11 +229,15 @@ public sealed class FalVideoClient : IVideoClient
     }
 
     /// <summary>
-    /// Catalog's <c>DefaultAspectRatio</c> for the requested Fal.ai model, falling back to the
-    /// historical hardcoded "16:9" for models the catalog doesn't cover yet.
+    /// Requested aspect ratio if given, else catalog's <c>DefaultAspectRatio</c> for the requested Fal.ai model,
+    /// falling back to the historical hardcoded "16:9" for models the catalog doesn't cover yet.
     /// </summary>
-    private static string ResolveAspectRatio(string model) =>
-        SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9";
+    private static string ResolveAspectRatio(string model, string? requestedAspectRatio = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedAspectRatio))
+            return requestedAspectRatio;
+        return SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9";
+    }
 
     private static async Task<string> PrepareOptimizedImageDataUriAsync(string imagePath, int maxDim, CancellationToken ct)
     {

@@ -200,9 +200,11 @@ public sealed class Stage2PlannerService
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
+        var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null);
+        var visualMedium = CoerceString(gpv.TryGetValue("visual_medium", out var vm) ? vm : null);
 
         var planned = await PlanScenesInParallelAsync(
-                scenesIn, locSeeds, charSeeds, styleLock,
+                scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                 planningModel, onProgress, ct)
             .ConfigureAwait(false);
@@ -298,6 +300,8 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
+        string? targetAspectRatio,
+        string? visualMedium,
         int durMinSeconds,
         int durMaxSeconds,
         int durAbsMaxSeconds,
@@ -318,7 +322,7 @@ public sealed class Stage2PlannerService
         using (fanout.SceneGate)
         {
             var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
-                    s, locSeeds, charSeeds, styleLock,
+                    s, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                     planningModel, fanout, ct))
                 .ToArray();
@@ -336,6 +340,8 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
+        string? targetAspectRatio,
+        string? visualMedium,
         int durMinSeconds,
         int durMaxSeconds,
         int durAbsMaxSeconds,
@@ -346,6 +352,11 @@ public sealed class Stage2PlannerService
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (!string.IsNullOrWhiteSpace(targetAspectRatio) && !s.ContainsKey("target_aspect_ratio"))
+            s["target_aspect_ratio"] = targetAspectRatio;
+        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey("visual_medium"))
+            s["visual_medium"] = visualMedium;
+
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
         try

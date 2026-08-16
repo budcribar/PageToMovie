@@ -55,6 +55,9 @@ public sealed class ShotPlanRefiningClassifier
         4. Continuation rules:
            - When changing to a distinct new camera angle/framing (e.g. close-up on detail), set veo_continuation_source to "none".
            - When continuing or holding the previous angle, set veo_continuation_source to "extend_previous".
+        5. Framing & Headroom:
+           - Maintain generous vertical headroom above characters' heads and hair across all framings (never crop foreheads, hair, or scalps).
+           - Avoid edge-crowding phrases like "filling frame" or "tightly framed". Keep all subjects comfortably bounded in frame.
 
         OUTPUT FORMAT:
         Return ONLY valid JSON matching this schema:
@@ -205,6 +208,15 @@ public sealed class ShotPlanRefiningClassifier
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"SCENE {scene.GetValueOrDefault(JsonKeys.SceneNumber)}: {scene.GetValueOrDefault("setting")}");
         sb.AppendLine($"CHARACTERS ON SCREEN: {JsonSerializer.Serialize(scene.GetValueOrDefault("characters_on_screen"))}");
+        var targetAspectRatio = scene.GetValueOrDefault("target_aspect_ratio")?.ToString();
+        var visualMedium = scene.GetValueOrDefault("visual_medium")?.ToString();
+        if (!string.IsNullOrWhiteSpace(targetAspectRatio) || !string.IsNullOrWhiteSpace(visualMedium))
+        {
+            if (!string.IsNullOrWhiteSpace(targetAspectRatio))
+                sb.AppendLine($"TARGET ASPECT RATIO: {targetAspectRatio}");
+            if (!string.IsNullOrWhiteSpace(visualMedium))
+                sb.AppendLine($"VISUAL MEDIUM: {visualMedium}");
+        }
         sb.AppendLine();
         sb.AppendLine("PLANNED CLIPS:");
 

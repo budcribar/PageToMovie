@@ -5472,6 +5472,8 @@ public sealed class FilmJobService
             $"  [Grok] Submit S{ctx.Scene:D2}C{ctx.Clip} duration={duration}s res={ctx.Resolution} " +
             $"model={ctx.Model} mode={modeLabel} {built.PromptLogSummary}");
 
+        var targetAspectRatio = await ResolveTargetAspectRatioAsync(ctx.ProjectId, ctx.BlueprintRoot, ctx.Ct).ConfigureAwait(false);
+
         var requestId = await _grok.SubmitGenerationAsync(
             built.Prompt,
             duration,
@@ -5480,7 +5482,8 @@ public sealed class FilmJobService
             ctx.Ct,
             referenceImagePaths: ClipReferenceImagesForSubmit(ctx.PrevVideoPath, built),
             startFrameImagePath: null,
-            continueFromVideoPath: ctx.PrevVideoPath);
+            continueFromVideoPath: ctx.PrevVideoPath,
+            aspectRatio: targetAspectRatio);
         await AppendLogAsync($"  [Grok] request_id={requestId}");
 
         var url = await _grok.PollForVideoUrlAsync(
@@ -6456,6 +6459,31 @@ public sealed class FilmJobService
         }
 
         return resolution ?? "480p";
+    }
+
+    private async Task<string?> ResolveTargetAspectRatioAsync(string projectId, JsonElement? blueprint, CancellationToken ct)
+    {
+        try
+        {
+            if (blueprint is { ValueKind: JsonValueKind.Object } bp &&
+                bp.TryGetProperty("global_production_variables", out var gpv) &&
+                gpv.TryGetProperty("target_aspect_ratio", out var ar) &&
+                ar.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(ar.GetString()))
+            {
+                return ar.GetString();
+            }
+
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+            var vision = ProjectVisionMeta.TryRead(projectDir);
+            if (vision is not null && !string.IsNullOrWhiteSpace(vision.VisualMedium))
+                return ProjectVisionMeta.DefaultAspectRatio(vision.VisualMedium);
+        }
+        catch
+        {
+            // fallback
+        }
+        return null;
     }
 
     private async Task<string> ReadConfiguredOrDefaultResolutionAsync(string projectId, CancellationToken ct)

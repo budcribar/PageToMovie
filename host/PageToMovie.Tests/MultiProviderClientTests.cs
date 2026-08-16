@@ -151,10 +151,9 @@ public class MultiProviderClientTests
 
     [Theory]
     [InlineData("claude-sonnet-5", ModelProviderFamily.Anthropic)]
-    [InlineData("gemini-2.5-flash", ModelProviderFamily.Google)]
+    [InlineData("gemini-3.7-flash", ModelProviderFamily.Google)]
     [InlineData("grok-4.6", ModelProviderFamily.Xai)]
     [InlineData("grok-4.5", ModelProviderFamily.Xai)]
-    [InlineData("grok-4", ModelProviderFamily.Xai)]
     public void Chat_routing_resolves_expected_provider(string model, ModelProviderFamily expected)
     {
         var provider = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Chat).Provider;
@@ -169,8 +168,8 @@ public class MultiProviderClientTests
     }
 
     [Theory]
-    [InlineData("gemini-2.5-pro-image", ModelProviderFamily.Google)]
-    [InlineData("grok-imagine-image-quality", ModelProviderFamily.Xai)]
+    [InlineData("gemini-3-pro-image", ModelProviderFamily.Google)]
+    [InlineData("grok-imagine-image-2.0", ModelProviderFamily.Xai)]
     public void Image_routing_resolves_expected_provider(string model, ModelProviderFamily expected)
     {
         var provider = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Image).Provider;

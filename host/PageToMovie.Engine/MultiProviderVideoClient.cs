@@ -40,7 +40,8 @@ public sealed class MultiProviderVideoClient : IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null)
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null)
     {
         if (string.IsNullOrWhiteSpace(model))
             throw new InvalidOperationException(
@@ -54,7 +55,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
         {
             var falId = await _fal.SubmitGenerationAsync(
                 prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath).ConfigureAwait(false);
+                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
             return FalPrefix + falId;
         }
 
@@ -62,14 +63,14 @@ public sealed class MultiProviderVideoClient : IVideoClient
         {
             var id = await _gemini.SubmitGenerationAsync(
                 prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath).ConfigureAwait(false);
+                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
             return GeminiPrefix + id;
         }
 
         var grokId = await _grok.SubmitGenerationAsync(
             prompt, durationSeconds, resolution, model, ct,
-            referenceImagePaths, startFrameImagePath, continueFromVideoPath).ConfigureAwait(false);
-        return GrokPrefix + grokId;
+            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
+            return GrokPrefix + grokId;
     }
 
     public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct)

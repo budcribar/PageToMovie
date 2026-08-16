@@ -82,6 +82,11 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         settling as B begins speaking"), and framing_prompt must describe a composition that reads
         naturally as it starts on speaker one and ends on speaker two.
 
+        FRAMING & CANVAS RULES:
+        - Universal Headroom: Always direct compositions with generous vertical headroom above characters' heads and hair. Never crop foreheads, scalps, or chin edges.
+        - Avoid Edge-Crowding: Do not use "filling frame", "fill the frame", or edge-to-edge squeezing. Keep subjects naturally bounded within clean margins.
+        - Multi-Height Grounding: When characters of different heights or ground-level animals (e.g. child and pet) appear together, use wide-medium framing with ample headroom so all subjects remain fully visible and comfortably grounded.
+
         OUTPUT FORMAT:
         Return ONLY valid JSON matching this schema:
         {
@@ -91,7 +96,7 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
               "shot_scale": "wide",
               "lens_spec": "24mm wide anamorphic lens",
               "camera_movement": "locked tripod establishing shot",
-              "framing_prompt": "Establishing wide shot, 24mm anamorphic lens, static locked camera framing subject centrally."
+              "framing_prompt": "Establishing wide shot, 24mm anamorphic lens, static locked camera framing subject centrally with ample headroom."
             },
             ...
           ]
@@ -101,6 +106,40 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
     public Task<Dictionary<string, CameraDirective>?> ClassifySceneCameraAsync(Dictionary<string, object?> scene, List<Dictionary<string, object?>> beats, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
 
     protected override string BeatsHeading => "BEATS TO DIRECT:";
+
+    protected override string BuildUserPrompt(Dictionary<string, object?> scene, List<Dictionary<string, object?>> beats)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
+
+        var targetAspectRatio = scene.GetValueOrDefault("target_aspect_ratio")?.ToString();
+        var visualMedium = scene.GetValueOrDefault("visual_medium")?.ToString();
+        if (!string.IsNullOrWhiteSpace(targetAspectRatio) || !string.IsNullOrWhiteSpace(visualMedium))
+        {
+            sb.AppendLine("CANVAS & FORMAT:");
+            if (!string.IsNullOrWhiteSpace(targetAspectRatio))
+            {
+                var guideline = targetAspectRatio switch
+                {
+                    "4:3" => "Classic 4:3 storybook frame: maintain generous vertical headroom above characters' heads and full grounding for children/animals.",
+                    "1:1" => "Square 1:1 frame: balanced vertical/horizontal centering with ample top headroom.",
+                    "9:16" => "Vertical 9:16 frame: vertical breathing room with ample horizontal shoulder margins.",
+                    _ => "Widescreen 16:9 frame: wide horizontal staging with natural vertical headroom."
+                };
+                sb.AppendLine($"  Target Aspect Ratio: {targetAspectRatio} ({guideline})");
+            }
+            if (!string.IsNullOrWhiteSpace(visualMedium))
+                sb.AppendLine($"  Visual Medium: {visualMedium}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(BeatsHeading);
+
+        foreach (var b in beats)
+            AppendBeat(sb, b);
+
+        return sb.ToString();
+    }
 
     protected override void AppendBeat(System.Text.StringBuilder sb, Dictionary<string, object?> b)
     {

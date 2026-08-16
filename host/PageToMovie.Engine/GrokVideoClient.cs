@@ -66,7 +66,8 @@ public sealed class GrokVideoClient : IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null)
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null)
     {
         // Catalog maxReferenceImages only — never invent 7 (or any default).
         var videoEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
@@ -78,7 +79,7 @@ public sealed class GrokVideoClient : IVideoClient
         var setup = await BuildSubmitSetupAsync(
             durationSeconds, resolution, model,
             referenceImagePaths, startFrameImagePath, continueFromVideoPath,
-            maxRefsForModel, ct).ConfigureAwait(false);
+            maxRefsForModel, aspectRatio, ct).ConfigureAwait(false);
 
         var original = prompt ?? "";
         Exception? lastLengthError = null;
@@ -109,6 +110,7 @@ public sealed class GrokVideoClient : IVideoClient
         public required int PromptHardCap { get; init; }
         public required string Model { get; init; }
         public required string Resolution { get; init; }
+        public string? AspectRatio { get; init; }
         public string? ContinueFromVideoPath { get; init; }
         public string? StartFrameImagePath { get; init; }
     }
@@ -124,6 +126,7 @@ public sealed class GrokVideoClient : IVideoClient
         string? startFrameImagePath,
         string? continueFromVideoPath,
         int maxRefsForModel,
+        string? aspectRatio,
         CancellationToken ct)
     {
         var refs = (referenceImagePaths ?? Array.Empty<string>())
@@ -162,6 +165,7 @@ public sealed class GrokVideoClient : IVideoClient
             PromptHardCap = promptHardCap,
             Model = model,
             Resolution = resolution,
+            AspectRatio = aspectRatio,
             ContinueFromVideoPath = continueFromVideoPath,
             StartFrameImagePath = startFrameImagePath,
         };
@@ -273,7 +277,7 @@ public sealed class GrokVideoClient : IVideoClient
 
         return SubmitFreshOnceAsync(
             current, setup.DurationSeconds, setup.Resolution, setup.Model,
-            setup.StartUri, setup.RefObjs, setup.StartFrameImagePath, setup.Refs.Count, ct);
+            setup.StartUri, setup.RefObjs, setup.StartFrameImagePath, setup.Refs.Count, setup.AspectRatio, ct);
     }
 
     private ApiCallTelemetry BuildSubmitTelemetry(
@@ -361,6 +365,7 @@ public sealed class GrokVideoClient : IVideoClient
         List<object?>? refObjs,
         string? startFrameImagePath,
         int refCount,
+        string? aspectRatio,
         CancellationToken ct)
     {
         var payload = new Dictionary<string, object?>
@@ -368,7 +373,7 @@ public sealed class GrokVideoClient : IVideoClient
             ["model"] = model,
             ["prompt"] = prompt,
             ["duration"] = durationSeconds,
-            ["aspect_ratio"] = ResolveAspectRatio(model).ToApiString(),
+            ["aspect_ratio"] = ResolveAspectRatio(model, aspectRatio).ToApiString(),
             ["resolution"] = resolution,
             // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
             // Persist to Files API (file_id). "filename" is required (422 without it).
@@ -416,13 +421,18 @@ public sealed class GrokVideoClient : IVideoClient
     }
 
     /// <summary>
-    /// Fresh-generation aspect ratio: catalog's <c>DefaultAspectRatio</c> for the requested model,
-    /// falling back to the historical hardcoded "16:9" for models the catalog doesn't cover yet.
+    /// Fresh-generation aspect ratio: requested aspect ratio if given, else catalog's
+    /// <c>DefaultAspectRatio</c> for the requested model, falling back to the historical hardcoded "16:9".
     /// (Not used for video-extend — xAI docs say aspect_ratio isn't accepted there; the extension
     /// always inherits the source clip's ratio.)
     /// </summary>
-    private static AspectRatio ResolveAspectRatio(string model) =>
-        MediaEngineEnumExtensions.ParseAspectRatio(SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9");
+    private static AspectRatio ResolveAspectRatio(string model, string? requestedAspectRatio = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedAspectRatio))
+            return MediaEngineEnumExtensions.ParseAspectRatio(requestedAspectRatio);
+        return MediaEngineEnumExtensions.ParseAspectRatio(
+            SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9");
+    }
 
     private static Task<string> FileToDataUriAsync(string path, CancellationToken ct) =>
         MediaDataUri.FileToDataUriAsync(path, ct);

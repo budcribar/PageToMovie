@@ -27,7 +27,8 @@ public interface IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null);
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null);
 
     Task<string> PollForVideoUrlAsync(
         string requestId,

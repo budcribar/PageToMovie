@@ -39,6 +39,10 @@ public static class VisualMediumStyles
         _ => PhotorealStyleLock,
     };
 
+    /// <summary>Default target aspect ratio for a visual medium (4:3 for illustrated picture books, 16:9 for photoreal).</summary>
+    public static string DefaultAspectRatioFor(string? normalizedMedium) =>
+        NormalizeMedium(normalizedMedium) == MediumIllustrated ? "4:3" : "16:9";
+
     /// <summary>
     /// Shared visual medium token normalization for Stage 1 adaptation and project config stores.
     /// </summary>

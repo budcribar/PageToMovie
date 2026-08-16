@@ -1,8 +1,9 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
-
 using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Engine;
 
 /// <summary>Coerce Stage 1 JSON after LLM generation (schema cleanup).</summary>
@@ -68,8 +69,11 @@ public static class Stage1Normalizer
 
     private static void ApplyGpvDefaults(Dictionary<string, object?> gpv)
     {
-        gpv["target_aspect_ratio"] = gpv.TryGetValue("target_aspect_ratio", out var ar) && ar is not null
-            ? ar : "16:9";
+        if (!gpv.TryGetValue("target_aspect_ratio", out var ar) || ar is null || string.IsNullOrWhiteSpace(ar.ToString()))
+        {
+            var med = gpv.TryGetValue("visual_medium", out var mv) ? mv?.ToString() : null;
+            gpv["target_aspect_ratio"] = VisualMediumStyles.DefaultAspectRatioFor(med);
+        }
         gpv["resolution"] = gpv.TryGetValue("resolution", out var res) && res is not null ? res : "720p";
         gpv["frame_rate"] = ParseFrameRate(gpv.TryGetValue("frame_rate", out var fr) ? fr : 24);
         if (!gpv.TryGetValue("directorial_treatment", out var dirTreat) || dirTreat is null)

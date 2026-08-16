@@ -21,7 +21,8 @@ public class JitBenchmarkServiceTests
             CancellationToken ct,
             IReadOnlyList<string>? referenceImagePaths = null,
             string? startFrameImagePath = null,
-            string? continueFromVideoPath = null)
+            string? continueFromVideoPath = null,
+            string? aspectRatio = null)
         {
             GenerationSubmitted = true;
             return Task.FromResult("test_job_123");

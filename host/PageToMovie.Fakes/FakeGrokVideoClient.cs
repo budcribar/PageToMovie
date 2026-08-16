@@ -42,7 +42,8 @@ public sealed class FakeGrokVideoClient : IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null)
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null)
     {
         var n = Interlocked.Increment(ref _submitCount);
         var fakes = _opts.Fakes ?? new FakesOptions();

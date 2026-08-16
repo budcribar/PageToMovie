@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -95,6 +96,10 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
     {
         base.Dispose(disposing);
         if (!disposing) return;
+        Environment.SetEnvironmentVariable("PageToMovie_USE_FAKES", null);
+        Environment.SetEnvironmentVariable("PAGETOMOVIE_USE_FAKES", null);
+        Environment.SetEnvironmentVariable("PageToMovie__UseFakes", null);
+        SupportedModelCatalog.ReloadCatalog();
         try
         {
             if (Directory.Exists(_workspace))

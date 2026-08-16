@@ -331,6 +331,9 @@ public static class ProjectVisionMeta
     public static string DefaultStyleLock(string visualMedium) =>
         VisualMediumStyles.StyleLockFor(NormalizeMedium(visualMedium));
 
+    public static string DefaultAspectRatio(string? visualMedium) =>
+        VisualMediumStyles.DefaultAspectRatioFor(visualMedium);
+
     /// <summary>
     /// Ask the planning model once at adaptation time for structured medium metadata.
     /// Fountain prose is not parsed; the model returns JSON only.

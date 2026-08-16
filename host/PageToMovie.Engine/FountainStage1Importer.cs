@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Utils;
 using PageToMovie.Fountain;
 
@@ -103,13 +104,16 @@ public static class FountainStage1Importer
         FountainParser.ParseResult parsed,
         int minSeconds = ClipDurationEstimator.MinSeconds,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
-        int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds)
-        => new Stage1BuildContext(parsed, minSeconds, maxSeconds, absMaxSeconds).Build();
+        int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds,
+        string? visualMedium = null,
+        string? targetAspectRatio = null)
+        => new Stage1BuildContext(parsed, minSeconds, maxSeconds, absMaxSeconds, visualMedium, targetAspectRatio).Build();
 
     private sealed class Stage1BuildContext
     {
         private readonly FountainParser.ParseResult parsed;
         private readonly int maxSeconds;
+        private readonly string targetAspectRatio;
 
         private readonly List<object?> scenes = new();
         private readonly Dictionary<string, object?> charSeeds = new(StringComparer.OrdinalIgnoreCase);
@@ -134,10 +138,15 @@ public static class FountainStage1Importer
             FountainParser.ParseResult parsed,
             int minSeconds,
             int maxSeconds,
-            int absMaxSeconds)
+            int absMaxSeconds,
+            string? visualMedium = null,
+            string? targetAspectRatio = null)
         {
             this.parsed = parsed;
             this.maxSeconds = maxSeconds;
+            this.targetAspectRatio = !string.IsNullOrWhiteSpace(targetAspectRatio)
+                ? targetAspectRatio
+                : VisualMediumStyles.DefaultAspectRatioFor(visualMedium);
             _ = minSeconds;
             _ = absMaxSeconds;
         }
@@ -603,7 +612,7 @@ public static class FountainStage1Importer
                 },
                 ["global_production_variables"] = new Dictionary<string, object?>
                 {
-                    ["target_aspect_ratio"] = "16:9",
+                    ["target_aspect_ratio"] = targetAspectRatio,
                     ["resolution"] = "720p",
                     ["frame_rate"] = 24,
                     ["directorial_treatment"] = "Cinematic lighting, clear coverage, natural performances.",

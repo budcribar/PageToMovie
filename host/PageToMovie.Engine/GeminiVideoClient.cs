@@ -63,7 +63,8 @@ public sealed class GeminiVideoClient : IVideoClient
         CancellationToken ct,
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
-        string? continueFromVideoPath = null)
+        string? continueFromVideoPath = null,
+        string? aspectRatio = null)
     {
         if (!string.IsNullOrWhiteSpace(continueFromVideoPath))
             throw new NotSupportedException(
@@ -100,7 +101,7 @@ public sealed class GeminiVideoClient : IVideoClient
             ["instances"] = new object[] { instance },
             ["parameters"] = new Dictionary<string, object?>
             {
-                ["aspectRatio"] = ResolveAspectRatio(model),
+                ["aspectRatio"] = ResolveAspectRatio(model, aspectRatio),
                 ["durationSeconds"] = durationSeconds,
                 ["resolution"] = NormalizeResolution(resolution),
             },
@@ -375,11 +376,15 @@ public sealed class GeminiVideoClient : IVideoClient
             configureRequest: req => ProviderHttpHelpers.ApplyGoogleApiKey(req, ResolveApiKey()));
 
     /// <summary>
-    /// Catalog's <c>DefaultAspectRatio</c> for the requested Veo model, falling back to the
-    /// historical hardcoded "16:9" for models the catalog doesn't cover yet.
+    /// Requested aspect ratio if given, else catalog's <c>DefaultAspectRatio</c> for the requested Veo model,
+    /// falling back to the historical hardcoded "16:9" for models the catalog doesn't cover yet.
     /// </summary>
-    private static string ResolveAspectRatio(string model) =>
-        SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9";
+    private static string ResolveAspectRatio(string model, string? requestedAspectRatio = null)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedAspectRatio))
+            return requestedAspectRatio;
+        return SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9";
+    }
 
     private static string NormalizeResolution(string resolution) =>
         (resolution ?? "").Trim().ToLowerInvariant() switch
