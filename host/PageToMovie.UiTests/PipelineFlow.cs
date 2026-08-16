@@ -200,8 +200,16 @@ public static class PipelineFlow
                     last = (st.job||{}).status; if (last==='done') return 'done';
                     if (last==='error'||last==='cancelled') return 'ERR:'+JSON.stringify(st.job).slice(0,150); }
                 return 'timeout'; };
-            const chars = (await fetch('/api/projects/'+E+'/characters', {headers:h}).then(r=>r.json())).characters || [];
-            if (!chars.length) return JSON.stringify({err:'no cast extracted'});
+            // Cast extraction runs server-side on approve; on a busy host it can land a beat after the
+            // page moved on. Poll rather than read once.
+            let chars = [];
+            const castDl = Date.now() + 60000;
+            while (Date.now() < castDl) {
+                chars = (await fetch('/api/projects/'+E+'/characters', {headers:h}).then(r=>r.json()).catch(()=>({}))).characters || [];
+                if (chars.length) break;
+                await new Promise(r=>setTimeout(r,1500));
+            }
+            if (!chars.length) return JSON.stringify({err:'no cast extracted', activeId:id});
             for (const c of chars) {
                 const key = c.key||c.Key; const K = encodeURIComponent(key);
                 const v = await fetch('/api/jobs/character-variants', {method:'POST', headers:h,

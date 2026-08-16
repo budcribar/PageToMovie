@@ -96,9 +96,29 @@ Legend: ✅ covered · ◐ partial (smoke / hydrate only) · ❌ gap
 | Demo gallery | PageSmokeTests | ◐ |
 | Full pipeline E2E (fresh project → generated clips) | PipelineE2ETests; PipelineFlow.RunToGeneratedClipsAsync | ✅ |
 
-## Known issues
+## Known issues / follow-ups (2026-08-16)
 
-- Rename_project (HomeFlowTests) was failing on master until the re-slug active-pointer fix
-  (ProjectEndpoints rename + HomeProjects.ConfirmRenameAsync).
-- HomeFlowTests.Checkpoint_save_and_revert is timing-flaky when run right after the delete test
-  in the shared workspace.
+Fixed tonight (root causes, all on master): Rename re-slug ownership + active pointer; per-user
+active pointer not persisting for users without a `users` row (API-started jobs ran on the wrong
+project); Generate Batch / AI-edit modals unrenderable (mangled attributes since Aug 9); page
+slices (Home/Scenes/Characters/Review/Configuration/Admin/ProjectCosts/AdaptationImport/
+SimpleVoice/SimpleRevoice) not re-rendering with their page; Review tab orphan "}".
+
+Still failing / parked:
+- `FilmLengthFlowTests` — **Skipped**: .txt book import under the fakes leaves the import page
+  busy > 2 min (film-length controls disabled). Investigate the fake Stage-1 book job.
+- `ConfigurationFlowTests.Debounced_autosave_persists_format_and_pipeline_fields` — the 9:16
+  format `<select>` is disabled/not enabled within 30 s; check the Configuration page busy state
+  and whether the format select still offers 9:16.
+- `AuthUiTests.Signup_and_email_confirmation_ui_flow` — signup submit button never enables
+  (form probably gained a required field/consent); `Password_reset_ui_flow` — reset token read
+  is null (fake mail store / endpoint changed). Both pre-existing.
+- `HomeFlowTests.Checkpoint_save_and_revert` — timing-flaky right after the delete test.
+- Removed `ScreenplayTitleAuthorChipTests` (Title/Author chips + raw JS Fountain editor were
+  replaced by the structured editor on Aug 9).
+
+Suite hygiene: `xunit.runner.json` runs collections serially; the base `AppFixture` is hermetic
+(temp workspace, self-seeded ready project, read caches off) — never point it at the repo
+workspace. Do not run two suites (or a manual `dotnet run` of the API) concurrently: `dotnet run`
+in a fixture rebuilds the API and a running instance holds its DLLs (stale build ⇒ ghost
+failures).

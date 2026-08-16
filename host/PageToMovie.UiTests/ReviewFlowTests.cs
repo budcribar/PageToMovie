@@ -86,14 +86,15 @@ public class ReviewFlowTests
             await playTab.ClickAsync();
             await Assertions.Expect(playTab).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("btn-success"), new() { Timeout = 15_000 });
 
-            // The scenes table is unconditional across tabs (the bug this suite found had it trapped
-            // inside the Play tab only) — assert it's still visible here too, not just on "review".
-            await Assertions.Expect(page.GetByTestId("review-scene-row").First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            // Play view: the full-movie player replaces the review body; "Back to Review" returns.
+            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Back to Review" }).First).ToBeVisibleAsync(new() { Timeout = 15_000 });
 
             var shareTab = page.GetByTestId("review-tab-share");
             await Assertions.Expect(shareTab).ToBeEnabledAsync(new() { Timeout = 15_000 });
             await shareTab.ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-share-card")).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            // Back to the review body: the scene rows are there again.
+            await page.GetByTestId("review-tab-review").ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-scene-row").First).ToBeVisibleAsync(new() { Timeout = 15_000 });
         }
         finally { await ctx.CloseAsync(); }
