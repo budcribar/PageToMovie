@@ -67,6 +67,12 @@
                 @if (!Jobs.JobRunning)
                 {
                     <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <a class="btn btn-outline-secondary"
+                           data-testid="shots-to-screenplay"
+                           href="adaptation/screenplay"
+                           title="Edit scene beats, dialogue lines, and visual actions in the screenplay editor">
+                            ✏️ Edit Screenplay Beats
+                        </a>
                         <button class="btn btn-primary"
                                 data-testid="shots-build"
                                 disabled="@(Busy || !Status.Stage2.Stage1Exists)"
@@ -76,7 +82,7 @@
                         @if (Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                         {
                             <a class="btn btn-outline-primary" data-testid="shots-to-scenes" href="scenes"
-                               title="Create video clips from this shot plan">Open Scenes</a>
+                               title="Create video clips from this shot plan">Open Scenes →</a>
                         }
                         <div data-testid="shots-status"
                              data-ready="@(Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale ? "true" : "false")"
