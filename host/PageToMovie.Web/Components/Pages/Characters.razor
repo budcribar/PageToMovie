@@ -182,15 +182,13 @@ else if (!string.IsNullOrEmpty(_error) && !Jobs.JobRunning)
 }
 else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
 {
-    <div class="alert alert-info py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="alert alert-info py-2 d-flex flex-wrap align-items-center justify-content-end gap-2">
         @if (ActiveProject.CanScenes)
         {
-            <span class="small text-muted">Next</span>
             <a class="btn btn-sm btn-primary" data-testid="characters-to-scenes" href="scenes">@L["CharactersPage.OpenScenes"]</a>
         }
         else
         {
-            <span class="small text-muted">Next</span>
             <a class="btn btn-sm btn-primary" data-testid="characters-to-shots" href="adaptation/shots">@L["CharactersPage.BuildShotPlan"]</a>
         }
         <div data-testid="characters-status"

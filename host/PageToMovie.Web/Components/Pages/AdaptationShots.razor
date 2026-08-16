@@ -76,7 +76,7 @@
                         @if (Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                         {
                             <a class="btn btn-outline-primary" data-testid="shots-to-scenes" href="scenes"
-                               title="Next: create video clips from this shot plan">Open Scenes</a>
+                               title="Create video clips from this shot plan">Open Scenes</a>
                         }
                         <div data-testid="shots-status"
                              data-ready="@(Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale ? "true" : "false")"
