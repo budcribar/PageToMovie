@@ -19,8 +19,6 @@ public sealed partial class FilmLengthCard : IDisposable
     /// <summary>Render the control flat (no card wrapper) so a host page can group it in one card.</summary>
     [Parameter] public bool Embedded { get; set; }
 
-    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = default;
-
     internal readonly string _inputId = "film-target-" + Guid.NewGuid().ToString("N")[..8];
     internal string? _loadedFor;
 
@@ -32,7 +30,6 @@ public sealed partial class FilmLengthCard : IDisposable
     internal string? _error;
     internal CancellationTokenSource? _saveCts;
     internal bool _saving; // a save loop is in flight (coalesces rapid bumps)
-    private bool _appliedUserRuntimePref;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -62,16 +59,9 @@ public sealed partial class FilmLengthCard : IDisposable
                 return;
             }
             _natural = Math.Clamp(dto.NaturalMinutes, 1, 180);
-            // Project target wins when set; otherwise G1 lastRuntimeTargetMin prefill, then natural.
-            if (dto.TargetMinutes > 0)
-            {
-                _target = Math.Clamp(dto.TargetMinutes, 1, 180);
-            }
-            else
-            {
-                _target = _natural;
-                await TryApplyUserRuntimePrefAsync();
-            }
+            // Project target wins when set; otherwise the natural length. Nothing is remembered
+            // across projects — a length only means something once this book has been read.
+            _target = dto.TargetMinutes > 0 ? Math.Clamp(dto.TargetMinutes, 1, 180) : _natural;
             _edit = _target;
             _visible = true;
         }
@@ -81,64 +71,6 @@ public sealed partial class FilmLengthCard : IDisposable
             _visible = false;
             _error = ex.Message;
         }
-    }
-
-    /// <summary>
-    /// C6/G1: when the project has no saved runtime target, seed from the user's last choice.
-    /// Applies once per project load; persists so estimate uses the same minutes.
-    /// Only ever shortens: the remembered target came from a different book, and stretching a
-    /// 2-minute nursery rhyme to a 180-minute feature (last set on a novel) priced it at $700+.
-    /// </summary>
-    private async Task TryApplyUserRuntimePrefAsync()
-    {
-        if (_appliedUserRuntimePref) return;
-        _appliedUserRuntimePref = true;
-        try
-        {
-            if (!UserPrefs.Loaded)
-                await UserPrefs.LoadAsync();
-            var pref = UserPrefs.LastRuntimeTargetMin;
-            if (!ShouldSeedTargetFromPref(pref, _natural, out var mins))
-                return;
-            if (mins == _natural)
-            {
-                _target = mins;
-                _edit = mins;
-                return;
-            }
-            _edit = mins;
-            _target = mins;
-            // Persist as project target so CostReport and other surfaces agree
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            var saved = await Engine.SetFilmRuntimeAsync(ProjectId, mins, cts.Token);
-            if (saved is { Ok: true } && saved.TargetMinutes > 0)
-                _target = Math.Clamp(saved.TargetMinutes, 1, 180);
-            _edit = _target;
-            if (OnChanged.HasDelegate)
-            {
-                try { await OnChanged.InvokeAsync(); } catch { /* host owns errors */ }
-            }
-        }
-        catch
-        {
-            // Pref is optional — leave natural
-            _target = _natural;
-            _edit = _natural;
-        }
-    }
-
-    /// <summary>
-    /// A remembered runtime preference seeds a fresh project only when it is a valid length that
-    /// does not exceed the book's natural runtime — a preference can shorten a long book, never
-    /// pad a short one.
-    /// </summary>
-    internal static bool ShouldSeedTargetFromPref(int? pref, int naturalMinutes, out int minutes)
-    {
-        minutes = 0;
-        if (pref is not int mins || mins < 1 || mins > 180) return false;
-        if (naturalMinutes > 0 && mins > naturalMinutes) return false;
-        minutes = mins;
-        return true;
     }
 
     /// <summary>Debounced autosave after the user edits the target.</summary>
@@ -213,9 +145,6 @@ public sealed partial class FilmLengthCard : IDisposable
                 throw new InvalidOperationException("Save failed.");
             _natural = dto.NaturalMinutes > 0 ? dto.NaturalMinutes : _natural;
             _target = dto.TargetMinutes > 0 ? dto.TargetMinutes : minutes;
-            // Remember an explicit shortening as the user's preference; choosing the natural
-            // length ("Use estimate") is not a length preference and must not seed other books.
-            try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target == _natural ? null : _target); } catch { /* soft */ }
             return true;
         }
         catch (OperationCanceledException)

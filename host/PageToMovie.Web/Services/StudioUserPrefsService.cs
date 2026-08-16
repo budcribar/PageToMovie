@@ -22,7 +22,6 @@ public sealed class StudioUserPrefsService
     public string PreferPath { get; private set; } = PathGenerate;
     public string? EditFocus { get; private set; }
     public bool SkipEditFocus { get; private set; }
-    public int? LastRuntimeTargetMin { get; private set; }
     public bool Loaded { get; private set; }
 
     private string UserScope
@@ -55,9 +54,6 @@ public sealed class StudioUserPrefsService
             SkipEditFocus = string.Equals(skip, "1", StringComparison.Ordinal)
                 || string.Equals(skip, "true", StringComparison.OrdinalIgnoreCase);
 
-            var runtime = await GetAsync("lastRuntimeTargetMin");
-            if (int.TryParse(runtime, out var mins) && mins > 0 && mins < 24 * 60)
-                LastRuntimeTargetMin = mins;
         }
         catch
         {
@@ -85,12 +81,6 @@ public sealed class StudioUserPrefsService
     {
         SkipEditFocus = skip;
         await SetAsync("skipEditFocus", skip ? "1" : null);
-    }
-
-    public async Task SetLastRuntimeTargetMinAsync(int? minutes)
-    {
-        LastRuntimeTargetMin = minutes is > 0 ? minutes : null;
-        await SetAsync("lastRuntimeTargetMin", LastRuntimeTargetMin?.ToString());
     }
 
     private async Task<string?> GetAsync(string name)

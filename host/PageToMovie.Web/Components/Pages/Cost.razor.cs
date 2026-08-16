@@ -250,10 +250,6 @@ public partial class Cost : IAsyncDisposable
                     await UserPrefs.SetSkipEditFocusAsync(string.Equals(value, "1", StringComparison.Ordinal));
                     _skipEditFocus = UserPrefs.SkipEditFocus;
                     break;
-                case "lastRuntimeTargetMin":
-                    if (int.TryParse(value, out var mins))
-                        await UserPrefs.SetLastRuntimeTargetMinAsync(mins);
-                    break;
             }
         }
         catch { /* ignore */ }
@@ -882,8 +878,6 @@ public partial class Cost : IAsyncDisposable
             if (!string.IsNullOrWhiteSpace(_prePruneCheckpointHash))
                 msg += " Snapshot saved — Undo prune if you want the previous script.";
             _shapeMessage = msg;
-            if (target > 0)
-                await PersistPrefAsync("lastRuntimeTargetMin", target.ToString());
             await LoadAsync();
             try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
         }
