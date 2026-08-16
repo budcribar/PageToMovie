@@ -13,9 +13,9 @@ public static class Ui
     {
         var sep = route.Contains('?') ? "&" : "?";
         await page.GotoAsync($"{baseUrl}{route}{sep}admin=1");
-        // Shell-ready marker: the nav link to /scenes is present on every page in both
-        // collapsed and expanded sidebar states (href is state-independent, the label is not).
-        await page.Locator("a[href='/scenes']").First
+        // Shell-ready marker: the nav link to home (nav-studio) is present on every page in both
+        // collapsed and expanded sidebar states.
+        await page.Locator("a[data-testid='nav-studio'], a[href='/']").First
                   .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
         await DismissTermsAsync(page);
     }
@@ -27,7 +27,7 @@ public static class Ui
     {
         await GotoAppAsync(page, baseUrl, "/");
         await page.GotoAsync($"{baseUrl}{route}");
-        await page.Locator("a[href='/scenes']").First
+        await page.Locator("a[data-testid='nav-studio'], a[href='/']").First
                   .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
         await DismissTermsAsync(page);
     }

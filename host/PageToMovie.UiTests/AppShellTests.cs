@@ -32,12 +32,11 @@ public class AppShellTests
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/");
 
-            await page.Locator("a[href='/scenes']").First.ClickAsync();
-            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/scenes", RegexOptions.None, CommonRegex.Timeout));
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Scenes & clips" })).ToBeVisibleAsync();
+            await page.Locator("a[href='/demo']").First.ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/demo", RegexOptions.None, CommonRegex.Timeout));
 
-            await page.Locator("a[href='/characters']").First.ClickAsync();
-            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/characters", RegexOptions.None, CommonRegex.Timeout));
+            await page.Locator("a[href='/configuration']").First.ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/configuration", RegexOptions.None, CommonRegex.Timeout));
         }
         finally { await ctx.CloseAsync(); }
     }

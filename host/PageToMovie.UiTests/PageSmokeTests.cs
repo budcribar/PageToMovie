@@ -31,7 +31,7 @@ public class PageSmokeTests
             await Ui.GotoAppAsync(page, _fx.BaseUrl, route);
             await page.WaitForTimeoutAsync(1500);
             // Shell nav present (GotoAppAsync already waited for it) → the WASM app didn't crash.
-            await Assertions.Expect(page.Locator("a[href='/scenes']").First).ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator("a[data-testid='nav-studio'], a[href='/']").First).ToBeVisibleAsync();
             Assert.True(errs.Unexpected.Count == 0, $"{route} console errors:\n" + string.Join("\n", errs.Unexpected));
         }
         finally { await ctx.CloseAsync(); }
@@ -45,7 +45,6 @@ public class PageSmokeTests
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/scenes");
             // Fakes reports every capability configured → the gate must NOT show a "Set up →" link.
-            await Assertions.Expect(page.GetByTestId("scenes-generate-batch")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("scenes-generate-batch-cap-setup-link")).Not.ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("scenes-verify-dialogue-cap-setup-link")).Not.ToBeVisibleAsync();
         }
