@@ -109,30 +109,13 @@ else
                 <div class="alert alert-warning py-1 px-2 small mt-2 mb-0" data-testid="decision-collab-note">@_collabNote</div>
             }
 
-            @* Settings row: resolution + target length *@
-            <div class="row g-2 align-items-end mt-2 cost-hub-controls">
-                <div class="col-sm-6 col-md-5">
-                    <label class="form-label cost-hub-label mb-1">@L["CostPage.VideoResolution"]</label>
-                    <div class="btn-group d-flex" role="group" aria-label="Video resolution">
-                        @foreach (var res in new[] { "480p", "720p", "1080p" })
+            @* Settings row: target length on left (under duration), resolution on right *@
+            <div class="row g-3 align-items-center mt-2 cost-hub-controls">
+                <div class="col-md-6 d-flex justify-content-center">
+                    <div class="d-flex flex-wrap align-items-center justify-content-center gap-2" data-testid="cost-length-row">
+                        @if (!string.IsNullOrWhiteSpace(_projectId))
                         {
-                            <button type="button"
-                                    class="btn btn-sm @(_draftRes == res ? "btn-primary" : "btn-outline-secondary")"
-                                    data-testid="@($"cost-res-{res}")"
-                                    disabled="@_busy"
-                                    @onclick="() => SetDraftResolutionAsync(res)">
-                                @res
-                            </button>
-                        }
-                    </div>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(_projectId))
-                {
-                    <div class="col-sm-6 col-md-7">
-                        <div class="d-flex flex-wrap align-items-end gap-2" data-testid="cost-length-row">
-                            <div class="flex-grow-1">
-                                <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="OnFilmLengthChangedAsync" />
-                            </div>
+                            <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="OnFilmLengthChangedAsync" />
                             @if (NeedsFitForTarget)
                             {
                                 <button type="button"
@@ -144,9 +127,26 @@ else
                                     Prune script
                                 </button>
                             }
+                        }
+                    </div>
+                </div>
+                <div class="col-md-6 d-flex justify-content-center">
+                    <div class="d-flex flex-wrap align-items-center justify-content-center gap-2">
+                        <label class="form-label cost-hub-label mb-0 me-1">@L["CostPage.VideoResolution"]</label>
+                        <div class="btn-group" role="group" aria-label="Video resolution">
+                            @foreach (var res in new[] { "480p", "720p", "1080p" })
+                            {
+                                <button type="button"
+                                        class="btn btn-sm @(_draftRes == res ? "btn-primary" : "btn-outline-secondary")"
+                                        data-testid="@($"cost-res-{res}")"
+                                        disabled="@_busy"
+                                        @onclick="() => SetDraftResolutionAsync(res)">
+                                    @res
+                                </button>
+                            }
                         </div>
                     </div>
-                }
+                </div>
             </div>
 
             @if (_phase == DecisionPhase.ConfirmGenerate)
