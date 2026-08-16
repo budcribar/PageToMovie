@@ -86,6 +86,8 @@ public class FilmLengthFlowTests
             await page.GotoAsync($"{baseUrl}/adaptation/import?admin=1");
             await card.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
         }
+        // The import page stays busy (controls disabled) until the book-import job finishes.
+        await Assertions.Expect(page.GetByTestId("film-length-input")).ToBeEnabledAsync(new() { Timeout = 120_000 });
         var label = await page.GetByTestId("film-length-estimate").TextContentAsync() ?? "";
         var m = UseEstimateMinutes.Match(label);
         Assert.True(m.Success, $"Use-estimate button should show the natural minutes, was '{label}'");

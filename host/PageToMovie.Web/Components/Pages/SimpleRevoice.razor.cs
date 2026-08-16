@@ -10,10 +10,23 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleRevoice : IAsyncDisposable
+public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
 {
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the page-local sections are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
     internal string? _projectId;
     internal string _narratorKey = "Character_Narrator";
     internal bool _hasClone;

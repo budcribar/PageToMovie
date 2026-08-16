@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_TimingSection
+public partial class Admin_TimingSection : PageSliceComponent
 {
     [CascadingParameter] public Admin Host { get; set; } = default;
     [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }

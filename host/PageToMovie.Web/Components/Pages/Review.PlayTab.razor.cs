@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Review_PlayTab
+public partial class Review_PlayTab : PageSliceComponent
 {
     [CascadingParameter] public required Review Host { get; set; }
     [CascadingParameter] public Review.ReviewListState? List { get; set; }

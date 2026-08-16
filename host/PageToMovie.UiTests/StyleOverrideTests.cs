@@ -25,7 +25,7 @@ public class StyleOverrideTests
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
             await page.GetByTestId("char-list-item").First.ClickAsync();
             await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
-            var desc = page.GetByPlaceholder("How they look");
+            var desc = page.GetByTestId("char-look-panel").Locator("textarea").First;
             await desc.WaitForAsync(new() { Timeout = 30_000 });
             if (string.IsNullOrWhiteSpace(await desc.InputValueAsync()))
                 await desc.FillAsync("A pale, thin adult with dark hair and a dark wool coat, photoreal.");
@@ -84,7 +84,7 @@ public class StyleOverrideTests
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
             await page.GetByTestId("char-list-item").First.ClickAsync();
             await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
-            var desc = page.GetByPlaceholder("How they look");
+            var desc = page.GetByTestId("char-look-panel").Locator("textarea").First;
             await desc.WaitForAsync(new() { Timeout = 30_000 });
             if (string.IsNullOrWhiteSpace(await desc.InputValueAsync()))
                 await desc.FillAsync("A pale, thin adult with dark hair, photoreal.");

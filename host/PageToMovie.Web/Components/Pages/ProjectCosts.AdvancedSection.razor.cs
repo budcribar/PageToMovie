@@ -11,9 +11,11 @@ using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 using static PageToMovie.Web.Components.CostFormatting;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class ProjectCosts_AdvancedSection
+public partial class ProjectCosts_AdvancedSection : PageSliceComponent
 {
     [CascadingParameter] public required ProjectCosts Host { get; set; }
 }

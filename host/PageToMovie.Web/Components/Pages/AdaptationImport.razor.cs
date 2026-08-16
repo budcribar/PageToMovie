@@ -3,10 +3,23 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class AdaptationImport
+public partial class AdaptationImport : IPageSliceHost
 {
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the page-local sections are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
     public override string StepKey => "import";
 
     private ImportDrop? _drop;

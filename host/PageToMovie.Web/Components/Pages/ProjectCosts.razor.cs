@@ -12,10 +12,23 @@ using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 using static PageToMovie.Web.Components.CostFormatting;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class ProjectCosts
+public partial class ProjectCosts : IPageSliceHost
 {
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the page-local sections are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
     internal bool _busy;
     internal string? _error;
     internal string? _message;

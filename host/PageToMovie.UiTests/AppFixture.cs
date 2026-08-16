@@ -87,6 +87,9 @@ public class AppFixture : IAsyncLifetime
     /// </summary>
     protected virtual bool SeedReadyProject => GetType() == typeof(AppFixture);
 
+    /// <summary>What "ready" means for this host: a shot plan (Scenes reachable) or generated clips.</summary>
+    protected virtual bool SeedNeedsClips => true;
+
     private async Task EnsureReadyProjectAsync()
     {
         var (ctx, page) = await NewPageAsync();
@@ -95,7 +98,7 @@ public class AppFixture : IAsyncLifetime
             await page.GotoAsync($"{BaseUrl}/?admin=1");
             await page.GetByTestId("nav-studio").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
             await Ui.DismissTermsAsync(page);
-            var ready = await page.EvaluateAsync<bool>(@"async () => {
+            var ready = await page.EvaluateAsync<bool>((@"async () => {
                 const raw = sessionStorage.getItem('PageToMovie.admin.session');
                 if (!raw) return false;
                 const s = JSON.parse(raw);
@@ -105,10 +108,14 @@ public class AppFixture : IAsyncLifetime
                 if (!id) return false;
                 const st = await fetch('/api/projects/'+encodeURIComponent(id)+'/adaptation', {headers:h}).then(r=>r.json()).catch(()=>null);
                 const s2 = (((st||{}).adaptation||{}).stage2)||{};
-                return !!(s2.stage2Ready && !s2.stage2Stale && (s2.stage2Clips||0) > 0);
-            }");
+                return !!(s2.stage2Ready && !s2.stage2Stale && (!NEEDCLIPS || (s2.stage2Clips||0) > 0));
+            }").Replace("NEEDCLIPS", SeedNeedsClips ? "true" : "false"));
             if (ready) return;
-            await PipelineFlow.RunToGeneratedClipsAsync(page, BaseUrl, "UiSeed_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+            var name = "UiSeed_" + Guid.NewGuid().ToString("N")[..6];
+            if (SeedNeedsClips)
+                await PipelineFlow.RunToGeneratedClipsAsync(page, BaseUrl, name, "tell_tale_heart.fountain");
+            else
+                await PipelineFlow.RunToScenesAsync(page, BaseUrl, name, "tell_tale_heart.fountain");
         }
         finally { await ctx.CloseAsync(); }
     }
@@ -208,6 +215,9 @@ public class AppFixture : IAsyncLifetime
 public sealed class CapabilitiesOffFixture : AppFixture
 {
     protected override int DefaultPort => 5099;
+    // Video is forced off here, so seed only up to the shot plan (Scenes reachable, generate gated).
+    protected override bool SeedReadyProject => true;
+    protected override bool SeedNeedsClips => false;
     protected override bool HonorEnvBaseUrl => false;
     protected override IReadOnlyDictionary<string, string> ExtraEnv => new Dictionary<string, string>
     {

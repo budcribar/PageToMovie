@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_StorageSection
+public partial class Admin_StorageSection : PageSliceComponent
 {
     [CascadingParameter] public Admin Host { get; set; } = default;
     [CascadingParameter] public Admin.AdminState? State { get; set; }

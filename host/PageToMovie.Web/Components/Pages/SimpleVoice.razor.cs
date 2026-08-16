@@ -10,10 +10,23 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleVoice
+public partial class SimpleVoice : IPageSliceHost
 {
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the page-local sections are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
     internal enum Phase { Pick, Record, Done, Movie }
 
     private string StripActive

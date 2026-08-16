@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_JobsSection
+public partial class Admin_JobsSection : PageSliceComponent
 {
     [CascadingParameter] public required Admin Host { get; set; }
     [CascadingParameter] public Admin.AdminJobs? Jobs { get; set; }

@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleVoice_MoviePhase
+public partial class SimpleVoice_MoviePhase : PageSliceComponent
 {
     [CascadingParameter] public SimpleVoice Host { get; set; } = default;
 }
