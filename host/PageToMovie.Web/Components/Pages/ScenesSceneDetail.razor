@@ -68,10 +68,36 @@
     @* ---- Scene detail ---- *@
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>
-                <strong>Scene @(ListState._detail.SceneNumber.ToString("D2"))</strong>
-                — @(ListState._detail.Setting is { Length: > 0 } st ? st : "—")
-            </span>
+            <div class="d-flex align-items-center gap-2">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Scene navigation">
+                    <button type="button" class="btn btn-outline-secondary py-0 px-2"
+                            disabled="@(!ListState.CanSelectPreviousScene || Host._busy)"
+                            title="Previous Scene (Key: [)"
+                            data-testid="scene-detail-prev"
+                            @onclick="ListState.SelectPreviousSceneAsync">
+                        ‹ Prev
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary py-0 px-2"
+                            disabled="@(!ListState.CanSelectNextScene || Host._busy)"
+                            title="Next Scene (Key: ])"
+                            data-testid="scene-detail-next"
+                            @onclick="ListState.SelectNextSceneAsync">
+                        Next ›
+                    </button>
+                </div>
+                <span>
+                    <strong>Scene @(ListState._detail.SceneNumber.ToString("D2"))</strong>
+                    — @(ListState._detail.Setting is { Length: > 0 } st ? st : "—")
+                </span>
+                @if (ListState.CastReady)
+                {
+                    <span class="badge bg-success-subtle text-success border border-success border-opacity-25 ms-1" style="font-size:0.7rem;" title="Cast looks & voices locked in Step 2">🔒 Cast Locked</span>
+                }
+                else
+                {
+                    <a href="characters" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none ms-1" style="font-size:0.7rem;" title="Pin character looks & voices in Step 2 before generating clips">⚠️ Cast Unlocked →</a>
+                }
+            </div>
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button type="button"
                         class="btn btn-sm btn-outline-info"

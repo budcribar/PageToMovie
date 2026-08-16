@@ -42,14 +42,24 @@
         </div>
     </div>
 
-    <div class="small text-muted mb-2 px-1 d-flex flex-wrap align-items-center gap-1" data-testid="scene-index-summary">
-        <span>@totalCount @(totalCount == 1 ? "scene" : "scenes")</span>
-        <span>·</span>
-        <span class="text-success">@completeCount ready</span>
-        @if (missingCount > 0)
-        {
+    <div class="small text-muted mb-2 px-1 d-flex flex-wrap align-items-center justify-content-between gap-1" data-testid="scene-index-summary">
+        <div class="d-flex align-items-center gap-1">
+            <span>@totalCount @(totalCount == 1 ? "scene" : "scenes")</span>
             <span>·</span>
-            <span class="text-warning">@missingCount missing</span>
+            <span class="text-success">@completeCount ready</span>
+            @if (missingCount > 0)
+            {
+                <span>·</span>
+                <span class="text-warning">@missingCount missing</span>
+            }
+        </div>
+        @if (list.CastReady)
+        {
+            <span class="badge bg-success-subtle text-success border border-success border-opacity-25" style="font-size:0.65rem;" title="Cast looks & voices locked in Step 2">🔒 Cast Locked</span>
+        }
+        else
+        {
+            <a href="characters" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none" style="font-size:0.65rem;" title="Pin character looks & voices in Step 2 before generating clips">⚠️ Cast Unlocked →</a>
         }
     </div>
 
@@ -65,24 +75,40 @@
                     @(list._selected.Count > 0 ? $"{list._selected.Count} selected" : "Select all")
                 </label>
             </div>
-            @if (scenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
-            {
-                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-warning text-decoration-none small"
-                        data-testid="scene-index-select-missing"
-                        disabled="@Host._busy"
-                        title="Select scenes that still need clips"
-                        @onclick="list.SelectMissingScenes">
-                    Select missing
-                </button>
-            }
-            @if (list._selected.Count > 0)
-            {
-                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-muted text-decoration-none small"
-                        data-testid="scene-index-clear-selection"
-                        @onclick="list.ClearSelection">
-                    Clear
-                </button>
-            }
+            <div class="d-flex align-items-center gap-1">
+                @if (list._selected.Count > 0)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-success py-0 px-1 text-nowrap" style="font-size:0.75rem;"
+                            data-testid="scene-index-play-selected"
+                            disabled="@(Host._busy || !Playback.CanPlaySelected)"
+                            title="Preview selected scenes combined in browser"
+                            @onclick="Playback.PlaySelectedAsync">
+                        ▶ Play (@list._selected.Count)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning text-dark py-0 px-1 text-nowrap" style="font-size:0.75rem;"
+                            data-testid="scene-index-gen-selected"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || !list.CastReady)"
+                            title="Generate/re-render clips for selected scenes"
+                            @onclick="Host.Gen.OpenGenerateConfirmAsync">
+                        ⚡ Gen (@list._selected.Count)
+                    </button>
+                    <button type="button" class="btn btn-link btn-sm py-0 px-1 text-muted text-decoration-none small"
+                            data-testid="scene-index-clear-selection"
+                            @onclick="list.ClearSelection">
+                        Clear
+                    </button>
+                }
+                else if (scenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+                {
+                    <button type="button" class="btn btn-link btn-sm py-0 px-1 text-warning text-decoration-none small"
+                            data-testid="scene-index-select-missing"
+                            disabled="@Host._busy"
+                            title="Select scenes that still need clips"
+                            @onclick="list.SelectMissingScenes">
+                        Select missing
+                    </button>
+                }
+            </div>
         </div>
         <div class="input-group input-group-sm">
             <span class="input-group-text bg-dark border-secondary text-muted py-0 px-2">🔍</span>

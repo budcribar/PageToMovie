@@ -606,6 +606,50 @@ public partial class Scenes
 
 
 
+    internal bool CanSelectPreviousScene
+    {
+        get
+        {
+            if (_selectedScene is not int sn || _scenes is null || _scenes.Count == 0) return false;
+            var list = GetVisibleScenes().Select(s => s.SceneNumber).ToList();
+            var idx = list.IndexOf(sn);
+            return idx > 0;
+        }
+    }
+
+    internal bool CanSelectNextScene
+    {
+        get
+        {
+            if (_selectedScene is not int sn || _scenes is null || _scenes.Count == 0) return false;
+            var list = GetVisibleScenes().Select(s => s.SceneNumber).ToList();
+            var idx = list.IndexOf(sn);
+            return idx >= 0 && idx < list.Count - 1;
+        }
+    }
+
+    internal async Task SelectPreviousSceneAsync()
+    {
+        if (_selectedScene is not int sn || _scenes is null) return;
+        var list = GetVisibleScenes().Select(s => s.SceneNumber).ToList();
+        var idx = list.IndexOf(sn);
+        if (idx > 0)
+        {
+            await OpenSceneAsync(list[idx - 1]);
+        }
+    }
+
+    internal async Task SelectNextSceneAsync()
+    {
+        if (_selectedScene is not int sn || _scenes is null) return;
+        var list = GetVisibleScenes().Select(s => s.SceneNumber).ToList();
+        var idx = list.IndexOf(sn);
+        if (idx >= 0 && idx < list.Count - 1)
+        {
+            await OpenSceneAsync(list[idx + 1]);
+        }
+    }
+
     internal async Task OpenSceneAsync(int sn)
     {
         S._busy = true;
@@ -618,6 +662,12 @@ public partial class Scenes
             S.ClipForm._selectedClip = null;
             S.ClipForm._clip = null;
             S.ClipSel._selectedClips.Clear();
+
+            try
+            {
+                await S.JS.InvokeVoidAsync("eval", $"document.querySelector('[data-scene-number=\"{sn}\"]')?.scrollIntoView({{ block: 'nearest', behavior: 'smooth' }})");
+            }
+            catch { /* optional scroll fallback */ }
         }
         catch (Exception ex) { S._error = ex.Message; }
         finally { S._busy = false; }
