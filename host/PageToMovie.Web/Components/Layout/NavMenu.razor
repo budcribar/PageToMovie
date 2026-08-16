@@ -44,17 +44,24 @@
         @if (ActiveProject.HasProject)
         {
             <div class="nav-item px-3">
-                <NavLink class="nav-link" href="/adaptation" Match="NavLinkMatch.Prefix" title="Book & screenplay (studio)" data-testid="nav-adaptation">
+                <NavLink class="nav-link" href="/adaptation/import" title="Book & import text" data-testid="nav-adaptation">
                     <span class="bi bi-book-nav-menu" aria-hidden="true"></span>
-                    @if (!Collapsed) { <span class="nav-label">@L["Nav.Book"]</span> }
+                    @if (!Collapsed) { <span class="nav-label">Book</span> }
                 </NavLink>
             </div>
 
-            <NavMenu_NavItem Enabled="@(ActiveProject.CanEstimate)" Href="/cost" Title='@(ActiveProject.CanEstimate ? "Estimate & cost" : ActiveProject.EstimateBlockedReason)' IconClass="bi-cash-nav-menu" Label='@(L["Nav.Estimate"])' TestId="nav-cost" Collapsed="Collapsed" />
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanEstimate)" Href="/cost" Title='@(ActiveProject.CanEstimate ? "Estimate & options" : ActiveProject.EstimateBlockedReason)' IconClass="bi-cash-nav-menu" Label='@(L["Nav.Estimate"])' TestId="nav-cost" Collapsed="Collapsed" />
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="/adaptation/screenplay" title="Edit screenplay beats, dialogue, and actions" data-testid="nav-screenplay">
+                    <span class="bi bi-card-text-nav-menu" aria-hidden="true"></span>
+                    @if (!Collapsed) { <span class="nav-label">Screenplay</span> }
+                </NavLink>
+            </div>
 
             <NavMenu_NavItem Enabled="@(ActiveProject.CanScenes)" Href="/scenes" Title='@(ActiveProject.CanScenes ? "Scenes & film" : ActiveProject.ScenesBlockedReason)' IconClass="bi-film-nav-menu" Label='@(L["Nav.Film"])' TestId="nav-scenes" Collapsed="Collapsed" />
 
-            <NavMenu_NavItem Enabled="@(ActiveProject.CanReview)" Href="/review" Title='@(ActiveProject.CanReview ? "Review" : ActiveProject.ReviewBlockedReason)' IconClass="bi-check2-square-nav-menu" Label='@(L["Nav.Review"])' TestId="nav-review" Collapsed="Collapsed" />
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanReview)" Href="/review" Title='@(ActiveProject.CanReview ? "Review & export" : ActiveProject.ReviewBlockedReason)' IconClass="bi-check2-square-nav-menu" Label='@(L["Nav.Review"])' TestId="nav-review" Collapsed="Collapsed" />
 
             <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/characters" Title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' IconClass="bi-people-fill-nav-menu" Label='@(L["Nav.Cast"])' TestId="nav-characters" Collapsed="Collapsed" />
 
