@@ -251,11 +251,14 @@ public static class PipelineFlow
             const dl = Date.now()+120000; let last='';
             while (Date.now()<dl) { await new Promise(r=>setTimeout(r,1500));
                 const st = await fetch('/api/jobs/'+encodeURIComponent(jobId), {headers:h}).then(r=>r.json());
-                last = (st.job||{}).status; if (last==='done') return JSON.stringify({ok:true});
+                const j = st.job||{}; last = j.status;
+                // 'partial' is terminal too: the end-credits scene renders client-side, so a job-API
+                // batch never reaches 'done' — the real Generate Batch click afterwards fills it.
+                if (last==='done' || (last==='partial' && (j.isFinished ?? true))) return JSON.stringify({ok:true, last});
                 if (last==='error'||last==='cancelled') return JSON.stringify({err:'gen '+last, job:st.job}); }
             return JSON.stringify({err:'timeout', last});
         }");
-        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Clip generation (job API) did not finish: " + result);
     }
 
     /// <summary>
@@ -304,7 +307,13 @@ public static class PipelineFlow
             if (onDisk >= clips) return;
             await page.WaitForTimeoutAsync(500);
         }
-        Assert.Fail("Generate Batch via the Scenes page did not finish within 60s.");
+        var finalOnDisk = await status.GetAttributeAsync("data-clips-on-disk");
+        var jobState = await page.EvaluateAsync<string>(@"async () => {
+            const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return 'no session';
+            const s = JSON.parse(raw); const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+            const j = await fetch('/api/jobs?mine=1', {headers:h}).then(r=>r.json()).catch(e=>({e:String(e)}));
+            return JSON.stringify(j).slice(0, 1500); }");
+        Assert.Fail($"Generate Batch via the Scenes page did not finish within 60s: clips={clips}, onDisk={finalOnDisk}. Jobs: {jobState}");
     }
 
     /// <summary>Full flow through to generated clips on the Scenes page — including the end-credits
