@@ -24,21 +24,13 @@
             @if (list._selectedScene is not null)
             {
                 <button type="button"
-                        class="btn btn-link btn-sm py-0 px-1 text-decoration-none"
-                        data-testid="scene-index-to-table"
-                        title="View full scenes table overview"
-                        @onclick="list.BackToListAsync">
-                    📊 Overview
+                        class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-info"
+                        data-testid="scene-index-to-history"
+                        title="View history & changes for this scene"
+                        @onclick="() => History.OpenSceneHistoryAsync(list._selectedScene.Value)">
+                    📜 History
                 </button>
             }
-            <button type="button"
-                    class="btn btn-link btn-sm py-0 px-1 text-decoration-none"
-                    data-testid="scene-index-add-scene"
-                    disabled="@(Host._busy || Host.Gen.JobRunning)"
-                    title="Add a new scene"
-                    @onclick="() => list.AddSceneAsync(false)">
-                ➕ Add
-            </button>
         </div>
     </div>
 
@@ -119,6 +111,13 @@
                             title="Select scenes that still need clips"
                             @onclick="list.SelectMissingScenes">
                         Select missing
+                    </button>
+                    <button type="button" class="btn btn-link btn-sm py-0 px-1 text-warning text-decoration-none small"
+                            data-testid="scene-index-select-stale"
+                            disabled="@Host._busy"
+                            title="Select scenes with stale clips"
+                            @onclick="list.SelectStaleScenes">
+                        Select stale
                     </button>
                 }
             </div>

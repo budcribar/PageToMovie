@@ -181,6 +181,7 @@ public sealed class AdminSessionService
         UserId = string.IsNullOrWhiteSpace(s.UserId) ? "local" : s.UserId;
         Roles = s.Roles?.ToList() ?? new List<string>();
         ExpiresAt = s.ExpiresAt;
+        _viewAsUser = s.ViewAsUser;
     }
 
     private async Task PersistAsync()
@@ -195,6 +196,7 @@ public sealed class AdminSessionService
                 UserId = UserId,
                 Roles = Roles.ToList(),
                 ExpiresAt = ExpiresAt,
+                ViewAsUser = _viewAsUser,
             }, JsonOpts);
             await _js.InvokeVoidAsync("sessionStorage.setItem", StorageKey, json);
         }
@@ -217,5 +219,6 @@ public sealed class AdminSessionService
         public string? UserId { get; set; }
         public List<string>? Roles { get; set; }
         public DateTimeOffset? ExpiresAt { get; set; }
+        public bool ViewAsUser { get; set; }
     }
 }

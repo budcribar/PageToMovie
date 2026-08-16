@@ -105,36 +105,11 @@
                         @onclick="() => History.OpenSceneHistoryAsync(ListState._detail.SceneNumber)">
                     📜 History
                 </button>
-                <div class="d-flex align-items-center gap-1">
-                    <label class="small text-muted mb-0" for="genResDetail">Res</label>
-                    <select id="genResDetail"
-                            class="form-select form-select-sm"
-                            style="width:auto"
-                            @bind="Gen._genResolution"
-                            @bind:after="ListState.RefreshCostEstimateAsync"
-                            disabled="@(Host._busy || ListState.ResolutionLocked)"
-                            title="@(ListState.ResolutionLocked ? $"Locked at {ListState._resolutionLock} — this project already has clips at that resolution." : null)">
-                        <option value="480p">480p</option>
-                        <option value="720p">720p</option>
-                        <option value="1080p">1080p</option>
-                    </select>
-                    @if (ListState.ResolutionLocked)
-                    {
-                        <span class="small text-muted" title="Locked to on-disk resolution">🔒</span>
-                    }
-                </div>
                 <button class="btn btn-sm btn-success"
                         disabled="@(Host._busy || Gen.JobRunning || (ListState._detail.ClipsOnDisk == 0 && !ListState._detail.CompositeExists))"
                         title="Play scene (browser stitch from clips)"
                         @onclick="() => Playback.PlaySceneCompositeAsync(ListState._detail.SceneNumber)">
                     ▶ Play scene
-                </button>
-                <button class="btn btn-sm btn-primary"
-                        data-testid="clip-add-open"
-                        disabled="@(Host._busy || Gen.JobRunning)"
-                        title="Add a new beat/shot to this scene (speaker, dialogue, action visual)"
-                        @onclick="ClipForm.OpenAddClipDialog">
-                    ➕ Add Beat
                 </button>
                 @if (ListState._detail.ClipsOnDisk > 0)
                 {
@@ -146,8 +121,6 @@
                         @(ClipSel._selectedClips.Count > 0 ? $"🔍 Verify ({ClipSel._selectedClips.Count}) Selected Clips" : "🔍 Verify Clip Dialogue")
                     </button>
                 }
-                @* Background music is scored from the All-scenes overview (one control per scene row),
-                   since music is a per-scene concern and this view is about the scene's clips. *@
                 @if (ListState._detail.HasBackgroundMusic)
                 {
                     <button type="button"
@@ -176,59 +149,7 @@
             </div>
         </div>
         <div class="card-body">
-            <p class="small text-muted mb-2">
-                @ListState._detail.ClipsOnDisk/@ListState._detail.ClipCount clips on disk
-                @if (ListState._detail.ActualDurationSeconds is double actD)
-                {
-                    <span>· <strong class="text-body">@Scenes.FormatClock(actD)</strong> actual</span>
-                    @if (ListState._detail.PlannedDurationSeconds is double planD)
-                    {
-                        <span>· plan @Scenes.FormatClock(planD)</span>
-                    }
-                }
-                else if (ListState._detail.PlannedDurationSeconds is double planOnly)
-                {
-                    <span>· plan ~@Scenes.FormatClock(planOnly)</span>
-                }
-                @if (ListState._detail.CharactersOnScreen.Count > 0)
-                {
-                    <span>· cast: @string.Join(", ", ListState._detail.CharactersOnScreen.Select(Scenes.ShortChar))</span>
-                }
-                @if (!string.IsNullOrEmpty(ListState._detail.PrimaryLocationId))
-                {
-                    <span>· loc: <code>@Scenes.ShortLoc(ListState._detail.PrimaryLocationId)</code>
-                        @if (ListState._detail.PrimaryLocationLocked)
-                        {
-                            <a class="badge text-bg-success text-decoration-none ms-1"
-                               href="@($"/locations?loc={Uri.EscapeDataString(ListState._detail.PrimaryLocationId)}")"
-                               title="Locked set plate — open Locations to edit">set plate</a>
-                        }
-                        else
-                        {
-                            <a class="badge text-bg-secondary text-decoration-none ms-1"
-                               href="@($"/locations?loc={Uri.EscapeDataString(ListState._detail.PrimaryLocationId)}")"
-                               title="Lock a set plate on Locations so Grok video can match this place">lock set</a>
-                        }
-                    </span>
-                }
-                @{
-                    var verifiedCount = ListState._detail.Clips.Count(c => c.DialogueVerification is { } v && (string.Equals(v.Status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(v.Status, "no_speech", StringComparison.OrdinalIgnoreCase)));
-                    var totalWithDialogue = ListState._detail.Clips.Count(c => !string.IsNullOrWhiteSpace(c.Dialogue));
-                }
-                @if (totalWithDialogue > 0 && verifiedCount > 0)
-                {
-                    <span>· <span class="text-success fw-semibold" title="Clips with dialogue verified via native video/audio QA">✓ @verifiedCount/@totalWithDialogue dialogue verified</span></span>
-                }
-            </p>
-
-            @* Watch → edit hub: fix this scene without hunting nav *@
             <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
-                <button type="button" class="btn btn-sm btn-primary"
-                        disabled="@(Host._busy || Gen.JobRunning)"
-                        title="Add a new beat (speaker, dialogue, action visual) to this scene"
-                        @onclick="ClipForm.OpenAddClipDialog">
-                    ➕ Add Beat
-                </button>
                 <a class="btn btn-sm btn-outline-secondary"
                    href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)"
                    title="Edit dialogue and action for this scene in the full screenplay editor">✏️ Edit in Screenplay</a>
@@ -237,19 +158,6 @@
                         @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
                     📜 @(ListState._showFountainDrawer ? "Hide Fountain Script" : "Show Fountain Script")
                 </button>
-                @if (ListState._detail.CharactersOnScreen.Count > 0)
-                {
-                    var firstChar = ListState._detail.CharactersOnScreen[0];
-                    <a class="btn btn-sm btn-outline-warning"
-                       href="@StudioDeepLinks.Characters(firstChar, returnScene: ListState._detail.SceneNumber)"
-                       title="Looks, voice, locked plates for cast in this scene">Fix cast</a>
-                }
-                @if (!string.IsNullOrEmpty(ListState._detail.PrimaryLocationId))
-                {
-                    <a class="btn btn-sm btn-outline-info"
-                       href="@StudioDeepLinks.Locations(ListState._detail.PrimaryLocationId, returnScene: ListState._detail.SceneNumber)"
-                       title="Set plate / description for this place">Fix location</a>
-                }
             </div>
 
             @* Inline Fountain screenplay text drawer *@

@@ -26,9 +26,7 @@
                                 @onclick="ClipSel.ToggleClipDurationSort"
                                 title="Click to sort by duration">
                                 Dur @ClipSel.DurationSortArrow
-                            </th>
-                            <th>Beat / Script Content</th>
-                            <th style="width:5rem;">Beat ID</th>
+                            </th>                            <th>Beat / Script Content</th>
                             <th style="width:4rem;">Status</th>
                         </tr>
                     </thead>
@@ -158,14 +156,10 @@
                                         <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
                                     }
                                 </td>
-                            
-                                <td class="small font-monospace text-muted" data-testid="@($"clip-beat-{cn}")" title="Stable beat id">
-                                    @BeatIdDisplay(c.Stage1BeatId)
-                                </td>
                                 <td>
                                     @if (!c.OnDisk)
                                     {
-                                        <span class="badge bg-secondary">missing</span>
+                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary border-opacity-25 px-2" title="Missing clip">⚪</span>
                                     }
                                     else if (c.IsStale)
                                     {

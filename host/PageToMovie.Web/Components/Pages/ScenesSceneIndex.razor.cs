@@ -10,6 +10,7 @@ public partial class ScenesSceneIndex : PageSliceComponent
     [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
     [CascadingParameter] public Scenes.ScenesPlayback? Playback { get; set; }
+    [CascadingParameter] public Scenes.ScenesHistory? History { get; set; }
 
     internal string _filterText = "";
 
