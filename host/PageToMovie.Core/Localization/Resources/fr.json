@@ -29,7 +29,10 @@
     "AccountCosts": "Facturation et coûts",
     "About": "À propos",
     "Home": "Accueil",
-    "Demo": "Démo"
+    "Demo": "Démo",
+    "Screenplay": "Scénario",
+    "Locations": "Lieux",
+    "AdminDashboard": "Tableau de bord admin"
   },
   "Common": {
     "Save": "Enregistrer",
@@ -92,7 +95,9 @@
     "CreateModalTitle": "Créer un nouveau projet",
     "ProjectName": "Nom du projet",
     "Create": "Créer le projet",
-    "SelectAStory": "Sélectionner une histoire"
+    "SelectAStory": "Sélectionner une histoire",
+    "DeleteProjectTitle": "Supprimer le projet ?",
+    "DeleteProject": "Supprimer le projet"
   },
   "Adaptation": {
     "Title": "Flux d'adaptation",
@@ -263,7 +268,15 @@
     "ContinueToFilm": "Continuez vers Film pour produire les clips.",
     "AgreeAndContinue": "Accepter & continuer vers Film →",
     "ProjectCostBreakdown": "Détail des coûts du projet →",
-    "SeeAllProjectsBilling": "Voir tous les projets & facturation →"
+    "SeeAllProjectsBilling": "Voir tous les projets et facturation →",
+    "GoToBook": "Aller au Livre →",
+    "Duration": "Durée",
+    "Estimate": "Estimation",
+    "PruneScript": "Tailler le scénario",
+    "FullFilmGeneration": "Génération complète du film",
+    "StartAutomaticGeneration": "Démarrer la génération automatique",
+    "StepByStepCraft": "Création étape par étape",
+    "ContinueStepByStep": "Continuer étape par étape → Éditer le scénario"
   },
   "ProcessStrip": {
     "Setup": "Configuration",
@@ -284,7 +297,17 @@
     "RecordDone": "Enregistrer · terminé",
     "Movie": "Film",
     "GenerateAll": "Tout générer",
-    "CastOptional": "Optionnel · Edit"
+    "CastOptional": "Optionnel · Édition",
+    "ImportText": "Importer le texte",
+    "QuoteOptions": "Devis et options",
+    "Screenplay": "Scénario",
+    "EditBeats": "Éditer les séquences",
+    "Cast": "Distribution",
+    "LockCast": "Verrouiller la distribution",
+    "Locations": "Lieux",
+    "LockSetPlates": "Verrouiller les décors",
+    "RenderClips": "Clips et montage",
+    "ExportMovie": "Approuver et exporter"
   },
   "FilmLength": {
     "Title": "Durée du film",
@@ -306,7 +329,10 @@
     "Scene": "Scène",
     "Clips": "Clips",
     "Dur": "Durée",
-    "Composite": "Compositement"
+    "Composite": "Montage complet",
+    "Kicker": "Studio · Éditer après",
+    "Checklist": "Liste de contrôle :",
+    "ActivityHistory": "Activité / historique"
   },
   "ScenesPage": {
     "Subtitle": "Générez et assemblez les clips sur votre machine. Consultez l'estimation avant le rendu final.",
@@ -324,7 +350,35 @@
     "Setting": "Décor",
     "CastLocation": "Distribution / lieu",
     "Music": "Musique",
-    "Score": "Bande son"
+    "Score": "Bande son",
+    "MakeYourMovie": "Créez votre film",
+    "DialogueTiming": "Synchronisation du dialogue →",
+    "GenerateMissing": "Générer les éléments manquants",
+    "BackToStoryAndVoice": "Retour à l'histoire et la voix",
+    "OpenShotPlan": "Ouvrir le plan de prises →",
+    "SceneHistory": "Historique de la scène",
+    "HideHistory": "Masquer l'historique",
+    "AllScenes": "← Toutes les scènes",
+    "PrevScene": "‹ Préc",
+    "NextScene": "Suiv ›",
+    "History": "📜 Historique",
+    "PlayScene": "▶ Lire la scène",
+    "AudioTakes": "🎧 Prises audio",
+    "OpenInVideoEditor": "🎬 Ouvrir dans {0}",
+    "EditInScreenplay": "✏️ Éditer dans le scénario",
+    "ShowFountainScript": "📜 Afficher le scénario Fountain",
+    "HideFountainScript": "📜 Masquer le scénario Fountain",
+    "RegenMissing": "Manquants",
+    "RegenStale": "Périmés",
+    "RegenFullScene": "Scène complète",
+    "GenerateSelected": "Générer la sélection",
+    "SceneIndex": "Index des scènes",
+    "SelectAll": "Tout sélectionner",
+    "ClearSelection": "Effacer",
+    "SelectStale": "Sélectionner les périmées",
+    "ClipHeader": "Clip",
+    "DurHeader": "Durée",
+    "BeatScriptHeader": "Contenu de la séquence / scénario"
   },
   "CharactersPage": {
     "NarratorVoice": "Voix du narrateur",
@@ -332,7 +386,13 @@
     "BuildCast": "Créer la distribution",
     "RebuildCast": "Reconstruire la distribution",
     "OpenScenes": "Ouvrir les scènes →",
-    "BuildShotPlan": "Créer le plan de prise →"
+    "BuildShotPlan": "Créer le plan de prises →",
+    "GenerateLooksForPlan": "Générer les apparences pour le plan",
+    "SetupAgainAdmin": "Reconfigurer (admin)",
+    "RebuildCastFromScreenplay": "Reconstruire la distribution à partir du scénario",
+    "RematchBookPictures": "Re-faire correspondre les images du livre",
+    "ToLocations": "Lieux →",
+    "SwitchToFullCast": "Passer à la distribution complète"
   },
   "ScreenplayPage": {
     "Approved": "Approuvé",
@@ -342,7 +402,40 @@
     "ToCharacters": "Personnages →",
     "ReapproveAndContinue": "Réapprouver",
     "LooksGoodContinue": "Approuver",
-    "Preview": "Aperçu"
+    "Preview": "Aperçu",
+    "SaveNow": "Enregistrer maintenant",
+    "Menu": "Menu",
+    "StorySetup": "Configuration de l'histoire",
+    "CreateDraftFromBook": "Créer un brouillon à partir du livre…",
+    "RewriteDraftFromBook": "Réécrire le brouillon à partir du livre…",
+    "EditStoryCharacters": "Éditer les personnages de l'histoire…",
+    "EditStoryLocations": "Éditer les lieux de l'histoire…",
+    "ExportFountain": "Exporter en Fountain…",
+    "ExportPdf": "Exporter en PDF…",
+    "View": "Affichage",
+    "CollapseAllScenes": "Réduire toutes les scènes",
+    "ExpandAllScenes": "Développer toutes les scènes",
+    "ToCast": "Distribution →",
+    "BeforeApproving": "Avant d'approuver :",
+    "NoUsableScreenplayYet": "Pas encore de scénario utilisable.",
+    "FitScreenplayToLength": "Ajuster le scénario à cette durée",
+    "BackToEstimate": "Retour à l'estimation →",
+    "LoadingEditor": "Chargement de l'éditeur de scénario…",
+    "DraftFromBook": "Brouillon à partir du livre",
+    "DraftAndApproveFromBook": "Brouillon et approbation à partir du livre",
+    "FromTheBook": "Du livre",
+    "ApprovedScenes": "Scènes approuvées"
+  },
+  "LocationsPage": {
+    "Title": "Lieux — PageToMovie",
+    "RestorePlates": "Restaurer les décors depuis le dossier média",
+    "GenerateLooksForPlan": "Générer les apparences pour le plan",
+    "OpenFilm": "Ouvrir le film →",
+    "PlacesIndex": "Index des lieux",
+    "PickASetLook": "Choisir un décor",
+    "Generate3Looks": "Générer 3 apparences",
+    "TweakPlate": "Ajuster le décor",
+    "UploadAndLockPlate": "Téléverser et verrouiller le décor"
   },
   "DemoPage": {
     "Title": "Galerie de démo — PageToMovie",

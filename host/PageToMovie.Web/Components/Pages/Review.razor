@@ -15,7 +15,7 @@
 
 <PageTitle>@L["Nav.Review"] · final cut</PageTitle>
 
-<StudioPageHeader Kicker="Studio · Edit afterward" Title="@L["Nav.Review"]">
+<StudioPageHeader Kicker="@L["ReviewPage.Kicker"]" Title="@L["Nav.Review"]">
     @L["ReviewPage.Subtitle"]
 </StudioPageHeader>
 
@@ -38,7 +38,7 @@ else
         var pct = Math.Round((approvedCount * 100.0) / Math.Max(1, List._scenes.Count));
         <div class="d-flex align-items-center gap-2 bg-dark border border-secondary px-3 py-1.5 rounded-pill text-white small shadow-sm"
              data-testid="review-checklist" data-approved-count="@approvedCount" data-scene-count="@List._scenes.Count">
-            <span><strong>Checklist:</strong> @approvedCount of @List._scenes.Count scenes approved (@pct%)</span>
+            <span><strong>@L["ReviewPage.Checklist"]</strong> @approvedCount of @List._scenes.Count scenes approved (@pct%)</span>
             <div class="progress ms-1" style="width: 80px; height: 6px;">
                 <div class="progress-bar bg-success" role="progressbar" style="width: @pct%"></div>
             </div>
@@ -116,7 +116,7 @@ else
                     }
                     else
                     {
-                        <span>⚡ Run AI Continuity Review</span>
+                        <span>⚡ @L["ReviewPage.RunAiContinuityReview"]</span>
                     }
                 </button>
             </CapabilityLockedControl>
@@ -170,7 +170,7 @@ else
                     @onclick="() => List._showActivity = !List._showActivity"
                     aria-expanded="@List._showActivity">
                 <span class="small text-muted" style="width:1rem;display:inline-block;">@(List._showActivity ? "▾" : "▸")</span>
-                <span>Activity / history</span>
+                <span>@L["ReviewPage.ActivityHistory"]</span>
                 <span class="badge bg-light text-dark border ms-1">@AutoReview._entries.Count</span>
                 <span class="small text-muted ms-auto fw-normal">audit trail of pass / fail / approve</span>
             </button>

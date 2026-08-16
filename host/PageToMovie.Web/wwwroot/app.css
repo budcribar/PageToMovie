@@ -1075,20 +1075,26 @@ hr {
 .ptm-step__label {
     font-family: Outfit, ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .ptm-step__hint {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: var(--fs-text-muted);
-    line-height: 1.3;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .ptm-step__badge {
     cursor: pointer;
     line-height: 1;
 }
 .ptm-step__badge:hover {
-    filter: brightness(1.12);
+    opacity: 0.9;
 }
 /* Optional craft step (cast) — not part of the numbered pre-gen spine */
 .ptm-step--optional {
@@ -1829,6 +1835,10 @@ h1:focus {
 }
 .ptm-step-strip--studio {
     grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.ptm-step-strip--studio .ptm-step {
+    padding: 0.6rem 0.45rem;
+    gap: 0.35rem;
 }
 @media (max-width: 1100px) {
     .ptm-step-strip--studio {

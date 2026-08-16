@@ -67,8 +67,8 @@ else
        @onclick:preventDefault="@BookLocked">
         <span class="ptm-step__num">1</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Book</span>
-            <span class="ptm-step__hint">Import text</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Book"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.ImportText"]</span>
         </span>
         @if (ActiveProject.HasProject)
         {
@@ -98,8 +98,8 @@ else
        @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
         <span class="ptm-step__num">2</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Estimate</span>
-            <span class="ptm-step__hint">Quote & options</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Estimate"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.QuoteOptions"]</span>
         </span>
     </a>
     <a class="ptm-step @(Active is "screenplay" or "script" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "screenplay" ? "is-disabled" : "")"
@@ -108,8 +108,8 @@ else
        data-testid="studio-step-screenplay">
         <span class="ptm-step__num">3</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Screenplay</span>
-            <span class="ptm-step__hint">Edit beats</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Screenplay"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.EditBeats"]</span>
         </span>
     </a>
     <a class="ptm-step @(Active is "cast" or "characters" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "cast" ? "is-disabled" : "")"
@@ -118,8 +118,8 @@ else
        data-testid="studio-step-cast">
         <span class="ptm-step__num">4</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Cast</span>
-            <span class="ptm-step__hint">Lock cast</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Cast"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.LockCast"]</span>
         </span>
     </a>
     <a class="ptm-step @(Active is "locations" or "locs" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "locations" ? "is-disabled" : "")"
@@ -128,8 +128,8 @@ else
        data-testid="studio-step-locations">
         <span class="ptm-step__num">5</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Locations</span>
-            <span class="ptm-step__hint">Lock set plates</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Locations"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.LockSetPlates"]</span>
         </span>
     </a>
     <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
@@ -139,8 +139,8 @@ else
        @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
         <span class="ptm-step__num">6</span>
         <span class="ptm-step__body">
-            <span class="ptm-step__label">Film</span>
-            <span class="ptm-step__hint">Clips & stitch</span>
+            <span class="ptm-step__label">@L["ProcessStrip.Film"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.RenderClips"]</span>
         </span>
     </a>
     @if (ActiveProject.CanReview || Active == "review")
@@ -151,8 +151,8 @@ else
            data-testid="studio-step-review">
             <span class="ptm-step__num">7</span>
             <span class="ptm-step__body">
-                <span class="ptm-step__label">Review</span>
-                <span class="ptm-step__hint">Approve & export</span>
+                <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
+                <span class="ptm-step__hint">@L["ProcessStrip.ExportMovie"]</span>
             </span>
         </a>
     }

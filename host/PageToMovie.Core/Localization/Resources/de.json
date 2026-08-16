@@ -29,7 +29,10 @@
     "AccountCosts": "Abrechnung und Kosten",
     "About": "Über",
     "Home": "Startseite",
-    "Demo": "Demo"
+    "Demo": "Demo",
+    "Screenplay": "Drehbuch",
+    "Locations": "Drehorte",
+    "AdminDashboard": "Admin-Dashboard"
   },
   "Common": {
     "Save": "Speichern",
@@ -92,7 +95,9 @@
     "CreateModalTitle": "Neues Projekt erstellen",
     "ProjectName": "Projektname",
     "Create": "Projekt erstellen",
-    "SelectAStory": "Geschichte auswählen"
+    "SelectAStory": "Geschichte auswählen",
+    "DeleteProjectTitle": "Projekt löschen?",
+    "DeleteProject": "Projekt löschen"
   },
   "Adaptation": {
     "Title": "Anpassungsworkflow",
@@ -263,7 +268,15 @@
     "ContinueToFilm": "Weiter zu Film, um Clips zu erstellen.",
     "AgreeAndContinue": "Zustimmen & Weiter zu Film →",
     "ProjectCostBreakdown": "Aufschlüsselung der Projektkosten →",
-    "SeeAllProjectsBilling": "Alle Projekte & Abrechnung anzeigen →"
+    "SeeAllProjectsBilling": "Alle Projekte & Abrechnung anzeigen →",
+    "GoToBook": "Zum Buch →",
+    "Duration": "Dauer",
+    "Estimate": "Schätzung",
+    "PruneScript": "Skript kürzen",
+    "FullFilmGeneration": "Vollständige Filmgenerierung",
+    "StartAutomaticGeneration": "Automatische Generierung starten",
+    "StepByStepCraft": "Schritt-für-Schritt Gestaltung",
+    "ContinueStepByStep": "Schritt für Schritt fortfahren → Drehbuch bearbeiten"
   },
   "ProcessStrip": {
     "Setup": "Einrichtung",
@@ -284,7 +297,17 @@
     "RecordDone": "Aufnehmen · fertig",
     "Movie": "Film",
     "GenerateAll": "Alles generieren",
-    "CastOptional": "Optional · Bearbeiten"
+    "CastOptional": "Optional · Bearbeitungspfad",
+    "ImportText": "Text importieren",
+    "QuoteOptions": "Angebot & Optionen",
+    "Screenplay": "Drehbuch",
+    "EditBeats": "Szenen bearbeiten",
+    "Cast": "Besetzung",
+    "LockCast": "Besetzung festlegen",
+    "Locations": "Drehorte",
+    "LockSetPlates": "Sets festlegen",
+    "RenderClips": "Clips & Schnitt",
+    "ExportMovie": "Genehmigen & exportieren"
   },
   "FilmLength": {
     "Title": "Filmlänge",
@@ -306,7 +329,10 @@
     "Scene": "Szene",
     "Clips": "Clips",
     "Dur": "Dauer",
-    "Composite": "Komposition"
+    "Composite": "Komplettschnitt",
+    "Kicker": "Studio · Nachträglich bearbeiten",
+    "Checklist": "Checkliste:",
+    "ActivityHistory": "Aktivität / Verlauf"
   },
   "ScenesPage": {
     "Subtitle": "Generieren und fügen Sie Clips auf Ihrem Gerät zusammen. Prüfen Sie die Schätzung vor dem Rendern.",
@@ -324,7 +350,35 @@
     "Setting": "Einstellung",
     "CastLocation": "Besetzung / Ort",
     "Music": "Musik",
-    "Score": "Score"
+    "Score": "Musik",
+    "MakeYourMovie": "Mache deinen Film",
+    "DialogueTiming": "Dialog-Timing →",
+    "GenerateMissing": "Fehlende generieren",
+    "BackToStoryAndVoice": "Zurück zu Geschichte & Stimme",
+    "OpenShotPlan": "Einstellungsplan öffnen →",
+    "SceneHistory": "Szenenverlauf",
+    "HideHistory": "Verlauf ausblenden",
+    "AllScenes": "← Alle Szenen",
+    "PrevScene": "‹ Zurück",
+    "NextScene": "Weiter ›",
+    "History": "📜 Verlauf",
+    "PlayScene": "▶ Szene abspielen",
+    "AudioTakes": "🎧 Audio-Takes",
+    "OpenInVideoEditor": "🎬 In {0} öffnen",
+    "EditInScreenplay": "✏️ Im Drehbuch bearbeiten",
+    "ShowFountainScript": "📜 Fountain-Drehbuch anzeigen",
+    "HideFountainScript": "📜 Fountain-Drehbuch ausblenden",
+    "RegenMissing": "Fehlend",
+    "RegenStale": "Veraltet",
+    "RegenFullScene": "Ganze Szene",
+    "GenerateSelected": "Ausgewählte generieren",
+    "SceneIndex": "Szenen-Index",
+    "SelectAll": "Alle auswählen",
+    "ClearSelection": "Leeren",
+    "SelectStale": "Veraltete auswählen",
+    "ClipHeader": "Clip",
+    "DurHeader": "Dauer",
+    "BeatScriptHeader": "Beat / Drehbuch-Inhalt"
   },
   "CharactersPage": {
     "NarratorVoice": "Erzählerstimme",
@@ -332,7 +386,13 @@
     "BuildCast": "Besetzung erstellen",
     "RebuildCast": "Besetzung neu erstellen",
     "OpenScenes": "Szenen öffnen →",
-    "BuildShotPlan": "Aufnahmeplan erstellen →"
+    "BuildShotPlan": "Einstellungsplan erstellen →",
+    "GenerateLooksForPlan": "Looks für Plan generieren",
+    "SetupAgainAdmin": "Erneut einrichten (Admin)",
+    "RebuildCastFromScreenplay": "Besetzung aus Drehbuch neu erstellen",
+    "RematchBookPictures": "Buchbilder neu zuordnen",
+    "ToLocations": "Drehorte →",
+    "SwitchToFullCast": "Zur vollständigen Besetzung wechseln"
   },
   "ScreenplayPage": {
     "Approved": "Genehmigt",
@@ -342,7 +402,40 @@
     "ToCharacters": "Charaktere →",
     "ReapproveAndContinue": "Erneut genehmigen",
     "LooksGoodContinue": "Genehmigen",
-    "Preview": "Vorschau"
+    "Preview": "Vorschau",
+    "SaveNow": "Jetzt speichern",
+    "Menu": "Menü",
+    "StorySetup": "Story-Einrichtung",
+    "CreateDraftFromBook": "Entwurf aus Buch erstellen…",
+    "RewriteDraftFromBook": "Entwurf aus Buch neu schreiben…",
+    "EditStoryCharacters": "Story-Charaktere bearbeiten…",
+    "EditStoryLocations": "Story-Drehorte bearbeiten…",
+    "ExportFountain": "Fountain exportieren…",
+    "ExportPdf": "PDF exportieren…",
+    "View": "Ansicht",
+    "CollapseAllScenes": "Alle Szenen einklappen",
+    "ExpandAllScenes": "Alle Szenen ausklappen",
+    "ToCast": "Besetzung →",
+    "BeforeApproving": "Vor der Genehmigung:",
+    "NoUsableScreenplayYet": "Noch kein verwendbares Drehbuch.",
+    "FitScreenplayToLength": "Drehbuch an diese Länge anpassen",
+    "BackToEstimate": "Zurück zur Schätzung →",
+    "LoadingEditor": "Drehbuch-Editor wird geladen…",
+    "DraftFromBook": "Entwurf aus Buch",
+    "DraftAndApproveFromBook": "Entwurf & Genehmigung aus Buch",
+    "FromTheBook": "Aus dem Buch",
+    "ApprovedScenes": "Genehmigte Szenen"
+  },
+  "LocationsPage": {
+    "Title": "Drehorte — PageToMovie",
+    "RestorePlates": "Sets aus Medienordner wiederherstellen",
+    "GenerateLooksForPlan": "Looks für Plan generieren",
+    "OpenFilm": "Film öffnen →",
+    "PlacesIndex": "Orte-Index",
+    "PickASetLook": "Set-Look auswählen",
+    "Generate3Looks": "3 Looks generieren",
+    "TweakPlate": "Set anpassen",
+    "UploadAndLockPlate": "Set hochladen & festlegen"
   },
   "DemoPage": {
     "Title": "Demo-Galerie — PageToMovie",

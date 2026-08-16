@@ -89,7 +89,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
                 disabled="@(_busy || Jobs.JobRunning)"
                 title="Generate 3 looks for each used-in-plan face and place, AI locks the best. You can re-lock anytime."
                 @onclick="Jobs.StartPlanLooksAsync">
-            Generate looks for plan
+            @L["CharactersPage.GenerateLooksForPlan"]
         </button>
         <span class="small text-muted">Used cast + places · 3 options each · AI auto-locks best (override anytime)</span>
     </div>
@@ -99,7 +99,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
            • Rebuild cast — AI re-reads Fountain (+ book) and replaces character_seed_tokens (names, looks, voices, locations).
            • Re-match book pictures — only re-sorts book plates onto the existing cast; does not change who is in the cast. *@
         <details class="mb-2">
-            <summary class="small text-muted" style="cursor:pointer">Setup again (admin)</summary>
+            <summary class="small text-muted" style="cursor:pointer">@L["CharactersPage.SetupAgainAdmin"]</summary>
             <div class="d-flex flex-column gap-2 mt-2" style="max-width: 36rem;">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -107,7 +107,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
                             disabled="@_busy"
                             title="AI: re-read screenplay + book and rebuild the cast list, looks, and location seeds. Overwrites cast_seeds.json."
                             @onclick="List.ExtractCastAsync">
-                        Rebuild cast from screenplay
+                        @L["CharactersPage.RebuildCastFromScreenplay"]
                     </button>
                     <span class="small text-muted">Replaces who is in the cast and their text looks</span>
                 </div>
@@ -116,7 +116,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
                             disabled="@_busy"
                             title="Vision: re-match book illustration pages to the current cast. Does not add/remove characters."
                             @onclick="LookBook.StartSortCharacterPlatesAsync">
-                        Re-match book pictures
+                        @L["CharactersPage.RematchBookPictures"]
                     </button>
                     <span class="small text-muted">Keeps the cast list; only re-assigns book plates</span>
                 </div>
@@ -185,7 +185,7 @@ else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
     <div class="alert alert-info py-2 d-flex flex-wrap align-items-center justify-content-end gap-2">
         @if (ActiveProject.CanScenes)
         {
-            <a class="btn btn-sm btn-success fw-semibold" data-testid="characters-to-locations" href="locations">Locations →</a>
+            <a class="btn btn-sm btn-success fw-semibold" data-testid="characters-to-locations" href="locations">@L["CharactersPage.ToLocations"]</a>
         }
         else
         {
@@ -308,7 +308,7 @@ else
                 </div>
                 <p class="small text-muted mb-0">
                     Want to change looks later?
-                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="List.ExitSimplePathAsync">Switch to full cast</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="List.ExitSimplePathAsync">@L["CharactersPage.SwitchToFullCast"]</button>
                 </p>
             }
             else if (List._selected.VoiceOnly)

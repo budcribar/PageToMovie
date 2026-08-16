@@ -29,7 +29,10 @@
     "AccountCosts": "Facturación y costos",
     "About": "Acerca de",
     "Home": "Inicio",
-    "Demo": "Demostración"
+    "Demo": "Demostración",
+    "Screenplay": "Guion",
+    "Locations": "Ubicaciones",
+    "AdminDashboard": "Panel de administración"
   },
   "Common": {
     "Save": "Guardar",
@@ -92,7 +95,9 @@
     "CreateModalTitle": "Crear Nuevo Proyecto",
     "ProjectName": "Nombre del Proyecto",
     "Create": "Crear Proyecto",
-    "SelectAStory": "Seleccionar una historia"
+    "SelectAStory": "Seleccionar una historia",
+    "DeleteProjectTitle": "¿Eliminar proyecto?",
+    "DeleteProject": "Eliminar proyecto"
   },
   "Adaptation": {
     "Title": "Flujo de adaptación",
@@ -263,7 +268,15 @@
     "ContinueToFilm": "Continúa a Película para producir clips.",
     "AgreeAndContinue": "Aceptar y continuar a Película →",
     "ProjectCostBreakdown": "Desglose de costos del proyecto →",
-    "SeeAllProjectsBilling": "Ver todos los proyectos y facturación →"
+    "SeeAllProjectsBilling": "Ver todos los proyectos y facturación →",
+    "GoToBook": "Ir a Libro →",
+    "Duration": "Duración",
+    "Estimate": "Estimación",
+    "PruneScript": "Recortar guion",
+    "FullFilmGeneration": "Generación completa de la película",
+    "StartAutomaticGeneration": "Iniciar generación automática",
+    "StepByStepCraft": "Creación paso a paso",
+    "ContinueStepByStep": "Continuar paso a paso → Editar guion"
   },
   "ProcessStrip": {
     "Setup": "Configuración",
@@ -284,7 +297,17 @@
     "RecordDone": "Grabar · listo",
     "Movie": "Película",
     "GenerateAll": "Generar todo",
-    "CastOptional": "Opcional · Editar"
+    "CastOptional": "Opcional · Ruta de edición",
+    "ImportText": "Importar texto",
+    "QuoteOptions": "Cotización y opciones",
+    "Screenplay": "Guion",
+    "EditBeats": "Editar escenas",
+    "Cast": "Elenco",
+    "LockCast": "Fijar elenco",
+    "Locations": "Ubicaciones",
+    "LockSetPlates": "Fijar escenografía",
+    "RenderClips": "Clips y montaje",
+    "ExportMovie": "Aprobar y exportar"
   },
   "FilmLength": {
     "Title": "Duración de la película",
@@ -306,7 +329,10 @@
     "Scene": "Escena",
     "Clips": "Clips",
     "Dur": "Dur",
-    "Composite": "Composición"
+    "Composite": "Montaje completo",
+    "Kicker": "Estudio · Editar después",
+    "Checklist": "Lista de verificación:",
+    "ActivityHistory": "Actividad / historial"
   },
   "ScenesPage": {
     "Subtitle": "Genera y une clips en tu equipo cuando sea posible. Consulta Estimación antes del render completo.",
@@ -324,7 +350,35 @@
     "Setting": "Escenario",
     "CastLocation": "Reparto / ubicación",
     "Music": "Música",
-    "Score": "Música"
+    "Score": "Música",
+    "MakeYourMovie": "Haz tu película",
+    "DialogueTiming": "Sincronización de diálogo →",
+    "GenerateMissing": "Generar faltantes",
+    "BackToStoryAndVoice": "Volver a historia y voz",
+    "OpenShotPlan": "Abrir plan de tomas →",
+    "SceneHistory": "Historial de la escena",
+    "HideHistory": "Ocultar historial",
+    "AllScenes": "← Todas las escenas",
+    "PrevScene": "‹ Anterior",
+    "NextScene": "Siguiente ›",
+    "History": "📜 Historial",
+    "PlayScene": "▶ Reproducir escena",
+    "AudioTakes": "🎧 Tomas de audio",
+    "OpenInVideoEditor": "🎬 Abrir en {0}",
+    "EditInScreenplay": "✏️ Editar en el guion",
+    "ShowFountainScript": "📜 Mostrar guion Fountain",
+    "HideFountainScript": "📜 Ocultar guion Fountain",
+    "RegenMissing": "Faltantes",
+    "RegenStale": "Obsoletos",
+    "RegenFullScene": "Escena completa",
+    "GenerateSelected": "Generar seleccionadas",
+    "SceneIndex": "Índice de escenas",
+    "SelectAll": "Seleccionar todo",
+    "ClearSelection": "Limpiar",
+    "SelectStale": "Seleccionar obsoletas",
+    "ClipHeader": "Clip",
+    "DurHeader": "Dur.",
+    "BeatScriptHeader": "Contenido de escena / guion"
   },
   "CharactersPage": {
     "NarratorVoice": "Voz del narrador",
@@ -332,7 +386,13 @@
     "BuildCast": "Crear reparto",
     "RebuildCast": "Reconstruir reparto",
     "OpenScenes": "Abrir Escenas →",
-    "BuildShotPlan": "Crear plan de tomas →"
+    "BuildShotPlan": "Crear plan de tomas →",
+    "GenerateLooksForPlan": "Generar apariencias para el plan",
+    "SetupAgainAdmin": "Configurar de nuevo (admin)",
+    "RebuildCastFromScreenplay": "Reconstruir elenco desde el guion",
+    "RematchBookPictures": "Re-emparejar imágenes del libro",
+    "ToLocations": "Ubicaciones →",
+    "SwitchToFullCast": "Cambiar a elenco completo"
   },
   "ScreenplayPage": {
     "Approved": "Aprobado",
@@ -342,7 +402,40 @@
     "ToCharacters": "Personajes →",
     "ReapproveAndContinue": "Reaprobar",
     "LooksGoodContinue": "Aprobar",
-    "Preview": "Vista previa"
+    "Preview": "Vista previa",
+    "SaveNow": "Guardar ahora",
+    "Menu": "Menú",
+    "StorySetup": "Configuración de historia",
+    "CreateDraftFromBook": "Crear borrador desde libro…",
+    "RewriteDraftFromBook": "Reescribir borrador desde libro…",
+    "EditStoryCharacters": "Editar personajes de la historia…",
+    "EditStoryLocations": "Editar ubicaciones de la historia…",
+    "ExportFountain": "Exportar Fountain…",
+    "ExportPdf": "Exportar PDF…",
+    "View": "Ver",
+    "CollapseAllScenes": "Contraer todas las escenas",
+    "ExpandAllScenes": "Expandir todas las escenas",
+    "ToCast": "Elenco →",
+    "BeforeApproving": "Antes de aprobar:",
+    "NoUsableScreenplayYet": "Aún no hay un guion utilizable.",
+    "FitScreenplayToLength": "Ajustar guion a esta duración",
+    "BackToEstimate": "Volver a la estimación →",
+    "LoadingEditor": "Cargando editor de guion…",
+    "DraftFromBook": "Borrador desde libro",
+    "DraftAndApproveFromBook": "Borrador y aprobación desde libro",
+    "FromTheBook": "Del libro",
+    "ApprovedScenes": "Escenas aprobadas"
+  },
+  "LocationsPage": {
+    "Title": "Ubicaciones — PageToMovie",
+    "RestorePlates": "Restaurar escenografía desde la carpeta de medios",
+    "GenerateLooksForPlan": "Generar apariencias para el plan",
+    "OpenFilm": "Abrir Película →",
+    "PlacesIndex": "Índice de lugares",
+    "PickASetLook": "Elegir apariencia del set",
+    "Generate3Looks": "Generar 3 apariencias",
+    "TweakPlate": "Ajustar escenografía",
+    "UploadAndLockPlate": "Subir y fijar escenografía"
   },
   "DemoPage": {
     "Title": "Galería de demostración — PageToMovie",

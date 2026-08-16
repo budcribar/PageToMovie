@@ -79,7 +79,7 @@
                             aria-expanded="@_menuOpen"
                             @onclick="ToggleMenu"
                             @onclick:stopPropagation="true">
-                        Menu
+                        @L["ScreenplayPage.Menu"]
                     </button>
                     @if (_menuOpen)
                     {
@@ -87,7 +87,7 @@
                     }
                     <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow @(_menuOpen ? "show" : "")"
                         style="@(_menuOpen ? "display:block; position:absolute; right:0; left:auto;" : null)">
-                        <li><h6 class="dropdown-header">Story Setup</h6></li>
+                        <li><h6 class="dropdown-header">@L["ScreenplayPage.StorySetup"]</h6></li>
                         @if (Status?.Book.BookTextExists == true)
                         {
                             <li>
@@ -95,41 +95,41 @@
                                         data-testid="menu-rewrite-from-book"
                                         disabled="@(Busy || Jobs.JobRunning)"
                                         @onclick="async () => { CloseMenu(); await Book.CreateFromBookAsync(); }">
-                                    @(Book.NeedsDraftFromBook ? "Create draft from book…" : "Rewrite draft from book…")
+                                    @(Book.NeedsDraftFromBook ? L["ScreenplayPage.CreateDraftFromBook"] : L["ScreenplayPage.RewriteDraftFromBook"])
                                 </button>
                             </li>
                         }
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenCharacters">
-                                Edit Story Characters…
+                                @L["ScreenplayPage.EditStoryCharacters"]
                             </button>
                         </li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenLocations">
-                                Edit Story Locations…
+                                @L["ScreenplayPage.EditStoryLocations"]
                             </button>
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenExport">
-                                Export Fountain…
+                                @L["ScreenplayPage.ExportFountain"]
                             </button>
                         </li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenExportPdf">
-                                Export PDF…
+                                @L["ScreenplayPage.ExportPdf"]
                             </button>
                         </li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">View</h6></li>
+                        <li><h6 class="dropdown-header">@L["ScreenplayPage.View"]</h6></li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuCollapseAllAsync">
-                                Collapse All Scenes
+                                @L["ScreenplayPage.CollapseAllScenes"]
                             </button>
                         </li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuExpandAllAsync">
-                                Expand All Scenes
+                                @L["ScreenplayPage.ExpandAllScenes"]
                             </button>
                         </li>
                     </ul>
@@ -138,7 +138,7 @@
                 @if (SignOff.IsApprovedClean)
                 {
                     <a class="btn btn-success btn-sm" href="characters" data-testid="screenplay-signoff-done">
-                        Cast →
+                        @L["ScreenplayPage.ToCast"]
                     </a>
                 }
                 else
@@ -213,7 +213,7 @@
             @if (SignOff._signOffWarnings.Count > 0 && !SignOff.IsApprovedClean)
             {
                 <div class="alert alert-warning py-2 small fe-warnings" data-testid="screenplay-empty-cta">
-                    <strong>Before approving:</strong>
+                    <strong>@L["ScreenplayPage.BeforeApproving"]</strong>
                     <ul class="mb-0 ps-3">
                         @foreach (var w in SignOff._signOffWarnings)
                         {
@@ -229,8 +229,8 @@
                                     disabled="@(Busy || Jobs.JobRunning)"
                                     @onclick="Book.CreateFromBookAsync">
                                 @(string.IsNullOrWhiteSpace(Editor._text) || Editor._text.Length < 80
-                                    ? "Create draft from book"
-                                    : "Rewrite draft from book")
+                                    ? L["ScreenplayPage.CreateDraftFromBook"]
+                                    : L["ScreenplayPage.RewriteDraftFromBook"])
                             </button>
                         </div>
                     }
@@ -239,13 +239,13 @@
             else if (Book.NeedsDraftFromBook && !Busy && !Jobs.JobRunning)
             {
                 <div class="alert alert-warning py-2 small fe-warnings" data-testid="screenplay-from-book-banner">
-                    <strong>No usable screenplay yet.</strong>
+                    <strong>@L["ScreenplayPage.NoUsableScreenplayYet"]</strong>
                     Book text is ready for this project.
                     <button class="btn btn-sm btn-primary ms-2"
                             data-testid="screenplay-from-book"
                             disabled="@(Busy || Jobs.JobRunning)"
                             @onclick="Book.CreateFromBookAsync">
-                        Create draft from book
+                        @L["ScreenplayPage.CreateDraftFromBook"]
                     </button>
                 </div>
             }
@@ -288,10 +288,10 @@
                                 data-testid="trim-run"
                                 disabled="@(Busy || Jobs.JobRunning)"
                                 @onclick="Tools.TrimAsync">
-                            Fit screenplay to this length
+                            @L["ScreenplayPage.FitScreenplayToLength"]
                         </button>
                         <a class="btn btn-outline-primary btn-sm" href="cost" data-testid="fit-back-to-estimate">
-                            Back to Estimate →
+                            @L["ScreenplayPage.BackToEstimate"]
                         </a>
                     </div>
                 </div>
@@ -309,7 +309,7 @@
                     }
                     else
                     {
-                        <div class="p-4 text-muted small">Loading screenplay editor…</div>
+                        <div class="p-4 text-muted small">@L["ScreenplayPage.LoadingEditor"]</div>
                     }
                 </div>
                 @* Hidden refs retained for book-context host bindings. *@
@@ -329,7 +329,7 @@
                                 disabled="@(Busy || Jobs.JobRunning)"
                                 @onclick="Book.CreateFromBookAsync"
                                 title="Replace draft with a first pass from book text (admin)">
-                            Draft from book
+                            @L["ScreenplayPage.DraftFromBook"]
                         </button>
                     }
                     @if (Pipeline.CanRunOutline && Status?.XaiConfigured == true && Status?.Book.BookTextExists == true)
@@ -338,7 +338,7 @@
                                 disabled="@(Busy || Jobs.JobRunning)"
                                 @onclick="Pipeline.RunOutlineAsync"
                                 title="Draft screenplay from book and approve for shot planning (admin)">
-                            Draft & approve from book
+                            @L["ScreenplayPage.DraftAndApproveFromBook"]
                         </button>
                     }
                 </div>
@@ -355,7 +355,7 @@
              aria-labelledby="fe-book-modal-title">
             <div class="fe-book-window-header" data-drag-handle="1">
                 <div>
-                    <h2 id="fe-book-modal-title">From the book</h2>
+                    <h2 id="fe-book-modal-title">@L["ScreenplayPage.FromTheBook"]</h2>
                     <div class="fe-book-sub">
                         @if (!string.IsNullOrWhiteSpace(Book._bookContext?.Heading))
                         {
@@ -402,7 +402,7 @@
     @if (Status?.Stage1.Present == true && Status.Stage1.Scenes.Count > 0 && Status.Screenplay.Signed && !Save._dirtyLocal)
     {
         <div class="card">
-            <div class="card-header">Approved scenes</div>
+            <div class="card-header">@L["ScreenplayPage.ApprovedScenes"]</div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">

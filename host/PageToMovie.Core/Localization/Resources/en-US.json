@@ -29,7 +29,10 @@
     "AccountCosts": "Billing & costs",
     "About": "About",
     "Home": "Home",
-    "Demo": "Demo"
+    "Demo": "Demo",
+    "Screenplay": "Screenplay",
+    "Locations": "Locations",
+    "AdminDashboard": "Admin dashboard"
   },
   "Common": {
     "Save": "Save",
@@ -92,7 +95,9 @@
     "CreateModalTitle": "Create New Project",
     "ProjectName": "Project Name",
     "Create": "Create Project",
-    "SelectAStory": "Select a story"
+    "SelectAStory": "Select a story",
+    "DeleteProjectTitle": "Delete project?",
+    "DeleteProject": "Delete project"
   },
   "Adaptation": {
     "Title": "Adaptation Workflow",
@@ -263,7 +268,15 @@
     "ContinueToFilm": "Continue to Film to produce clips.",
     "AgreeAndContinue": "Agree & Continue to Film →",
     "ProjectCostBreakdown": "Project cost breakdown →",
-    "SeeAllProjectsBilling": "See all projects & billing →"
+    "SeeAllProjectsBilling": "See all projects & billing →",
+    "GoToBook": "Go to Book →",
+    "Duration": "Duration",
+    "Estimate": "Estimate",
+    "PruneScript": "Prune script",
+    "FullFilmGeneration": "Full Film Generation",
+    "StartAutomaticGeneration": "Start automatic generation",
+    "StepByStepCraft": "Step-by-Step Craft",
+    "ContinueStepByStep": "Continue step-by-step → Edit Screenplay"
   },
   "ProcessStrip": {
     "Setup": "Setup",
@@ -284,7 +297,17 @@
     "RecordDone": "Record · done",
     "Movie": "Movie",
     "GenerateAll": "Generate all",
-    "CastOptional": "Optional · Edit path"
+    "CastOptional": "Optional · Edit path",
+    "ImportText": "Import text",
+    "QuoteOptions": "Quote & options",
+    "Screenplay": "Screenplay",
+    "EditBeats": "Edit beats",
+    "Cast": "Cast",
+    "LockCast": "Lock cast",
+    "Locations": "Locations",
+    "LockSetPlates": "Lock set plates",
+    "RenderClips": "Clips & stitch",
+    "ExportMovie": "Approve & export"
   },
   "FilmLength": {
     "Title": "Film length",
@@ -306,7 +329,10 @@
     "Scene": "Scene",
     "Clips": "Clips",
     "Dur": "Dur",
-    "Composite": "Composite"
+    "Composite": "Composite",
+    "Kicker": "Studio · Edit afterward",
+    "Checklist": "Checklist:",
+    "ActivityHistory": "Activity / history"
   },
   "ScenesPage": {
     "Subtitle": "Generate and stitch clips on your machine where possible. Check Estimate before a full render if you are watching credits.",
@@ -324,7 +350,35 @@
     "Setting": "Setting",
     "CastLocation": "Cast / location",
     "Music": "Music",
-    "Score": "Score"
+    "Score": "Score",
+    "MakeYourMovie": "Make your movie",
+    "DialogueTiming": "Dialogue timing →",
+    "GenerateMissing": "Generate missing",
+    "BackToStoryAndVoice": "Back to story & voice",
+    "OpenShotPlan": "Open shot plan →",
+    "SceneHistory": "Scene history",
+    "HideHistory": "Hide history",
+    "AllScenes": "← All scenes",
+    "PrevScene": "‹ Prev",
+    "NextScene": "Next ›",
+    "History": "📜 History",
+    "PlayScene": "▶ Play scene",
+    "AudioTakes": "🎧 Audio Takes",
+    "OpenInVideoEditor": "🎬 Open in {0}",
+    "EditInScreenplay": "✏️ Edit in Screenplay",
+    "ShowFountainScript": "📜 Show Fountain Script",
+    "HideFountainScript": "📜 Hide Fountain Script",
+    "RegenMissing": "Missing",
+    "RegenStale": "Stale",
+    "RegenFullScene": "Full scene",
+    "GenerateSelected": "Generate selected",
+    "SceneIndex": "Scene Index",
+    "SelectAll": "Select all",
+    "ClearSelection": "Clear",
+    "SelectStale": "Select stale",
+    "ClipHeader": "Clip",
+    "DurHeader": "Dur",
+    "BeatScriptHeader": "Beat / Script Content"
   },
   "CharactersPage": {
     "NarratorVoice": "Narrator voice",
@@ -332,7 +386,13 @@
     "BuildCast": "Build cast",
     "RebuildCast": "Rebuild cast",
     "OpenScenes": "Open Scenes →",
-    "BuildShotPlan": "Build shot plan →"
+    "BuildShotPlan": "Build shot plan →",
+    "GenerateLooksForPlan": "Generate looks for plan",
+    "SetupAgainAdmin": "Setup again (admin)",
+    "RebuildCastFromScreenplay": "Rebuild cast from screenplay",
+    "RematchBookPictures": "Re-match book pictures",
+    "ToLocations": "Locations →",
+    "SwitchToFullCast": "Switch to full cast"
   },
   "ScreenplayPage": {
     "Approved": "Approved",
@@ -342,7 +402,40 @@
     "ToCharacters": "Characters →",
     "ReapproveAndContinue": "Re-approve",
     "LooksGoodContinue": "Approve",
-    "Preview": "Preview"
+    "Preview": "Preview",
+    "SaveNow": "Save now",
+    "Menu": "Menu",
+    "StorySetup": "Story Setup",
+    "CreateDraftFromBook": "Create draft from book…",
+    "RewriteDraftFromBook": "Rewrite draft from book…",
+    "EditStoryCharacters": "Edit Story Characters…",
+    "EditStoryLocations": "Edit Story Locations…",
+    "ExportFountain": "Export Fountain…",
+    "ExportPdf": "Export PDF…",
+    "View": "View",
+    "CollapseAllScenes": "Collapse All Scenes",
+    "ExpandAllScenes": "Expand All Scenes",
+    "ToCast": "Cast →",
+    "BeforeApproving": "Before approving:",
+    "NoUsableScreenplayYet": "No usable screenplay yet.",
+    "FitScreenplayToLength": "Fit screenplay to this length",
+    "BackToEstimate": "Back to Estimate →",
+    "LoadingEditor": "Loading screenplay editor…",
+    "DraftFromBook": "Draft from book",
+    "DraftAndApproveFromBook": "Draft & approve from book",
+    "FromTheBook": "From the book",
+    "ApprovedScenes": "Approved scenes"
+  },
+  "LocationsPage": {
+    "Title": "Locations — PageToMovie",
+    "RestorePlates": "Restore plates from media folder",
+    "GenerateLooksForPlan": "Generate looks for plan",
+    "OpenFilm": "Open Film →",
+    "PlacesIndex": "Places index",
+    "PickASetLook": "Pick a set look",
+    "Generate3Looks": "Generate 3 looks",
+    "TweakPlate": "Tweak plate",
+    "UploadAndLockPlate": "Upload & lock plate"
   },
   "DemoPage": {
     "Title": "Demo gallery — PageToMovie",

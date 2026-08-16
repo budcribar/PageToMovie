@@ -142,7 +142,7 @@ else
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content bg-dark text-white border-secondary shadow">
                 <div class="modal-header border-secondary py-2">
-                    <h5 class="modal-title fs-6 mb-0" id="home-delete-project-title">Delete project?</h5>
+                    <h5 class="modal-title fs-6 mb-0" id="home-delete-project-title">@L["Home.DeleteProjectTitle"]</h5>
                     <button type="button"
                             class="btn-close btn-close-white"
                             disabled="@_busy"
@@ -172,7 +172,7 @@ else
                             data-testid="home-delete-project-confirm"
                             disabled="@_busy"
                             @onclick="Projects.ConfirmDeleteAsync">
-                        Delete project
+                        @L["Home.DeleteProject"]
                     </button>
                 </div>
             </div>

@@ -17,7 +17,7 @@
 <PageTitle>@(IsSimpleFilm ? L["ProcessStrip.Movie"] : L["Nav.Film"])</PageTitle>
 
 <StudioPageHeader Kicker="@(IsSimpleFilm ? "Easiest start · Movie" : "Studio · Step 3 · Film")"
-                   Title="@(IsSimpleFilm ? "Make your movie" : L["Nav.Film"])">
+                   Title="@(IsSimpleFilm ? L["ScenesPage.MakeYourMovie"] : L["Nav.Film"])">
     @if (IsSimpleFilm)
     {
         <text>Generate every scene with your narrator voice. Stock pictures stay as-is.</text>
@@ -62,14 +62,14 @@
     <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-film-banner">
         <strong>Simple path.</strong>
         Review splice windows, then put your voice on the existing pictures.
-        <a href="dialogue-timing" class="alert-link" data-testid="simple-film-dialogue-timing">Dialogue timing →</a>
+        <a href="dialogue-timing" class="alert-link" data-testid="simple-film-dialogue-timing">@L["ScenesPage.DialogueTiming"]</a>
         <span class="text-muted"> · </span>
         <button type="button" class="btn btn-sm btn-primary ms-1"
                 data-testid="scenes-generate-missing"
                 disabled="@(_busy || Gen.JobRunning)"
-                @onclick="Gen.StartSimpleMovieAsync">Generate missing</button>
+                @onclick="Gen.StartSimpleMovieAsync">@L["ScenesPage.GenerateMissing"]</button>
         <span class="text-muted"> · </span>
-        <a href="simple-voice" class="alert-link">Back to story & voice</a>
+        <a href="simple-voice" class="alert-link">@L["ScenesPage.BackToStoryAndVoice"]</a>
     </div>
 }
 
@@ -79,7 +79,7 @@
                          Reason="@ActiveProject.ScenesBlockedReason"
                          FallbackReason="Finish the shot plan first."
                          ActionHref="adaptation/shots"
-                         ActionLabel="Open shot plan →" />
+                         ActionLabel="@L["ScenesPage.OpenShotPlan"]" />
 }
 else
 {
@@ -131,29 +131,7 @@ else
 @* ---- Scene version history (P3) ---- *@
 @* Own flag — distinct from History._showSceneHistory (the unrelated git-commit history modal further
    below), so toggling one panel never shows/hides the other. *@
-@if (List._selectedScene is int snHist)
-{
-    <div class="mb-2">
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-                @onclick="() => History._showInlineSceneHistory = !History._showInlineSceneHistory">
-            @(History._showInlineSceneHistory ? "Hide history" : "Scene history")
-        </button>
-    </div>
-    @if (History._showInlineSceneHistory)
-    {
-        <SceneVersionHistory ProjectId="@_projectId"
-                             SceneKey="@($"scene:{snHist}")"
-                             OnClose="History.HideSceneHistory"
-                             OnRestored="History.OnSceneHistoryRestored" />
-    }
-}
 
-@if (List._selectedScene is int)
-{
-    <div class="mb-3">
-        <button class="btn btn-outline-primary" disabled="@_busy" @onclick="List.BackToListAsync">← All scenes</button>
-    </div>
-}
 
 @if (List._showFilters)
 {

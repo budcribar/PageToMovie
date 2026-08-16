@@ -69,47 +69,17 @@
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Scene navigation">
-                    <button type="button" class="btn btn-outline-secondary py-0 px-2"
-                            disabled="@(!ListState.CanSelectPreviousScene || Host._busy)"
-                            title="Previous Scene (Key: [)"
-                            data-testid="scene-detail-prev"
-                            @onclick="ListState.SelectPreviousSceneAsync">
-                        ‹ Prev
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary py-0 px-2"
-                            disabled="@(!ListState.CanSelectNextScene || Host._busy)"
-                            title="Next Scene (Key: ])"
-                            data-testid="scene-detail-next"
-                            @onclick="ListState.SelectNextSceneAsync">
-                        Next ›
-                    </button>
-                </div>
                 <span>
                     <strong>Scene @(ListState._detail.SceneNumber.ToString("D2"))</strong>
                     — @(ListState._detail.Setting is { Length: > 0 } st ? st : "—")
                 </span>
-                @if (ListState.CastReady)
-                {
-                    <span class="badge bg-success-subtle text-success border border-success border-opacity-25 ms-1" style="font-size:0.7rem;" title="Cast looks & voices locked in Step 2">🔒 Cast Locked</span>
-                }
-                else
-                {
-                    <a href="characters" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none ms-1" style="font-size:0.7rem;" title="Pin character looks & voices in Step 2 before generating clips">⚠️ Cast Unlocked →</a>
-                }
             </div>
             <div class="d-flex gap-2 align-items-center flex-wrap">
-                <button type="button"
-                        class="btn btn-sm btn-outline-info"
-                        title="View history & changes for this scene"
-                        @onclick="() => History.OpenSceneHistoryAsync(ListState._detail.SceneNumber)">
-                    📜 History
-                </button>
                 <button class="btn btn-sm btn-success"
                         disabled="@(Host._busy || Gen.JobRunning || (ListState._detail.ClipsOnDisk == 0 && !ListState._detail.CompositeExists))"
-                        title="Play scene (browser stitch from clips)"
+                        title="Play selected clips"
                         @onclick="() => Playback.PlaySceneCompositeAsync(ListState._detail.SceneNumber)">
-                    ▶ Play scene
+                    Play selected clips
                 </button>
                 @if (ListState._detail.ClipsOnDisk > 0)
                 {
@@ -128,7 +98,7 @@
                             disabled="@(Host._busy || Gen.JobRunning)"
                             title="View past audio takes & compare against the current one"
                             @onclick="() => Music.OpenMusicCompareAsync(ListState._detail.SceneNumber)">
-                        🎧 Audio Takes
+                        @L["ScenesPage.AudioTakes"]
                     </button>
                 }
                 @if (ListState._detail.CompositeExists || ListState._detail.ClipsOnDisk > 0)
@@ -139,7 +109,7 @@
                             disabled="@(Host._busy || Gen.JobRunning)"
                             title="Open scene video in @ClipRegen._preferredVideoEditor"
                             @onclick="() => ClipRegen.OpenInExternalEditorAsync(ListState._detail.SceneNumber, ClipForm._selectedClip)">
-                        🎬 Open in @ClipRegen._preferredVideoEditor
+                        @L.Format("ScenesPage.OpenInVideoEditor", ClipRegen._preferredVideoEditor)
                     </button>
                 }
                 @if (Host.DetailLockedByOther)
@@ -152,11 +122,11 @@
             <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
                 <a class="btn btn-sm btn-outline-secondary"
                    href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)"
-                   title="Edit dialogue and action for this scene in the full screenplay editor">✏️ Edit in Screenplay</a>
+                   title="Edit dialogue and action for this scene in the full screenplay editor">@L["ScenesPage.EditInScreenplay"]</a>
                 <button type="button" class="btn btn-sm btn-outline-info"
                         data-testid="toggle-fountain-drawer"
                         @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
-                    📜 @(ListState._showFountainDrawer ? "Hide Fountain Script" : "Show Fountain Script")
+                    @(ListState._showFountainDrawer ? L["ScenesPage.HideFountainScript"] : L["ScenesPage.ShowFountainScript"])
                 </button>
             </div>
 
@@ -224,32 +194,6 @@
                 </div>
             }
 
-            @* E4: regen scopes *@
-            <div class="d-flex flex-wrap gap-1 mb-3" data-testid="regen-scopes">
-                <span class="small text-muted align-self-center me-1">Regen:</span>
-                <button type="button" class="btn btn-sm btn-outline-primary"
-                        data-testid="regen-scope-missing"
-                        disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady)"
-                        title="Generate only missing clips in this scene"
-                        @onclick="() => Gen.GenerateMissingInSceneAsync(ListState._detail.SceneNumber)">
-                    Missing
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-warning"
-                        data-testid="regen-scope-stale"
-                        disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || !(ListState._detail.Clips?.Any(c => c.IsStale) ?? false))"
-                        title="Force re-generate stale clips in this scene"
-                        @onclick="() => Gen.RegenStaleInSceneAsync(ListState._detail.SceneNumber)">
-                    Stale
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger"
-                        data-testid="regen-scope-scene"
-                        disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady)"
-                        title="Force re-generate entire scene"
-                        @onclick="() => Gen.ForceRegenSceneAsync(ListState._detail.SceneNumber)">
-                    Full scene
-                </button>
-            </div>
-
             @* Full scene composite — hide while clip selected, remux/gen busy, or full player open *@
             @if (Gen.IsSceneGenBusy(ListState._detail.SceneNumber))
             {
@@ -293,55 +237,7 @@
                 </p>
             }
 
-            @{
-                var hasMissingClips = ListState._detail.Clips.Any(c => !c.OnDisk);
-            }
-            @if (hasMissingClips || ClipSel._selectedClips.Count > 0)
-            {
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-2" data-testid="clip-select-bar">
-                    @if (hasMissingClips)
-                    {
-                        <button type="button"
-                                class="btn btn-sm btn-outline-secondary"
-                                data-testid="clip-select-missing"
-                                disabled="@Host._busy"
-                                title="Check clips not yet on disk"
-                                @onclick="ClipSel.SelectMissingClips">
-                            Select missing
-                        </button>
-                    }
-                    @if (ListState._detail.Clips.Any(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
-                    {
-                        <button type="button"
-                                class="btn btn-sm btn-warning text-black fw-semibold"
-                                data-testid="clip-select-mismatched"
-                                disabled="@Host._busy"
-                                title="Check all clips in this scene with dialogue mismatches or speaker swaps"
-                                @onclick="Dialogue.SelectMismatchedClips">
-                            Select mismatched (@ListState._detail.Clips.Count(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
-                        </button>
-                    }
-                    @if (ClipSel._selectedClips.Count > 0)
-                    {
-                        <span class="small">
-                            <strong>@ClipSel._selectedClips.Count</strong> selected
-                            @if (ClipSel.EstimateSelectedClipsCostUsd() is { } scc)
-                            {
-                                <span class="text-muted">· ~$@(scc.ToString("0.00"))</span>
-                            }
-                        </span>
-                        <button type="button" class="btn btn-sm btn-warning"
-                                data-testid="clip-batch-regen"
-                                disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || Host.DetailLockedByOther)"
-                                title="@RegenSelectedTitle"
-                                @onclick="ClipRegen.RegenSelectedClipsAsync">
-                            Generate selected
-                        </button>
-                    }
-                </div>
-            }
-
-                        <ScenesClipTable />
+            <ScenesClipTable />
 
 
         </div>

@@ -27,7 +27,7 @@
             <strong>@L["CostPage.FullQuoteNeedsScreenplay"]</strong>
             @ActiveProject.EstimateBlockedReason
         </div>
-        <a class="btn btn-sm btn-warning fw-semibold" href="adaptation">Go to Book →</a>
+        <a class="btn btn-sm btn-warning fw-semibold" href="adaptation">@L["CostPage.GoToBook"]</a>
     </div>
 }
 
@@ -44,11 +44,11 @@ else
             @* Two money numbers only: estimate + spent *@
             <div class="row g-2 text-center cost-hub-metrics">
                 <div class="col-4">
-                    <div class="text-muted cost-hub-label">Duration</div>
+                    <div class="text-muted cost-hub-label">@L["CostPage.Duration"]</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-duration">@DurationLabel</div>
                 </div>
                 <div class="col-4">
-                    <div class="text-muted cost-hub-label" title="Forecast for a full first-pass at current settings">Estimate</div>
+                    <div class="text-muted cost-hub-label" title="Forecast for a full first-pass at current settings">@L["CostPage.Estimate"]</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-estimate">@CostLabel</div>
                     <div class="cost-hub-meta">
                         @_report.DraftResolution
@@ -60,7 +60,7 @@ else
                     </div>
                 </div>
                 <div class="col-4">
-                    <div class="text-muted cost-hub-label" title="Already billed on this project">Spent</div>
+                    <div class="text-muted cost-hub-label" title="Already billed on this project">@L["CostPage.Spent"]</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
                 </div>
             </div>
@@ -123,7 +123,7 @@ else
                                         disabled="@_busy"
                                         title="Shorten the screenplay to hit target length. A checkpoint is saved first so you can undo."
                                         @onclick="RunFitTrimAsync">
-                                    Prune script
+                                    @L["CostPage.PruneScript"]
                                 </button>
                             }
                         }
@@ -158,7 +158,7 @@ else
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-success">Automatic</span>
-                                        <span class="fw-semibold small">Full Film Generation</span>
+                                        <span class="fw-semibold small">@L["CostPage.FullFilmGeneration"]</span>
                                     </div>
                                     <p class="small text-muted mb-2">
                                         Automatically prepares cast & locations, builds the shot plan, and produces the entire film (~@DurationLabel · @CostLabel).
@@ -169,7 +169,7 @@ else
                                         data-testid="decision-confirm-go"
                                         disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                         @onclick="ConfirmGenerateAsync">
-                                    Start automatic generation
+                                    @L["CostPage.StartAutomaticGeneration"]
                                 </button>
                             </div>
                         </div>
@@ -178,7 +178,7 @@ else
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-primary">Manual</span>
-                                        <span class="fw-semibold small">Step-by-Step Craft</span>
+                                        <span class="fw-semibold small">@L["CostPage.StepByStepCraft"]</span>
                                     </div>
                                     <p class="small text-muted mb-2">
                                         Review cast, locations, and scenes, build the shot plan, and generate scene-by-scene (e.g. test Scene 1 first).
@@ -187,7 +187,7 @@ else
                                 <a class="btn btn-sm btn-outline-primary fw-semibold w-100"
                                    href="adaptation/screenplay"
                                    data-testid="decision-manual-step">
-                                    Continue step-by-step → Edit Screenplay
+                                    @L["CostPage.ContinueStepByStep"]
                                 </a>
                             </div>
                         </div>
@@ -220,7 +220,7 @@ else
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-success">Automatic</span>
-                                        <span class="fw-semibold small">Full Film Generation</span>
+                                        <span class="fw-semibold small">@L["CostPage.FullFilmGeneration"]</span>
                                     </div>
                                     <p class="small text-muted mb-2">
                                         Automatically prepares cast & locations, builds the shot plan, and produces the entire film (~@DurationLabel · @CostLabel).
@@ -231,7 +231,7 @@ else
                                         data-testid="decision-confirm-go"
                                         disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                         @onclick="ConfirmGenerateAsync">
-                                    Start automatic generation
+                                    @L["CostPage.StartAutomaticGeneration"]
                                 </button>
                             </div>
                         </div>
@@ -240,7 +240,7 @@ else
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-primary">Manual</span>
-                                        <span class="fw-semibold small">Step-by-Step Craft</span>
+                                        <span class="fw-semibold small">@L["CostPage.StepByStepCraft"]</span>
                                     </div>
                                     <p class="small text-muted mb-2">
                                         Review cast, locations, and scenes, build the shot plan, and generate scene-by-scene (e.g. test Scene 1 first).
@@ -249,7 +249,7 @@ else
                                 <a class="btn btn-sm btn-outline-primary fw-semibold w-100"
                                    href="adaptation/screenplay"
                                    data-testid="decision-manual-step">
-                                    Continue step-by-step → Edit Screenplay
+                                    @L["CostPage.ContinueStepByStep"]
                                 </a>
                             </div>
                         </div>

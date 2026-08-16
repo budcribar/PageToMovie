@@ -8,170 +8,170 @@
 @using Microsoft.AspNetCore.Components
 @using PageToMovie.Core.Models
 
-
 <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th style="width:2rem;">
-                                <input class="form-check-input" type="checkbox"
-                                       data-testid="clip-select-all"
-                                       title="Select all clips"
-                                       checked="@ClipSel.AllClipsSelected"
-                                       disabled="@(Host._busy || ListState._detail is not { Clips.Count: > 0 })"
-                                       @onchange="e => ClipSel.ToggleSelectAllClips((bool)(e.Value ?? false))" />
-                            </th>
-                            <th style="width:7rem;">Clip</th>
-                            <th style="width:5rem; cursor:pointer; user-select:none;"
-                                @onclick="ClipSel.ToggleClipDurationSort"
-                                title="Click to sort by duration">
-                                Dur @ClipSel.DurationSortArrow
-                            </th>                            <th>Beat / Script Content</th>
-                            <th style="width:4rem;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var c in ClipSel.SortedDetailClips)
-                        {
-                            var active = ClipForm._selectedClip == c.ClipNumber;
-                            var cn = c.ClipNumber;
-                            var isChecked = ClipSel._selectedClips.Contains(cn);
-                            <tr class="@ClipRowClass(active, isChecked)" style="cursor:pointer;"
-                                @onclick="() => ClipForm.SelectClip(cn)">
-                                <td @onclick:stopPropagation="true">
-                                    <input class="form-check-input" type="checkbox"
-                                           data-testid="@($"clip-select-{cn}")"
-                                           checked="@isChecked"
-                                           disabled="@Host._busy"
-                                           @onchange="e => ClipSel.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
-                                </td>
-                                <td class="text-nowrap" @onclick:stopPropagation="true">
-                                    @{
-                                        var clipBusy = ClipSel.IsClipGenBusy(cn);
-                                    }
-                                    @if (clipBusy)
-                                    {
-                                        <span class="badge bg-warning text-dark px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
-                                              title="Generating — file is about to change">⏳ C@(cn.ToString("D2"))</span>
-                                    }
-                                    else if (c.OnDisk)
-                                    {
-                                        <button type="button"
-                                                class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
-                                                style="font-size:0.78rem; border-width:1px;"
-                                                title="Click to play clip C@(cn.ToString("D2")) video"
-                                                @onclick="() => ClipForm.SelectClip(cn)">
-                                            ▶ Play C@(cn.ToString("D2"))
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary text-light px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
-                                              title="Not on disk yet">C@(cn.ToString("D2"))</span>
-                                    }
-                                    @if (c.IsStale)
-                                    {
-                                        <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")"
-                                              title="@(c.StaleReason ?? "stale") — re-generate recommended">stale</span>
-                                    }
-                                    @if (c.DialogueVerification is { } ver)
-                                    {
-                                        var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
-                                        var (badgeClass, badgeText) = ver.Status?.ToLowerInvariant() switch
-                                        {
-                                            "verified" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
-                                            "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Speaker Swap"),
-                                            "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
-                                            "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
-                                            "no_speech" => ("bg-secondary-subtle text-secondary border border-secondary-subtle", "✓ No speech"),
-                                            _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle", ver.Status ?? "unverified"),
-                                        };
-                                        <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
-                                                @onclick:stopPropagation="true"
-                                                @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, cn, ver)">
-                                            <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
-                                                @badgeText 📋
-                                            </span>
-                                        </button>
-                                    }
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-info py-0 px-1 ms-2 text-decoration-none small"
-                                            disabled="@(Host._busy || Gen.JobRunning)"
-                                            title="View past takes & version comparison grid for this clip"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
-                                        🎬 Takes
-                                    </button>
-                                    <button type="button"
-                                            class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
-                                            data-testid="@($"clip-delete-{cn}")"
-                                            disabled="@(Host._busy || Gen.JobRunning)"
-                                            title="Delete this clip (video + shot plan entry)"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => ClipForm.RequestDeleteClip(ListState._detail.SceneNumber, cn)">
-                                        🗑️
-                                    </button>
-                                </td>
-                                <td class="small">
-                                    @if (c.ActualDurationSeconds is double ca)
-                                    {
-                                        <span>@Scenes.FormatClock(ca)</span>
-                                        @if (c.DurationSeconds > 0 && Math.Abs(c.DurationSeconds - ca) > 1.5)
-                                        {
-                                            <span class="text-muted"> · plan @c.DurationSeconds s</span>
-                                        }
-                                    }
-                                    else if (c.DurationSeconds > 0)
-                                    {
-                                        <span class="text-muted">~@c.DurationSeconds s</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                                <td class="small clip-dialogue-cell"
-                                    title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? (string.IsNullOrWhiteSpace(c.VisualPrompt) ? "Click to edit beat fields" : c.VisualPrompt) : $"{c.Speaker}: {c.Dialogue} (click to edit)")"
-                                    style="cursor:pointer;"
-                                    @onclick:stopPropagation="true"
-                                    @onclick="() => ClipForm.OpenClipEditor(c)">
-                                    @if (!string.IsNullOrWhiteSpace(c.Speaker))
-                                    {
-                                        <strong class="text-info me-1" style="letter-spacing:0.03em;">@c.Speaker.ToUpper():</strong>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(c.Dialogue))
-                                    {
-                                        <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 110)</span>
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
-                                    {
-                                        <span class="text-muted fst-italic">🎬 @Scenes.Trunc(c.VisualPrompt, 110)</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
-                                    }
-                                    @if (c.CharactersOnScreen.Count > 0)
-                                    {
-                                        <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
-                                    }
-                                </td>
-                                <td>
-                                    @if (!c.OnDisk)
-                                    {
-                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary border-opacity-25 px-2" title="Missing clip">⚪</span>
-                                    }
-                                    else if (c.IsStale)
-                                    {
-                                        <span class="badge bg-warning text-dark">stale</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-success">ok</span>
-                                    }
-                                </td>
-                            </tr>
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th style="width:2rem;">
+                    <input class="form-check-input" type="checkbox"
+                           data-testid="clip-select-all"
+                           title="Select all clips"
+                           checked="@ClipSel.AllClipsSelected"
+                           disabled="@(Host._busy || ListState._detail is not { Clips.Count: > 0 })"
+                           @onchange="e => ClipSel.ToggleSelectAllClips((bool)(e.Value ?? false))" />
+                </th>
+                <th style="width:7rem;">@L["ScenesPage.ClipHeader"]</th>
+                <th style="width:5rem; cursor:pointer; user-select:none;"
+                    @onclick="ClipSel.ToggleClipDurationSort"
+                    title="Click to sort by duration">
+                    @L["ScenesPage.DurHeader"] @ClipSel.DurationSortArrow
+                </th>
+                <th>@L["ScenesPage.BeatScriptHeader"]</th>
+                <th style="width:4rem;">@L["Common.Status"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in ClipSel.SortedDetailClips)
+            {
+                var active = ClipForm._selectedClip == c.ClipNumber;
+                var cn = c.ClipNumber;
+                var isChecked = ClipSel._selectedClips.Contains(cn);
+                <tr class="@ClipRowClass(active, isChecked)" style="cursor:pointer;"
+                    @onclick="() => ClipForm.SelectClip(cn)">
+                    <td @onclick:stopPropagation="true">
+                        <input class="form-check-input" type="checkbox"
+                               data-testid="@($"clip-select-{cn}")"
+                               checked="@isChecked"
+                               disabled="@Host._busy"
+                               @onchange="e => ClipSel.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
+                    </td>
+                    <td class="text-nowrap" @onclick:stopPropagation="true">
+                        @{
+                            var clipBusy = ClipSel.IsClipGenBusy(cn);
                         }
-                    </tbody>
-                </table>
-            </div>
+                        @if (clipBusy)
+                        {
+                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
+                                  title="Generating — file is about to change">⏳ C@(cn.ToString("D2"))</span>
+                        }
+                        else if (c.OnDisk)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
+                                    style="font-size:0.78rem; border-width:1px;"
+                                    title="Click to play clip C@(cn.ToString("D2")) video"
+                                    @onclick="() => ClipForm.SelectClip(cn)">
+                                ▶ Play C@(cn.ToString("D2"))
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary text-light px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
+                                  title="Not on disk yet">C@(cn.ToString("D2"))</span>
+                        }
+                        @if (c.IsStale)
+                        {
+                            <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")"
+                                  title="@(c.StaleReason ?? "stale") — re-generate recommended">stale</span>
+                        }
+                        @if (c.DialogueVerification is { } ver)
+                        {
+                            var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
+                            var (badgeClass, badgeText) = ver.Status?.ToLowerInvariant() switch
+                            {
+                                "verified" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
+                                "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Speaker Swap"),
+                                "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
+                                "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
+                                "no_speech" => ("bg-secondary-subtle text-secondary border border-secondary-subtle", "✓ No speech"),
+                                _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle", ver.Status ?? "unverified"),
+                            };
+                            <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, cn, ver)">
+                                <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
+                                    @badgeText 📋
+                                </span>
+                            </button>
+                        }
+                        <button type="button"
+                                class="btn btn-sm btn-outline-info py-0 px-1 ms-2 text-decoration-none small"
+                                disabled="@(Host._busy || Gen.JobRunning)"
+                                title="View past takes & version comparison grid for this clip"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
+                            🎬 Takes
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
+                                data-testid="@($"clip-delete-{cn}")"
+                                disabled="@(Host._busy || Gen.JobRunning)"
+                                title="Delete this clip (video + shot plan entry)"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ClipForm.RequestDeleteClip(ListState._detail.SceneNumber, cn)">
+                            🗑️
+                        </button>
+                    </td>
+                    <td class="small">
+                        @if (c.ActualDurationSeconds is double ca)
+                        {
+                            <span>@Scenes.FormatClock(ca)</span>
+                            @if (c.DurationSeconds > 0 && Math.Abs(c.DurationSeconds - ca) > 1.5)
+                            {
+                                <span class="text-muted"> · plan @c.DurationSeconds s</span>
+                            }
+                        }
+                        else if (c.DurationSeconds > 0)
+                        {
+                            <span class="text-muted">~@c.DurationSeconds s</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                    <td class="small clip-dialogue-cell"
+                        title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? (string.IsNullOrWhiteSpace(c.VisualPrompt) ? "Click to edit beat fields" : c.VisualPrompt) : $"{c.Speaker}: {c.Dialogue} (click to edit)")"
+                        style="cursor:pointer;"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => ClipForm.OpenClipEditor(c)">
+                        @if (!string.IsNullOrWhiteSpace(c.Speaker))
+                        {
+                            <strong class="text-info me-1" style="letter-spacing:0.03em;">@c.Speaker.ToUpper():</strong>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(c.Dialogue))
+                        {
+                            <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 110)</span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
+                        {
+                            <span class="text-muted fst-italic">🎬 @Scenes.Trunc(c.VisualPrompt, 110)</span>
+                        }
+                        else
+                        {
+                            <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
+                        }
+                        @if (c.CharactersOnScreen.Count > 0)
+                        {
+                            <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
+                        }
+                    </td>
+                    <td>
+                        @if (!c.OnDisk)
+                        {
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary border-opacity-25 px-2" title="Missing clip">⚪</span>
+                        }
+                        else if (c.IsStale)
+                        {
+                            <span class="badge bg-warning text-dark">stale</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">ok</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
