@@ -33,12 +33,21 @@
                         CssClass="text-muted" />
         }
     }
-    else if (list._scenes.Count == 0 && VoiceSubstitutionOverlayGate.IsMissingSceneList(list._scenes))
+    else if (list._scenes.Count == 0)
     {
-        <EmptyState Message="No scenes in the shot plan yet."
-                    ActionHref="adaptation/shots"
-                    ActionLabel="Open shot plan →"
-                    CssClass="text-muted" />
+        <div class="card p-4 text-center my-3 bg-dark bg-opacity-25 border-secondary border-opacity-25" data-testid="scenes-empty-shotplan">
+            <h5 class="fw-semibold mb-1">No shot plan yet</h5>
+            <p class="text-muted small mb-3">Build the shot plan to convert your approved screenplay into scenes and clips.</p>
+            <div>
+                <button type="button"
+                        class="btn btn-primary fw-semibold"
+                        disabled="@(Host._busy || Host.Gen.JobRunning)"
+                        @onclick="list.RebuildShotPlanAsync"
+                        data-testid="scenes-build-shotplan-btn">
+                    Build shot plan
+                </button>
+            </div>
+        </div>
     }
     else
     {
