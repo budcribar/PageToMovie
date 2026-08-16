@@ -50,18 +50,19 @@
                 </NavLink>
             </div>
 
-            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/characters" Title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' IconClass="bi-people-fill-nav-menu" Label='@(L["Nav.Cast"])' TestId="nav-characters" Collapsed="Collapsed" />
-
-            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/locations" Title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' IconClass="bi-geo-alt-fill" Label="Locs" TestId="nav-locations" Collapsed="Collapsed" />
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanEstimate)" Href="/cost" Title='@(ActiveProject.CanEstimate ? "Estimate & cost" : ActiveProject.EstimateBlockedReason)' IconClass="bi-cash-nav-menu" Label='@(L["Nav.Estimate"])' TestId="nav-cost" Collapsed="Collapsed" />
 
             <NavMenu_NavItem Enabled="@(ActiveProject.CanScenes)" Href="/scenes" Title='@(ActiveProject.CanScenes ? "Scenes & film" : ActiveProject.ScenesBlockedReason)' IconClass="bi-film-nav-menu" Label='@(L["Nav.Film"])' TestId="nav-scenes" Collapsed="Collapsed" />
 
             <NavMenu_NavItem Enabled="@(ActiveProject.CanReview)" Href="/review" Title='@(ActiveProject.CanReview ? "Review" : ActiveProject.ReviewBlockedReason)' IconClass="bi-check2-square-nav-menu" Label='@(L["Nav.Review"])' TestId="nav-review" Collapsed="Collapsed" />
-        }
 
-        @* Estimate always available when signed in — cost breakdown + account spend. *@
-        @if (Session.IsLoggedIn)
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/characters" Title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' IconClass="bi-people-fill-nav-menu" Label='@(L["Nav.Cast"])' TestId="nav-characters" Collapsed="Collapsed" />
+
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/locations" Title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' IconClass="bi-geo-alt-fill" Label="Locs" TestId="nav-locations" Collapsed="Collapsed" />
+        }
+        else if (Session.IsLoggedIn)
         {
+            @* Estimate available when signed in even without an active project — cost breakdown + account spend. *@
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="/cost" title="Estimate & cost — quote, spend, by vendor" data-testid="nav-cost">
                     <span class="bi bi-cash-nav-menu" aria-hidden="true"></span>
