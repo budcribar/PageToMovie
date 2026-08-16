@@ -3352,6 +3352,8 @@ public sealed partial class ProjectStore
         var full = Path.Combine(dir, name);
         if (File.Exists(full) && new FileInfo(full).Length >= 64)
             return full;
+        if (File.Exists(full + ".client.json"))
+            return full;
         // Alias: Loc_Foo → foo_ref.png without Loc_
         var raw = (locKey ?? "").Trim();
         if (raw.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase))
@@ -3359,6 +3361,8 @@ public sealed partial class ProjectStore
             var bare = raw[JsonKeys.LocationPrefix.Length..];
             var alt = Path.Combine(dir, LocationRefFileName(bare));
             if (File.Exists(alt) && new FileInfo(alt).Length >= 64)
+                return alt;
+            if (File.Exists(alt + ".client.json"))
                 return alt;
         }
         return null;

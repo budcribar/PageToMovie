@@ -690,8 +690,11 @@ public static class SupportedModelCatalog
     private static void EnsureLoaded()
     {
         if (_loadedEntries is not null && _loadedCapabilities is not null) return;
+        lock (CatalogSync)
+        {
+            if (_loadedEntries is not null && _loadedCapabilities is not null) return;
 
-        // Load the ONE embedded catalog for this process (real, or fake in fakes mode). No files, no
+            // Load the ONE embedded catalog for this process (real, or fake in fakes mode). No files, no
         // /data, no fallback chain. Fail fast if it is missing or invalid rather than silently
         // degrading to a different catalog — the previous multi-candidate loader hid exactly that.
         var resource = EmbeddedCatalogResourceName;
@@ -722,6 +725,7 @@ public static class SupportedModelCatalog
             _loadedTaskRankings = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         }
     }
+}
 
     public static IReadOnlyList<SupportedModelEntry> ForCapability(
         ModelCapability capability,

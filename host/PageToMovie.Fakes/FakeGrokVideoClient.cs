@@ -43,7 +43,8 @@ public sealed class FakeGrokVideoClient : IVideoClient
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
-        string? aspectRatio = null)
+        string? aspectRatio = null,
+        string? extendSourceFileId = null)
     {
         var n = Interlocked.Increment(ref _submitCount);
         var fakes = _opts.Fakes ?? new FakesOptions();
@@ -61,23 +62,25 @@ public sealed class FakeGrokVideoClient : IVideoClient
 
         var id = "fake-" + Guid.NewGuid().ToString("N")[..12];
         var fixture = ResolveFixturePath(fakes.VideoMode, durationSeconds, Interlocked.Increment(ref _clipRoundRobin));
+        var hasContinue = !string.IsNullOrWhiteSpace(extendSourceFileId) || (!string.IsNullOrWhiteSpace(continueFromVideoPath) && File.Exists(continueFromVideoPath));
         // Mark extensions so Download can concat prev + new segment when possible
         if (!string.IsNullOrWhiteSpace(continueFromVideoPath) && File.Exists(continueFromVideoPath))
             _pending[id] = ExtendPrefix + continueFromVideoPath + "|" + fixture;
         else
             _pending[id] = fixture;
         _log.LogInformation(
-            "Fake video submit {Id} duration={Dur}s fixture={Fixture} refs={Refs} startFrame={Start} continue={Cont} promptLen={Len}",
+            "Fake video submit {Id} duration={Dur}s fixture={Fixture} refs={Refs} startFrame={Start} continue={Cont} fileId={FileId} promptLen={Len}",
             id, durationSeconds, Path.GetFileName(fixture),
             referenceImagePaths?.Count ?? 0,
             startFrameImagePath is null ? "-" : Path.GetFileName(startFrameImagePath),
             continueFromVideoPath is null ? "-" : Path.GetFileName(continueFromVideoPath),
+            extendSourceFileId ?? "-",
             prompt?.Length ?? 0);
         try
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = string.IsNullOrWhiteSpace(continueFromVideoPath) ? "video" : "video-extend",
+                Kind = hasContinue ? "video-extend" : "video",
                 Model = model,
                 PromptChars = prompt?.Length ?? 0,
                 DurationSec = durationSeconds,

@@ -1129,12 +1129,16 @@ public sealed class ClientMediaFolderService
     public async Task<bool> PrepareExtendSourceAsync(
         string projectId, int scene, int clip, double maxInputSeconds)
     {
-        if (clip <= 1 || !IsConnected) return false;
+        if (clip <= 1) return false;
         string? trimUrl = null;
         try
         {
             var prevRelPath = $"assets/video/scene_{scene:D2}_clip_{clip - 1:D2}.mp4";
             var sourceUrl = await GetLocalBlobUrlAsync(projectId, prevRelPath);
+            if (string.IsNullOrWhiteSpace(sourceUrl))
+            {
+                sourceUrl = _api.ClipVideoUrl(projectId, scene, clip - 1);
+            }
             if (string.IsNullOrWhiteSpace(sourceUrl)) return false;
 
             var trim = await _js.InvokeAsync<JsTrimTailResult>(

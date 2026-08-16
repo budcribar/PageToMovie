@@ -12,7 +12,25 @@ internal static class MediaDataUri
 
     public static async Task<string> FileToDataUriAsync(string path, CancellationToken ct)
     {
-        var bytes = await File.ReadAllBytesAsync(path, ct);
+        var resolvedPath = path;
+        if (!File.Exists(resolvedPath))
+        {
+            var dir = Path.GetDirectoryName(path);
+            var nameWithoutExt = Path.GetFileNameWithoutExtension(path);
+            if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+            {
+                var candidate = Directory.EnumerateFiles(dir, $"{nameWithoutExt}*")
+                    .Where(f => !f.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase) &&
+                                new FileInfo(f).Length >= 64)
+                    .FirstOrDefault();
+                if (candidate is not null)
+                {
+                    resolvedPath = candidate;
+                }
+            }
+        }
+
+        var bytes = await File.ReadAllBytesAsync(resolvedPath, ct);
         if (bytes.Length > MaxBytes)
             throw new InvalidOperationException(
                 $"Video/image too large for data URI ({bytes.Length / (1024 * 1024)} MB). Max {MaxBytes / (1024 * 1024)} MB.");

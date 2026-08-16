@@ -19,6 +19,10 @@ public interface IVideoClient
     /// (continue from last frame with the new prompt). Result is prev+extension;
     /// caller should trim the new portion for a per-clip file.
     /// </param>
+    /// <param name="extendSourceFileId">
+    /// Optional provider file handle (e.g. xAI Files file_id) of predecessor video on provider server.
+    /// When provided and valid, enables zero-upload extension directly from stored file handle.
+    /// </param>
     Task<string> SubmitGenerationAsync(
         string prompt,
         int durationSeconds,
@@ -28,7 +32,8 @@ public interface IVideoClient
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
-        string? aspectRatio = null);
+        string? aspectRatio = null,
+        string? extendSourceFileId = null);
 
     Task<string> PollForVideoUrlAsync(
         string requestId,

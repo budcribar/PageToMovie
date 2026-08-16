@@ -58,6 +58,7 @@ public sealed class GrokVideoClient : IVideoClient
     /// <param name="referenceImagePaths">Character/style refs → API <c>reference_images</c> + prompt <c>&lt;IMAGE_n&gt;</c> tags.</param>
     /// <param name="startFrameImagePath">Optional first-frame still (image-to-video). Prefer video continue when possible.</param>
     /// <param name="continueFromVideoPath">Previous clip MP4 — uses <c>/videos/extensions</c> (official continue).</param>
+    /// <param name="extendSourceFileId">Predecessor video file_id on xAI provider server — uses <c>/videos/extensions</c> with zero upload.</param>
     public async Task<string> SubmitGenerationAsync(
         string prompt,
         int durationSeconds,
@@ -67,7 +68,8 @@ public sealed class GrokVideoClient : IVideoClient
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
-        string? aspectRatio = null)
+        string? aspectRatio = null,
+        string? extendSourceFileId = null)
     {
         // Catalog maxReferenceImages only — never invent 7 (or any default).
         var videoEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
@@ -79,7 +81,7 @@ public sealed class GrokVideoClient : IVideoClient
         var setup = await BuildSubmitSetupAsync(
             durationSeconds, resolution, model,
             referenceImagePaths, startFrameImagePath, continueFromVideoPath,
-            maxRefsForModel, aspectRatio, ct).ConfigureAwait(false);
+            maxRefsForModel, aspectRatio, extendSourceFileId, ct).ConfigureAwait(false);
 
         var original = prompt ?? "";
         Exception? lastLengthError = null;
@@ -113,6 +115,7 @@ public sealed class GrokVideoClient : IVideoClient
         public string? AspectRatio { get; init; }
         public string? ContinueFromVideoPath { get; init; }
         public string? StartFrameImagePath { get; init; }
+        public string? ExtendSourceFileId { get; init; }
     }
 
     private static bool IsExistingMediaPath(string? p) =>
@@ -127,13 +130,14 @@ public sealed class GrokVideoClient : IVideoClient
         string? continueFromVideoPath,
         int maxRefsForModel,
         string? aspectRatio,
+        string? extendSourceFileId,
         CancellationToken ct)
     {
         var refs = (referenceImagePaths ?? Array.Empty<string>())
             .Where(IsExistingMediaPath)
             .Take(maxRefsForModel)
             .ToList();
-        var hasContinue = IsExistingMediaPath(continueFromVideoPath);
+        var hasContinue = !string.IsNullOrWhiteSpace(extendSourceFileId) || IsExistingMediaPath(continueFromVideoPath);
         var hasStart = IsExistingMediaPath(startFrameImagePath);
 
         ApplySubmitRefPriority(refs, ref hasContinue, ref hasStart, startFrameImagePath);
@@ -143,7 +147,7 @@ public sealed class GrokVideoClient : IVideoClient
                 model, durationSeconds, isExtensionMode: true);
 
         var (videoUri, startUri, refObjs) = await EncodeSubmitMediaAsync(
-            hasContinue, hasStart, continueFromVideoPath, startFrameImagePath, refs, ct).ConfigureAwait(false);
+            hasContinue, hasStart, continueFromVideoPath, extendSourceFileId, startFrameImagePath, refs, ct).ConfigureAwait(false);
 
         var promptHardCap = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video)
             .MaxPromptLength
@@ -168,6 +172,7 @@ public sealed class GrokVideoClient : IVideoClient
             AspectRatio = aspectRatio,
             ContinueFromVideoPath = continueFromVideoPath,
             StartFrameImagePath = startFrameImagePath,
+            ExtendSourceFileId = extendSourceFileId,
         };
     }
 
@@ -202,6 +207,7 @@ public sealed class GrokVideoClient : IVideoClient
         bool hasContinue,
         bool hasStart,
         string? continueFromVideoPath,
+        string? extendSourceFileId,
         string? startFrameImagePath,
         List<string> refs,
         CancellationToken ct)
@@ -209,7 +215,7 @@ public sealed class GrokVideoClient : IVideoClient
         if (hasContinue)
         {
             string? videoUri = null;
-            if (continueFromVideoPath is not null)
+            if (string.IsNullOrWhiteSpace(extendSourceFileId) && continueFromVideoPath is not null && File.Exists(continueFromVideoPath))
                 videoUri = await FileToDataUriAsync(continueFromVideoPath, ct);
             return (videoUri, null, null);
         }
@@ -272,7 +278,7 @@ public sealed class GrokVideoClient : IVideoClient
         {
             return SubmitExtendOnceAsync(
                 current, setup.DurationSeconds, setup.Resolution, setup.Model,
-                setup.VideoUri ?? string.Empty, setup.ContinueFromVideoPath ?? string.Empty, ct);
+                setup.VideoUri, setup.ExtendSourceFileId, setup.ContinueFromVideoPath, ct);
         }
 
         return SubmitFreshOnceAsync(
@@ -312,17 +318,23 @@ public sealed class GrokVideoClient : IVideoClient
         int durationSeconds,
         string resolution,
         string model,
-        string videoUri,
-        string continueFromVideoPath,
+        string? videoUri,
+        string? extendSourceFileId,
+        string? continueFromVideoPath,
         CancellationToken ct)
     {
+        var hasFileId = !string.IsNullOrWhiteSpace(extendSourceFileId);
+        var videoDict = hasFileId
+            ? new Dictionary<string, object?> { ["file_id"] = extendSourceFileId }
+            : new Dictionary<string, object?> { ["url"] = videoUri ?? string.Empty };
+
         var extPayload = new Dictionary<string, object?>
         {
             ["model"] = model,
             ["prompt"] = prompt,
             // duration = length of NEW extension only (not total)
             ["duration"] = durationSeconds,
-            ["video"] = new Dictionary<string, object?> { ["url"] = videoUri },
+            ["video"] = videoDict,
             // Persist to Files API (file_id). "filename" is required (422 without it).
             ["storage_options"] = PermanentVideoStorageOptions(),
         };
@@ -331,29 +343,41 @@ public sealed class GrokVideoClient : IVideoClient
             extPayload["resolution"] = resolution;
 
         _log.LogInformation(
-            "Grok video EXTEND from={Prev} extensionDur={Dur}s promptLen={Len}",
-            Path.GetFileName(continueFromVideoPath), durationSeconds, prompt.Length);
+            "Grok video EXTEND from={Source} extensionDur={Dur}s promptLen={Len}",
+            hasFileId ? extendSourceFileId : Path.GetFileName(continueFromVideoPath), durationSeconds, prompt.Length);
 
-        // Submit retry is safe here even though it's not idempotent: if the response is lost after
-        // the server actually created the job, we never got request_id back either way — there's no
-        // way to find/reuse that job, retried automatically or not. A human clicking "try again"
-        // after seeing the same failure has an identical blind spot; this just does it for them,
-        // with proper Retry-After-aware backoff instead of an immediate manual re-click.
-        return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-            async _ =>
-            {
-                using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
-                return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
-                    extResp, ct, "request_id",
-                    "Grok video extend",
-                    "Grok extend response missing request_id",
-                    errorTrim: 500);
-            },
-            isTransient: AiRetryPolicy.IsTransientChatFailure,
-            maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
-            backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-            onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_extend_submit", model, $"durationSec={durationSeconds}", attemptNum, ex, ct),
-            ct: ct).ConfigureAwait(false);
+        // If file_id is used and fails (e.g. expired handle), attempt fallback to uploading local file if available.
+        try
+        {
+            return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
+                async _ =>
+                {
+                    using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+                    return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
+                        extResp, ct, "request_id",
+                        "Grok video extend",
+                        "Grok extend response missing request_id",
+                        errorTrim: 500);
+                },
+                isTransient: AiRetryPolicy.IsTransientChatFailure,
+                maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
+                backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
+                onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_extend_submit", model, $"durationSec={durationSeconds}", attemptNum, ex, ct),
+                ct: ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (hasFileId && !string.IsNullOrWhiteSpace(continueFromVideoPath) && File.Exists(continueFromVideoPath))
+        {
+            _log.LogWarning(ex, "Grok video extend file_id '{FileId}' failed; falling back to local file upload '{Path}'",
+                extendSourceFileId, continueFromVideoPath);
+            var uploadUri = await FileToDataUriAsync(continueFromVideoPath, ct).ConfigureAwait(false);
+            extPayload["video"] = new Dictionary<string, object?> { ["url"] = uploadUri };
+            using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+            return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
+                extResp, ct, "request_id",
+                "Grok video extend fallback",
+                "Grok extend fallback response missing request_id",
+                errorTrim: 500);
+        }
     }
 
     private async Task<string> SubmitFreshOnceAsync(

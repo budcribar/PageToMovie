@@ -1184,4 +1184,60 @@ public class ClipVideoPromptBuilderTests
         try { Directory.Delete(dir, true); } catch { }
     }
 
+    [Fact]
+    public void Build_Recognizes_ClientJson_Offloaded_Plates()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-client-ref-" + Guid.NewGuid().ToString("N"));
+        var locDir = Path.Combine(dir, "assets", "locations");
+        var charDir = Path.Combine(dir, "assets", "characters");
+        Directory.CreateDirectory(locDir);
+        Directory.CreateDirectory(charDir);
+
+        // Write .client.json markers
+        File.WriteAllText(Path.Combine(locDir, "loc_country_lane_ref.png.client.json"), "{\"storage\":\"client\"}");
+        File.WriteAllText(Path.Combine(charDir, "character_old_man_ref.png.client.json"), "{\"storage\":\"client\"}");
+
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "An old man on a country lane.",
+              "characters_on_screen": ["Character_Old_Man"],
+              "audio_payload": { "dialogue": "" }
+            }
+            """).RootElement;
+
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>
+        {
+            ["Character_Old_Man"] = new() { Description = "Old man" }
+        };
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, dir, profiles, maxRefs: 5, fallbackLocationKey: "Loc_Country_Lane");
+
+        Assert.True(built.LocationRefAttached);
+        Assert.Equal("Loc_Country_Lane", built.LocationKey);
+        Assert.Equal(2, built.ReferenceImagePaths.Count);
+
+        try { Directory.Delete(dir, true); } catch { }
+    }
+
+    [Fact]
+    public void Build_Sets_VideoExtend_Mode_When_ExtendFileId_Provided()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 2,
+              "visual_prompt": "Camera pans right across the fence.",
+              "characters_on_screen": [],
+              "audio_payload": { "dialogue": "" }
+            }
+            """).RootElement;
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, Path.GetTempPath(),
+            characters: new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(),
+            previousClipExtendFileId: "file_d7647878-38b9-4844-a7e1-9a73bea080a3");
+
+        Assert.Equal(ClipVideoPromptBuilder.ModeVideoExtend, built.Mode);
+    }
 }

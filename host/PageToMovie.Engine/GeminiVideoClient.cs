@@ -64,9 +64,10 @@ public sealed class GeminiVideoClient : IVideoClient
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
-        string? aspectRatio = null)
+        string? aspectRatio = null,
+        string? extendSourceFileId = null)
     {
-        if (!string.IsNullOrWhiteSpace(continueFromVideoPath))
+        if (!string.IsNullOrWhiteSpace(continueFromVideoPath) || !string.IsNullOrWhiteSpace(extendSourceFileId))
             throw new NotSupportedException(
                 "GeminiVideoClient does not implement clip-to-clip continue yet — " +
                 "use image-to-video (startFrameImagePath) as a fallback continuity strategy, " +

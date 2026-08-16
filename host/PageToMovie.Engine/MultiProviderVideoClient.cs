@@ -41,7 +41,8 @@ public sealed class MultiProviderVideoClient : IVideoClient
         IReadOnlyList<string>? referenceImagePaths = null,
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
-        string? aspectRatio = null)
+        string? aspectRatio = null,
+        string? extendSourceFileId = null)
     {
         if (string.IsNullOrWhiteSpace(model))
             throw new InvalidOperationException(
@@ -55,7 +56,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
         {
             var falId = await _fal.SubmitGenerationAsync(
                 prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
+                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
             return FalPrefix + falId;
         }
 
@@ -63,13 +64,13 @@ public sealed class MultiProviderVideoClient : IVideoClient
         {
             var id = await _gemini.SubmitGenerationAsync(
                 prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
+                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
             return GeminiPrefix + id;
         }
 
         var grokId = await _grok.SubmitGenerationAsync(
             prompt, durationSeconds, resolution, model, ct,
-            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio).ConfigureAwait(false);
+            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
             return GrokPrefix + grokId;
     }
 

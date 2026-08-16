@@ -5289,7 +5289,7 @@ public sealed class FilmJobService
         {
             // Single-use: consumed extend-source is deleted so a later plain regenerate (no fresh
             // upload) falls back to fresh gen instead of silently reusing stale continuity data.
-            TryDeleteExtendInputTemp(ctx.ExtendSourcePath);
+            TryDeleteExtendInputTemp(ctx.CreatedTempTrimPath);
         }
     }
 
@@ -5313,8 +5313,10 @@ public sealed class FilmJobService
         public required SupportedModelEntry ModelEntry { get; init; }
         public string? PrevVisual { get; set; }
         public string? PrevVideoPath { get; set; }
+        public string? ExtendSourceFileId { get; set; }
         public bool ReseedFresh { get; set; }
         public string? ExtendSourcePath { get; init; }
+        public string? CreatedTempTrimPath { get; init; }
     }
 
     private async Task<ClipGenContext> CreateClipGenContextAsync(
@@ -5345,7 +5347,10 @@ public sealed class FilmJobService
         var model = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
         var modelEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
 
-        var extendSourcePath = ResolveExtendSourcePath(projectDir, scene, clip, modelEntry);
+        var (extendSourcePath, extendSourceFileId, tempTrimPath) = wantContinue
+            ? await ResolveExtendInputAsync(projectId, projectDir, scene, clip, modelEntry, ct).ConfigureAwait(false)
+            : (null, null, null);
+
         var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
 
         return new ClipGenContext
@@ -5368,7 +5373,9 @@ public sealed class FilmJobService
             ModelEntry = modelEntry,
             PrevVisual = prevVisual,
             PrevVideoPath = extendSourcePath,
+            ExtendSourceFileId = extendSourceFileId,
             ExtendSourcePath = extendSourcePath,
+            CreatedTempTrimPath = tempTrimPath,
         };
     }
 
@@ -5381,24 +5388,131 @@ public sealed class FilmJobService
                clip > 1;
     }
 
-    private static string? ResolveExtendSourcePath(
-        string projectDir, int scene, int clip, SupportedModelEntry modelEntry)
+    private readonly record struct PredecessorClipDetails(
+        string? LocalMp4Path,
+        string? SourceFileId,
+        string? SourceUrl,
+        double? DurationSeconds);
+
+    private static PredecessorClipDetails? TryReadPredecessorClipDetails(string projectDir, int scene, int clip)
     {
-        // Real video-extend: the browser client prepares and uploads this file — its own copy of
-        // the previous clip's display video, tail-trimmed to ≤ the model's max input length —
-        // before requesting this clip (server has no native ffmpeg to do that trim itself, and
-        // Grok's /videos/extensions rejects input video over its max). Presence is the only
-        // signal; a missing file (client didn't prepare one, an older/manual regenerate, or a
-        // model that doesn't support continue) always falls back to fresh gen + locked refs,
-        // exactly as before this feature existed — never blocks clip generation.
-        // maxExtensionSeconds is only consulted later for duration; continue eligibility is the bool.
-        if (clip <= 1 || !modelEntry.SupportsVideoContinue)
+        try
+        {
+            var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
+            if (!Directory.Exists(videoDir)) return null;
+
+            var pattern = $"scene_{scene:D2}_clip_{clip:D2}*.clip.json";
+            var sidecarFile = new DirectoryInfo(videoDir)
+                .EnumerateFiles(pattern)
+                .OrderByDescending(fi => fi.LastWriteTimeUtc)
+                .FirstOrDefault();
+
+            string? sourceFileId = null;
+            string? sourceUrl = null;
+            double? durationSeconds = null;
+
+            if (sidecarFile is not null && File.Exists(sidecarFile.FullName))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(sidecarFile.FullName));
+                var root = doc.RootElement;
+                if (root.TryGetProperty("source_file_id", out var sfid))
+                    sourceFileId = sfid.GetString();
+                if (root.TryGetProperty("source_url", out var surl))
+                    sourceUrl = surl.GetString();
+                if (root.TryGetProperty("duration_seconds", out var ds) && ds.TryGetDouble(out var dur))
+                    durationSeconds = dur;
+            }
+
+            var mp4Pattern = $"scene_{scene:D2}_clip_{clip:D2}*.mp4";
+            var mp4File = new DirectoryInfo(videoDir)
+                .EnumerateFiles(mp4Pattern)
+                .Where(fi => fi.Length >= 1024 && !fi.Name.StartsWith('_'))
+                .OrderByDescending(fi => fi.LastWriteTimeUtc)
+                .FirstOrDefault();
+
+            return new PredecessorClipDetails(
+                LocalMp4Path: mp4File?.FullName,
+                SourceFileId: sourceFileId,
+                SourceUrl: sourceUrl,
+                DurationSeconds: durationSeconds);
+        }
+        catch
+        {
             return null;
-        var candidate = Path.Combine(
+        }
+    }
+
+    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath)>
+        ResolveExtendInputAsync(
+            string projectId,
+            string projectDir,
+            int scene,
+            int clip,
+            SupportedModelEntry modelEntry,
+            CancellationToken ct)
+    {
+        if (clip <= 1 || !modelEntry.SupportsVideoContinue)
+            return (null, null, null);
+
+        // 1. Check if client already uploaded an explicit _extend_src_ file
+        var explicitSrc = Path.Combine(
             projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
-        if (File.Exists(candidate) && new FileInfo(candidate).Length >= 1024)
-            return candidate;
-        return null;
+        if (File.Exists(explicitSrc) && new FileInfo(explicitSrc).Length >= 1024)
+            return (explicitSrc, null, null);
+
+        // 2. Inspect predecessor clip take/sidecar
+        var maxInputSeconds = modelEntry.MaxEditInputDurationSeconds ?? 8.7;
+        var prevClipInfo = TryReadPredecessorClipDetails(projectDir, scene, clip - 1);
+        if (prevClipInfo is null)
+            return (null, null, null);
+
+        var prevDur = prevClipInfo.Value.DurationSeconds ?? 5.0;
+
+        // Case 1: Predecessor has valid source_file_id and duration <= maxInputSeconds
+        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1)
+        {
+            return (null, prevClipInfo.Value.SourceFileId, null);
+        }
+
+        // Case 2: Predecessor local MP4 exists and duration <= maxInputSeconds
+        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.LocalMp4Path) && File.Exists(prevClipInfo.Value.LocalMp4Path) && prevDur <= maxInputSeconds + 0.1)
+        {
+            return (prevClipInfo.Value.LocalMp4Path, null, null);
+        }
+
+        // Case 3 / 4: Duration > maxInputSeconds -> tail trimming required
+        var sourceVideoToTrim = prevClipInfo.Value.LocalMp4Path;
+        string? downloadedTempFile = null;
+        if ((string.IsNullOrWhiteSpace(sourceVideoToTrim) || !File.Exists(sourceVideoToTrim)) &&
+            !string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceUrl))
+        {
+            downloadedTempFile = Path.Combine(Path.GetTempPath(), $"ptm_extend_pred_{Guid.NewGuid():N}.mp4");
+            try
+            {
+                await _grok.DownloadToFileAsync(prevClipInfo.Value.SourceUrl, downloadedTempFile, ct).ConfigureAwait(false);
+                sourceVideoToTrim = downloadedTempFile;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed to download predecessor video from source_url for tail trimming: {Url}", prevClipInfo.Value.SourceUrl);
+                TryDeleteExtendInputTemp(downloadedTempFile);
+                return (null, null, null);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourceVideoToTrim) && File.Exists(sourceVideoToTrim))
+        {
+            var trimmedDest = Path.Combine(projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+            var keepSeconds = Math.Max(1.0, maxInputSeconds - 0.2);
+            if (NativeFfmpeg.TryTrimTail(sourceVideoToTrim, trimmedDest, keepSeconds))
+            {
+                TryDeleteExtendInputTemp(downloadedTempFile);
+                return (trimmedDest, null, trimmedDest);
+            }
+            TryDeleteExtendInputTemp(downloadedTempFile);
+        }
+
+        return (null, null, null);
     }
 
     private static string? ResolvePreviousClipVisual(
@@ -5448,7 +5562,8 @@ public sealed class FilmJobService
                     $"Video model '{ctx.ModelEntry.Id}' has no maxReferenceImages in models_catalog.json."),
             styleHead: styleHead,
             videoModel: ctx.Model,
-            fallbackLocationKey: sceneLocationKey);
+            fallbackLocationKey: sceneLocationKey,
+            previousClipExtendFileId: ctx.ExtendSourceFileId);
 
         if (string.IsNullOrWhiteSpace(built.Prompt))
             throw new InvalidOperationException("clip missing visual_prompt");
@@ -5467,7 +5582,7 @@ public sealed class FilmJobService
         var supportsContinue = SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).SupportsVideoContinue;
         var duration = await ResolveClipDurationAsync(ctx, built, supportsContinue).ConfigureAwait(false);
 
-        var modeLabel = ctx.PrevVideoPath is not null ? "video-extend" : built.Mode;
+        var modeLabel = (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null) ? "video-extend" : built.Mode;
         await AppendLogAsync(
             $"  [Grok] Submit S{ctx.Scene:D2}C{ctx.Clip} duration={duration}s res={ctx.Resolution} " +
             $"model={ctx.Model} mode={modeLabel} {built.PromptLogSummary}");
@@ -5480,10 +5595,11 @@ public sealed class FilmJobService
             ctx.Resolution,
             ctx.Model,
             ctx.Ct,
-            referenceImagePaths: ClipReferenceImagesForSubmit(ctx.PrevVideoPath, built),
+            referenceImagePaths: ClipReferenceImagesForSubmit(ctx.PrevVideoPath, ctx.ExtendSourceFileId, built),
             startFrameImagePath: null,
             continueFromVideoPath: ctx.PrevVideoPath,
-            aspectRatio: targetAspectRatio);
+            aspectRatio: targetAspectRatio,
+            extendSourceFileId: ctx.ExtendSourceFileId);
         await AppendLogAsync($"  [Grok] request_id={requestId}");
 
         var url = await _grok.PollForVideoUrlAsync(
@@ -5502,8 +5618,8 @@ public sealed class FilmJobService
     }
 
     private static IReadOnlyList<string>? ClipReferenceImagesForSubmit(
-        string? prevVideoPath, ClipVideoPromptBuilder.PromptBuildResult built) =>
-        prevVideoPath is null && built.ReferenceImagePaths.Count > 0
+        string? prevVideoPath, string? extendSourceFileId, ClipVideoPromptBuilder.PromptBuildResult built) =>
+        prevVideoPath is null && extendSourceFileId is null && built.ReferenceImagePaths.Count > 0
             ? built.ReferenceImagePaths
             : null;
 
@@ -5513,7 +5629,7 @@ public sealed class FilmJobService
 
     private async Task ApplyIdentityReseedIfNeededAsync(ClipGenContext ctx)
     {
-        if (ctx.PrevVideoPath is null || !_opts.IdentityReseedOnCastChange)
+        if ((ctx.PrevVideoPath is null && ctx.ExtendSourceFileId is null) || !_opts.IdentityReseedOnCastChange)
             return;
         var curKeys = ClipVideoPromptBuilder.ResolveOnScreenCharacterKeys(ctx.ClipEl)
             .Where(k => IsVisualOnScreenKey(k, ctx.Profiles))
@@ -5536,12 +5652,13 @@ public sealed class FilmJobService
             $"[{string.Join(", ", prevKeys)}] → [{string.Join(", ", curKeys)}] — " +
             "fresh gen with locked refs (not video-extend)");
         ctx.PrevVideoPath = null; // API: attach refs
+        ctx.ExtendSourceFileId = null;
         // Keep prevVisual for continuity prose only
     }
 
     private async Task ApplyFirstSpokenAfterSilenceReseedAsync(ClipGenContext ctx)
     {
-        if (ctx.PrevVideoPath is null)
+        if (ctx.PrevVideoPath is null && ctx.ExtendSourceFileId is null)
             return;
         JsonElement? prevMeta = ctx.PreviousClipEl;
         if (prevMeta is null && ctx.BlueprintRoot is { } br)
@@ -5550,6 +5667,7 @@ public sealed class FilmJobService
             return;
         ctx.ReseedFresh = true;
         ctx.PrevVideoPath = null;
+        ctx.ExtendSourceFileId = null;
         await AppendLogAsync(
             $"  [Speech] S{ctx.Scene:D2}C{ctx.Clip:D2} is first spoken after silence — " +
             "fresh gen with locked refs (not video-extend) so the opening word is not clipped");

@@ -15,7 +15,7 @@ namespace PageToMovie.Engine;
 /// </summary>
 public static class ClipVideoPromptBuilder
 {
-    private const string ModeVideoExtend = "video-extend";
+    public const string ModeVideoExtend = "video-extend";
     private const string ModeContinue = "continue";
     private const string CharactersOnScreenKey = "characters_on_screen";
     private const string PrimarySubjectKey = "primary_subject";
@@ -129,7 +129,8 @@ public static class ClipVideoPromptBuilder
         int maxRefs = 5,
         string? styleHead = null,
         string? videoModel = null,
-        string? fallbackLocationKey = null)
+        string? fallbackLocationKey = null,
+        string? previousClipExtendFileId = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
         var promptMaxLen = ResolvePromptMaxLen(videoModel);
@@ -137,7 +138,7 @@ public static class ClipVideoPromptBuilder
         // Mode follows actual media inputs, not blueprint cont alone.
         // Cast-change reseed (PR2) clears previousClipVideoPath while blueprint may still say
         // extend_previous — that must be fresh+refs, not continue-without-frame.
-        var hasPrevVideo = HasExistingMedia(previousClipVideoPath);
+        var hasPrevVideo = HasExistingMedia(previousClipVideoPath) || !string.IsNullOrWhiteSpace(previousClipExtendFileId);
         var hasStartFrame = HasExistingMedia(startFrameImagePath);
         var mode = ResolveGenerationMode(hasPrevVideo, hasStartFrame);
 
@@ -1084,6 +1085,8 @@ public static class ClipVideoPromptBuilder
             var full = Path.Combine(dir, name);
             if (File.Exists(full) && new FileInfo(full).Length >= 64)
                 return full;
+            if (File.Exists(full + ".client.json"))
+                return full;
         }
         return null;
     }
@@ -1169,6 +1172,8 @@ public static class ClipVideoPromptBuilder
             var full = Path.Combine(charDir, name);
             if (File.Exists(full) && new FileInfo(full).Length >= 64)
                 return full;
+            if (File.Exists(full + ".client.json"))
+                return full;
         }
         return allowNormalizedFallback ? ResolveCharacterRefPathByNormalizedKey(charDir, key) : null;
     }
@@ -1191,16 +1196,22 @@ public static class ClipVideoPromptBuilder
         var targetNorm = Stage2PlannerService.NormalizeCharacterKey(key);
         if (targetNorm.Length == 0) return null;
 
-        foreach (var file in Directory.EnumerateFiles(charDir, "*_ref.png"))
+        foreach (var file in Directory.EnumerateFiles(charDir, "*_ref.png*"))
         {
-            var stem = Path.GetFileNameWithoutExtension(file);
+            var fileName = Path.GetFileName(file);
+            var clean = fileName.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)
+                ? fileName[..^12]
+                : fileName;
+            var stem = Path.GetFileNameWithoutExtension(clean);
             if (stem.StartsWith("wardrobe_", StringComparison.OrdinalIgnoreCase))
                 continue; // shared costume plates, not a character's own portrait
             if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
                 stem = stem[..^"_ref".Length];
-            if (Stage2PlannerService.NormalizeCharacterKey(stem) == targetNorm &&
-                new FileInfo(file).Length >= 64)
-                return file;
+            if (Stage2PlannerService.NormalizeCharacterKey(stem) == targetNorm)
+            {
+                if (File.Exists(file) && (new FileInfo(file).Length >= 64 || file.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)))
+                    return Path.Combine(charDir, clean);
+            }
         }
         return null;
     }

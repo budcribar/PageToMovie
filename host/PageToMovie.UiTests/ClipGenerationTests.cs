@@ -21,8 +21,9 @@ public class ClipGenerationTests
         var (ctx, page) = await _fx.NewPageAsync();
         try
         {
+            var projectName = "Clips_" + Guid.NewGuid().ToString("N")[..6];
             await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
-                "Clips_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+                projectName, "tell_tale_heart.fountain");
 
             var status = page.GetByTestId("scenes-status");
             await status.WaitForAsync(new() { Timeout = 60_000 });
@@ -41,7 +42,26 @@ public class ClipGenerationTests
             var badge = page.GetByTestId("scene-row").First.Locator("span.badge").First;
             await Assertions.Expect(badge).ToHaveClassAsync(new Regex("bg-success", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("scenes-play-selected")).ToBeVisibleAsync(new() { Timeout = 30_000 });
-        }
+
+            // Verify generated project files on disk
+            var projectDir = Path.Combine(_fx.WorkspaceRootPath, projectName);
+            var videoDir = Path.Combine(projectDir, "assets", "video");
+            Assert.True(Directory.Exists(videoDir), $"Expected video directory at {videoDir}");
+
+            // Verify .clip.json sidecar files were created for each generated clip
+            for (var c = 1; c <= clips; c++)
+            {
+                var sidecarPattern = $"scene_01_clip_{c:D2}*.clip.json";
+                var sidecarFiles = Directory.GetFiles(videoDir, sidecarPattern);
+                Assert.True(sidecarFiles.Length > 0, $"Expected sidecar manifest for scene 01 clip {c}");
+
+                var sidecarText = await File.ReadAllTextAsync(sidecarFiles[0]);
+                using var sidecarDoc = System.Text.Json.JsonDocument.Parse(sidecarText);
+                var root = sidecarDoc.RootElement;
+                Assert.Equal(1, root.GetProperty("scene").GetInt32());
+                Assert.Equal(c, root.GetProperty("clip").GetInt32());
+                Assert.True(root.TryGetProperty("duration_seconds", out var dur) && dur.GetDouble() > 0);
+            }
         finally { await ctx.CloseAsync(); }
     }
 }

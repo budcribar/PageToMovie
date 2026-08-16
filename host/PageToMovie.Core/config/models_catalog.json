@@ -299,6 +299,7 @@
       "absMaxClipDurationSeconds": 15,
       "maxSpeakersPerClip": 1,
       "maxExtensionSeconds": 10,
+      "maxEditInputDurationSeconds": 8.7,
       "videoCostPerSecondByResolution": {
         "480p": 0.05,
         "720p": 0.07

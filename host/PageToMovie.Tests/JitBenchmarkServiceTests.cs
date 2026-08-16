@@ -22,7 +22,8 @@ public class JitBenchmarkServiceTests
             IReadOnlyList<string>? referenceImagePaths = null,
             string? startFrameImagePath = null,
             string? continueFromVideoPath = null,
-            string? aspectRatio = null)
+            string? aspectRatio = null,
+            string? extendSourceFileId = null)
         {
             GenerationSubmitted = true;
             return Task.FromResult("test_job_123");
