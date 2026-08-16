@@ -1,153 +1,132 @@
 <style>.ptm-process-strip-loading { cursor: wait; opacity: 0.9; }</style>
 @namespace PageToMovie.Web.Components
 @* Full studio: Setup (0) → Book → Estimate → Film → Review; Cast is optional craft (Edit path).
-   SimpleMode: Book → Your voice → Film (bait path for library + narrator clone)
-   Back / Next always sit with the strip so every stage has the same prev/next chrome. *@
+   SimpleMode: Book → Your voice → Film (bait path for library + narrator clone) *@
 @inject ActiveProjectState ActiveProject
 @inject NavigationManager Nav
 @inject IAppLocalizer L
 
-<div class="ptm-process-nav mb-3" data-testid="studio-process-nav">
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary ptm-process-nav__btn"
-            data-testid="studio-step-back"
-            disabled="@(!CanGoBack)"
-            title="@(CanGoBack ? $"Back to {PrevStep.Label}" : (PrevStep.BlockedReason ?? "No previous step"))"
-            @onclick="GoBack">
-        ← Back
-    </button>
+<nav class="ptm-step-strip ptm-step-strip--studio mb-3" aria-label="Studio process steps" data-testid="studio-process-nav">
+@if (NeedsSetup)
+{
+    <a class="ptm-step @(Active == "setup" ? "is-active" : "")"
+       href="configuration"
+       title="Connect your AI API keys (bring your own key) before importing a book"
+       data-testid="studio-step-setup">
+        <span class="ptm-step__num">0</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Setup"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.ApiKeys"]</span>
+        </span>
+    </a>
+}
 
-    <nav class="ptm-step-strip ptm-step-strip--studio mb-0 flex-grow-1" aria-label="Studio process steps">
-    @if (NeedsSetup)
-    {
-        <a class="ptm-step @(Active == "setup" ? "is-active" : "")"
-           href="configuration"
-           title="Connect your AI API keys (bring your own key) before importing a book"
-           data-testid="studio-step-setup">
-            <span class="ptm-step__num">0</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Setup"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.ApiKeys"]</span>
-            </span>
-        </a>
-    }
-
-    @if (UseSimple)
-    {
-        <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
-           href="@(BookLocked ? "javascript:void(0)" : "simple-voice")"
-           title="@(BookLocked ? "Connect API keys in Setup first" : "Pick a library story")"
-           data-testid="studio-step-book"
-           @onclick="OnStoryStepClick"
-           @onclick:preventDefault="@(BookLocked || HandleStoryInPage)">
-            <span class="ptm-step__num">1</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Story"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.LibraryBook"]</span>
-            </span>
-        </a>
-        <a class="ptm-step @(Active == "cast" ? "is-active" : "")"
-           href="simple-voice"
-           title="Record your narrator voice — no cast list"
-           data-testid="studio-step-cast">
-            <span class="ptm-step__num">2</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.YourVoice"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.RecordDone"]</span>
-            </span>
-        </a>
-        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanScenes || Active == "film" ? "scenes?simple=1" : "javascript:void(0)")"
-           title="@(ActiveProject.CanScenes ? "Generate the movie" : ActiveProject.ScenesBlockedReason)"
-           data-testid="studio-step-film"
-           @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
-            <span class="ptm-step__num">3</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Movie"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.GenerateAll"]</span>
-            </span>
-        </a>
-    }
-    else
-    {
-        @* Primary spine: Book → Estimate → Film → Review *@
-        <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
-           href="@(BookLocked ? "javascript:void(0)" : "adaptation")"
-           title="@(BookLocked ? "Connect API keys in Setup first" : "Import book and write screenplay")"
-           data-testid="studio-step-book"
-           @onclick:preventDefault="@BookLocked">
-            <span class="ptm-step__num">1</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Book"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.ImportScreenplay"]</span>
-            </span>
-            @* Advanced/BYOK only: AI model selection status. Click → Settings. *@
-            @if (ActiveProject.HasProject)
-            {
-                <span class="ptm-step__badge ms-auto align-self-center"
-                      role="button"
-                      tabindex="0"
-                      data-testid="studio-step-book-model"
-                      title="@(ModelReady ? "AI model selected — click to change in Settings" : "No AI model selected — click to choose one in Settings")"
-                      @onclick="GoToModelSettings"
-                      @onclick:preventDefault="true"
-                      @onclick:stopPropagation="true">
-                    @if (ModelReady)
-                    {
-                        <span class="badge rounded-pill text-bg-success" aria-label="AI model selected">✓</span>
-                    }
-                    else
-                    {
-                        <span class="badge rounded-pill text-bg-warning text-dark" aria-label="No AI model selected">⚠</span>
-                    }
-                </span>
-            }
-        </a>
-        <a class="ptm-step @(Active == "estimate" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "estimate" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanEstimate || Active == "estimate" ? "cost" : "javascript:void(0)")"
-           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie" : ActiveProject.EstimateBlockedReason)"
-           data-testid="studio-step-estimate"
-           @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
-            <span class="ptm-step__num">2</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Estimate"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.QuoteConfirm"]</span>
-            </span>
-        </a>
-        @* Cast is NOT on this strip — open via craft / Characters *@
-        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
-           title="@FilmStepTitle"
-           data-testid="studio-step-film"
-           @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
-            <span class="ptm-step__num">3</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Film"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.ClipsStitch"]</span>
-            </span>
-        </a>
-        @if (ActiveProject.CanReview || Active == "review")
+@if (UseSimple)
+{
+    <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
+       href="@(BookLocked ? "javascript:void(0)" : "simple-voice")"
+       title="@(BookLocked ? "Connect API keys in Setup first" : "Pick a library story")"
+       data-testid="studio-step-book"
+       @onclick="OnStoryStepClick"
+       @onclick:preventDefault="@(BookLocked || HandleStoryInPage)">
+        <span class="ptm-step__num">1</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Story"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.LibraryBook"]</span>
+        </span>
+    </a>
+    <a class="ptm-step @(Active == "cast" ? "is-active" : "")"
+       href="simple-voice"
+       title="Record your narrator voice — no cast list"
+       data-testid="studio-step-cast">
+        <span class="ptm-step__num">2</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.YourVoice"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.RecordDone"]</span>
+        </span>
+    </a>
+    <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
+       href="@(ActiveProject.CanScenes || Active == "film" ? "scenes?simple=1" : "javascript:void(0)")"
+       title="@(ActiveProject.CanScenes ? "Generate the movie" : ActiveProject.ScenesBlockedReason)"
+       data-testid="studio-step-film"
+       @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
+        <span class="ptm-step__num">3</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Movie"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.GenerateAll"]</span>
+        </span>
+    </a>
+}
+else
+{
+    @* Primary spine: Book → Estimate → Film → Review *@
+    <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
+       href="@(BookLocked ? "javascript:void(0)" : "adaptation")"
+       title="@(BookLocked ? "Connect API keys in Setup first" : "Import book and write screenplay")"
+       data-testid="studio-step-book"
+       @onclick:preventDefault="@BookLocked">
+        <span class="ptm-step__num">1</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Book"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.ImportScreenplay"]</span>
+        </span>
+        @* Advanced/BYOK only: AI model selection status. Click → Settings. *@
+        @if (ActiveProject.HasProject)
         {
-            <a class="ptm-step @(Active == "review" ? "is-active" : "")"
-               href="review"
-               title="Approve and publish"
-               data-testid="studio-step-review">
-                <span class="ptm-step__num">4</span>
-                <span class="ptm-step__body">
-                    <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
-                    <span class="ptm-step__hint">@L["ProcessStrip.EditAfterward"]</span>
-                </span>
-            </a>
+            <span class="ptm-step__badge ms-auto align-self-center"
+                  role="button"
+                  tabindex="0"
+                  data-testid="studio-step-book-model"
+                  title="@(ModelReady ? "AI model selected — click to change in Settings" : "No AI model selected — click to choose one in Settings")"
+                  @onclick="GoToModelSettings"
+                  @onclick:preventDefault="true"
+                  @onclick:stopPropagation="true">
+                @if (ModelReady)
+                {
+                    <span class="badge rounded-pill text-bg-success" aria-label="AI model selected">✓</span>
+                }
+                else
+                {
+                    <span class="badge rounded-pill text-bg-warning text-dark" aria-label="No AI model selected">⚠</span>
+                }
+            </span>
         }
+    </a>
+    <a class="ptm-step @(Active == "estimate" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "estimate" ? "is-disabled" : "")"
+       href="@(ActiveProject.CanEstimate || Active == "estimate" ? "cost" : "javascript:void(0)")"
+       title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie" : ActiveProject.EstimateBlockedReason)"
+       data-testid="studio-step-estimate"
+       @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
+        <span class="ptm-step__num">2</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Estimate"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.QuoteConfirm"]</span>
+        </span>
+    </a>
+    @* Cast is NOT on this strip — open via craft / Characters *@
+    <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
+       href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
+       title="@FilmStepTitle"
+       data-testid="studio-step-film"
+       @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
+        <span class="ptm-step__num">3</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">@L["ProcessStrip.Film"]</span>
+            <span class="ptm-step__hint">@L["ProcessStrip.ClipsStitch"]</span>
+        </span>
+    </a>
+    @if (ActiveProject.CanReview || Active == "review")
+    {
+        <a class="ptm-step @(Active == "review" ? "is-active" : "")"
+           href="review"
+           title="Approve and publish"
+           data-testid="studio-step-review">
+            <span class="ptm-step__num">4</span>
+            <span class="ptm-step__body">
+                <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
+                <span class="ptm-step__hint">@L["ProcessStrip.EditAfterward"]</span>
+            </span>
+        </a>
     }
-    </nav>
-
-    <button type="button"
-            class="btn btn-sm btn-outline-primary ptm-process-nav__btn"
-            data-testid="studio-step-next"
-            disabled="@(!CanGoNext)"
-            title="@(CanGoNext ? $"Next: {NextStep.Label}" : (NextStep.BlockedReason ?? "No next step"))"
-            @onclick="GoNext">
-        Next →
-    </button>
-</div>
+}
+</nav>
