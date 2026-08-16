@@ -435,6 +435,10 @@ public sealed class LocationSummary
     /// Unused seeds stay in cast_seeds but are hidden from the default Locations list.
     /// </summary>
     public bool UsedInPlan { get; set; } = true;
+    /// <summary>Shared physical building / setting identifier for paired INT/EXT consistency (e.g. "Schoolhouse").</summary>
+    public string? SettingAnchor { get; set; }
+    /// <summary>Shared physical architectural features (openings, windows, materials) across paired places.</summary>
+    public string? ArchitecturalFeatures { get; set; }
 }
 
 /// <summary>Save location description / visual_lock (Locations look panel).</summary>
@@ -442,6 +446,8 @@ public sealed class UpdateLocationLookRequest
 {
     public string? Description { get; set; }
     public string? VisualLock { get; set; }
+    public string? SettingAnchor { get; set; }
+    public string? ArchitecturalFeatures { get; set; }
 }
 
 /// <summary>Background job: generate location set plate variants (Grok image).</summary>

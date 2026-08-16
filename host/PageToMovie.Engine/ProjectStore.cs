@@ -2820,6 +2820,7 @@ public sealed partial class ProjectStore
 
         EnrichStubLocationsFromFountain(projectId, rows);
         ApplyPlanUsageToLocations(projectId, rows);
+        PageToMovie.Adaptation.Conversion.LocationArchitecturalCoherence.Harmonize(rows);
 
         return rows
             .OrderBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -2837,12 +2838,16 @@ public sealed partial class ProjectStore
             desc = vlock;
         if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
             vlock = desc;
+        var anchor = JsonStr(info, "setting_anchor");
+        var arch = JsonStr(info, "architectural_features");
         var row = new LocationSummary
         {
             Key = key,
             DisplayName = display,
             Description = desc,
             VisualLock = vlock,
+            SettingAnchor = string.IsNullOrWhiteSpace(anchor) ? null : anchor,
+            ArchitecturalFeatures = string.IsNullOrWhiteSpace(arch) ? null : arch,
             UsedInPlan = true,
         };
         FillLocationPlateStatus(projectId, row);
@@ -3403,7 +3408,13 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>Write description + visual_lock into location_seed_tokens (cast_seeds / blueprint).</summary>
-    public bool UpdateLocationLook(string projectId, string locKey, string? description, string? visualLock)
+    public bool UpdateLocationLook(
+        string projectId,
+        string locKey,
+        string? description,
+        string? visualLock,
+        string? settingAnchor = null,
+        string? architecturalFeatures = null)
     {
         if (string.IsNullOrWhiteSpace(locKey)) return false;
         try
@@ -3435,6 +3446,10 @@ public sealed partial class ProjectStore
                 entry[JsonKeys.Description] = description;
             if (visualLock is not null)
                 entry[StoreLit.VisualLock] = visualLock;
+            if (settingAnchor is not null)
+                entry["setting_anchor"] = settingAnchor;
+            if (architecturalFeatures is not null)
+                entry["architectural_features"] = architecturalFeatures;
             locs[locKey] = entry;
             root[StoreLit.LocationSeedTokens] = locs;
             // Preserve character_seed_tokens if present

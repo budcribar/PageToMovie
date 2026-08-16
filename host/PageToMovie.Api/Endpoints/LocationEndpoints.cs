@@ -84,7 +84,7 @@ public static class LocationEndpoints
                     holderUserId = lease.HolderUserId,
                 }, statusCode: StatusCodes.Status423Locked);
         }
-        var ok = store.UpdateLocationLook(id, locKey, body.Description, body.VisualLock);
+        var ok = store.UpdateLocationLook(id, locKey, body.Description, body.VisualLock, body.SettingAnchor, body.ArchitecturalFeatures);
         if (!ok)
             return Results.BadRequest(new { ok = false, error = "Could not update location look" });
         var row = store.ListLocations(id).FirstOrDefault(l =>
