@@ -3702,7 +3702,23 @@ public class UserDatabaseService
         cmd.CommandText = $"UPDATE {SqlLit.Users} SET active_project_id = @pid WHERE LOWER(user_id) = LOWER(@id) OR user_id = @id";
         cmd.Parameters.AddWithValue("@pid", (object?)projectId?.Trim() ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", userId.Trim());
-        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        var updated = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        if (updated > 0) return;
+
+        // No row yet for this user (fresh workspace, dev/fakes login, or a session that never
+        // touched the users table): a bare UPDATE silently persisted nothing, so every project
+        // list fell back to the first project alphabetically — a freshly created project was
+        // "active" in the browser but not on the server. Create the row like AcceptTermsAsync does.
+        using var ins = conn.CreateCommand();
+        ins.CommandText = $@"
+            INSERT INTO {SqlLit.Users} (user_id, username, password_hash, created_at, active_project_id)
+            VALUES (@id, {SqlLit.ParamName}, '', @t, @pid)
+            ON CONFLICT(user_id) DO UPDATE SET active_project_id = @pid;";
+        ins.Parameters.AddWithValue("@id", userId.Trim());
+        ins.Parameters.AddWithValue(SqlLit.ParamName, userId.Trim());
+        ins.Parameters.AddWithValue("@t", DateTime.UtcNow.ToString("o"));
+        ins.Parameters.AddWithValue("@pid", (object?)projectId?.Trim() ?? DBNull.Value);
+        await ins.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<bool> AcceptTermsAsync(string userId, string termsVersion = "1.0", CancellationToken ct = default)

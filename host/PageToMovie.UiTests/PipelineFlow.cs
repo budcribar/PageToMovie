@@ -163,7 +163,7 @@ public static class PipelineFlow
                 const st = await fetch('/api/jobs/'+encodeURIComponent(jobId), {headers:h}).then(r=>r.json());
                 last = (st.job||{}).status || (st.job||{}).Status;
                 if (last === 'done') return JSON.stringify({ok:true});
-                if (last === 'error' || last === 'cancelled') return JSON.stringify({err:'job '+last, job:st.job});
+                if (last === 'error' || last === 'cancelled') return JSON.stringify({err:'job '+last, job:st.job, activeId:id, projects:(pr.projects||[]).map(p=>p.id), clientProject:(sessionStorage.getItem('PageToMovie.activeProject')||localStorage.getItem('PageToMovie.activeProject')||''), url:location.href});
             }
             return JSON.stringify({err:'timeout', last});
         }");

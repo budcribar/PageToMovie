@@ -43,7 +43,7 @@ public class UserModeTests
 
             // Navigate via the in-app link so the client-side user-mode state persists.
             await page.Locator("a[href='/scenes']").First.ClickAsync();
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Scenes & clips" })).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Film", Exact = true })).ToBeVisibleAsync();
 
             // Product rule: user-facing pages must not leak provider/model jargon.
             var body = await page.EvalOnSelectorAsync<string>("body", "el => el.innerText");
