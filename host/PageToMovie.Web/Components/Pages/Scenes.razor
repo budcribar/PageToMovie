@@ -203,31 +203,6 @@ else
     </InlineAlert>
 }
 
-@if (List._castChecked && !List.CastReady)
-{
-    <InlineAlert Variant="warning" CssClass="py-2" data-testid="scenes-cast-gate">
-        Cast incomplete
-        @if (List._castReadyCount is int cr && List._castTotal is int ct)
-        {
-            <span>(@cr/@ct)</span>
-        }
-        —
-        @if (ProductionModes.IsDraft(List._costReport?.ProductionMode))
-        {
-            <span>finish voice on speaking cast (draft: plates optional)</span>
-        }
-        else
-        {
-            <span>finish voice + locks on</span>
-        }
-        <a class="alert-link" href="characters">Characters →</a>
-        @if (!ProductionModes.IsDraft(List._costReport?.ProductionMode))
-        {
-            <span class="text-muted"> · or switch to <a class="alert-link" href="cost">Draft mode</a> for a first watch without plates</span>
-        }
-    </InlineAlert>
-}
-
 
 @* ---- Scene version history (P3) ---- *@
 @* Own flag — distinct from History._showSceneHistory (the unrelated git-commit history modal further

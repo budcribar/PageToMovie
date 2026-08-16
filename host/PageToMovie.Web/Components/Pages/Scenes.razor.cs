@@ -227,6 +227,12 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
 
             await List.ReloadListAsync();
 
+            // If the shot plan hasn't been built yet on this project, automatically kick off building the shot plan.
+            if (ActiveProject.CanScenes && !IsSimpleFilm && (List._scenes is null || List._scenes.Count == 0) && !Gen.JobRunning)
+            {
+                await List.RebuildShotPlanAsync();
+            }
+
             // Deep-link from screenplay outline: /scenes?scene=12&play=1
             await TryOpenSceneFromQueryAsync();
         }
