@@ -12,6 +12,7 @@
 <PageTitle>Locations — PageToMovie</PageTitle>
 
 <div class="container-fluid py-3" data-testid="locations-page">
+    <StudioProcessStrip Active="locations" FullStudio="true" />
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h4 mb-0">Locations</h1>
@@ -37,6 +38,9 @@
                     @onclick="StartPlanLooksAsync">
                 Generate looks for plan
             </button>
+            <a class="btn btn-sm btn-success fw-semibold" href="scenes" title="Open Film to generate video clips and stitch the movie">
+                Open Film →
+            </a>
         </div>
     </div>
 

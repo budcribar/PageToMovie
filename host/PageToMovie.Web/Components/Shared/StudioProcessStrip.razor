@@ -59,7 +59,7 @@
 }
 else
 {
-    @* Primary spine: 1 Book → 2 Estimate → 3 Screenplay → 4 Film → 5 Review *@
+    @* Primary spine: 1 Book → 2 Estimate → 3 Screenplay → 4 Cast → 5 Locations → 6 Film → 7 Review *@
     <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
        href="@(BookLocked ? "javascript:void(0)" : "adaptation/import")"
        title="@(BookLocked ? "Connect API keys in Setup first" : "Import book text")"
@@ -112,12 +112,32 @@ else
             <span class="ptm-step__hint">Edit beats</span>
         </span>
     </a>
+    <a class="ptm-step @(Active is "cast" or "characters" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "cast" ? "is-disabled" : "")"
+       href="characters"
+       title="Lock character voices & visual looks"
+       data-testid="studio-step-cast">
+        <span class="ptm-step__num">4</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">Cast</span>
+            <span class="ptm-step__hint">Lock cast</span>
+        </span>
+    </a>
+    <a class="ptm-step @(Active is "locations" or "locs" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "locations" ? "is-disabled" : "")"
+       href="locations"
+       title="Lock location set plates"
+       data-testid="studio-step-locations">
+        <span class="ptm-step__num">5</span>
+        <span class="ptm-step__body">
+            <span class="ptm-step__label">Locations</span>
+            <span class="ptm-step__hint">Lock set plates</span>
+        </span>
+    </a>
     <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
        href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
        title="@FilmStepTitle"
        data-testid="studio-step-film"
        @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
-        <span class="ptm-step__num">4</span>
+        <span class="ptm-step__num">6</span>
         <span class="ptm-step__body">
             <span class="ptm-step__label">Film</span>
             <span class="ptm-step__hint">Clips & stitch</span>
@@ -129,7 +149,7 @@ else
            href="review"
            title="Approve and publish"
            data-testid="studio-step-review">
-            <span class="ptm-step__num">5</span>
+            <span class="ptm-step__num">7</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">Review</span>
                 <span class="ptm-step__hint">Approve & export</span>

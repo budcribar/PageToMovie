@@ -3,25 +3,7 @@
         <div class="d-flex align-items-center gap-1 overflow-hidden">
             @if (!IsCompact)
             {
-                <div class="btn-group btn-group-sm" role="group" aria-label="Outline mode">
-                    <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Scenes ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick='() => SetTab(OutlineSidebarTab.Scenes)'>Scenes</button>
-                    <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Cast ? "btn-warning" : "btn-outline-secondary")"
-                            @onclick='() => SetTab(OutlineSidebarTab.Cast)'>Cast</button>
-                    <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Locations ? "btn-info text-dark" : "btn-outline-secondary")"
-                            @onclick='() => SetTab(OutlineSidebarTab.Locations)'>Locs</button>
-                </div>
-            }
-            else
-            {
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        title="Cycle Scenes / Cast / Locations"
-                        @onclick="ToggleOutlineTab">
-                    @CompactTabLetter
-                </button>
+                <span class="badge text-bg-primary fw-bold px-2 py-1" title="Scenes Outline">Scenes</span>
             }
         </div>
         <div class="d-flex align-items-center gap-1">
