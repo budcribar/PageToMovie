@@ -22,13 +22,13 @@
                                        @onchange="e => ClipSel.ToggleSelectAllClips((bool)(e.Value ?? false))" />
                             </th>
                             <th style="width:7rem;">Clip</th>
-                            <th style="width:6rem; cursor:pointer; user-select:none;"
+                            <th style="width:5rem; cursor:pointer; user-select:none;"
                                 @onclick="ClipSel.ToggleClipDurationSort"
                                 title="Click to sort by duration">
                                 Dur @ClipSel.DurationSortArrow
                             </th>
-                            <th>Dialogue</th>
-                            <th style="width:7rem;">Beat</th>
+                            <th>Beat / Script Content</th>
+                            <th style="width:5rem;">Beat ID</th>
                             <th style="width:4rem;">Status</th>
                         </tr>
                     </thead>
@@ -133,17 +133,29 @@
                                     }
                                 </td>
                                 <td class="small clip-dialogue-cell"
-                                    title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? "Click to add dialogue" : c.Dialogue + " (click to edit)")"
+                                    title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? (string.IsNullOrWhiteSpace(c.VisualPrompt) ? "Click to edit beat fields" : c.VisualPrompt) : $"{c.Speaker}: {c.Dialogue} (click to edit)")"
                                     style="cursor:pointer;"
                                     @onclick:stopPropagation="true"
                                     @onclick="() => ClipForm.OpenClipEditor(c)">
-                                    @if (string.IsNullOrWhiteSpace(c.Dialogue))
+                                    @if (!string.IsNullOrWhiteSpace(c.Speaker))
                                     {
-                                        <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
+                                        <strong class="text-info me-1" style="letter-spacing:0.03em;">@c.Speaker.ToUpper():</strong>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.Dialogue))
+                                    {
+                                        <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 110)</span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
+                                    {
+                                        <span class="text-muted fst-italic">🎬 @Scenes.Trunc(c.VisualPrompt, 110)</span>
                                     }
                                     else
                                     {
-                                        <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 90)</span>
+                                        <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
+                                    }
+                                    @if (c.CharactersOnScreen.Count > 0)
+                                    {
+                                        <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
                                     }
                                 </td>
                             
