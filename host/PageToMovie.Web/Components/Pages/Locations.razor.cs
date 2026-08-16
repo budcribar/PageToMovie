@@ -38,7 +38,7 @@ public partial class Locations : IDisposable
 
     private string? ListThumbUrl(LocationSummary loc)
     {
-        if (loc.HasPreferred || loc.Locked)
+        if (loc.HasPreferred || (loc.Locked && loc.PreferredUrl is { Length: > 0 }))
         {
             if (loc.PreferredUrl is { Length: > 0 } u)
                 return KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
@@ -319,7 +319,7 @@ public partial class Locations : IDisposable
     {
         _editDescription = loc.Description ?? "";
         _editVisualLock = loc.VisualLock ?? "";
-        if (loc.HasPreferred || loc.Locked)
+        if (loc.HasPreferred || (loc.Locked && loc.PreferredUrl is { Length: > 0 }))
         {
             if (loc.PreferredUrl is { Length: > 0 } u)
                 _plateUrl = KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
