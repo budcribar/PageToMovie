@@ -53,14 +53,27 @@
                 <span class="text-warning">@missingCount missing</span>
             }
         </div>
-        @if (list.CastReady)
-        {
-            <span class="badge bg-success-subtle text-success border border-success border-opacity-25" style="font-size:0.65rem;" title="Cast looks & voices locked in Step 2">🔒 Cast Locked</span>
-        }
-        else
-        {
-            <a href="characters" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none" style="font-size:0.65rem;" title="Pin character looks & voices in Step 2 before generating clips">⚠️ Cast Unlocked →</a>
-        }
+        <div class="d-flex flex-wrap align-items-center gap-1">
+            @if (list.CastReady)
+            {
+                <span class="badge bg-success-subtle text-success border border-success border-opacity-25" style="font-size:0.65rem;" title="Cast looks & voices locked in Cast page">🔒 Cast Locked</span>
+            }
+            else
+            {
+                <a href="characters" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none" style="font-size:0.65rem;" title="Lock character looks & voices on Cast page before generating clips">⚠️ Cast Unlocked →</a>
+            }
+            @if (list._detail is not null && !string.IsNullOrEmpty(list._detail.PrimaryLocationId))
+            {
+                @if (list._detail.PrimaryLocationLocked)
+                {
+                    <span class="badge bg-success-subtle text-success border border-success border-opacity-25" style="font-size:0.65rem;" title="Location set plate locked">🔒 Loc Locked</span>
+                }
+                else
+                {
+                    <a href="@($"/locations?loc={Uri.EscapeDataString(list._detail.PrimaryLocationId)}")" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none" style="font-size:0.65rem;" title="Lock location set plate on Locations page before generating clips">⚠️ Loc Unlocked →</a>
+                }
+            }
+        </div>
     </div>
 
     <div class="card mb-2 p-2 bg-dark bg-opacity-25 border-secondary border-opacity-50">
