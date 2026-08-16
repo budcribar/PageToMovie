@@ -78,6 +78,9 @@ public partial class Scenes
     // Batch-generate confirm modal: resolution + cost decided at the moment of spend.
     internal bool _showGenerateConfirm;
 
+    // Batch-regenerate confirm modal: single confirmation prompt for all selected scenes.
+    internal bool _showRegenerateConfirm;
+
 
 
     // Admin-only: video models offered as a one-off per-batch override in the Generate modal, so an
@@ -871,6 +874,31 @@ public partial class Scenes
 
 
     internal void CloseGenerateConfirm() => _showGenerateConfirm = false;
+
+    internal async Task OpenRegenerateConfirmAsync()
+    {
+        if (S.IsSimpleFilm)
+        {
+            await StartSimpleMovieAsync();
+            return;
+        }
+        if (S.List._selected.Count == 0)
+        {
+            S.List.SelectAll();
+        }
+        if (S.List._selected.Count == 0) return;
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        _showRegenerateConfirm = true;
+        await S.List.RefreshCostEstimateAsync();
+    }
+
+    internal void CloseRegenerateConfirm() => _showRegenerateConfirm = false;
+
+    internal async Task ConfirmRegenerateBatchAsync()
+    {
+        _showRegenerateConfirm = false;
+        await StartBatchForceSelectedAsync();
+    }
 
 
 

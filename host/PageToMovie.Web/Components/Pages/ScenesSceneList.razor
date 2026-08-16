@@ -124,7 +124,7 @@
                             data-testid="scenes-generate-batch"
                             class="btn batch-go @((Host.IsSimpleFilm || (Host.List._selected.Count > 0 && Host.List.CastReady)) && !Host.Gen.JobRunning ? "batch-go--ready" : "")"
                             disabled="@(Host._busy || Host.Gen.JobRunning || Host.List.SelectedLockedByOther || (!Host.IsSimpleFilm && (Host.List._selected.Count == 0 || !Host.List.CastReady)))"
-                            title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : Host.List.GenerateBatchTitle)"
+                            title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : "Generate only missing clips in selected scenes")"
                             @onclick="Host.Gen.OpenGenerateConfirmAsync">
                         @if (Host.Gen.JobRunning)
                         {
@@ -145,18 +145,25 @@
                     </button>
                     </CapabilityLockedControl>
 
+                    <button type="button"
+                            class="btn btn-outline-warning btn-sm"
+                            data-testid="scenes-regenerate-selected"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || Host.List.SelectedLockedByOther || (!Host.IsSimpleFilm && (Host.List._selected.Count == 0 || !Host.List.CastReady)))"
+                            title="Re-render all clips in selected scenes (prompts for confirmation)"
+                            @onclick="Host.Gen.OpenRegenerateConfirmAsync">
+                        🔄 Regenerate @Host.List.GenerateBatchNoun
+                    </button>
+
                     @if (Host.List._scenes is not null && Host.List.GetVisibleScenes().Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
                     {
                         <button type="button"
-                                class="btn btn-sm btn-outline-secondary ms-2"
+                                class="btn btn-sm btn-outline-secondary"
                                 disabled="@Host._busy"
                                 title="Select scenes that still need clips"
                                 @onclick="Host.List.SelectMissingScenes">
                             @L["ScenesPage.SelectMissing"]
                         </button>
                     }
-
-
                 </div>
 
                 <div class="d-flex align-items-center gap-2">
@@ -184,10 +191,10 @@
                             class="btn btn-outline-secondary btn-sm"
                             disabled="@(Host._busy || Host.Gen.JobRunning)"
                             title="@(Host.List._selected.Count > 0
-                                ? $"Regenerate only the {Host.List._selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
-                                : "Check scenes first to regenerate just those — with nothing checked, this rebuilds every scene from the screenplay")"
+                                ? $"Regenerate shot plan for {Host.List._selected.Count} checked scene(s) from the screenplay"
+                                : "Rebuild entire shot plan from the screenplay")"
                             @onclick="Host.List.RebuildShotPlanAsync">
-                        🔄 @L["ScenesPage.RebuildShotPlan"]
+                        📝 @L["ScenesPage.RebuildShotPlan"]
                     </button>
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"

@@ -1,0 +1,176 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
+@* Page-local to Scenes — Scene index (sidebar) *@
+@inject StudioCapabilityState Caps
+@inject AdminSessionService Session
+@inject IAppLocalizer L
+@inject EngineApiClient Engine
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using PageToMovie.Core.Models
+@using PageToMovie.Web.Services
+
+@{
+    var list = ListState ?? Host.List;
+    var scenes = FilteredScenes.ToList();
+    var totalCount = list._scenes?.Count ?? 0;
+    var completeCount = list._scenes?.Count(s => s.ClipsComplete) ?? 0;
+    var missingCount = totalCount - completeCount;
+}
+
+<div class="col-12 col-md-4 col-lg-3" data-testid="scene-index">
+    <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
+        <span class="small fw-semibold">@L["ScenesPage.SceneIndex"]</span>
+        <div class="d-flex align-items-center gap-1">
+            @if (list._selectedScene is not null)
+            {
+                <button type="button"
+                        class="btn btn-link btn-sm py-0 px-1 text-decoration-none"
+                        data-testid="scene-index-to-table"
+                        title="View full scenes table overview"
+                        @onclick="list.BackToListAsync">
+                    📊 Overview
+                </button>
+            }
+            <button type="button"
+                    class="btn btn-link btn-sm py-0 px-1 text-decoration-none"
+                    data-testid="scene-index-add-scene"
+                    disabled="@(Host._busy || Host.Gen.JobRunning)"
+                    title="Add a new scene"
+                    @onclick="() => list.AddSceneAsync(false)">
+                ➕ Add
+            </button>
+        </div>
+    </div>
+
+    <div class="small text-muted mb-2 px-1 d-flex flex-wrap align-items-center gap-1" data-testid="scene-index-summary">
+        <span>@totalCount @(totalCount == 1 ? "scene" : "scenes")</span>
+        <span>·</span>
+        <span class="text-success">@completeCount ready</span>
+        @if (missingCount > 0)
+        {
+            <span>·</span>
+            <span class="text-warning">@missingCount missing</span>
+        }
+    </div>
+
+    <div class="card mb-2 p-2 bg-dark bg-opacity-25 border-secondary border-opacity-50">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+            <div class="form-check form-check-inline mb-0 small">
+                <input class="form-check-input" type="checkbox" id="masterSceneCheck"
+                       data-testid="scene-index-select-all"
+                       checked="@list.AreAllVisibleSelected()"
+                       disabled="@(Host._busy || scenes.Count == 0)"
+                       @onchange="e => list.ToggleSelectAllShown((bool)(e.Value ?? false))" />
+                <label class="form-check-label text-muted" for="masterSceneCheck" style="cursor:pointer;">
+                    @(list._selected.Count > 0 ? $"{list._selected.Count} selected" : "Select all")
+                </label>
+            </div>
+            @if (scenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+            {
+                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-warning text-decoration-none small"
+                        data-testid="scene-index-select-missing"
+                        disabled="@Host._busy"
+                        title="Select scenes that still need clips"
+                        @onclick="list.SelectMissingScenes">
+                    Select missing
+                </button>
+            }
+            @if (list._selected.Count > 0)
+            {
+                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-muted text-decoration-none small"
+                        data-testid="scene-index-clear-selection"
+                        @onclick="list.ClearSelection">
+                    Clear
+                </button>
+            }
+        </div>
+        <div class="input-group input-group-sm">
+            <span class="input-group-text bg-dark border-secondary text-muted py-0 px-2">🔍</span>
+            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   placeholder="Filter scenes…"
+                   data-testid="scene-index-search"
+                   @bind="_filterText"
+                   @bind:event="oninput" />
+            @if (!string.IsNullOrWhiteSpace(_filterText))
+            {
+                <button class="btn btn-outline-secondary py-0 px-2" type="button" @onclick="() => _filterText = string.Empty">✕</button>
+            }
+        </div>
+    </div>
+
+    <div class="list-group list-group-flush border rounded scene-index-list"
+         style="max-height: 72vh; overflow-y: auto;">
+        @foreach (var s in scenes)
+        {
+            var sn = s.SceneNumber;
+            var isSel = list._selected.Contains(sn);
+            var isActive = list._selectedScene == sn;
+            var (pg, pgCls, pgTitle) = Scenes.ScenesListState.SceneProgressGlyph(s);
+
+            <div @key="sn"
+                 class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2 px-2 @(isActive ? "active" : "") @(isSel ? "border-start border-3 border-primary" : "")"
+                 style="cursor:pointer;"
+                 data-testid="scene-index-item"
+                 data-scene-number="@sn"
+                 title="@ItemTitle(s)"
+                 @onclick="() => list.OpenSceneAsync(sn)">
+
+                <div class="form-check mb-0 flex-shrink-0" @onclick:stopPropagation="true">
+                    <input class="form-check-input" type="checkbox"
+                           checked="@isSel"
+                           disabled="@Host._busy"
+                           @onchange="e => list.ToggleSelect(sn, (bool)(e.Value ?? false))" />
+                </div>
+
+                <div class="flex-shrink-0">
+                    <span class="badge @(s.ClipsComplete ? "bg-success text-white" : (s.ClipsOnDisk > 0 ? "bg-warning text-dark" : "bg-secondary text-light")) px-1 py-1 rounded">
+                        S@(sn.ToString("D2"))
+                    </span>
+                </div>
+
+                <div class="flex-grow-1 min-w-0" style="line-height:1.2;">
+                    <div class="text-truncate small fw-semibold @(isActive ? "text-white" : "")">
+                        @(string.IsNullOrWhiteSpace(s.Setting) ? "—" : s.Setting)
+                    </div>
+                    <div class="d-flex align-items-center gap-1 small text-muted" style="font-size:0.75rem;">
+                        <span class="@pgCls" title="@pgTitle">@pg</span>
+                        <span class="@Scenes.ScenesListState.ClipsCountClass(s)">@s.ClipsOnDisk/@s.ClipCount</span>
+                        @if (s.ActualDurationSeconds is double ad)
+                        {
+                            <span>· @Scenes.FormatClock(ad)</span>
+                        }
+                        else if (s.PlannedDurationSeconds is double pd)
+                        {
+                            <span>· ~@Scenes.FormatClock(pd)</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="flex-shrink-0 d-flex align-items-center gap-1" @onclick:stopPropagation="true">
+                    @if (s.HasBackgroundMusic)
+                    {
+                        <span title="Has background music" class="small">🎵</span>
+                    }
+                    @if (s.CompositeExists)
+                    {
+                        <span class="badge bg-dark border border-secondary text-muted px-1" style="font-size:0.65rem;">mux</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (scenes.Count == 0)
+        {
+            <div class="p-3 small text-muted text-center">
+                @if (!string.IsNullOrWhiteSpace(_filterText))
+                {
+                    <span>No scenes match "@_filterText".</span>
+                }
+                else
+                {
+                    <span>No scenes in this shot plan.</span>
+                }
+            </div>
+        }
+    </div>
+</div>

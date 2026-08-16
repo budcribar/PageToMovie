@@ -307,8 +307,7 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                      CssClass="border-info shadow-sm" />
 }
 
-@if (List._selectedScene is null)
-{
+    <div class="row">
     <CascadingValue Value="this" IsFixed="true">
     <CascadingValue Value="List" IsFixed="true">
     <CascadingValue Value="Gen" IsFixed="true">
@@ -321,40 +320,23 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
     <CascadingValue Value="Dialogue" IsFixed="true">
     <CascadingValue Value="History" IsFixed="true">
 
-        <ScenesSceneList />
-    
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-    </CascadingValue>
-</CascadingValue>
-}
-else if (List._detail is null)
-{
-    <EmptyState Message="Loading scene…" CssClass="text-muted" />
-}
-else
-{
-    <CascadingValue Value="this" IsFixed="true">
-    <CascadingValue Value="List" IsFixed="true">
-    <CascadingValue Value="Gen" IsFixed="true">
-    <CascadingValue Value="Playback" IsFixed="true">
-    <CascadingValue Value="ClipSel" IsFixed="true">
-    <CascadingValue Value="ClipForm" IsFixed="true">
-    <CascadingValue Value="ClipVer" IsFixed="true">
-    <CascadingValue Value="ClipRegen" IsFixed="true">
-    <CascadingValue Value="Music" IsFixed="true">
-    <CascadingValue Value="Dialogue" IsFixed="true">
-    <CascadingValue Value="History" IsFixed="true">
+        <ScenesSceneIndex />
 
-        <ScenesSceneDetail />
-    
+        <div class="col-12 col-md-8 col-lg-9">
+            @if (List._selectedScene is null)
+            {
+                <ScenesSceneList />
+            }
+            else if (List._detail is null)
+            {
+                <EmptyState Message="Loading scene…" CssClass="text-muted" />
+            }
+            else
+            {
+                <ScenesSceneDetail />
+            }
+        </div>
+
     </CascadingValue>
     </CascadingValue>
     </CascadingValue>
@@ -365,8 +347,8 @@ else
     </CascadingValue>
     </CascadingValue>
     </CascadingValue>
-</CascadingValue>
-}
+    </CascadingValue>
+    </div>
 } @* end CanScenes gate *@
 
 @if (List._deleteSceneTarget is int deleteSn)
@@ -458,6 +440,26 @@ else
                             GenerateDisabled="@(_busy || List._selected.Count == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
                             OnClose="Gen.CloseGenerateConfirm"
                             OnConfirm="Gen.ConfirmGenerateAsync" />
+}
+
+@if (Gen._showRegenerateConfirm)
+{
+    var selCount = List._selected.Count;
+    <ConfirmModal Visible="true"
+                  Title="@($"Regenerate {selCount} Selected Scene{(selCount == 1 ? "" : "s")}?")"
+                  ConfirmLabel="Regenerate All Selected"
+                  ConfirmClass="btn-danger"
+                  Busy="_busy"
+                  OnConfirm="Gen.ConfirmRegenerateBatchAsync"
+                  OnCancel="Gen.CloseRegenerateConfirm">
+        <p>
+            Are you sure you want to re-render all clips for <strong>@selCount selected scene@(selCount == 1 ? "" : "s")</strong>
+            (<code>@string.Join(", ", List._selected.OrderBy(x => x).Select(x => $"S{x:D2}"))</code>)?
+        </p>
+        <div class="alert alert-warning py-2 small mb-0">
+            ⚠️ This will re-generate video clips for all selected scenes.
+        </div>
+    </ConfirmModal>
 }
 
 @* AI clip edit — point-of-use prompt for a text-based edit of the currently open clip (xAI

@@ -199,7 +199,12 @@
             <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
                 <a class="btn btn-sm btn-outline-secondary"
                    href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)"
-                   title="Edit dialogue and action for this scene">Edit script</a>
+                   title="Edit dialogue and action for this scene in the full screenplay editor">✏️ Edit in Screenplay</a>
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-testid="toggle-fountain-drawer"
+                        @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
+                    📜 @(ListState._showFountainDrawer ? "Hide Fountain Script" : "Show Fountain Script")
+                </button>
                 @if (ListState._detail.CharactersOnScreen.Count > 0)
                 {
                     var firstChar = ListState._detail.CharactersOnScreen[0];
@@ -214,6 +219,70 @@
                        title="Set plate / description for this place">Fix location</a>
                 }
             </div>
+
+            @* Inline Fountain screenplay text drawer *@
+            @if (ListState._showFountainDrawer)
+            {
+                <div class="card mb-3 border-info border-opacity-50 bg-dark bg-opacity-50" data-testid="scene-fountain-card">
+                    <div class="card-header py-1 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="small fw-semibold text-info">📜 Fountain Script · Scene @ListState._detail.SceneNumber.ToString("D2")</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-muted small text-decoration-none"
+                                    @onclick="() => ListState._showRawFountain = !ListState._showRawFountain">
+                                @(ListState._showRawFountain ? "View Formatted" : "View Raw Fountain")
+                            </button>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-muted small text-decoration-none"
+                                    @onclick="() => ListState._showFountainDrawer = false">✕ Hide</button>
+                        </div>
+                    </div>
+                    <div class="card-body py-2 px-3">
+                        @if (!string.IsNullOrWhiteSpace(ListState._sceneFountainText))
+                        {
+                            @if (ListState._showRawFountain)
+                            {
+                                <pre class="p-2 mb-0 rounded bg-dark border border-secondary text-light small font-monospace" style="max-height: 240px; overflow-y: auto; white-space: pre-wrap;">@ListState._sceneFountainText</pre>
+                            }
+                            else
+                            {
+                                <div class="screenplay-view p-2 bg-dark rounded border border-secondary" style="max-height: 240px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; line-height: 1.4;">
+                                    @foreach (var el in ListState._sceneFountainElements)
+                                    {
+                                        @switch (el.Type)
+                                        {
+                                            case PageToMovie.Fountain.FountainParser.ElementType.SceneHeading:
+                                                <div class="fw-bold text-warning text-uppercase mb-2">@el.Text</div>
+                                                break;
+                                            case PageToMovie.Fountain.FountainParser.ElementType.Character:
+                                                <div class="text-center fw-bold text-info text-uppercase mt-2 mb-0" style="letter-spacing: 0.05em;">@el.Text</div>
+                                                break;
+                                            case PageToMovie.Fountain.FountainParser.ElementType.Parenthetical:
+                                                <div class="text-center text-muted fst-italic mb-0">@el.Text</div>
+                                                break;
+                                            case PageToMovie.Fountain.FountainParser.ElementType.Dialogue:
+                                                <div class="mx-auto text-light mb-2" style="max-width: 32rem; text-align: center;">@el.Text</div>
+                                                break;
+                                            case PageToMovie.Fountain.FountainParser.ElementType.Transition:
+                                                <div class="text-end fw-bold text-muted text-uppercase mb-2">@el.Text</div>
+                                                break;
+                                            case PageToMovie.Fountain.FountainParser.ElementType.Action:
+                                            default:
+                                                <div class="text-light text-opacity-75 mb-2" style="text-align: justify;">@el.Text</div>
+                                                break;
+                                        }
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-muted small py-2">
+                                <em>No Fountain screenplay text parsed for Scene @ListState._detail.SceneNumber.</em>
+                                <a href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)" class="ms-1">Open Screenplay editor →</a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
 
             @* E4: regen scopes *@
             <div class="d-flex flex-wrap gap-1 mb-3" data-testid="regen-scopes">

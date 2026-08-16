@@ -647,6 +647,96 @@ public partial class Scenes
             }
             catch { /* fallback */ }
         }
+
+        await LoadSceneFountainAsync(sn);
+    }
+
+    internal bool _showFountainDrawer = false;
+    internal bool _showRawFountain = false;
+    internal string? _fullScreenplayFountainText;
+    internal string? _sceneFountainText;
+    internal List<PageToMovie.Fountain.FountainParser.Element> _sceneFountainElements = new();
+
+    internal async Task LoadSceneFountainAsync(int sn)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_fullScreenplayFountainText))
+            {
+                var doc = await S.Engine.GetScreenplayAsync(S._projectId);
+                _fullScreenplayFountainText = doc?.Text ?? "";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_fullScreenplayFountainText))
+            {
+                ExtractSceneFountain(sn);
+            }
+        }
+        catch
+        {
+            _sceneFountainText = null;
+            _sceneFountainElements.Clear();
+        }
+    }
+
+    private void ExtractSceneFountain(int sn)
+    {
+        _sceneFountainElements.Clear();
+        _sceneFountainText = "";
+        if (string.IsNullOrWhiteSpace(_fullScreenplayFountainText)) return;
+
+        var parsed = PageToMovie.Fountain.FountainParser.Parse(_fullScreenplayFountainText);
+        int currentSceneNumber = 0;
+        var sceneElements = new List<PageToMovie.Fountain.FountainParser.Element>();
+
+        foreach (var el in parsed.Elements)
+        {
+            if (el.Type == PageToMovie.Fountain.FountainParser.ElementType.SceneHeading)
+            {
+                currentSceneNumber++;
+            }
+
+            if (currentSceneNumber == sn)
+            {
+                sceneElements.Add(el);
+            }
+            else if (currentSceneNumber > sn)
+            {
+                break;
+            }
+        }
+
+        _sceneFountainElements = sceneElements;
+        if (sceneElements.Count > 0)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var el in sceneElements)
+            {
+                switch (el.Type)
+                {
+                    case PageToMovie.Fountain.FountainParser.ElementType.SceneHeading:
+                        sb.AppendLine(el.Text);
+                        sb.AppendLine();
+                        break;
+                    case PageToMovie.Fountain.FountainParser.ElementType.Character:
+                        sb.AppendLine(el.Text);
+                        break;
+                    case PageToMovie.Fountain.FountainParser.ElementType.Parenthetical:
+                        sb.AppendLine(el.Text);
+                        break;
+                    case PageToMovie.Fountain.FountainParser.ElementType.Dialogue:
+                        sb.AppendLine(el.Text);
+                        sb.AppendLine();
+                        break;
+                    case PageToMovie.Fountain.FountainParser.ElementType.Action:
+                    default:
+                        sb.AppendLine(el.Text);
+                        sb.AppendLine();
+                        break;
+                }
+            }
+            _sceneFountainText = sb.ToString().Trim();
+        }
     }
 
 
