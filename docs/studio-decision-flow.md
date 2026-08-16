@@ -18,7 +18,7 @@ Cost is never a hard dollar gate. Preferences bias defaults; the user always cho
 | 3 | **Estimate fidelity improves** (screenplay → shot plan → remaining). Never block the decision card waiting for perfect clip count. |
 | 4 | **Generate vs Edit** is the only pre-gen fork. No forced cast→locs→trim tour. |
 | 5 | **Edit focus** (cost / duration / both / craft) chooses tool order, not different physics. Cost and duration are correlated. |
-| 6 | **Remember choices** (path, focus, runtime target) **per user**; project forecast is shared. Still show $ + minutes every time. |
+| 6 | **Remember choices** (path, focus) **per user**; project forecast is shared. Still show $ + minutes every time. Runtime target is *not* remembered (see Preferences). |
 | 7 | **Surgical regen + stale markers** are how the product ages when full gen is cheap. |
 | 8 | **Regen feedback loop** — measure real takes-per-clip and reasons so estimates (and ranges) improve with usage. |
 | 9 | **Two import paths:** book→screenplay *or* **import fountain** (skip write) — both land on the same DecisionCard. |
@@ -564,7 +564,7 @@ Not OK: two full-film gens; two writers on script; two regens same scene
 |-----|--------|--------|
 | `preferPath` = generate \| edit | **Per user** | Primary button emphasis on DecisionCard |
 | `editFocus` = cost \| duration \| both \| craft | **Per user** | Pre-select EditFocus |
-| `lastRuntimeTargetMin` | Per user (optional project default) | Prefill duration toolkit |
+| ~~`lastRuntimeTargetMin`~~ | — | **Removed 2026-08-15.** A runtime target is a property of the book (natural length), not the user; seeding it from another project silently stretched a 2-min rhyme to 180 min. Nothing about length is remembered across projects. |
 | `skipEditFocus` (optional) | Per user | Edit → last toolkit directly |
 
 **Project-shared:** plan, estimate, clips, ledger, stale flags.  
