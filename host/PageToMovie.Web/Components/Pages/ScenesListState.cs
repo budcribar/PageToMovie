@@ -493,8 +493,14 @@ public partial class Scenes
             _scenes = dto?.Scenes ?? new List<SceneSummary>();
             // Drop selections that no longer exist
             _selected.RemoveWhere(sn => _scenes.All(s => s.SceneNumber != sn));
-            if (_selectedScene is int sn)
+            if (_selectedScene is null && _scenes.Count > 0)
+            {
+                await OpenSceneAsync(_scenes[0].SceneNumber);
+            }
+            else if (_selectedScene is int sn)
+            {
                 await LoadDetailAsync(sn);
+            }
             var jobs = await S.Engine.GetJobAsync();
             S.Gen._job = jobs?.Job;
             await S.Gen.RefreshMyJobsAsync();

@@ -320,22 +320,27 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
     <CascadingValue Value="Dialogue" IsFixed="true">
     <CascadingValue Value="History" IsFixed="true">
 
-        <ScenesSceneIndex />
-
-        <div class="col-12 col-md-8 col-lg-9">
-            @if (List._selectedScene is null)
-            {
+        @if (List._selectedScene is null)
+        {
+            <div class="col-12">
                 <ScenesSceneList />
-            }
-            else if (List._detail is null)
-            {
-                <EmptyState Message="Loading scene…" CssClass="text-muted" />
-            }
-            else
-            {
-                <ScenesSceneDetail />
-            }
-        </div>
+            </div>
+        }
+        else
+        {
+            <ScenesSceneIndex />
+
+            <div class="col-12 col-md-8 col-lg-9">
+                @if (List._detail is null)
+                {
+                    <EmptyState Message="Loading scene…" CssClass="text-muted" />
+                }
+                else
+                {
+                    <ScenesSceneDetail />
+                }
+            </div>
+        }
 
     </CascadingValue>
     </CascadingValue>
