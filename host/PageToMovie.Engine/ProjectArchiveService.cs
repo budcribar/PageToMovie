@@ -504,9 +504,15 @@ public sealed class ProjectArchiveService
         // Keep the real owner user id on the moved project (the namespace segment is derived
         // from it but is not it); otherwise the renamed project fails the ownership check.
         var oldInfo = await _projects.GetProjectAsync(old, ct).ConfigureAwait(false);
-        var ownerUserId = !string.IsNullOrWhiteSpace(oldInfo?.OwnerUserId)
-            ? oldInfo!.OwnerUserId!.Trim()
-            : (string.IsNullOrEmpty(owner) ? null : owner);
+        string? ownerUserId = null;
+        if (!string.IsNullOrWhiteSpace(oldInfo?.OwnerUserId))
+        {
+            ownerUserId = oldInfo.OwnerUserId.Trim();
+        }
+        else if (!string.IsNullOrEmpty(owner))
+        {
+            ownerUserId = owner;
+        }
         await using var exp = await ExportAsync(old, ct).ConfigureAwait(false);
         var import = await ImportAsync(
             exp.Stream,

@@ -25,6 +25,7 @@ public sealed class CharacterDesignService
     private readonly ILogger<CharacterDesignService> _log;
     private const string DescriptionKey = "description";
     private const string IllustrationMedium = "illustration";
+    private const string PhotorealMedium = "photoreal";
     private readonly IUserContext? _user;
 
     public CharacterDesignService(
@@ -1077,7 +1078,7 @@ public sealed class CharacterDesignService
             }
             if (norm == ProjectVisionMeta.MediumPhotoreal)
             {
-                expected = "photoreal";
+                expected = PhotorealMedium;
                 return true;
             }
         }
@@ -1100,7 +1101,14 @@ public sealed class CharacterDesignService
         if (!hasPhotoCues && !hasIllustCues && !wantIllustrated)
             return false; // style present but medium ambiguous — do not block lock
 
-        expected = wantIllustrated ? IllustrationMedium : (hasPhotoCues ? "photoreal" : IllustrationMedium);
+        if (wantIllustrated)
+        {
+            expected = IllustrationMedium;
+        }
+        else
+        {
+            expected = hasPhotoCues ? PhotorealMedium : IllustrationMedium;
+        }
         return true;
     }
 
@@ -1188,7 +1196,7 @@ public sealed class CharacterDesignService
         }
 
         // Extra hard reject: never lock sketch on photoreal projects even if model said pass.
-        if (expected == "photoreal" &&
+        if (expected == PhotorealMedium &&
             gate.Medium is "sketch" or IllustrationMedium)
         {
             throw new InvalidOperationException(
@@ -1349,7 +1357,7 @@ public sealed class CharacterDesignService
                 : "other";
             if (medium is "photo" or "photographic" or "live-action" or "live_action"
                 or "realistic" or "cinematic")
-                medium = "photoreal";
+                medium = PhotorealMedium;
             if (medium is "drawn" or "drawing" or "cartoon" or "picture-book" or "picture_book"
                 or "illustrated" or "painting" or "painted")
                 medium = IllustrationMedium;

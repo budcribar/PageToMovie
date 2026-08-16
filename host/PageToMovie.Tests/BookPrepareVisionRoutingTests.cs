@@ -9,9 +9,14 @@ namespace PageToMovie.Tests;
 /// Book-prepare / OCR engine identity is catalog Vision — not a compile-time Grok route.
 /// </summary>
 [Collection("catalog-serial")]
-public class BookPrepareVisionRoutingTests
+public class BookPrepareVisionRoutingTests : IDisposable
 {
     public BookPrepareVisionRoutingTests()
+    {
+        SupportedModelCatalog.ReloadCatalog();
+    }
+
+    public void Dispose()
     {
         SupportedModelCatalog.ReloadCatalog();
     }

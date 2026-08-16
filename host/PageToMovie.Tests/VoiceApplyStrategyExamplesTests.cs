@@ -14,6 +14,7 @@ namespace PageToMovie.Tests;
 /// Example unit tests for the voice-apply strategy pattern.
 /// Uses hand-rolled fakes (no Moq) so the tests document the contracts clearly.
 /// </summary>
+[Collection("catalog-serial")]
 public class VoiceApplyStrategyExamplesTests : IDisposable
 {
     private readonly string _root;
@@ -22,6 +23,7 @@ public class VoiceApplyStrategyExamplesTests : IDisposable
 
     public VoiceApplyStrategyExamplesTests()
     {
+        SupportedModelCatalog.ReloadCatalog();
         _root = Path.Combine(Path.GetTempPath(), "ptm-voice-strat-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(_root, "projects"));
         _store = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));

@@ -4,8 +4,11 @@ using Xunit;
 
 namespace PageToMovie.Tests;
 
+[Collection("catalog-serial")]
 public class FalVideoClientTests
 {
+    public FalVideoClientTests() => SupportedModelCatalog.ReloadCatalog();
+
     [Fact]
     public void SupportedModelCatalog_ContainsHunyuanVideo()
     {

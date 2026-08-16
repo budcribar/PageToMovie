@@ -5,7 +5,7 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 [Collection("catalog-serial")]
-public class ProjectModelSelectionAuditTests
+public class ProjectModelSelectionAuditTests : IDisposable
 {
     public ProjectModelSelectionAuditTests()
     {
@@ -16,6 +16,11 @@ public class ProjectModelSelectionAuditTests
             ?? throw new InvalidOperationException("Real models catalog resource missing.");
         using var reader = new StreamReader(stream);
         Assert.True(SupportedModelCatalog.TryLoadFromJson(reader.ReadToEnd()));
+    }
+
+    public void Dispose()
+    {
+        SupportedModelCatalog.ReloadCatalog();
     }
 
     [Fact]

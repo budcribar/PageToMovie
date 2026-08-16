@@ -159,7 +159,6 @@ public sealed class ServerHealthState : IDisposable
                 catch { /* one page failing to reload must not block the rest */ }
             }
         }
-        if (false && Recovered is not null) { await Recovered(); }
         if (Health != ServerHealth.Recovering) return;
         Health = ServerHealth.Up;
         DownSince = null;

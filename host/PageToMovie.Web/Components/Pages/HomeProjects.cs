@@ -428,7 +428,7 @@ public partial class Home
                 // A rename that changes the slug moves the project to a NEW id (export → re-import →
                 // delete old). The client selection still named the old id, which no longer matched
                 // any picker option, so the <select> fell back to its first option. Re-point the
-                // selection at the moved project (SelectAsync also persists the per-user active pointer);
+                // selection at the moved project (SelectAsync also persists the per-user active pointer) —
                 // a display-name-only rename just refreshes the label.
                 var newId = updated?.Id;
                 if (!string.IsNullOrWhiteSpace(newId)

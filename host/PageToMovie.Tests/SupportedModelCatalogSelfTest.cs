@@ -10,9 +10,14 @@ namespace PageToMovie.Tests;
 // Swaps in reduced/synthetic/lab catalogs mid-test. See CatalogSerialCollection in
 // SupportedModelCatalogTests.cs.
 [Collection("catalog-serial")]
-public class SupportedModelCatalogSelfTest
+public class SupportedModelCatalogSelfTest : IDisposable
 {
     public SupportedModelCatalogSelfTest()
+    {
+        SupportedModelCatalog.ReloadCatalog();
+    }
+
+    public void Dispose()
     {
         SupportedModelCatalog.ReloadCatalog();
     }

@@ -10,8 +10,8 @@ namespace PageToMovie.Web.Components.Layout;
 /// </summary>
 public partial class ServerHealthBanner : IDisposable
 {
-    [Inject] internal ServerHealthState Health { get; set; } = default!;
-    [Inject] internal IAppLocalizer L { get; set; } = default!;
+    [Inject] internal ServerHealthState Health { get; set; } = default;
+    [Inject] internal IAppLocalizer L { get; set; } = default;
 
     private System.Threading.Timer? _ticker;
     private bool _disposed;

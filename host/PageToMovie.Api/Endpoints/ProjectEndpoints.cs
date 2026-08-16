@@ -512,56 +512,61 @@ public static class ProjectEndpoints
     return Results.Ok(new { ok = true, projectId = proj.Id, studioPath = proj.StudioPath });
 }
 
-    private static async Task<IResult> PostProjectsIdRename(string id,
-    RenameProjectRequest? body,
-    ProjectStore store,
-    ProjectArchiveService archives,
-    IUserContext user,
-    UserDatabaseService userDb,
-    IOptions<PageToMovieOptions> opts,
-    CancellationToken ct)
+    public sealed record RenameProjectServices(
+        ProjectStore Store,
+        ProjectArchiveService Archives,
+        IUserContext User,
+        UserDatabaseService UserDb,
+        IOptions<PageToMovieOptions> Opts);
+
+    private static async Task<IResult> PostProjectsIdRename(
+        string id,
+        RenameProjectRequest? body,
+        [AsParameters] RenameProjectServices services,
+        CancellationToken ct)
     {
-    if (AuthGate.RequireLogin(user, opts) is { } denied)
-        return denied;
+        var (store, archives, user, userDb, opts) = services;
+        if (AuthGate.RequireLogin(user, opts) is { } denied)
+            return denied;
 
-    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can rename this project.", ct) is { } forbidden)
-        return forbidden;
+        if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can rename this project.", ct) is { } forbidden)
+            return forbidden;
 
-    try
-    {
-        var title = body?.Title ?? body?.Name ?? "";
-        // Re-slug rename: export → import under the new id → delete old (folder + display name both
-        // change). Degrades to a display-name-only change when the slug is unchanged.
-        var result = await archives.RenameViaReimportAsync(id, title, force: false, ct: ct);
-
-        // A re-slug moves the project to a new id. The caller's per-user active pointer still names
-        // the old (now deleted) id, so the next GET /api/projects would reconcile it to the first
-        // project in the list — the picker "jumped" to an unrelated project after a rename. Follow it.
-        if (result.ReSlugged && !string.IsNullOrWhiteSpace(result.NewId))
+        try
         {
-            var mine = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-            if (string.Equals(ProjectStore.NormalizeProjectId(mine ?? ""), result.OldId, StringComparison.OrdinalIgnoreCase))
+            var title = body?.Title ?? body?.Name ?? "";
+            // Re-slug rename: export → import under the new id → delete old (folder + display name both
+            // change). Degrades to a display-name-only change when the slug is unchanged.
+            var result = await archives.RenameViaReimportAsync(id, title, force: false, ct: ct);
+
+            // A re-slug moves the project to a new id. The caller's per-user active pointer still names
+            // the old (now deleted) id, so the next GET /api/projects would reconcile it to the first
+            // project in the list — the picker "jumped" to an unrelated project after a rename. Follow it.
+            if (result.ReSlugged && !string.IsNullOrWhiteSpace(result.NewId))
             {
-                try { await userDb.SetUserActiveProjectAsync(user.UserId, result.NewId, ct); }
-                catch { /* non-fatal — client re-selects too */ }
+                var mine = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+                if (string.Equals(ProjectStore.NormalizeProjectId(mine ?? ""), result.OldId, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { await userDb.SetUserActiveProjectAsync(user.UserId, result.NewId, ct); }
+                    catch { /* non-fatal — client re-selects too */ }
+                }
             }
+            return Results.Ok(new
+            {
+                ok = true,
+                projectId = result.NewId,
+                previousProjectId = result.OldId,
+                reSlugged = result.ReSlugged,
+                title = result.Project?.Title ?? title,
+                label = result.Project?.Label ?? title,
+                message = result.Message,
+            });
         }
-        return Results.Ok(new
+        catch (Exception ex)
         {
-            ok = true,
-            projectId = result.NewId,
-            previousProjectId = result.OldId,
-            reSlugged = result.ReSlugged,
-            title = result.Project?.Title ?? title,
-            label = result.Project?.Label ?? title,
-            message = result.Message,
-        });
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
     }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
-    }
-}
 
     private static async Task<IResult> PostProjectsIdInvites(string id,
     SendInviteApiRequest? body,

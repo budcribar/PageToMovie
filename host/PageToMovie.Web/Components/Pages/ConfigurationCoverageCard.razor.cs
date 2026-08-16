@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Configuration_CoverageCard : PageSliceComponent
+public partial class ConfigurationCoverageCard : PageSliceComponent
 {
     [CascadingParameter] public required Configuration Host { get; set; }
 

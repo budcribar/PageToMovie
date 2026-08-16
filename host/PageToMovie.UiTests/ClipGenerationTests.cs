@@ -62,6 +62,7 @@ public class ClipGenerationTests
                 Assert.Equal(c, root.GetProperty("clip").GetInt32());
                 Assert.True(root.TryGetProperty("duration_seconds", out var dur) && dur.GetDouble() > 0);
             }
+        }
         finally { await ctx.CloseAsync(); }
     }
 }

@@ -361,7 +361,7 @@
     },
     {
       "id": "hunyuan-video",
-      "displayName": "HunyuanVideo (Fal.ai)",
+      "displayName": "Hunyuan Video (Fal.ai)",
       "capability": "Video",
       "provider": "Fal",
       "apiBase": "https://queue.fal.run",
