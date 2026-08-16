@@ -643,6 +643,13 @@ public sealed class CastFromScreenplayService
         sb.AppendLine("Each description + visual_lock must be filmable set design (architecture, materials,");
         sb.AppendLine("era, signature props, light sources, palette) — not the place name alone.");
         sb.AppendLine("Do not freeze a single scene's time-of-day into visual_lock.");
+        sb.AppendLine();
+        sb.AppendLine("ARCHITECTURAL CONTINUITY FOR PAIRED INT./EXT. PLACES (CRITICAL):");
+        sb.AppendLine("For locations that represent the inside and outside of the same building or setting (e.g. INT. SCHOOLROOM and EXT. SCHOOLHOUSE / COUNTRY LANE, INT. TAVERN and EXT. TAVERN):");
+        sb.AppendLine("- Cross-reference their architectural features: window styles (e.g., tall 6-pane sash windows with white trim), wall materials (e.g., red horizontal wood clapboard siding, stone masonry), doors, and rooflines.");
+        sb.AppendLine("- If the interior describes windows looking out, the exterior description and visual_lock MUST explicitly specify the matching windows on the facade.");
+        sb.AppendLine("- If the exterior describes a building's materials or style, the interior description and visual_lock MUST reflect matching interior walls, window frames, and sightlines.");
+        sb.AppendLine("- Set setting_anchor (e.g. \"Schoolhouse\", \"Tavern\") and architectural_features so paired places share identical architectural anchors in their visual_lock.");
         if (!string.IsNullOrWhiteSpace(locationHints))
         {
             sb.AppendLine();
