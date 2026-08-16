@@ -2939,7 +2939,7 @@ public sealed class FilmJobService
         {
             await GeneratePlanLooksAsync(projectId, count, cast, locs, total, ct).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             await FinishAsync(StatusCancelled, CancelledByUser);
         }
@@ -3040,7 +3040,7 @@ public sealed class FilmJobService
             await AppendLogAsync($"  locked variant {best}");
             return 1;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             failed.Add($"{c.Key}: {ex.Message}");
@@ -3077,7 +3077,7 @@ public sealed class FilmJobService
             await AppendLogAsync($"  locked variant {best}");
             return 1;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             failed.Add($"{loc.Key}: {ex.Message}");
