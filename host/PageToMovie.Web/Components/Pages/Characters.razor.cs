@@ -11,7 +11,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Characters : IAsyncDisposable
+public partial class Characters : IAsyncDisposable, IPageSliceHost
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private CharactersListState? _list;
@@ -118,10 +118,15 @@ public partial class Characters : IAsyncDisposable
     }
 
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): CastList and LookPanel are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
     {
-        // Optional: could wire JS keyboard; L/R handled via buttons for now
-        await Task.CompletedTask;
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
     }
 
 
