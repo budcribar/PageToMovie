@@ -23,7 +23,6 @@ public sealed partial class ProjectStore
     /// <summary>Repeated path / JSON literals (S1192).</summary>
     private static class StoreLit
     {
-        public const string ClientMarkerExtension = ProjectStore.ClientMarkerExtension;
         public const string Projects = "projects";
         public const string WorkspaceJson = "workspace.json";
         public const string ProjectJson = "project.json";
@@ -3382,7 +3381,7 @@ public sealed partial class ProjectStore
         var hasLockedPlate = path is not null && File.Exists(path) && new FileInfo(path).Length >= 64;
         row.Locked = hasLockedPlate;
         row.HasPreferred = hasLockedPlate;
-        if (hasLockedPlate && path is not null)
+        if (hasLockedPlate)
         {
             row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
             row.PreferredUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";

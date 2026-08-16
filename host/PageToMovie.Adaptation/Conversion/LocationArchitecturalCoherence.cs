@@ -21,7 +21,7 @@ public static class LocationArchitecturalCoherence
         // Group strictly by AI-assigned SettingAnchor
         var groups = locations
             .Where(loc => !string.IsNullOrWhiteSpace(loc.SettingAnchor))
-            .GroupBy(loc => loc.SettingAnchor!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(loc => loc.SettingAnchor.Trim(), StringComparer.OrdinalIgnoreCase)
             .Where(g => g.Count() > 1)
             .ToList();
 
