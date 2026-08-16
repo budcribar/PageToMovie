@@ -35,7 +35,7 @@ public partial class AdaptationShell
     private string ResolvePageTitle()
     {
         if (Step == "shots")
-            return L["ScenesPage.RebuildShotPlan"];
+            return L["Adaptation.ShotPlanTitle"];
         var filmTitle = Host.Status?.Screenplay?.Title?.Trim();
         if (!string.IsNullOrEmpty(filmTitle))
             return filmTitle;
