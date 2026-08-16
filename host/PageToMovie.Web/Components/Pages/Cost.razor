@@ -175,22 +175,22 @@ else
 
             @if (_phase == DecisionPhase.ConfirmGenerate)
             {
-                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-3 pt-3"
+                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-2 pt-2"
                      data-testid="decision-confirm-generate">
-                    <div class="row g-3">
+                    <div class="row g-2">
                         <div class="col-md-6">
-                            <div class="p-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
+                            <div class="p-2 px-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-success">Automatic</span>
-                                        <span class="fw-semibold">Full Film Generation</span>
+                                        <span class="fw-semibold small">Full Film Generation</span>
                                     </div>
-                                    <p class="small text-muted mb-3">
+                                    <p class="small text-muted mb-2">
                                         Automatically prepares cast & locations, builds the shot plan, and produces the entire film (~@DurationLabel · @CostLabel).
                                     </p>
                                 </div>
                                 <button type="button"
-                                        class="btn btn-success fw-semibold w-100"
+                                        class="btn btn-sm btn-success fw-semibold w-100"
                                         data-testid="decision-confirm-go"
                                         disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                         @onclick="ConfirmGenerateAsync">
@@ -199,17 +199,17 @@ else
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="p-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
+                            <div class="p-2 px-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-primary">Manual</span>
-                                        <span class="fw-semibold">Step-by-Step Craft</span>
+                                        <span class="fw-semibold small">Step-by-Step Craft</span>
                                     </div>
-                                    <p class="small text-muted mb-3">
+                                    <p class="small text-muted mb-2">
                                         Review cast, locations, and scenes, build the shot plan, and generate scene-by-scene (e.g. test Scene 1 first).
                                     </p>
                                 </div>
-                                <a class="btn btn-outline-primary fw-semibold w-100"
+                                <a class="btn btn-sm btn-outline-primary fw-semibold w-100"
                                    href="scenes"
                                    data-testid="decision-manual-step">
                                     Continue step-by-step →
@@ -219,18 +219,18 @@ else
                     </div>
                     @if (PlanBusy)
                     {
-                        <div class="alert alert-warning py-1 px-2 small mt-2 mb-0" data-testid="decision-plan-busy">
+                        <div class="alert alert-warning py-1 px-2 small mt-1 mb-0" data-testid="decision-plan-busy">
                             <code>@_scriptLeaseHolder</code> is editing the plan — full generate blocked.
                         </div>
                     }
                     @if (GeneratingBusy)
                     {
-                        <div class="alert alert-info py-1 px-2 small mt-2 mb-0" data-testid="decision-generating-busy-confirm">
+                        <div class="alert alert-info py-1 px-2 small mt-1 mb-0" data-testid="decision-generating-busy-confirm">
                             A job is already running — open Film to watch it.
                         </div>
                     }
-                    <div class="mt-2 text-end">
-                        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none" data-testid="decision-confirm-back" @onclick="BackToCard">
+                    <div class="mt-1 text-end">
+                        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0" data-testid="decision-confirm-back" @onclick="BackToCard">
                             Cancel
                         </button>
                     </div>
@@ -238,21 +238,21 @@ else
             }
             else if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate && !IsViewerOnly)
             {
-                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-3 pt-3" data-testid="decision-card">
-                    <div class="row g-3">
+                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-2 pt-2" data-testid="decision-card">
+                    <div class="row g-2">
                         <div class="col-md-6">
-                            <div class="p-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
+                            <div class="p-2 px-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-success">Automatic</span>
-                                        <span class="fw-semibold">Full Film Generation</span>
+                                        <span class="fw-semibold small">Full Film Generation</span>
                                     </div>
-                                    <p class="small text-muted mb-3">
+                                    <p class="small text-muted mb-2">
                                         Automatically prepares cast & locations, builds the shot plan, and produces the entire film (~@DurationLabel · @CostLabel).
                                     </p>
                                 </div>
                                 <button type="button"
-                                        class="btn btn-success fw-semibold w-100"
+                                        class="btn btn-sm btn-success fw-semibold w-100"
                                         data-testid="decision-confirm-go"
                                         disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                         @onclick="ConfirmGenerateAsync">
@@ -261,17 +261,17 @@ else
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <div class="p-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
+                            <div class="p-2 px-3 border border-secondary border-opacity-25 rounded bg-dark bg-opacity-25 h-100 d-flex flex-column justify-content-between">
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1">
                                         <span class="badge bg-primary">Manual</span>
-                                        <span class="fw-semibold">Step-by-Step Craft</span>
+                                        <span class="fw-semibold small">Step-by-Step Craft</span>
                                     </div>
-                                    <p class="small text-muted mb-3">
+                                    <p class="small text-muted mb-2">
                                         Review cast, locations, and scenes, build the shot plan, and generate scene-by-scene (e.g. test Scene 1 first).
                                     </p>
                                 </div>
-                                <a class="btn btn-outline-primary fw-semibold w-100"
+                                <a class="btn btn-sm btn-outline-primary fw-semibold w-100"
                                    href="scenes"
                                    data-testid="decision-manual-step">
                                     Continue step-by-step →
@@ -281,7 +281,7 @@ else
                     </div>
                     @if (GeneratingBusy)
                     {
-                        <div class="small text-info mt-2" data-testid="decision-generating-busy">
+                        <div class="small text-info mt-1" data-testid="decision-generating-busy">
                             Job running — use Next → Film to watch.
                         </div>
                     }
