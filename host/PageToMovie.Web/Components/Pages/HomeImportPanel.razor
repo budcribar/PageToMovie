@@ -2,13 +2,15 @@
 @* Page-local import panel for Home *@
 @using Microsoft.AspNetCore.Components.Forms
 
-<div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm">
+<div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm"
+     data-testid="home-import-panel">
         <div class="fw-semibold small text-light mb-2">Import a project</div>
         <div class="small text-light mb-2">
             Import a Page to Movie project <code>.zip</code> export into your own workspace.
         </div>
         <div class="mb-2">
             <InputFile OnChange="Host.Import.OnImportFileSelected" accept=".zip"
+                       data-testid="home-import-file"
                        class="form-control form-control-sm bg-white text-dark"
                        style="max-width: 22rem;"
                        disabled="@(Host._busy || Host.Import._importing)" />
@@ -39,6 +41,7 @@
                 </button>
             }
             <button class="btn btn-outline-secondary btn-sm text-light border-secondary"
+                    data-testid="home-import-cancel"
                     disabled="@Host.Import._importing"
                     @onclick="Host.Import.ToggleImport">
                 Cancel

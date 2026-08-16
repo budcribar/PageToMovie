@@ -74,6 +74,177 @@ public static class Ui
                 return el.GetString();
         return null;
     }
+
+    // ── Home project picker helpers ─────────────────────────────────────────────
+
+    /// <summary>Full page load of Home (<c>/?admin=1</c>) — a fresh WASM app instance hydrated
+    /// from the server, unlike in-app nav which keeps client state. Waits on the always-present
+    /// Home nav link rather than the /scenes link (<see cref="GotoAppAsync"/>), which is a disabled
+    /// <c>span</c> until the active project has a shot plan.</summary>
+    public static async Task ReloadHomeAsync(IPage page, string baseUrl)
+    {
+        await page.GotoAsync($"{baseUrl}/?admin=1");
+        await page.GetByTestId("nav-studio")
+                  .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+        await DismissTermsAsync(page);
+    }
+
+    /// <summary>Go to Home (full studio) via the in-app nav and wait for the picker.</summary>
+    public static async Task GotoHomePickerAsync(IPage page, int timeoutMs = 20_000)
+    {
+        await page.GetByTestId("nav-studio").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = timeoutMs });
+    }
+
+    /// <summary>All option labels currently in the Home project picker, in DOM order.</summary>
+    public static async Task<IReadOnlyList<string>> PickerLabelsAsync(IPage page)
+    {
+        var labels = await page.EvalOnSelectorAsync<string[]>(
+            "[data-testid='home-project-picker']",
+            "el => Array.from(el.options).map(o => o.textContent.trim())");
+        return labels;
+    }
+
+    /// <summary>All option values (project ids) currently in the Home project picker, in DOM order.</summary>
+    public static async Task<IReadOnlyList<string>> PickerValuesAsync(IPage page)
+    {
+        var values = await page.EvalOnSelectorAsync<string[]>(
+            "[data-testid='home-project-picker']",
+            "el => Array.from(el.options).map(o => o.value)");
+        return values;
+    }
+
+    /// <summary>The picker's currently selected project id (option value), or "" when none.</summary>
+    public static Task<string> SelectedPickerValueAsync(IPage page) =>
+        page.EvalOnSelectorAsync<string>(
+            "[data-testid='home-project-picker']",
+            "el => el.selectedOptions[0]?.value ?? ''");
+
+    /// <summary>Blazor sets the DOM `.selected` property on the option, not the HTML attribute, so a
+    /// CSS `option[selected]` locator won't see it — poll the select's own `selectedOptions` instead.
+    /// `EvalOnSelectorAsync` throws immediately (no auto-wait) if the selector isn't in the DOM yet, so
+    /// the loop tolerates that during a page navigation rather than failing on the first iteration.</summary>
+    public static async Task AssertSelectedProjectLabelAsync(IPage page, string expectedLabel, int timeoutMs = 15_000)
+    {
+        await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = timeoutMs });
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        string? last = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                last = await page.EvalOnSelectorAsync<string>(
+                    "[data-testid='home-project-picker']",
+                    "el => el.selectedOptions[0]?.textContent?.trim() ?? ''");
+                if (last == expectedLabel) return;
+            }
+            catch (PlaywrightException) { /* element mid-navigation; retry */ }
+            await Task.Delay(250);
+        }
+        Assert.Fail($"Expected project picker selected option to be '{expectedLabel}', but was '{last}'.");
+    }
+
+    /// <summary>Assert the picker option labels are exactly <paramref name="expected"/> (order-insensitive),
+    /// polling briefly because the list refreshes after each server round-trip.</summary>
+    public static async Task AssertPickerLabelsAsync(IPage page, IEnumerable<string> expected, int timeoutMs = 15_000)
+    {
+        var want = expected.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        string[] got = Array.Empty<string>();
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                got = (await PickerLabelsAsync(page)).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+                if (got.SequenceEqual(want)) return;
+            }
+            catch (PlaywrightException) { /* mid-navigation; retry */ }
+            await Task.Delay(250);
+        }
+        Assert.Fail($"Expected picker options [{string.Join(", ", want)}] but got [{string.Join(", ", got)}].");
+    }
+
+    // ── Configuration page sections (collapsed by default since acf910b5) ───────
+
+    /// <summary>Expand a Configuration <c>&lt;details&gt;</c> section by its summary testid
+    /// (<c>config-section-coverage|storage|appearance|music|format|pipeline|advanced</c>) if it is
+    /// currently closed. Sections start collapsed by design; tests must open what they touch.</summary>
+    public static async Task OpenConfigSectionAsync(IPage page, string sectionTestId)
+    {
+        var summary = page.GetByTestId(sectionTestId);
+        await Assertions.Expect(summary).ToBeVisibleAsync(new() { Timeout = 20_000 });
+        var isOpen = await summary.EvaluateAsync<bool>("el => el.parentElement?.open === true");
+        if (!isOpen)
+        {
+            await summary.ClickAsync();
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (await summary.EvaluateAsync<bool>("el => el.parentElement?.open === true")) return;
+                await Task.Delay(150);
+            }
+            Assert.Fail($"Configuration section '{sectionTestId}' did not open after clicking its summary.");
+        }
+    }
+
+    // ── Authed API access from the browser session ──────────────────────────────
+
+    /// <summary>Call the app's own API from inside the page using the browser's admin/dev session
+    /// (Bearer token + X-User-Id from sessionStorage), so the request is authed exactly like the UI's.
+    /// Returns the response body text; asserts a 2xx status.</summary>
+    public static async Task<string> ApiFetchAsync(IPage page, string path, string method = "GET", string? jsonBody = null)
+    {
+        var result = await page.EvaluateAsync<string>(@"async ([path, method, body]) => {
+            const raw = sessionStorage.getItem('PageToMovie.admin.session');
+            if (!raw) return JSON.stringify({__err:'no session'});
+            const s = JSON.parse(raw);
+            const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+            if (body) h['Content-Type'] = 'application/json';
+            const res = await fetch(path, {method, headers:h, body: body || undefined});
+            const text = await res.text();
+            return JSON.stringify({__status: res.status, __text: text});
+        }", new object?[] { path, method, jsonBody });
+        using var doc = JsonDocument.Parse(result);
+        if (doc.RootElement.TryGetProperty("__err", out var err))
+            Assert.Fail($"ApiFetch {method} {path}: {err.GetString()}");
+        var status = doc.RootElement.GetProperty("__status").GetInt32();
+        var text = doc.RootElement.GetProperty("__text").GetString() ?? "";
+        Assert.True(status is >= 200 and < 300, $"ApiFetch {method} {path} → {status}: {text[..Math.Min(300, text.Length)]}");
+        return text;
+    }
+
+    /// <summary>Download a binary API response (e.g. a project export zip) via the browser session
+    /// and save it to <paramref name="savePath"/>.</summary>
+    public static async Task ApiDownloadAsync(IPage page, string path, string savePath)
+    {
+        var b64 = await page.EvaluateAsync<string>(@"async (path) => {
+            const raw = sessionStorage.getItem('PageToMovie.admin.session');
+            if (!raw) return 'ERR:no session';
+            const s = JSON.parse(raw);
+            const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+            const res = await fetch(path, {headers:h});
+            if (!res.ok) return 'ERR:' + res.status + ' ' + (await res.text()).slice(0,200);
+            const buf = new Uint8Array(await res.arrayBuffer());
+            let bin = '';
+            for (let i = 0; i < buf.length; i += 0x8000)
+                bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            return btoa(bin);
+        }", path);
+        Assert.False(b64.StartsWith("ERR:", StringComparison.Ordinal), $"ApiDownload {path}: {b64}");
+        await File.WriteAllBytesAsync(savePath, Convert.FromBase64String(b64));
+    }
+
+    /// <summary>The server's active project id for the browser session (GET /api/projects → active.id).</summary>
+    public static async Task<string?> ServerActiveProjectIdAsync(IPage page)
+    {
+        var text = await ApiFetchAsync(page, "/api/projects");
+        using var doc = JsonDocument.Parse(text);
+        if (doc.RootElement.TryGetProperty("active", out var active) && active.ValueKind == JsonValueKind.Object
+            && active.TryGetProperty("id", out var id))
+            return id.GetString();
+        return null;
+    }
 }
 
 /// <summary>Collects console errors, filtering the known pre-existing baseline noise.</summary>

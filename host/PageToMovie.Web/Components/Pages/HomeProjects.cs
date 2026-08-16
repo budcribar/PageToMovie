@@ -250,6 +250,26 @@ public partial class Home
             return refreshedProjects is not null && FindProject(refreshedProjects, clientSelectedId) is null;
         }
 
+        /// <summary>The project selected before the current one (picker switch); null when unknown.</summary>
+        private string? _previousSelectedId;
+
+        /// <summary>
+        /// After deleting the selected project: go back to the project the user was on before
+        /// (if it still exists), else the server's pick. Deterministic and least surprising —
+        /// the server's fallback is simply the first project alphabetically.
+        /// </summary>
+        internal static ProjectInfo? NextAfterDelete(
+            string? previousSelectedId, string deletedId, IEnumerable<ProjectInfo>? remaining, ProjectInfo? serverActive)
+        {
+            if (!string.IsNullOrWhiteSpace(previousSelectedId)
+                && !string.Equals(previousSelectedId, deletedId, StringComparison.OrdinalIgnoreCase))
+            {
+                var prev = FindProject(remaining, previousSelectedId);
+                if (prev is not null) return prev;
+            }
+            return serverActive;
+        }
+
         /// <summary>Keep list Active in lockstep with the picker so Manage/Delete match the choice.</summary>
         internal void BindLocalActive(string id)
         {
@@ -402,10 +422,26 @@ public partial class Home
             {
                 var updated = await S.Engine.RenameProjectAsync(id, _renameName.Trim());
                 _showRename = false;
-                S._message = $"Renamed to “{updated?.Label ?? _renameName.Trim()}”.";
+                var newLabel = updated?.Label ?? updated?.Title ?? _renameName.Trim();
+                S._message = $"Renamed to “{newLabel}”.";
+
+                // A rename that changes the slug moves the project to a NEW id (export → re-import →
+                // delete old). The client selection still named the old id, which no longer matched
+                // any picker option, so the <select> fell back to its first option. Re-point the
+                // selection at the moved project (SelectAsync also persists the per-user active pointer);
+                // a display-name-only rename just refreshes the label.
+                var newId = updated?.Id;
+                if (!string.IsNullOrWhiteSpace(newId)
+                    && !string.Equals(newId, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    await S.ActiveProject.SelectAsync(
+                        S.Engine, newId, newLabel, S.ActiveProject.ParentProjectId, S.ActiveProject.StudioPath);
+                }
+                else if (S.ActiveProject.HasProject)
+                {
+                    S.ActiveProject.Set(id, newLabel, S.ActiveProject.ParentProjectId, S.ActiveProject.StudioPath);
+                }
                 await LoadAsync();
-                if (S.ActiveProject.HasProject)
-                    await S.ActiveProject.RefreshFromServerAsync(S.Engine);
             }
             catch (Exception ex)
             {
@@ -473,6 +509,10 @@ public partial class Home
                 return;
 
             var selected = FindProject(id);
+            // Remember where the user came from: deleting the newly picked project goes back here.
+            if (!string.IsNullOrWhiteSpace(S.ActiveProject.ProjectId)
+                && !string.Equals(id, S.ActiveProject.ProjectId, StringComparison.OrdinalIgnoreCase))
+                _previousSelectedId = S.ActiveProject.ProjectId;
             BindLocalActive(id);
             S.ActiveProject.Set(
                 id,
@@ -570,10 +610,11 @@ public partial class Home
                 // Drop it now: adopt the server's new active project, or clear when none remain.
                 if (SelectionGoneAfterDelete(S.ActiveProject.ProjectId, id, _projects?.Projects))
                 {
-                    var next = _projects?.Active;
+                    var next = NextAfterDelete(_previousSelectedId, id, _projects?.Projects, _projects?.Active);
                     if (next?.Id is { Length: > 0 } nextId)
                     {
-                        S.ActiveProject.Set(nextId, ProjectDisplayLabel(next, nextId), next.ParentProjectId);
+                        // SelectAsync also persists the per-user active pointer so a reload agrees.
+                        await S.ActiveProject.SelectAsync(S.Engine, nextId, ProjectDisplayLabel(next, nextId), next.ParentProjectId, next.StudioPath);
                         BindLocalActive(nextId);
                     }
                     else

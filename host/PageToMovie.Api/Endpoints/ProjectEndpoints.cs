@@ -517,6 +517,7 @@ public static class ProjectEndpoints
     ProjectStore store,
     ProjectArchiveService archives,
     IUserContext user,
+    UserDatabaseService userDb,
     IOptions<PageToMovieOptions> opts,
     CancellationToken ct)
     {
@@ -532,6 +533,19 @@ public static class ProjectEndpoints
         // Re-slug rename: export → import under the new id → delete old (folder + display name both
         // change). Degrades to a display-name-only change when the slug is unchanged.
         var result = await archives.RenameViaReimportAsync(id, title, force: false, ct: ct);
+
+        // A re-slug moves the project to a new id. The caller's per-user active pointer still names
+        // the old (now deleted) id, so the next GET /api/projects would reconcile it to the first
+        // project in the list — the picker "jumped" to an unrelated project after a rename. Follow it.
+        if (result.ReSlugged && !string.IsNullOrWhiteSpace(result.NewId))
+        {
+            var mine = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+            if (string.Equals(ProjectStore.NormalizeProjectId(mine ?? ""), result.OldId, StringComparison.OrdinalIgnoreCase))
+            {
+                try { await userDb.SetUserActiveProjectAsync(user.UserId, result.NewId, ct); }
+                catch { /* non-fatal — client re-selects too */ }
+            }
+        }
         return Results.Ok(new
         {
             ok = true,

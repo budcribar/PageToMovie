@@ -62,12 +62,24 @@ public static class PipelineFlow
                 vision_model_name:'fake-vision', quality_model_name:'fake-vision',
                 audio_model_name:'fake-music', voice_model_name:'fake-voice',
                 model_selections:{video:'fake-video',image:'fake-image',chat:'fake-script',vision:'fake-vision',audio:'fake-music'} };
-            const res = await fetch('/api/projects/'+encodeURIComponent(id)+'/config',
-                {method:'PUT', headers:h, body:JSON.stringify(body)});
-            return JSON.stringify({id, status:res.status});
+            // The import page (where CreateFreshProjectAsync leaves us) may still be finishing its own
+            // config write; a PUT that lands before it gets overwritten. Verify and retry a few times.
+            let status = 0, seen = '';
+            for (let attempt = 0; attempt < 4; attempt++) {
+                const res = await fetch('/api/projects/'+encodeURIComponent(id)+'/config',
+                    {method:'PUT', headers:h, body:JSON.stringify(body)});
+                status = res.status;
+                if (status !== 200) break;
+                await new Promise(r => setTimeout(r, 750));
+                const chk = await fetch('/api/projects/'+encodeURIComponent(id)+'/config', {headers:h}).then(r=>r.json());
+                seen = ((chk.config||{}).planning_model_name) || '';
+                if (seen === 'fake-script') break;
+            }
+            return JSON.stringify({id, status, seen});
         }");
         Assert.DoesNotContain("\"err\"", result);
         Assert.Contains("\"status\":200", result);
+        Assert.Contains("\"seen\":\"fake-script\"", result);
     }
 
     /// <summary>Import a Fountain fixture; waits for the app's own auto-navigation to the screenplay
@@ -93,7 +105,8 @@ public static class PipelineFlow
     }
 
     /// <summary>Approve the screenplay draft; the server extracts cast then the app navigates to
-    /// Characters. Caller waits for that navigation.</summary>
+    /// the Estimate / DecisionCard page (<c>/cost</c>, since dba5b330 "approve lands on Estimate").
+    /// Caller waits for that navigation (<see cref="WaitForSignOffLandingAsync"/>).</summary>
     public static async Task SignOffScreenplayAsync(IPage page)
     {
         var status = page.GetByTestId("screenplay-status");
@@ -106,14 +119,22 @@ public static class PipelineFlow
         await signoff.ClickAsync();
     }
 
-    /// <summary>Run the whole flow for a fixture and land on the Characters page.</summary>
+    /// <summary>After sign-off the app lands on Estimate (<c>/cost</c>). This is the one place that
+    /// knows the landing route, so a product change there is a one-line test update.</summary>
+    public static Task WaitForSignOffLandingAsync(IPage page) =>
+        page.WaitForURLAsync(new Regex("/cost", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 90_000 });
+
+    /// <summary>Run the whole flow for a fixture and land on the Characters page (via the nav link,
+    /// which the sign-off unlocked — cast is extracted server-side during approve).</summary>
     public static async Task RunToCharactersAsync(IPage page, string baseUrl, string projectName, string fixtureFile)
     {
         await CreateFreshProjectAsync(page, baseUrl, projectName);
         await SelectFakeModelsAsync(page);
         await ImportFountainAsync(page, baseUrl, fixtureFile);
         await SignOffScreenplayAsync(page);
-        await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 90_000 });
+        await WaitForSignOffLandingAsync(page);
+        await page.GetByTestId("nav-characters").ClickAsync(new() { Timeout = 30_000 });
+        await page.WaitForURLAsync(new Regex("/characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 30_000 });
     }
 
     /// <summary>Build the shot plan (Stage 2) for the active project and wait for the job to finish.
@@ -146,8 +167,7 @@ public static class PipelineFlow
             }
             return JSON.stringify({err:'timeout', last});
         }");
-        Assert.DoesNotContain("\"err\"", result);
-        Assert.Contains("\"ok\":true", result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
     }
 
     /// <summary>Full flow through to the Scenes page with a built shot plan.</summary>
@@ -197,8 +217,7 @@ public static class PipelineFlow
             }
             return JSON.stringify({ok:true, count:chars.length});
         }");
-        Assert.DoesNotContain("\"err\"", result);
-        Assert.Contains("\"ok\":true", result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
     }
 
     /// <summary>Generate clips for every scene (fake video copies MP4 fixtures) and wait for the job.
@@ -228,8 +247,7 @@ public static class PipelineFlow
                 if (last==='error'||last==='cancelled') return JSON.stringify({err:'gen '+last, job:st.job}); }
             return JSON.stringify({err:'timeout', last});
         }");
-        Assert.DoesNotContain("\"err\"", result);
-        Assert.Contains("\"ok\":true", result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
     }
 
     /// <summary>

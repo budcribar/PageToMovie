@@ -348,7 +348,12 @@ public sealed class ProjectArchiveService
         var basis = rawId.Replace('\\', '/').Trim('/');
         var lastSlash = basis.LastIndexOf('/');
         var slug = lastSlash >= 0 ? basis[(lastSlash + 1)..] : basis;
-        targetUserId = forceOwnerUserId.Trim(); // stamp ownerUserId to match the namespace
+        // Stamp ownerUserId to match the namespace only when the caller gave no owner. A caller
+        // that knows the real user id (re-slug rename) passes it as targetUserId — the folder
+        // segment ("budcribargmail_com") is not the user id ("budcribar@gmail.com") and would
+        // fail the ownership check on activate.
+        if (string.IsNullOrWhiteSpace(targetUserId))
+            targetUserId = forceOwnerUserId.Trim();
         return $"{forceOwnerUserId.Trim()}/{slug}";
     }
 
@@ -496,12 +501,18 @@ public sealed class ProjectArchiveService
         var offloaded = CountOffloadedMedia(await _projects.GetProjectDirAsync(old, ct).ConfigureAwait(false));
 
         // export → import(new id, forced owner) → title → delete old → activate new.
+        // Keep the real owner user id on the moved project (the namespace segment is derived
+        // from it but is not it); otherwise the renamed project fails the ownership check.
+        var oldInfo = await _projects.GetProjectAsync(old, ct).ConfigureAwait(false);
+        var ownerUserId = !string.IsNullOrWhiteSpace(oldInfo?.OwnerUserId)
+            ? oldInfo!.OwnerUserId!.Trim()
+            : (string.IsNullOrEmpty(owner) ? null : owner);
         await using var exp = await ExportAsync(old, ct).ConfigureAwait(false);
         var import = await ImportAsync(
             exp.Stream,
             preferredId: string.IsNullOrEmpty(owner) ? newSlug : $"{owner}/{newSlug}",
             overwrite: false,
-            targetUserId: string.IsNullOrEmpty(owner) ? null : owner,
+            targetUserId: ownerUserId,
             forceOwnerUserId: string.IsNullOrEmpty(owner) ? null : owner,
             ct: ct).ConfigureAwait(false);
         if (!import.Ok)

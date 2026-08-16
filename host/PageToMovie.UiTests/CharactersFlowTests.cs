@@ -28,7 +28,7 @@ public class CharactersFlowTests
 
             // Choose the "generate from description" route → description form appears.
             await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
-            var desc = page.GetByPlaceholder("How they look");
+            var desc = page.GetByTestId("char-look-panel").Locator("textarea").First; // description textarea (shared CharacterLookPanel)
             await desc.WaitForAsync(new() { Timeout = 30_000 });
             if (string.IsNullOrWhiteSpace(await desc.InputValueAsync()))
                 await desc.FillAsync("A pale, thin adult with dark hair and a dark wool coat, photoreal.");
@@ -76,7 +76,7 @@ public class CharactersFlowTests
             await item.ClickAsync();
 
             // The click lives in the cast-list slice; the page must re-render to show the panel.
-            await Assertions.Expect(item).ToHaveClassAsync(new Regex("\bactive\b"), new() { Timeout = 15_000 });
+            await Assertions.Expect(item).ToHaveClassAsync(new Regex(@"(^|\s)active(\s|$)"), new() { Timeout = 15_000 });
             var uploadRoute = page.GetByTestId("char-route-upload");
             await Assertions.Expect(uploadRoute).ToBeVisibleAsync(new() { Timeout = 30_000 });
 

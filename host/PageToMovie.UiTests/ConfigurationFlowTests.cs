@@ -32,6 +32,9 @@ public class ConfigurationFlowTests
             await Assertions.Expect(page.GetByTestId("studio-coverage-card"))
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
 
+            // Settings sections start collapsed by design (acf910b5) — open the two we touch.
+            await Ui.OpenConfigSectionAsync(page, "config-section-format");
+            await Ui.OpenConfigSectionAsync(page, "config-section-pipeline");
             // Change a Format & Resolution field (plain @bind, no testid) and a Pipeline Behavior checkbox.
             var aspect = page.Locator("select").Filter(new() { Has = page.Locator("option[value='9:16']") }).First;
             await aspect.SelectOptionAsync("9:16");
@@ -51,6 +54,8 @@ public class ConfigurationFlowTests
             await page.GetByTestId("nav-configuration").ClickAsync();
             await Assertions.Expect(page.GetByTestId("studio-coverage-card"))
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
+            await Ui.OpenConfigSectionAsync(page, "config-section-format");
+            await Ui.OpenConfigSectionAsync(page, "config-section-pipeline");
             var aspectAfterReload = page.Locator("select").Filter(new() { Has = page.Locator("option[value='9:16']") }).First;
             await Assertions.Expect(aspectAfterReload).ToHaveValueAsync("9:16");
             await Assertions.Expect(page.Locator("#qaRetry")).ToBeCheckedAsync(new() { Checked = expectChecked });
@@ -69,6 +74,7 @@ public class ConfigurationFlowTests
 
             // In-app nav, not a full reload — see the comment in the autosave test for why.
             await page.GetByTestId("nav-configuration").ClickAsync();
+            await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
             var musicRow = page.GetByTestId("coverage-music");
             await Assertions.Expect(musicRow).ToBeVisibleAsync(new() { Timeout = 20_000 });
 
@@ -86,6 +92,7 @@ public class ConfigurationFlowTests
             // Navigate away and back — the provider/model choice round-tripped, not just in-memory state.
             await page.GetByTestId("nav-studio").ClickAsync();
             await page.GetByTestId("nav-configuration").ClickAsync();
+            await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
             musicRow = page.GetByTestId("coverage-music");
             await Assertions.Expect(musicRow.Locator(".badge")).ToHaveTextAsync("Ready", new() { Timeout = 20_000 });
             await Assertions.Expect(page.GetByTestId("coverage-model-music")).ToHaveValueAsync("fake-music");

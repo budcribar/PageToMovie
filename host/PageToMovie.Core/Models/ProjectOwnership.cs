@@ -41,6 +41,11 @@ public static class ProjectOwnership
             set.Add(t);
             var seg = SanitizeOwnerSegment(t);
             if (seg.Length > 0) set.Add(seg);
+            // Project folders are namespaced with ProjectStore.SanitizeUserSegment, which drops
+            // "@" ("budcribar@gmail.com" → "budcribargmail_com") where this sanitizer writes "_"
+            // ("budcribar_gmail_com"). Add the folder-style form so path/owner checks match.
+            var folderSeg = SanitizeOwnerSegment(t.Replace("@", string.Empty));
+            if (folderSeg.Length > 0) set.Add(folderSeg);
         }
 
         void AddHandle(string? v)

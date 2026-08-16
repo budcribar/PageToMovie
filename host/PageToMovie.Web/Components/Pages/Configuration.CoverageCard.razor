@@ -1,9 +1,11 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
 @* Page-local to Configuration — studio API coverage card (starts collapsed) *@
 @using Microsoft.AspNetCore.Components
 
 <div class="card mb-3" id="api-keys" data-testid="studio-coverage-card">
     <details class="ptm-cfg-section" open="@IsStudioOpen">
         <summary class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary"
+                 data-testid="config-section-coverage"
                  @onclick="ToggleStudioCoverage"
                  @onclick:preventDefault="true">
             <span>Studio coverage</span>

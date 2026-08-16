@@ -270,3 +270,38 @@ public sealed class MultiUserLeaseFixture : AppFixture
 
 [CollectionDefinition("ui-multiuser-lease")]
 public sealed class MultiUserLeaseCollection : ICollectionFixture<MultiUserLeaseFixture> { }
+
+/// <summary>
+/// A host on its own port with a fresh, empty temp workspace dedicated to the Home project-management
+/// suite (create / pick / rename / delete / visibility / import). Kept separate from the pipeline
+/// fixture so those tests' create/delete churn can't disturb the pipeline suite's active project —
+/// and so the "last project deleted → empty state" case is reachable without emptying another
+/// suite's workspace.
+/// </summary>
+public sealed class HomeFixture : AppFixture
+{
+    private readonly string _workspace;
+
+    public HomeFixture()
+    {
+        _workspace = Path.Combine(Path.GetTempPath(), "ptm-home-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(_workspace, "projects"));
+    }
+
+    protected override int DefaultPort => 5084;
+    protected override bool HonorEnvBaseUrl => false;
+    protected override string WorkspaceRoot => _workspace;
+    protected override IReadOnlyDictionary<string, string> ExtraEnv => new Dictionary<string, string>
+    {
+        ["PageToMovie__EnableReadCaches"] = "false",
+    };
+
+    public override async Task DisposeAsync()
+    {
+        await base.DisposeAsync();
+        try { Directory.Delete(_workspace, recursive: true); } catch { /* best effort */ }
+    }
+}
+
+[CollectionDefinition("ui-home")]
+public sealed class HomeCollection : ICollectionFixture<HomeFixture> { }

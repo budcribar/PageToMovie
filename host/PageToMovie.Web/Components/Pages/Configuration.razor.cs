@@ -8,9 +8,11 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Configuration : IDisposable, IAsyncDisposable
+public partial class Configuration : IDisposable, IAsyncDisposable, IPageSliceHost
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private ConfigurationCatalog? _catalog;
@@ -27,6 +29,17 @@ public partial class Configuration : IDisposable, IAsyncDisposable
     internal void EnsureDomains()
     {
         _ = Catalog; _ = Keys; _ = Coverage; _ = Form; _ = Media;
+    }
+
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the coverage card is a slice.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
     }
 
 

@@ -86,7 +86,7 @@
     {
     <div class="card mb-3">
         <details class="ptm-cfg-section">
-            <summary class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 ptm-cfg-summary">
+            <summary class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 ptm-cfg-summary" data-testid="config-section-storage">
                 <span>📁 Project Storage & Local Media Folder</span>
                 <span class="badge @(MediaFolder.IsConnected ? "bg-success" : "bg-warning text-dark")">
                     @(MediaFolder.IsConnected ? "Local Folder Connected" : "Local Folder Not Connected")
@@ -156,7 +156,7 @@
 
     <div class="card mb-3">
         <details class="ptm-cfg-section">
-            <summary class="card-header ptm-cfg-summary">Appearance & Workflow</summary>
+            <summary class="card-header ptm-cfg-summary" data-testid="config-section-appearance">Appearance & Workflow</summary>
             <div class="card-body row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Theme</label>
@@ -188,7 +188,7 @@
 
     <div class="card mb-3" id="background-music-options">
         <details class="ptm-cfg-section">
-            <summary class="card-header ptm-cfg-summary">Background music options</summary>
+            <summary class="card-header ptm-cfg-summary" data-testid="config-section-music">Background music options</summary>
             <div class="card-body">
                 <div class="row align-items-center g-3">
                     <div class="col-md-6">
@@ -211,7 +211,7 @@
 
     <div class="card mb-3">
         <details class="ptm-cfg-section">
-            <summary class="card-header ptm-cfg-summary">Format & Resolution</summary>
+            <summary class="card-header ptm-cfg-summary" data-testid="config-section-format">Format & Resolution</summary>
             <div class="card-body row g-2">
                 <div class="col-md-4">
                     <label class="form-label">Aspect ratio</label>
@@ -239,7 +239,7 @@
 
     <div class="card mb-3">
         <details class="ptm-cfg-section">
-            <summary class="card-header ptm-cfg-summary">Pipeline Behavior</summary>
+            <summary class="card-header ptm-cfg-summary" data-testid="config-section-pipeline">Pipeline Behavior</summary>
             <div class="card-body row g-3">
                 <div class="col-md-6 form-check">
                     <input class="form-check-input" type="checkbox" id="smart" @bind="Form._smartContinuation" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
@@ -297,7 +297,7 @@
 
     <div class="card mb-3">
         <details class="ptm-cfg-section">
-            <summary class="card-header ptm-cfg-summary">⚙️ Advanced Adaptation Settings</summary>
+            <summary class="card-header ptm-cfg-summary" data-testid="config-section-advanced">⚙️ Advanced Adaptation Settings</summary>
             <div class="card-body">
                 <div class="row g-2">
                     <div class="form-text mb-1">

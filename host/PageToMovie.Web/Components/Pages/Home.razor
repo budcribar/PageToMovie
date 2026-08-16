@@ -14,8 +14,8 @@
 
 <PageTitle>PageToMovie</PageTitle>
 
-<InlineAlert Message="@_error" />
-<InlineAlert Message="@_message" Variant="info" />
+<InlineAlert Message="@_error" data-testid="home-error" />
+<InlineAlert Message="@_message" Variant="info" data-testid="home-message" />
 
 
 <Home_Landing IsLoggedIn="Session.IsLoggedIn" ShowEasyStart="_easyStartAvailable" />

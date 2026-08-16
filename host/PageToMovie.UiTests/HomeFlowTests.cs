@@ -37,12 +37,12 @@ public class HomeFlowTests
             await renameInput.FillAsync(newName);
             await page.GetByTestId("home-rename-project-save").ClickAsync();
 
-            await AssertSelectedProjectLabelAsync(page, newName, 15_000);
+            await Ui.AssertSelectedProjectLabelAsync(page, newName, 15_000);
 
             // Navigate away and back — the rename round-tripped through the server, not just client state.
             await page.GetByTestId("nav-configuration").ClickAsync();
             await page.GetByTestId("nav-studio").ClickAsync();
-            await AssertSelectedProjectLabelAsync(page, newName, 20_000);
+            await Ui.AssertSelectedProjectLabelAsync(page, newName, 20_000);
             await Assertions.Expect(page.GetByTestId("home-project-picker")).Not.ToContainTextAsync(originalName);
         }
         finally { await ctx.CloseAsync(); }
@@ -72,7 +72,7 @@ public class HomeFlowTests
 
             // Active is the just-created project; switch the picker to the other one, then Delete.
             await page.GetByTestId("home-project-picker").SelectOptionAsync(new SelectOptionValue { Label = leftover });
-            await AssertSelectedProjectLabelAsync(page, leftover, 15_000);
+            await Ui.AssertSelectedProjectLabelAsync(page, leftover, 15_000);
 
             await page.GetByTestId("home-manage-projects").ClickAsync();
             await page.GetByTestId("home-delete-project").ClickAsync();
@@ -99,7 +99,7 @@ public class HomeFlowTests
             await page.GetByTestId("home-delete-project-confirm").ClickAsync();
             await Assertions.Expect(modal).ToBeHiddenAsync(new() { Timeout = 20_000 });
             await Assertions.Expect(page.GetByTestId("home-project-picker")).Not.ToContainTextAsync(leftover);
-            await AssertSelectedProjectLabelAsync(page, chosen, 15_000);
+            await Ui.AssertSelectedProjectLabelAsync(page, chosen, 15_000);
         }
         finally { await ctx.CloseAsync(); }
     }
@@ -191,28 +191,4 @@ public class HomeFlowTests
             $"Expected a bounded max-height on the checkpoint list, but was '{maxHeightPx}'.");
     }
 
-    /// <summary>Blazor sets the DOM `.selected` property on the option, not the HTML attribute, so a
-    /// CSS `option[selected]` locator won't see it — poll the select's own `selectedOptions` instead.
-    /// `EvalOnSelectorAsync` throws immediately (no auto-wait) if the selector isn't in the DOM yet, so
-    /// the loop tolerates that during a page navigation rather than failing on the first iteration.</summary>
-    private static async Task AssertSelectedProjectLabelAsync(IPage page, string expectedLabel, int timeoutMs)
-    {
-        await Assertions.Expect(page.GetByTestId("home-project-picker")).ToBeVisibleAsync(new() { Timeout = timeoutMs });
-
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        string? last = null;
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                last = await page.EvalOnSelectorAsync<string>(
-                    "[data-testid='home-project-picker']",
-                    "el => el.selectedOptions[0]?.textContent ?? ''");
-                if (last == expectedLabel) return;
-            }
-            catch (PlaywrightException) { /* element mid-navigation; retry */ }
-            await Task.Delay(250);
-        }
-        Assert.Fail($"Expected project picker selected option to be '{expectedLabel}', but was '{last}'.");
-    }
 }

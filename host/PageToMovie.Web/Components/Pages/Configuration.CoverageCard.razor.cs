@@ -10,11 +10,14 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Configuration_CoverageCard
+public partial class Configuration_CoverageCard : PageSliceComponent
 {
     [CascadingParameter] public required Configuration Host { get; set; }
+
     [CascadingParameter] public Configuration.ConfigurationCatalog? Catalog { get; set; }
     [CascadingParameter] public Configuration.ConfigurationKeys? Keys { get; set; }
     [CascadingParameter] public Configuration.ConfigurationCoverage? Coverage { get; set; }

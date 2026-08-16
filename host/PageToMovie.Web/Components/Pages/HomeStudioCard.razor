@@ -34,6 +34,8 @@
                 @if (activeMeta is not null)
                 {
                     <span class="badge @Home.HomeProjects.VisibilityBadgeClass(activeMeta.VisibilityMode) small fw-normal flex-shrink-0"
+                          data-testid="home-visibility-badge"
+                          data-visibility="@activeMeta.VisibilityMode"
                           title="Visibility">
                         @Home.HomeProjects.VisibilityBadgeText(activeMeta.VisibilityMode)
                     </span>
@@ -100,6 +102,7 @@
                                 @if (canManage)
                                 {
                                     <select class="form-select form-select-sm w-auto"
+                                            data-testid="home-visibility-select"
                                             value="@p.VisibilityMode"
                                             disabled="@Host._busy"
                                             @onchange="(e) => Host.Projects.ChangeVisibilityAsync(id, e.Value?.ToString())">
@@ -108,6 +111,7 @@
                                         <option value="Open">Public (Forkable)</option>
                                     </select>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                            data-testid="home-rename-project"
                                             @onclick="Host.Projects.BeginRenameAsync">
                                         Rename
                                     </button>
@@ -254,7 +258,8 @@
 
             @if (Host.Projects._showRename && hasActive)
             {
-                <div class="border border-secondary border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm">
+                <div class="border border-secondary border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm"
+                     data-testid="home-rename-panel">
                     <div class="fw-semibold small text-light mb-2">Rename project</div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <input class="form-control form-control-sm flex-grow-1 bg-white text-dark border-secondary fw-medium"
@@ -273,6 +278,7 @@
                             Save name
                         </button>
                         <button class="btn btn-outline-secondary btn-sm text-light border-secondary"
+                                data-testid="home-rename-project-cancel"
                                 disabled="@Host._busy"
                                 @onclick="Host.Projects.CancelRename">
                             Cancel
@@ -319,11 +325,11 @@
 
             @if (Host.Projects._projects.Projects.Count == 0 && !Host.Projects._showNew)
             {
-                <p class="small text-muted mb-0">No projects yet — create one to start Book → Estimate → Film.</p>
+                <p class="small text-muted mb-0" data-testid="home-empty-state">No projects yet — create one to start Book → Estimate → Film.</p>
             }
             else if (Host.Projects._projects.Projects.Count > 0)
             {
-                <div class="list-group project-list">
+                <div class="list-group project-list" data-testid="home-project-list">
                     @foreach (var p in Host.Projects._projects.Projects)
                     {
                         var id = p.Id ?? "";
@@ -389,6 +395,7 @@
                         <div class="modal-footer border-secondary py-2">
                             <button type="button"
                                     class="btn btn-outline-secondary btn-sm"
+                                    data-testid="home-new-project-cancel"
                                     disabled="@Host._busy"
                                     @onclick="Host.Projects.ToggleNewProjectAsync">
                                 Cancel

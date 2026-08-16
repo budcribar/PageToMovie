@@ -24,4 +24,8 @@
     <ProjectReference Include="..\PageToMovie.Engine\PageToMovie.Engine.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

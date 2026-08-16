@@ -99,7 +99,7 @@ public class ScreenplayTitleAuthorChipTests
             // Persists: sign off (screenplay text, including both new lines, is saved first), then
             // reload the screenplay page fresh and confirm both lines survived the round trip.
             await PipelineFlow.SignOffScreenplayAsync(page);
-            await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 90_000 });
+            await PipelineFlow.WaitForSignOffLandingAsync(page);
 
             // Not Ui.GotoAppAsync: its readiness marker (a[href='/scenes']) only renders as a real
             // link once a shot plan (Stage2) exists — this test never builds one, so that nav item

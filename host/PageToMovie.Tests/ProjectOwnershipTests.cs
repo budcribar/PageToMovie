@@ -13,6 +13,18 @@ public class ProjectOwnershipTests
     }
 
     [Fact]
+    public void IsOwnedBy_matches_email_user_via_folder_style_namespace()
+    {
+        // Project folders are namespaced by ProjectStore.SanitizeUserSegment, which drops "@"
+        // (budcribar@gmail.com → budcribargmail_com). A re-slug rename stamps that segment as the
+        // owner; the alias set must include it or the renamed project reads "Not your project".
+        var p = new ProjectInfo { Id = "budcribargmail_com/Renamed", OwnerUserId = "budcribargmail_com" };
+        var aliases = ProjectOwnership.CollectAliases(requestUserId: "budcribar@gmail.com");
+        Assert.Contains("budcribargmail_com", aliases);
+        Assert.True(ProjectOwnership.IsOwnedBy(p, aliases));
+    }
+
+    [Fact]
     public void IsOwnedBy_matches_folder_owner_segment_alias()
     {
         var p = new ProjectInfo
