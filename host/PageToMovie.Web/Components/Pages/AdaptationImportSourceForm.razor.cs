@@ -4,7 +4,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class AdaptationImport_SourceForm : PageSliceComponent
+public partial class AdaptationImportSourceForm : PageSliceComponent
 {
     [CascadingParameter] public required AdaptationImport Host { get; set; }
 }

@@ -14,15 +14,9 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Review_PlayTab : PageSliceComponent
+public partial class AdminStorageSection : PageSliceComponent
 {
-    [CascadingParameter] public required Review Host { get; set; }
-    [CascadingParameter] public Review.ReviewListState? List { get; set; }
-
-    [CascadingParameter] public Review.ReviewJobs? Jobs { get; set; }
-
-    [CascadingParameter] public Review.ReviewPlayback? Playback { get; set; }
-
-    [CascadingParameter] public Review.ReviewShare? Share { get; set; }
-
+    [CascadingParameter] public Admin Host { get; set; } = default;
+    [CascadingParameter] public Admin.AdminState? State { get; set; }
+    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

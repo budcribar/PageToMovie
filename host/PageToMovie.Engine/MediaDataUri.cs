@@ -20,9 +20,8 @@ internal static class MediaDataUri
             if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
             {
                 var candidate = Directory.EnumerateFiles(dir, $"{nameWithoutExt}*")
-                    .Where(f => !f.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase) &&
-                                new FileInfo(f).Length >= 64)
-                    .FirstOrDefault();
+                    .FirstOrDefault(f => !f.EndsWith(ProjectStore.ClientMarkerExtension, StringComparison.OrdinalIgnoreCase) &&
+                                         new FileInfo(f).Length >= 64);
                 if (candidate is not null)
                 {
                     resolvedPath = candidate;

@@ -1085,7 +1085,7 @@ public static class ClipVideoPromptBuilder
             var full = Path.Combine(dir, name);
             if (File.Exists(full) && new FileInfo(full).Length >= 64)
                 return full;
-            if (File.Exists(full + ".client.json"))
+            if (File.Exists(full + ProjectStore.ClientMarkerExtension))
                 return full;
         }
         return null;
@@ -1172,7 +1172,7 @@ public static class ClipVideoPromptBuilder
             var full = Path.Combine(charDir, name);
             if (File.Exists(full) && new FileInfo(full).Length >= 64)
                 return full;
-            if (File.Exists(full + ".client.json"))
+            if (File.Exists(full + ProjectStore.ClientMarkerExtension))
                 return full;
         }
         return allowNormalizedFallback ? ResolveCharacterRefPathByNormalizedKey(charDir, key) : null;
@@ -1198,22 +1198,37 @@ public static class ClipVideoPromptBuilder
 
         foreach (var file in Directory.EnumerateFiles(charDir, "*_ref.png*"))
         {
-            var fileName = Path.GetFileName(file);
-            var clean = fileName.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)
-                ? fileName[..^12]
-                : fileName;
-            var stem = Path.GetFileNameWithoutExtension(clean);
-            if (stem.StartsWith("wardrobe_", StringComparison.OrdinalIgnoreCase))
-                continue; // shared costume plates, not a character's own portrait
-            if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
-                stem = stem[..^"_ref".Length];
-            if (Stage2PlannerService.NormalizeCharacterKey(stem) == targetNorm)
-            {
-                if (File.Exists(file) && (new FileInfo(file).Length >= 64 || file.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)))
-                    return Path.Combine(charDir, clean);
-            }
+            if (TryMatchRefFileForNormalizedKey(file, targetNorm, out var clean))
+                return Path.Combine(charDir, clean);
         }
         return null;
+    }
+
+    private static bool TryMatchRefFileForNormalizedKey(
+        string file,
+        string targetNorm,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? cleanFileName)
+    {
+        cleanFileName = null;
+        var fileName = Path.GetFileName(file);
+        var clean = fileName.EndsWith(ProjectStore.ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^ProjectStore.ClientMarkerExtension.Length]
+            : fileName;
+        var stem = Path.GetFileNameWithoutExtension(clean);
+        if (stem.StartsWith("wardrobe_", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
+            stem = stem[..^"_ref".Length];
+
+        if (Stage2PlannerService.NormalizeCharacterKey(stem) == targetNorm
+            && File.Exists(file)
+            && (new FileInfo(file).Length >= 64 || file.EndsWith(ProjectStore.ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)))
+        {
+            cleanFileName = clean;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

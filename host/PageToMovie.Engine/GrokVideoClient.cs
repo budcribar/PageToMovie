@@ -276,14 +276,10 @@ public sealed class GrokVideoClient : IVideoClient
     {
         if (setup.HasContinue)
         {
-            return SubmitExtendOnceAsync(
-                current, setup.DurationSeconds, setup.Resolution, setup.Model,
-                setup.VideoUri, setup.ExtendSourceFileId, setup.ContinueFromVideoPath, ct);
+            return SubmitExtendOnceAsync(setup, current, ct);
         }
 
-        return SubmitFreshOnceAsync(
-            current, setup.DurationSeconds, setup.Resolution, setup.Model,
-            setup.StartUri, setup.RefObjs, setup.StartFrameImagePath, setup.Refs.Count, setup.AspectRatio, ct);
+        return SubmitFreshOnceAsync(setup, current, ct);
     }
 
     private ApiCallTelemetry BuildSubmitTelemetry(
@@ -314,37 +310,32 @@ public sealed class GrokVideoClient : IVideoClient
             BuildSubmitTelemetry(setup, current, attempt, sw, requestId: null, ok: false, error: ex.Message), ct);
 
     private async Task<string> SubmitExtendOnceAsync(
+        SubmitSetup setup,
         string prompt,
-        int durationSeconds,
-        string resolution,
-        string model,
-        string? videoUri,
-        string? extendSourceFileId,
-        string? continueFromVideoPath,
         CancellationToken ct)
     {
-        var hasFileId = !string.IsNullOrWhiteSpace(extendSourceFileId);
+        var hasFileId = !string.IsNullOrWhiteSpace(setup.ExtendSourceFileId);
         var videoDict = hasFileId
-            ? new Dictionary<string, object?> { ["file_id"] = extendSourceFileId }
-            : new Dictionary<string, object?> { ["url"] = videoUri ?? string.Empty };
+            ? new Dictionary<string, object?> { ["file_id"] = setup.ExtendSourceFileId }
+            : new Dictionary<string, object?> { ["url"] = setup.VideoUri ?? string.Empty };
 
         var extPayload = new Dictionary<string, object?>
         {
-            ["model"] = model,
+            ["model"] = setup.Model,
             ["prompt"] = prompt,
             // duration = length of NEW extension only (not total)
-            ["duration"] = durationSeconds,
+            ["duration"] = setup.DurationSeconds,
             ["video"] = videoDict,
             // Persist to Files API (file_id). "filename" is required (422 without it).
             ["storage_options"] = PermanentVideoStorageOptions(),
         };
         // resolution/aspect may be ignored on extensions; still send when API allows
-        if (!string.IsNullOrWhiteSpace(resolution))
-            extPayload["resolution"] = resolution;
+        if (!string.IsNullOrWhiteSpace(setup.Resolution))
+            extPayload["resolution"] = setup.Resolution;
 
         _log.LogInformation(
             "Grok video EXTEND from={Source} extensionDur={Dur}s promptLen={Len}",
-            hasFileId ? extendSourceFileId : Path.GetFileName(continueFromVideoPath), durationSeconds, prompt.Length);
+            hasFileId ? setup.ExtendSourceFileId : Path.GetFileName(setup.ContinueFromVideoPath), setup.DurationSeconds, prompt.Length);
 
         // If file_id is used and fails (e.g. expired handle), attempt fallback to uploading local file if available.
         try
@@ -362,14 +353,14 @@ public sealed class GrokVideoClient : IVideoClient
                 isTransient: AiRetryPolicy.IsTransientChatFailure,
                 maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
                 backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_extend_submit", model, $"durationSec={durationSeconds}", attemptNum, ex, ct),
+                onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_extend_submit", setup.Model, $"durationSec={setup.DurationSeconds}", attemptNum, ex, ct),
                 ct: ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (hasFileId && !string.IsNullOrWhiteSpace(continueFromVideoPath) && File.Exists(continueFromVideoPath))
+        catch (Exception ex) when (hasFileId && !string.IsNullOrWhiteSpace(setup.ContinueFromVideoPath) && File.Exists(setup.ContinueFromVideoPath))
         {
             _log.LogWarning(ex, "Grok video extend file_id '{FileId}' failed; falling back to local file upload '{Path}'",
-                extendSourceFileId, continueFromVideoPath);
-            var uploadUri = await FileToDataUriAsync(continueFromVideoPath, ct).ConfigureAwait(false);
+                setup.ExtendSourceFileId, setup.ContinueFromVideoPath);
+            var uploadUri = await FileToDataUriAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
             extPayload["video"] = new Dictionary<string, object?> { ["url"] = uploadUri };
             using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
             return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
@@ -381,48 +372,41 @@ public sealed class GrokVideoClient : IVideoClient
     }
 
     private async Task<string> SubmitFreshOnceAsync(
+        SubmitSetup setup,
         string prompt,
-        int durationSeconds,
-        string resolution,
-        string model,
-        string? startUri,
-        List<object?>? refObjs,
-        string? startFrameImagePath,
-        int refCount,
-        string? aspectRatio,
         CancellationToken ct)
     {
         var payload = new Dictionary<string, object?>
         {
-            ["model"] = model,
+            ["model"] = setup.Model,
             ["prompt"] = prompt,
-            ["duration"] = durationSeconds,
-            ["aspect_ratio"] = ResolveAspectRatio(model, aspectRatio).ToApiString(),
-            ["resolution"] = resolution,
+            ["duration"] = setup.DurationSeconds,
+            ["aspect_ratio"] = ResolveAspectRatio(setup.Model, setup.AspectRatio).ToApiString(),
+            ["resolution"] = setup.Resolution,
             // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
             // Persist to Files API (file_id). "filename" is required (422 without it).
             ["storage_options"] = PermanentVideoStorageOptions(),
         };
 
-        if (startUri is not null)
+        if (setup.StartUri is not null)
         {
-            payload["image"] = new Dictionary<string, object?> { ["url"] = startUri };
+            payload["image"] = new Dictionary<string, object?> { ["url"] = setup.StartUri };
             _log.LogInformation(
                 "Grok video image-to-video startFrame={Frame} promptLen={Len} duration={Dur}s",
-                Path.GetFileName(startFrameImagePath), prompt.Length, durationSeconds);
+                Path.GetFileName(setup.StartFrameImagePath), prompt.Length, setup.DurationSeconds);
         }
-        else if (refObjs is { Count: > 0 })
+        else if (setup.RefObjs is { Count: > 0 })
         {
-            payload["reference_images"] = refObjs;
+            payload["reference_images"] = setup.RefObjs;
             _log.LogInformation(
                 "Grok video reference-to-video refs={N} promptLen={Len} duration={Dur}s",
-                refCount, prompt.Length, durationSeconds);
+                setup.Refs.Count, prompt.Length, setup.DurationSeconds);
         }
         else
         {
             _log.LogInformation(
                 "Grok video text-to-video promptLen={Len} duration={Dur}s",
-                prompt.Length, durationSeconds);
+                prompt.Length, setup.DurationSeconds);
         }
 
         // Same reasoning as SubmitExtendOnceAsync: a lost response here is unrecoverable either
@@ -440,7 +424,7 @@ public sealed class GrokVideoClient : IVideoClient
             isTransient: AiRetryPolicy.IsTransientChatFailure,
             maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
             backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-            onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_submit", model, $"durationSec={durationSeconds}", attemptNum, ex, ct),
+            onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync("grok_video_submit", setup.Model, $"durationSec={setup.DurationSeconds}", attemptNum, ex, ct),
             ct: ct).ConfigureAwait(false);
     }
 

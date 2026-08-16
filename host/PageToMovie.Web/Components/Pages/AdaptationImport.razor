@@ -11,17 +11,17 @@
     <CascadingValue Value="this" IsFixed="true">
     @if (Status is not null)
     {
-        <AdaptationImport_SetupBanner />
+        <AdaptationImportSetupBanner />
 
-        <div class="card mb-4">
-            <div class="card-body p-4">
+        <div class="card bg-body-tertiary">
+            <div class="card-body">
                 @if (Drop._importing || Jobs.JobRunning)
                 {
-                    <AdaptationImport_Importing />
+                    <AdaptationImportImporting />
                 }
                 else
                 {
-                    <AdaptationImport_SourceForm />
+                    <AdaptationImportSourceForm />
                 }
 
                 <div data-testid="import-status"

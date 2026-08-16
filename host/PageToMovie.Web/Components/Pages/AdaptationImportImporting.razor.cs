@@ -5,7 +5,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class AdaptationImport_Importing : PageSliceComponent
+public partial class AdaptationImportImporting : PageSliceComponent
 {
     [CascadingParameter] public required AdaptationImport Host { get; set; }
     [Inject] private AdminSessionService Session { get; set; } = default!;

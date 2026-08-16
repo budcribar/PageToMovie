@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleRevoice_ProgressPanel : PageSliceComponent
+public partial class SimpleVoiceMoviePhase : PageSliceComponent
 {
-    [CascadingParameter] public SimpleRevoice Host { get; set; } = default;
+    [CascadingParameter] public SimpleVoice Host { get; set; } = default;
 }

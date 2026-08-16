@@ -14,15 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-/// <summary>
-/// Phase.Pick. <see cref="StoriesLoading"/> is passed as a changing parameter so this
-/// child re-renders when the spinner flips (CascadingValue IsFixed does not notify).
-/// </summary>
-public partial class SimpleVoice_PickPhase : PageSliceComponent
+public partial class SimpleRevoiceMainCard : PageSliceComponent
 {
-    [CascadingParameter] public required SimpleVoice Host { get; set; }
-
-    [Parameter] public bool StoriesLoading { get; set; }
-
-    [Parameter] public bool Busy { get; set; }
+    [CascadingParameter] public SimpleRevoice Host { get; set; } = default;
 }

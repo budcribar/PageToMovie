@@ -37,6 +37,8 @@ public sealed class ServerHealthState : IDisposable
     private readonly TimeProvider _time;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private CancellationTokenSource? _probeCts;
+    private readonly List<Func<Task>> _recoveredHandlers = new();
+    private readonly object _recoveredLock = new();
     private int _attempt;
     private bool _disposed;
 
@@ -72,7 +74,17 @@ public sealed class ServerHealthState : IDisposable
     /// Subscribers re-fetch what they own (active project, hub, page data). Handlers run
     /// sequentially; a throwing handler does not stop the others.
     /// </summary>
-    public event Func<Task>? Recovered;
+    public event Func<Task> Recovered
+    {
+        add
+        {
+            lock (_recoveredLock) { _recoveredHandlers.Add(value); }
+        }
+        remove
+        {
+            lock (_recoveredLock) { _recoveredHandlers.Remove(value); }
+        }
+    }
 
     public TimeSpan Elapsed => DownSince is { } s ? _time.GetUtcNow() - s : TimeSpan.Zero;
     public bool IsLongOutage => IsDown && Elapsed >= LongOutageThreshold;
@@ -149,16 +161,19 @@ public sealed class ServerHealthState : IDisposable
 
     private async Task RunRecoveryAsync()
     {
-        var handlers = Recovered?.GetInvocationList();
-        if (handlers is not null)
+        Func<Task>[] handlers;
+        lock (_recoveredLock)
         {
-            foreach (var h in handlers)
-            {
-                if (Health != ServerHealth.Recovering) return; // failed again mid-recovery
-                try { await ((Func<Task>)h)(); }
-                catch { /* one page failing to reload must not block the rest */ }
-            }
+            handlers = _recoveredHandlers.ToArray();
         }
+
+        foreach (var h in handlers)
+        {
+            if (Health != ServerHealth.Recovering) return; // failed again mid-recovery
+            try { await h().ConfigureAwait(false); }
+            catch { /* one page failing to reload must not block the rest */ }
+        }
+
         if (Health != ServerHealth.Recovering) return;
         Health = ServerHealth.Up;
         DownSince = null;

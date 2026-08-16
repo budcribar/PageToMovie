@@ -14,9 +14,15 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_TimingSection : PageSliceComponent
+/// <summary>
+/// Phase.Pick. <see cref="StoriesLoading"/> is passed as a changing parameter so this
+/// child re-renders when the spinner flips (CascadingValue IsFixed does not notify).
+/// </summary>
+public partial class SimpleVoicePickPhase : PageSliceComponent
 {
-    [CascadingParameter] public Admin Host { get; set; } = default;
-    [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }
-    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
+    [CascadingParameter] public required SimpleVoice Host { get; set; }
+
+    [Parameter] public bool StoriesLoading { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
 }

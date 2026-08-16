@@ -14,9 +14,10 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_StorageSection : PageSliceComponent
+public partial class AdminJobsSection : PageSliceComponent
 {
-    [CascadingParameter] public Admin Host { get; set; } = default;
+    [CascadingParameter] public required Admin Host { get; set; }
+    [CascadingParameter] public Admin.AdminJobs? Jobs { get; set; }
     [CascadingParameter] public Admin.AdminState? State { get; set; }
     [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

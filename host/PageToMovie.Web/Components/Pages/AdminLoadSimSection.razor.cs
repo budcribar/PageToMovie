@@ -14,7 +14,10 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleVoice_RecordPhase : PageSliceComponent
+public partial class AdminLoadSimSection : PageSliceComponent
 {
-    [CascadingParameter] public required SimpleVoice Host { get; set; }
+    [CascadingParameter] public Admin Host { get; set; } = default;
+    [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }
+    [CascadingParameter] public Admin.AdminState? State { get; set; }
+    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

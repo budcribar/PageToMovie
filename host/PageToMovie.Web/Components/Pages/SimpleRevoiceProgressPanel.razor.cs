@@ -14,10 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin_JobsSection : PageSliceComponent
+public partial class SimpleRevoiceProgressPanel : PageSliceComponent
 {
-    [CascadingParameter] public required Admin Host { get; set; }
-    [CascadingParameter] public Admin.AdminJobs? Jobs { get; set; }
-    [CascadingParameter] public Admin.AdminState? State { get; set; }
-    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
+    [CascadingParameter] public SimpleRevoice Host { get; set; } = default;
 }

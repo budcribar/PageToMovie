@@ -27,7 +27,8 @@ public sealed class ActiveProjectState
     public bool CanReview { get; private set; }
     public bool CanEstimate { get; private set; }
 
-    public string CharactersBlockedReason { get; private set; } = "Approve the screenplay first";
+    private const string ScreenplayNotApprovedReason = "Approve the screenplay first";
+    public string CharactersBlockedReason { get; private set; } = ScreenplayNotApprovedReason;
     private const string ShotPlanBlockedReason = "Finish the shot plan first";
     public string ScenesBlockedReason { get; private set; } = ShotPlanBlockedReason;
     public string ReviewBlockedReason { get; private set; } = ShotPlanBlockedReason;
@@ -223,18 +224,16 @@ public sealed class ActiveProjectState
     private void ApplyReadinessFromJson(JsonElement root)
     {
         var screenplayReady = ReadScreenplayReady(root);
-        var (shotsReady, stage2Stale) = ReadStage2(root);
-        var castReady = ReadCastReady(root);
 
         CanCharacters = screenplayReady;
-        CharactersBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
+        CharactersBlockedReason = screenplayReady ? "" : ScreenplayNotApprovedReason;
         CanScenes = screenplayReady;
         CanReview = screenplayReady;
         CanEstimate = screenplayReady;
         EstimateBlockedReason = screenplayReady
             ? ""
             : "Finish importing the book and approve the screenplay first";
-        ScenesBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
+        ScenesBlockedReason = screenplayReady ? "" : ScreenplayNotApprovedReason;
         ReviewBlockedReason = ScenesBlockedReason;
     }
 
@@ -250,27 +249,6 @@ public sealed class ActiveProjectState
             && PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
             screenplayReady = true;
         return screenplayReady;
-    }
-
-    private static (bool ShotsReady, bool Stage2Stale) ReadStage2(JsonElement root)
-    {
-        var shotsReady = false;
-        var stage2Stale = false;
-        if (TryGetCamelOrPascal(root, "stage2", "Stage2", out var s2))
-        {
-            shotsReady = PropBool(s2, "stage2Ready", "Stage2Ready")
-                && PropInt(s2, "stage2Clips", "Stage2Clips") > 0;
-            stage2Stale = PropBool(s2, "stage2Stale", "Stage2Stale");
-        }
-        return (shotsReady, stage2Stale);
-    }
-
-    private static bool ReadCastReady(JsonElement root)
-    {
-        var castReady = true;
-        if (TryGetCamelOrPascal(root, "cast", "Cast", out var ca))
-            castReady = PropBool(ca, "readyForShots", "ReadyForShots");
-        return castReady;
     }
 
     private static bool TryGetCamelOrPascal(JsonElement el, string camel, string pascal, out JsonElement value)
@@ -307,7 +285,7 @@ public sealed class ActiveProjectState
         CanScenes = false;
         CanReview = false;
         CanEstimate = false;
-        CharactersBlockedReason = "Approve the screenplay first";
+        CharactersBlockedReason = ScreenplayNotApprovedReason;
         ScenesBlockedReason = ShotPlanBlockedReason;
         ReviewBlockedReason = ShotPlanBlockedReason;
         EstimateBlockedReason = "Finish importing the book and approve the screenplay first";

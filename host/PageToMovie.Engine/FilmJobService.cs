@@ -5348,7 +5348,7 @@ public sealed class FilmJobService
         var modelEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
 
         var (extendSourcePath, extendSourceFileId, tempTrimPath) = wantContinue
-            ? await ResolveExtendInputAsync(projectId, projectDir, scene, clip, modelEntry, ct).ConfigureAwait(false)
+            ? await ResolveExtendInputAsync(projectDir, scene, clip, modelEntry, ct).ConfigureAwait(false)
             : (null, null, null);
 
         var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
@@ -5444,7 +5444,6 @@ public sealed class FilmJobService
 
     private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath)>
         ResolveExtendInputAsync(
-            string projectId,
             string projectDir,
             int scene,
             int clip,
@@ -5481,20 +5480,32 @@ public sealed class FilmJobService
         }
 
         // Case 3 / 4: Duration > maxInputSeconds -> tail trimming required
-        var sourceVideoToTrim = prevClipInfo.Value.LocalMp4Path;
+        return await TrimPredecessorForExtendAsync(projectDir, scene, clip, prevClipInfo.Value, maxInputSeconds, ct).ConfigureAwait(false);
+    }
+
+    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath)>
+        TrimPredecessorForExtendAsync(
+            string projectDir,
+            int scene,
+            int clip,
+            PredecessorClipDetails prevClipInfo,
+            double maxInputSeconds,
+            CancellationToken ct)
+    {
+        var sourceVideoToTrim = prevClipInfo.LocalMp4Path;
         string? downloadedTempFile = null;
         if ((string.IsNullOrWhiteSpace(sourceVideoToTrim) || !File.Exists(sourceVideoToTrim)) &&
-            !string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceUrl))
+            !string.IsNullOrWhiteSpace(prevClipInfo.SourceUrl))
         {
             downloadedTempFile = Path.Combine(Path.GetTempPath(), $"ptm_extend_pred_{Guid.NewGuid():N}.mp4");
             try
             {
-                await _grok.DownloadToFileAsync(prevClipInfo.Value.SourceUrl, downloadedTempFile, ct).ConfigureAwait(false);
+                await _grok.DownloadToFileAsync(prevClipInfo.SourceUrl, downloadedTempFile, ct).ConfigureAwait(false);
                 sourceVideoToTrim = downloadedTempFile;
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "Failed to download predecessor video from source_url for tail trimming: {Url}", prevClipInfo.Value.SourceUrl);
+                _log.LogWarning(ex, "Failed to download predecessor video from source_url for tail trimming: {Url}", prevClipInfo.SourceUrl);
                 TryDeleteExtendInputTemp(downloadedTempFile);
                 return (null, null, null);
             }

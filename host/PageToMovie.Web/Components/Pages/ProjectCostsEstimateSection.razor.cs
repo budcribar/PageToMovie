@@ -15,7 +15,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class ProjectCosts_SpentSection : PageSliceComponent
+public partial class ProjectCostsEstimateSection : PageSliceComponent
 {
     [CascadingParameter] public ProjectCosts Host { get; set; } = default;
 }

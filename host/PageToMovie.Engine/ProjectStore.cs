@@ -13,6 +13,8 @@ namespace PageToMovie.Engine;
 
 public sealed partial class ProjectStore
 {
+    public const string ClientMarkerExtension = ".client.json";
+
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.IndentedCaseInsensitive;
 
     /// <summary>CA1861: avoid allocating split separator arrays on every book-text sample.</summary>
@@ -21,6 +23,7 @@ public sealed partial class ProjectStore
     /// <summary>Repeated path / JSON literals (S1192).</summary>
     private static class StoreLit
     {
+        public const string ClientMarkerExtension = ProjectStore.ClientMarkerExtension;
         public const string Projects = "projects";
         public const string WorkspaceJson = "workspace.json";
         public const string ProjectJson = "project.json";
@@ -3352,7 +3355,7 @@ public sealed partial class ProjectStore
         var full = Path.Combine(dir, name);
         if (File.Exists(full) && new FileInfo(full).Length >= 64)
             return full;
-        if (File.Exists(full + ".client.json"))
+        if (File.Exists(full + ClientMarkerExtension))
             return full;
         // Alias: Loc_Foo → foo_ref.png without Loc_
         var raw = (locKey ?? "").Trim();
@@ -3362,7 +3365,7 @@ public sealed partial class ProjectStore
             var alt = Path.Combine(dir, LocationRefFileName(bare));
             if (File.Exists(alt) && new FileInfo(alt).Length >= 64)
                 return alt;
-            if (File.Exists(alt + ".client.json"))
+            if (File.Exists(alt + ClientMarkerExtension))
                 return alt;
         }
         return null;
@@ -3371,10 +3374,11 @@ public sealed partial class ProjectStore
     private void FillLocationPlateStatus(string projectId, LocationSummary row)
     {
         var path = ResolveLocationRefPath(projectId, row.Key);
-        if (path is not null)
+        var hasLockedPlate = path is not null && File.Exists(path) && new FileInfo(path).Length >= 64;
+        row.Locked = hasLockedPlate;
+        row.HasPreferred = hasLockedPlate;
+        if (hasLockedPlate && path is not null)
         {
-            row.Locked = true;
-            row.HasPreferred = true;
             row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
             row.PreferredUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
         }
@@ -7816,7 +7820,7 @@ public sealed partial class ProjectStore
 
         if (videoIndex.TryGetValue(mp4Name, out var sz) && sz >= 1024)
             return true;
-        if (videoIndex.ContainsKey(mp4Name + ".client.json"))
+        if (videoIndex.ContainsKey(mp4Name + ClientMarkerExtension))
             return true;
         if (videoIndex.ContainsKey(basePrefix + StoreLit.ClipJsonSuffix))
             return true;
@@ -7825,7 +7829,7 @@ public sealed partial class ProjectStore
             k.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase) &&
             (k.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
              k.EndsWith(StoreLit.ClipJsonSuffix, StringComparison.OrdinalIgnoreCase) ||
-             k.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)));
+             k.EndsWith(ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)));
     }
 
     private Dictionary<string, JsonElement> LoadCharacterSeeds(string projectId) =>

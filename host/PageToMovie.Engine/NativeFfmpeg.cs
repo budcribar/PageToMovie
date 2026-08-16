@@ -62,18 +62,14 @@ public static class NativeFfmpeg
                     Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
                     "ffmpeg.exe",
                 };
-                foreach (var c in candidates)
-                {
-                    if (File.Exists(c)) return c;
-                }
+                var found = candidates.FirstOrDefault(File.Exists);
+                if (found is not null) return found;
             }
             else
             {
                 var candidates = new[] { "/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg" };
-                foreach (var c in candidates)
-                {
-                    if (File.Exists(c)) return c;
-                }
+                var found = candidates.FirstOrDefault(File.Exists);
+                if (found is not null) return found;
             }
             return "ffmpeg";
         }

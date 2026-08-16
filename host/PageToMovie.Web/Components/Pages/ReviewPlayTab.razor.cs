@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Review_ReviewTab : PageSliceComponent
+public partial class ReviewPlayTab : PageSliceComponent
 {
     [CascadingParameter] public required Review Host { get; set; }
     [CascadingParameter] public Review.ReviewListState? List { get; set; }
@@ -23,12 +23,6 @@ public partial class Review_ReviewTab : PageSliceComponent
 
     [CascadingParameter] public Review.ReviewPlayback? Playback { get; set; }
 
-    [CascadingParameter] public Review.ReviewAutoReview? AutoReview { get; set; }
+    [CascadingParameter] public Review.ReviewShare? Share { get; set; }
 
-    private static string ReviewButtonLabel(bool autoBusy, bool hasDraft, bool editing)
-    {
-        if (autoBusy) return "Reviewing…";
-        if (hasDraft && !editing) return "Review again";
-        return "Review";
-    }
 }

@@ -9,12 +9,13 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
+using static PageToMovie.Web.Components.CostFormatting;
 
 using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleRevoice_MainCard : PageSliceComponent
+public partial class ProjectCostsCategoryCards : PageSliceComponent
 {
-    [CascadingParameter] public SimpleRevoice Host { get; set; } = default;
+    [CascadingParameter] public ProjectCosts Host { get; set; } = default;
 }

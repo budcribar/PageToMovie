@@ -111,7 +111,7 @@
                         var key = loc.Key;
                         var active = string.Equals(key, _selectedKey, StringComparison.OrdinalIgnoreCase);
                         var thumb = ListThumbUrl(loc);
-                        var isLocked = loc.Locked || loc.HasPreferred;
+                        var isLocked = loc.Locked && loc.HasPreferred;
                         <button type="button"
                                 class="list-group-item list-group-item-action loc-list-item text-start d-flex align-items-center gap-2 @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
                                 data-loc-used="@(loc.UsedInPlan ? "true" : "false")"
@@ -158,7 +158,7 @@
                 }
                 else
                 {
-                    var selectedLocked = _selected.Locked || _selected.HasPreferred;
+                    var selectedLocked = _selected.Locked && _selected.HasPreferred;
                     <div class="card bg-dark border-secondary">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>

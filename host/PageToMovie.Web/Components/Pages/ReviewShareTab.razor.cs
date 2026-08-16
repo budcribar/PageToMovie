@@ -14,7 +14,13 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleVoice_MoviePhase : PageSliceComponent
+public partial class ReviewShareTab : PageSliceComponent
 {
-    [CascadingParameter] public SimpleVoice Host { get; set; } = default;
+    [CascadingParameter] public required Review Host { get; set; }
+    [CascadingParameter] public Review.ReviewListState? List { get; set; }
+
+    [CascadingParameter] public Review.ReviewShare? Share { get; set; }
+
+    [CascadingParameter] public Review.ReviewPlayback? Playback { get; set; }
+
 }

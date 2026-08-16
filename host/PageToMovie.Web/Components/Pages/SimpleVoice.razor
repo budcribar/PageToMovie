@@ -52,20 +52,20 @@ else
 <CascadingValue Value="this" IsFixed="true">
     @if (_phase == Phase.Pick)
     {
-        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
+        <SimpleVoicePickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
     }
     else if (!Session.IsLoggedIn)
     {
         @* Record/movie need a session; bounce to pick + sign-in. *@
-        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
+        <SimpleVoicePickPhase StoriesLoading="_storiesLoading" Busy="_busy" />
     }
     else if (_phase is Phase.Record or Phase.Done)
     {
-        <SimpleVoice_RecordPhase />
+        <SimpleVoiceRecordPhase />
     }
     else if (_phase == Phase.Movie)
     {
-        <SimpleVoice_MoviePhase />
+        <SimpleVoiceMoviePhase />
     }
 </CascadingValue>
 }
