@@ -1038,8 +1038,9 @@ public sealed class CharacterDesignService
         }
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var styleLock = ReadProjectRenderStyleLock(projectDir);
-        if (!TryResolvePortraitStyleExpectation(styleLock, out var expected))
+        var vision = ProjectVisionMeta.TryRead(projectDir);
+        var styleLock = vision?.RenderStyleLock ?? ReadProjectRenderStyleLock(projectDir);
+        if (!TryResolvePortraitStyleExpectation(styleLock, vision?.VisualMedium, out var expected))
             return;
 
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
@@ -1061,9 +1062,26 @@ public sealed class CharacterDesignService
         }
     }
 
-    private static bool TryResolvePortraitStyleExpectation(string? styleLock, out string expected)
+    internal static bool TryResolvePortraitStyleExpectation(
+        string? styleLock, string? visualMedium, out string expected)
     {
         expected = IllustrationMedium;
+
+        if (!string.IsNullOrWhiteSpace(visualMedium))
+        {
+            var norm = ProjectVisionMeta.NormalizeMedium(visualMedium);
+            if (ProjectVisionMeta.PrefersIllustrated(norm))
+            {
+                expected = IllustrationMedium;
+                return true;
+            }
+            if (norm == ProjectVisionMeta.MediumPhotoreal)
+            {
+                expected = "photoreal";
+                return true;
+            }
+        }
+
         // No project medium → nothing to enforce (ambiguous mixed projects)
         if (string.IsNullOrWhiteSpace(styleLock))
             return false;
@@ -1071,17 +1089,18 @@ public sealed class CharacterDesignService
         // Need a clear medium preference; pure free-form style text still runs the gate.
         var wantIllustrated = PrefersIllustratedPortraitStyle(
             styleLock, hasImageHints: false, isAnimal: false);
-        // PrefersIllustrated with empty photoreal cues returns false only when photoreal cues
-        // are present or default-to-photoreal; still detect cues for expected label.
-        var hasPhotoCues = RegexContains(styleLock,
+
+        var positiveStyle = StripNegativeStyleClauses(styleLock);
+        var hasPhotoCues = RegexContains(positiveStyle,
             @"\b(photoreal|photo-?real|live[- ]?action|cinematic|film photography|" +
             @"period drama|naturalistic|photographic)\b");
-        var hasIllustCues = RegexContains(styleLock,
+        var hasIllustCues = RegexContains(positiveStyle,
             @"\b(picture[- ]?book|illustrated|illustration|cartoon|painted|anime|comic)\b");
+
         if (!hasPhotoCues && !hasIllustCues && !wantIllustrated)
             return false; // style present but medium ambiguous — do not block lock
 
-        expected = hasPhotoCues && !wantIllustrated ? "photoreal" : IllustrationMedium;
+        expected = wantIllustrated ? IllustrationMedium : (hasPhotoCues ? "photoreal" : IllustrationMedium);
         return true;
     }
 
@@ -1628,6 +1647,26 @@ public sealed class CharacterDesignService
         return null;
     }
 
+    internal static string StripNegativeStyleClauses(string style)
+    {
+        if (string.IsNullOrWhiteSpace(style))
+            return "";
+
+        var cleaned = CommonRegex.Replace(
+            style,
+            @"\b(not|no|never|avoid|without)\b(?:\s+(?:a|an))?\s+(?:photoreal(?:istic)?|photo-?real|live[- ]?action|cinematic|cartoon|illustration|illustrated|picture[- ]?book|anime|comic|sketch|painted)\b",
+            "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        cleaned = CommonRegex.Replace(
+            cleaned,
+            @"--\s*not\b.*$",
+            "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return cleaned;
+    }
+
     public static bool PrefersIllustratedPortraitStyle(
         string? projectRenderStyleLock,
         bool hasImageHints,
@@ -1637,15 +1676,17 @@ public sealed class CharacterDesignService
         var style = projectRenderStyleLock ?? "";
         if (style.Length > 0)
         {
-            // Explicit live-action / photoreal project wins over picture-book default.
-            if (RegexContains(style,
-                    @"\b(photoreal|photo-?real|live[- ]?action|cinematic|film photography|" +
-                    @"period drama|gothic drama|naturalistic skin|continuity portrait)\b"))
-                return false;
-            if (RegexContains(style,
+            var positiveStyle = StripNegativeStyleClauses(style);
+
+            if (RegexContains(positiveStyle,
                     @"\b(picture[- ]?book|illustration|illustrated|cartoon|painted cartoon|" +
                     @"children'?s book|storybook|stylized 3d|cg animated)\b"))
                 return true;
+
+            if (RegexContains(positiveStyle,
+                    @"\b(photoreal|photo-?real|live[- ]?action|cinematic|film photography|" +
+                    @"period drama|gothic drama|naturalistic skin|continuity portrait)\b"))
+                return false;
         }
 
         // No style in screenplay/cast: do not guess from files. Photoreal until medium is written.

@@ -47,9 +47,9 @@ public abstract class PageSliceComponent : ComponentBase, IHandleEvent, IDisposa
     /// Mirrors ComponentBase's default event handling (render after the sync part, and again when
     /// an async handler completes) and additionally asks the host page to render at both points.
     /// </summary>
-    async Task IHandleEvent.HandleEventAsync(EventCallbackWorkItem callback, object? arg)
+    async Task IHandleEvent.HandleEventAsync(EventCallbackWorkItem item, object? arg)
     {
-        var task = callback.InvokeAsync(arg);
+        var task = item.InvokeAsync(arg);
         var shouldAwait = task.Status is not (TaskStatus.RanToCompletion or TaskStatus.Canceled);
         RenderSelfAndHost();
         if (!shouldAwait) return;
@@ -70,10 +70,18 @@ public abstract class PageSliceComponent : ComponentBase, IHandleEvent, IDisposa
         SliceHost?.RenderRequestedBySlice();
     }
 
-    public virtual void Dispose()
+    public void Dispose()
     {
-        if (_subscribedHost is not null) _subscribedHost.Rendered -= OnHostRendered;
-        _subscribedHost = null;
+        Dispose(true);
         GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            if (_subscribedHost is not null) _subscribedHost.Rendered -= OnHostRendered;
+            _subscribedHost = null;
+        }
     }
 }

@@ -71,7 +71,14 @@ public sealed class JobHubClient : IAsyncDisposable
             var health = _health;
             _connection.Reconnecting += ex => { health.ReportFailure(ex?.Message ?? "hub reconnecting"); return Task.CompletedTask; };
             _connection.Reconnected += _ => { health.ReportSuccess(); return Task.CompletedTask; };
-            _connection.Closed += ex => { if (ex is not null) health.ReportFailure(ex); return Task.CompletedTask; };
+            _connection.Closed += ex =>
+            {
+                if (ex is not null)
+                {
+                    health.ReportFailure(ex);
+                }
+                return Task.CompletedTask;
+            };
         }
 
         try

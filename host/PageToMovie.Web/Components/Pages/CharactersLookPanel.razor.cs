@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Characters_LookPanel : PageSliceComponent
+public partial class CharactersLookPanel : PageSliceComponent
 {
     [CascadingParameter] public required Characters Host { get; set; }
     [CascadingParameter] public Characters.CharactersListState? List { get; set; }

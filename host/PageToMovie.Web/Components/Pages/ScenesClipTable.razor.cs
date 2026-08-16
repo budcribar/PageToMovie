@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes_ClipTable : PageSliceComponent
+public partial class ScenesClipTable : PageSliceComponent
 {
     [CascadingParameter] public Scenes Host { get; set; } = default;
     [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }

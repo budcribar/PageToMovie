@@ -10,11 +10,21 @@ public sealed class PortraitStyleGateTests
     [InlineData("STYLE LOCK: children's picture-book illustration, painted cartoon", true)]
     [InlineData("photoreal live-action period drama circa 1840s", false)]
     [InlineData("STYLE LOCK: photoreal live-action continuity portrait — naturalistic face", false)]
+    [InlineData("STYLE LOCK: stylized animated children's picture-book look for ALL on-screen cast (animals and humans share the same medium) -- not photoreal, not live-action", true)]
     public void PrefersIllustrated_FromProjectStyle(string style, bool illustrated)
     {
         Assert.Equal(
             illustrated,
             CharacterDesignService.PrefersIllustratedPortraitStyle(style, hasImageHints: false, isAnimal: false));
+    }
+
+    [Fact]
+    public void TryResolvePortraitStyleExpectation_NegativeClauseInIllustratedLock_ResolvesIllustration()
+    {
+        var style = "STYLE LOCK: stylized animated children's picture-book look for ALL on-screen cast (animals and humans share the same medium) -- not photoreal, not live-action";
+        var ok = CharacterDesignService.TryResolvePortraitStyleExpectation(style, "illustrated_picture_book", out var expected);
+        Assert.True(ok);
+        Assert.Equal("illustration", expected);
     }
 
     [Fact]

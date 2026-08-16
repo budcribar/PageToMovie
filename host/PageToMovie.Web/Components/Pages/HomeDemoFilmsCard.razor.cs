@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home_DemoFilmsCard : PageSliceComponent
+public partial class HomeDemoFilmsCard : PageSliceComponent
 {
     [CascadingParameter] public Home Host { get; set; } = default;
     [CascadingParameter] public Home.HomeCosts? Costs { get; set; }

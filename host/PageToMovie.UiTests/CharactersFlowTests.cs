@@ -58,7 +58,7 @@ public class CharactersFlowTests
         finally { await ctx.CloseAsync(); }
     }
 
-    // Selecting a character happens inside the Characters_CastList slice and the look panel (with
+    // Selecting a character happens inside the CharactersCastList slice and the look panel (with
     // the photo upload) is rendered by the Characters page only once List._selected is set. After
     // the page split the page never re-rendered on that click, so the panel — and the upload —
     // were unreachable. This drives the real click → upload → thumbnail path.

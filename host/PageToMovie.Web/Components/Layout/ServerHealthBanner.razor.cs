@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Layout;
@@ -8,6 +10,9 @@ namespace PageToMovie.Web.Components.Layout;
 /// </summary>
 public partial class ServerHealthBanner : IDisposable
 {
+    [Inject] internal ServerHealthState Health { get; set; } = default!;
+    [Inject] internal IAppLocalizer L { get; set; } = default!;
+
     private System.Threading.Timer? _ticker;
     private bool _disposed;
 
@@ -49,7 +54,7 @@ public partial class ServerHealthBanner : IDisposable
         if (Health.IsDown)
         {
             _ticker ??= new System.Threading.Timer(
-                _ => _ = InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+                _ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
         else
         {
@@ -60,10 +65,19 @@ public partial class ServerHealthBanner : IDisposable
 
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
         if (_disposed) return;
         _disposed = true;
-        Health.Changed -= OnHealthChanged;
-        _ticker?.Dispose();
-        _ticker = null;
+        if (disposing)
+        {
+            Health.Changed -= OnHealthChanged;
+            _ticker?.Dispose();
+            _ticker = null;
+        }
     }
 }

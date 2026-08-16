@@ -14,7 +14,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home_StudioCard : PageSliceComponent
+public partial class HomeStudioCard : PageSliceComponent
 {
     [CascadingParameter] public required Home Host { get; set; }
     [CascadingParameter] public Home.HomeProjects? Projects { get; set; }

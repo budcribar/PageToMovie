@@ -4,9 +4,9 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes_GenPartialAlert : PageSliceComponent
+public partial class ScenesGenErrorAlert : PageSliceComponent
 {
-    [CascadingParameter] public required Scenes Host { get; set; }
+    [CascadingParameter] public Scenes Host { get; set; } = default;
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
 

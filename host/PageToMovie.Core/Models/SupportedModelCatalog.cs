@@ -1069,23 +1069,34 @@ public static class SupportedModelCatalog
         return id;
     }
 
+    public static bool TryParseCapabilityId(string? capabilityId, out ModelCapability cap)
+    {
+        cap = ModelCapability.Chat;
+        if (string.IsNullOrWhiteSpace(capabilityId)) return false;
+        var s = capabilityId.Trim();
+        if (Enum.TryParse<ModelCapability>(s.Replace("-", "").Replace("_", ""), true, out cap))
+            return true;
+
+        switch (s.ToLowerInvariant())
+        {
+            case "video": cap = ModelCapability.Video; return true;
+            case "image": cap = ModelCapability.Image; return true;
+            case "chat": case "planning": cap = ModelCapability.Chat; return true;
+            case "vision": cap = ModelCapability.Vision; return true;
+            case "audio": case "music": cap = ModelCapability.Audio; return true;
+            case "voice": cap = ModelCapability.Voice; return true;
+            case "lipsync": case "lip-sync": cap = ModelCapability.LipSync; return true;
+            case "videoedit": case "video-edit": cap = ModelCapability.VideoEdit; return true;
+            case VideoReviewCapabilityId: case "videoreview": cap = ModelCapability.Chat; return true;
+            default: return false;
+        }
+    }
+
     private static ModelCapability ParseCapabilityId(string capabilityId)
     {
-        if (Enum.TryParse<ModelCapability>(capabilityId.Replace("-", ""), true, out var cap))
+        if (TryParseCapabilityId(capabilityId, out var cap))
             return cap;
-
-        return capabilityId.ToLowerInvariant() switch
-        {
-            "video" => ModelCapability.Video,
-            "image" => ModelCapability.Image,
-            "chat" or "planning" => ModelCapability.Chat,
-            "vision" => ModelCapability.Vision,
-            "audio" or "music" => ModelCapability.Audio,
-            "voice" => ModelCapability.Voice,
-            "lipsync" or "lip-sync" => ModelCapability.LipSync,
-            VideoReviewCapabilityId or "videoreview" => ModelCapability.Chat,
-            _ => ModelCapability.Chat,
-        };
+        return ModelCapability.Chat;
     }
 
     private static string? TryVideoReviewDefault(string capabilityId)

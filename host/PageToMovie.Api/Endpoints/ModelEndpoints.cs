@@ -94,7 +94,7 @@ public static class ModelEndpoints
     var includeLab = user.IsAdmin;
     IReadOnlyList<SupportedModelDto> list;
     if (!string.IsNullOrWhiteSpace(capability) &&
-        Enum.TryParse<ModelCapability>(capability, ignoreCase: true, out var cap))
+        SupportedModelCatalog.TryParseCapabilityId(capability, out var cap))
     {
         list = SupportedModelCatalog.ForCapability(cap, includeLabModels: includeLab)
             .Select(SupportedModelCatalog.ToDto)

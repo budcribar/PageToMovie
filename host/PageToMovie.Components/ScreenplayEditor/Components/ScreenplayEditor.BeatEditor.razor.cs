@@ -68,7 +68,7 @@ public partial class ScreenplayEditor_BeatEditor : ComponentBase
     }
 
     private static readonly System.Text.RegularExpressions.Regex LineBreakRun =
-        new(@"[ \t]*(?:\r\n|\r|\n)+[ \t]*", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"[ \t]*(?:\r\n|\r|\n)+[ \t]*", System.Text.RegularExpressions.RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     public async Task OnChanged()
     {

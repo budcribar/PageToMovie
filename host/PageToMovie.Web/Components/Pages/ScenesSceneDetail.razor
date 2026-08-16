@@ -33,11 +33,11 @@
     }
     else if (Gen.ShowOperatorGenPartial && Gen._job is not null)
     {
-        <Scenes_GenPartialAlert />
+        <ScenesGenPartialAlert />
     }
     else if (Gen.ShowOperatorGenError && Gen._job is not null)
     {
-        <Scenes_GenErrorAlert />
+        <ScenesGenErrorAlert />
     }
     else if (Session.IsAdmin && Gen._job is not null &&
              (Gen._job.Status is "done" or "partial" or "error" or "cancelled"))
@@ -332,11 +332,11 @@
                 </div>
             }
 
-                        <Scenes_ClipTable />
+                        <ScenesClipTable />
 
 
         </div>
     </div>
 
-    <Scenes_ClipInspector />
+    <ScenesClipInspector />
 }
