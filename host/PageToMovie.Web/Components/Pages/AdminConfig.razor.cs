@@ -36,6 +36,11 @@ public partial class AdminConfig
     private int? _minAudioCuesAtPeak;
     private int? _bodyWordsPerMinute;
 
+    private int _imageTimeoutSeconds = 300;
+    private int _videoTimeoutSeconds = 900;
+    private int _chatTimeoutSeconds = 1200;
+    private int _audioTimeoutSeconds = 300;
+
     private bool _started;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -97,6 +102,10 @@ public partial class AdminConfig
                 _minAudioCuesPerScene = _cfg.Adaptation?.MinAudioCuesPerScene;
                 _minAudioCuesAtPeak = _cfg.Adaptation?.MinAudioCuesAtPeak;
                 _bodyWordsPerMinute = _cfg.Adaptation?.BodyWordsPerMinute;
+                _imageTimeoutSeconds = _cfg.Timeouts?.ImageTimeoutSeconds ?? 300;
+                _videoTimeoutSeconds = _cfg.Timeouts?.VideoTimeoutSeconds ?? 900;
+                _chatTimeoutSeconds = _cfg.Timeouts?.ChatTimeoutSeconds ?? 1200;
+                _audioTimeoutSeconds = _cfg.Timeouts?.AudioTimeoutSeconds ?? 300;
             }
         }
         catch (Exception ex)
@@ -139,10 +148,17 @@ public partial class AdminConfig
                     MinAudioCuesAtPeak = _minAudioCuesAtPeak,
                     BodyWordsPerMinute = _bodyWordsPerMinute,
                 },
+                Timeouts = new TimeoutsRuntimeDto
+                {
+                    ImageTimeoutSeconds = _imageTimeoutSeconds,
+                    VideoTimeoutSeconds = _videoTimeoutSeconds,
+                    ChatTimeoutSeconds = _chatTimeoutSeconds,
+                    AudioTimeoutSeconds = _audioTimeoutSeconds,
+                },
                 UseFakes = _useFakes,
                 ChargeMultiplier = _chargeMultiplier,
             });
-            _message = "Saved and applied (capacity + charge multiplier hot; UseFakes may need restart for full DI effect).";
+            _message = "Saved and applied (capacity + charge multiplier + timeouts hot; UseFakes may need restart for full DI effect).";
             _masonryPending = true;
         }
         catch (Exception ex)

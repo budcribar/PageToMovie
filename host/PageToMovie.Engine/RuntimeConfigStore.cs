@@ -19,7 +19,7 @@ public interface IRuntimeConfigStore
 }
 
 /// <summary>
-/// File-backed runtime capacity/fakes/billing config with hot-apply onto <see cref="PageToMovieOptions"/>.
+/// File-backed runtime capacity/fakes/billing/timeouts config with hot-apply onto <see cref="PageToMovieOptions"/>.
 /// </summary>
 public sealed class RuntimeConfigStore : IRuntimeConfigStore
 {
@@ -89,6 +89,13 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 MinAudioCuesAtPeak = a.MinAudioCuesAtPeak,
                 BodyWordsPerMinute = a.BodyWordsPerMinute,
             },
+            Timeouts = new TimeoutsRuntimeDto
+            {
+                ImageTimeoutSeconds = o.Timeouts.ImageTimeoutSeconds,
+                VideoTimeoutSeconds = o.Timeouts.VideoTimeoutSeconds,
+                ChatTimeoutSeconds = o.Timeouts.ChatTimeoutSeconds,
+                AudioTimeoutSeconds = o.Timeouts.AudioTimeoutSeconds,
+            },
             UseFakes = o.UseFakes,
             ChargeMultiplier = ChargePricing.ClampMultiplier(o.Billing.ChargeMultiplier),
             RestartRequired = new List<string> { "UseFakes" },
@@ -135,6 +142,14 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
 
             if (req.Adaptation is { } a)
                 ApplyAdaptationDefaults(o.AdaptationDefaults, a);
+
+            if (req.Timeouts is { } t)
+            {
+                o.Timeouts.ImageTimeoutSeconds = Math.Clamp(t.ImageTimeoutSeconds, 10, 3600);
+                o.Timeouts.VideoTimeoutSeconds = Math.Clamp(t.VideoTimeoutSeconds, 30, 7200);
+                o.Timeouts.ChatTimeoutSeconds = Math.Clamp(t.ChatTimeoutSeconds, 30, 7200);
+                o.Timeouts.AudioTimeoutSeconds = Math.Clamp(t.AudioTimeoutSeconds, 10, 3600);
+            }
 
             if (req.UseFakes is bool uf)
                 o.UseFakes = uf;
@@ -200,6 +215,13 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
             }
             if (dto.Adaptation is { } a)
                 ApplyAdaptationDefaults(o.AdaptationDefaults, a);
+            if (dto.Timeouts is { } t)
+            {
+                o.Timeouts.ImageTimeoutSeconds = Math.Clamp(t.ImageTimeoutSeconds, 10, 3600);
+                o.Timeouts.VideoTimeoutSeconds = Math.Clamp(t.VideoTimeoutSeconds, 30, 7200);
+                o.Timeouts.ChatTimeoutSeconds = Math.Clamp(t.ChatTimeoutSeconds, 30, 7200);
+                o.Timeouts.AudioTimeoutSeconds = Math.Clamp(t.AudioTimeoutSeconds, 10, 3600);
+            }
             if (dto.UseFakes is bool uf)
                 o.UseFakes = uf;
             if (dto.ChargeMultiplier is double mult)
@@ -244,6 +266,13 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 MinAudioCuesAtPeak = o.AdaptationDefaults?.MinAudioCuesAtPeak,
                 BodyWordsPerMinute = o.AdaptationDefaults?.BodyWordsPerMinute,
             },
+            Timeouts = new TimeoutsRuntimeDto
+            {
+                ImageTimeoutSeconds = o.Timeouts.ImageTimeoutSeconds,
+                VideoTimeoutSeconds = o.Timeouts.VideoTimeoutSeconds,
+                ChatTimeoutSeconds = o.Timeouts.ChatTimeoutSeconds,
+                AudioTimeoutSeconds = o.Timeouts.AudioTimeoutSeconds,
+            },
             UseFakes = o.UseFakes,
             ChargeMultiplier = ChargePricing.ClampMultiplier(o.Billing.ChargeMultiplier),
             UpdatedAt = _updatedAt,
@@ -284,6 +313,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
         public CapacityRuntimeDto? Capacity { get; set; }
         public FakesRuntimeDto? Fakes { get; set; }
         public AdaptationRuntimeDto? Adaptation { get; set; }
+        public TimeoutsRuntimeDto? Timeouts { get; set; }
         public bool? UseFakes { get; set; }
         public double? ChargeMultiplier { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }

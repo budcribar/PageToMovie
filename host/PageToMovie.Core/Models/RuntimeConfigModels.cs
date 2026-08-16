@@ -6,6 +6,7 @@ public sealed class RuntimeConfigDto
     public CapacityRuntimeDto Capacity { get; set; } = new();
     public FakesRuntimeDto Fakes { get; set; } = new();
     public AdaptationRuntimeDto Adaptation { get; set; } = new();
+    public TimeoutsRuntimeDto Timeouts { get; set; } = new();
     public bool UseFakes { get; set; }
     /// <summary>
     /// Customer charge multiplier on vendor list rates (estimates + actual charges).
@@ -17,6 +18,14 @@ public sealed class RuntimeConfigDto
     public string? ConfigPath { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public string? UpdatedBy { get; set; }
+}
+
+public sealed class TimeoutsRuntimeDto
+{
+    public int ImageTimeoutSeconds { get; set; } = 300;
+    public int VideoTimeoutSeconds { get; set; } = 900;
+    public int ChatTimeoutSeconds { get; set; } = 1200;
+    public int AudioTimeoutSeconds { get; set; } = 300;
 }
 
 public sealed class CapacityRuntimeDto
@@ -59,6 +68,7 @@ public sealed class RuntimeConfigUpdateRequest
     public CapacityRuntimeDto? Capacity { get; set; }
     public FakesRuntimeDto? Fakes { get; set; }
     public AdaptationRuntimeDto? Adaptation { get; set; }
+    public TimeoutsRuntimeDto? Timeouts { get; set; }
     public bool? UseFakes { get; set; }
     /// <summary>Customer charge multiplier (list rate × this = charge). Null = leave unchanged.</summary>
     public double? ChargeMultiplier { get; set; }

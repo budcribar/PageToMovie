@@ -152,6 +152,35 @@
 
                 <div class="col-sm-6 col-lg-4 mb-4 ptm-masonry-item">
                     <div class="card">
+                        <div class="card-header">Network &amp; timeouts</div>
+                        <div class="card-body">
+                            <div class="form-text mb-2">
+                                HTTP request timeout ceilings (in seconds) for provider API clients.
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label">Image (sec)</label>
+                                    <InputNumber class="form-control" @bind-Value="_imageTimeoutSeconds" min="10" max="3600" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Video (sec)</label>
+                                    <InputNumber class="form-control" @bind-Value="_videoTimeoutSeconds" min="30" max="7200" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Chat / Script (sec)</label>
+                                    <InputNumber class="form-control" @bind-Value="_chatTimeoutSeconds" min="30" max="7200" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Audio / Music (sec)</label>
+                                    <InputNumber class="form-control" @bind-Value="_audioTimeoutSeconds" min="10" max="3600" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-lg-4 mb-4 ptm-masonry-item">
+                    <div class="card">
                         <div class="card-header">Status</div>
                         <div class="card-body small text-muted">
                             <div class="mb-2">

@@ -29,6 +29,12 @@ public sealed class PageToMovieOptions
     public BillingOptions Billing { get; set; } = new();
 
     /// <summary>
+    /// Network request timeout configuration for provider API clients.
+    /// Hot-editable via admin runtime config.
+    /// </summary>
+    public TimeoutsOptions Timeouts { get; set; } = new();
+
+    /// <summary>
     /// When false (default), users must bring their own API keys (personal DB). Process
     /// env keys are not used for user jobs and do not count as "configured" — keep this
     /// off until server-side cost/credit control is solid. Set true only for local ops
@@ -542,4 +548,17 @@ public sealed class BillingOptions
     /// </summary>
     public string AccountMergeAliasIds { get; set; } =
         "budcribarmsn.com,budcribarmsn_com,budcribar@msn.com,budcribarmsn";
+}
+
+/// <summary>Network timeout ceilings for provider API clients.</summary>
+public sealed class TimeoutsOptions
+{
+    /// <summary>Timeout in seconds for image generation calls (Grok/Gemini/Fal). Default 300s (5m).</summary>
+    public int ImageTimeoutSeconds { get; set; } = 300;
+    /// <summary>Timeout in seconds for video generation/extend calls. Default 900s (15m).</summary>
+    public int VideoTimeoutSeconds { get; set; } = 900;
+    /// <summary>Timeout in seconds for LLM chat/adaptation calls. Default 1200s (20m).</summary>
+    public int ChatTimeoutSeconds { get; set; } = 1200;
+    /// <summary>Timeout in seconds for audio/music composition calls. Default 300s (5m).</summary>
+    public int AudioTimeoutSeconds { get; set; } = 300;
 }
