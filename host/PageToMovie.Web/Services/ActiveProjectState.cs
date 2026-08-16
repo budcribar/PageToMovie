@@ -228,13 +228,13 @@ public sealed class ActiveProjectState
 
         CanCharacters = screenplayReady;
         CharactersBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
-        CanScenes = screenplayReady && !stage2Stale;
-        CanReview = screenplayReady && !stage2Stale;
+        CanScenes = screenplayReady;
+        CanReview = screenplayReady;
         CanEstimate = screenplayReady;
         EstimateBlockedReason = screenplayReady
             ? ""
             : "Finish importing the book and approve the screenplay first";
-        ScenesBlockedReason = ScenesBlockedReasonFor(screenplayReady, stage2Stale);
+        ScenesBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
         ReviewBlockedReason = ScenesBlockedReason;
     }
 
@@ -271,15 +271,6 @@ public sealed class ActiveProjectState
         if (TryGetCamelOrPascal(root, "cast", "Cast", out var ca))
             castReady = PropBool(ca, "readyForShots", "ReadyForShots");
         return castReady;
-    }
-
-    private static string ScenesBlockedReasonFor(bool screenplayReady, bool stage2Stale)
-    {
-        if (!screenplayReady)
-            return "Approve the screenplay first";
-        if (stage2Stale)
-            return "Update the shot plan first";
-        return "";
     }
 
     private static bool TryGetCamelOrPascal(JsonElement el, string camel, string pascal, out JsonElement value)

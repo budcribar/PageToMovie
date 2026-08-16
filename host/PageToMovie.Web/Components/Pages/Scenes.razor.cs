@@ -196,14 +196,6 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
             _projectId = loaded.ProjectId;
             _projectIds = loaded.ProjectIds;
 
-            if (string.IsNullOrEmpty(_projectId))
-                return;
-            // Easy Start / a forked film may already have clips + a shot plan even when the
-            // full-studio CanScenes gate is still closed. Always load the list so we don't
-            // show "No scene list yet" next to a readiness strip that already counted scenes.
-            if (!ActiveProject.CanScenes && !IsSimpleFilm)
-                return;
-
             await List.LoadGenResolutionFromConfigAsync();
             await Music.LoadAudioModelsAsync();
             if (Session.IsAdmin)
@@ -228,7 +220,7 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
             await List.ReloadListAsync();
 
             // If the shot plan hasn't been built yet on this project, automatically kick off building the shot plan.
-            if (ActiveProject.CanScenes && !IsSimpleFilm && (List._scenes is null || List._scenes.Count == 0) && !Gen.JobRunning)
+            if (!IsSimpleFilm && (List._scenes is null || List._scenes.Count == 0) && !Gen.JobRunning)
             {
                 await List.RebuildShotPlanAsync();
             }

@@ -166,8 +166,7 @@ public class ActiveProjectStateReadinessTests
 
         Assert.NotNull(state.Status);
         Assert.True(state.CanCharacters);              // screenplay approved
-        Assert.False(state.CanScenes);                 // shots stale
-        Assert.Contains("shot plan", state.ScenesBlockedReason, StringComparison.OrdinalIgnoreCase);
+        Assert.True(state.CanScenes);                   // screenplay approved, shot plan builds in Film
     }
 
     [Fact]
