@@ -328,17 +328,19 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
         }
         else
         {
-            <ScenesSceneIndex />
+            <div class="row g-3">
+                <ScenesSceneIndex />
 
-            <div class="col-12 col-md-8 col-lg-9">
-                @if (List._detail is null)
-                {
-                    <EmptyState Message="Loading scene…" CssClass="text-muted" />
-                }
-                else
-                {
-                    <ScenesSceneDetail />
-                }
+                <div class="col-12 col-md-8 col-lg-9">
+                    @if (List._detail is null)
+                    {
+                        <EmptyState Message="Loading scene…" CssClass="text-muted" />
+                    }
+                    else
+                    {
+                        <ScenesSceneDetail />
+                    }
+                </div>
             </div>
         }
 
