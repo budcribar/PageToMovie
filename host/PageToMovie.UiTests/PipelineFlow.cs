@@ -268,7 +268,25 @@ public static class PipelineFlow
 
         await page.GetByTestId("scenes-select-all").CheckAsync(new() { Timeout = 15_000 });
         await page.GetByTestId("scenes-generate-batch").ClickAsync(new() { Timeout = 15_000 });
-        await page.GetByTestId("generate-confirm-go").ClickAsync(new() { Timeout = 15_000 });
+        try
+        {
+            await page.GetByTestId("generate-confirm-go").ClickAsync(new() { Timeout = 15_000 });
+        }
+        catch (TimeoutException)
+        {
+            // Say what the page was doing instead of the confirm modal — enabled/disabled button,
+            // any error banner, cast/selection state — so a regression here is diagnosable.
+            var diag = await page.EvaluateAsync<string>(@"() => {
+                const q = s => document.querySelector(s);
+                const btn = q('[data-testid=scenes-generate-batch]');
+                const err = Array.from(document.querySelectorAll('.alert-danger, .alert-warning')).map(e => e.textContent.trim()).join(' | ');
+                const st = q('[data-testid=scenes-status]');
+                return JSON.stringify({ btnDisabled: btn ? btn.disabled : null, btnText: btn ? btn.textContent.trim() : null,
+                    modal: !!q('[data-testid=generate-confirm-modal]'), errors: err,
+                    status: st ? Object.assign({}, st.dataset) : null, url: location.href });
+            }");
+            Assert.Fail("Generate Batch did not open the confirm modal. Page: " + diag);
+        }
 
         var clips = int.Parse(await status.GetAttributeAsync("data-clip-count") ?? "0");
         var deadline = DateTime.UtcNow.AddSeconds(60);

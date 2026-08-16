@@ -543,7 +543,7 @@ else
     <Scenes_GenerateConfirm Visible="true"
                             EstimatedClips="ClipSel.EstimateSelectedClips()"
                             SelectedCount="List._selected.Count"
-                            List.ResolutionLocked="List.ResolutionLocked"
+                            ResolutionLocked="List.ResolutionLocked"
                             ResolutionLock="@List._resolutionLock"
                             Resolution="@Gen._genResolution"
                             ResolutionChanged="@(v => Gen._genResolution = v)"
@@ -570,7 +570,7 @@ else
                             Prompt="@ClipRegen._videoEditPromptText"
                             PromptChanged="@(v => ClipRegen._videoEditPromptText = v)"
                             Busy="_busy"
-                            Gen.JobRunning="Gen.JobRunning"
+                            JobRunning="Gen.JobRunning"
                             OnClose="ClipRegen.CloseVideoEditPrompt"
                             OnSubmit="ClipRegen.SubmitVideoEditAsync" />
 }

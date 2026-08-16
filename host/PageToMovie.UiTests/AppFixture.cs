@@ -18,15 +18,31 @@ public class AppFixture : IAsyncLifetime
 {
     protected virtual int DefaultPort => 5088;
     protected virtual bool HonorEnvBaseUrl => true;
-    protected virtual IReadOnlyDictionary<string, string> ExtraEnv => EmptyEnv;
-    /// <summary>Workspace (projects) root the host uses. Override to isolate — e.g. a fresh temp
-    /// workspace for the end-to-end pipeline test so creating a project doesn't touch the demos.</summary>
-    protected virtual string WorkspaceRoot => FindRepoRoot();
+    /// <summary>Deterministic reads by default: the short-TTL server read cache serves stale
+    /// scene/clip/cast counts right after a job-driven step (the seed pipeline, generate via the job
+    /// API), which made the Scenes page disagree with what a test had just done.</summary>
+    protected virtual IReadOnlyDictionary<string, string> ExtraEnv => NoReadCacheEnv;
+    /// <summary>Workspace (projects) root the host uses. Hermetic by default: a fresh temp workspace
+    /// that <see cref="EnsureReadyProjectAsync"/> seeds with one generated project through the fakes.
+    /// The suite used to run against the developer's repo workspace and silently depended on
+    /// whatever projects (and per-user active pointer) happened to be there.</summary>
+    protected virtual string WorkspaceRoot => _defaultWorkspace ??= CreateTempWorkspace("ptm-ui-");
+    private string? _defaultWorkspace;
+
+    protected static string CreateTempWorkspace(string prefix)
+    {
+        var ws = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(ws, "projects"));
+        return ws;
+    }
     /// <summary>Public read of <see cref="WorkspaceRoot"/> — lets tests point a real
     /// <c>ProjectStore</c> at the same workspace (including an isolated temp one, e.g.
     /// <see cref="PipelineFixture"/>) the running host is using, to read/verify on-disk project state.</summary>
     public string WorkspaceRootPath => WorkspaceRoot;
-    private static readonly IReadOnlyDictionary<string, string> EmptyEnv = new Dictionary<string, string>();
+    private static readonly IReadOnlyDictionary<string, string> NoReadCacheEnv = new Dictionary<string, string>
+    {
+        ["PageToMovie__EnableReadCaches"] = "false",
+    };
 
     public string BaseUrl { get; }
     private readonly int _port;
@@ -58,6 +74,43 @@ public class AppFixture : IAsyncLifetime
 
         _pw = await Playwright.CreateAsync();
         Browser = await _pw.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+        if (SeedReadyProject)
+            await EnsureReadyProjectAsync();
+    }
+
+    /// <summary>
+    /// The shared "ui" collection navigates with <see cref="Ui.GotoAppAsync"/>, which waits for the
+    /// /scenes nav link — enabled only when the ACTIVE project has a shot plan (and several tests
+    /// need clips). That used to be an unstated precondition on whatever the local workspace held;
+    /// on a clean clone every one of those tests timed out. Base fixture only: isolated fixtures
+    /// build exactly what they need.
+    /// </summary>
+    protected virtual bool SeedReadyProject => GetType() == typeof(AppFixture);
+
+    private async Task EnsureReadyProjectAsync()
+    {
+        var (ctx, page) = await NewPageAsync();
+        try
+        {
+            await page.GotoAsync($"{BaseUrl}/?admin=1");
+            await page.GetByTestId("nav-studio").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
+            await Ui.DismissTermsAsync(page);
+            var ready = await page.EvaluateAsync<bool>(@"async () => {
+                const raw = sessionStorage.getItem('PageToMovie.admin.session');
+                if (!raw) return false;
+                const s = JSON.parse(raw);
+                const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+                const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json()).catch(()=>null);
+                const id = ((pr||{}).active||{}).id;
+                if (!id) return false;
+                const st = await fetch('/api/projects/'+encodeURIComponent(id)+'/adaptation', {headers:h}).then(r=>r.json()).catch(()=>null);
+                const s2 = (((st||{}).adaptation||{}).stage2)||{};
+                return !!(s2.stage2Ready && !s2.stage2Stale && (s2.stage2Clips||0) > 0);
+            }");
+            if (ready) return;
+            await PipelineFlow.RunToGeneratedClipsAsync(page, BaseUrl, "UiSeed_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+        }
+        finally { await ctx.CloseAsync(); }
     }
 
     /// <summary>A fresh, isolated context+page.</summary>
@@ -140,6 +193,10 @@ public class AppFixture : IAsyncLifetime
             _api.Dispose();
         }
         _http.Dispose();
+        if (_defaultWorkspace is not null)
+        {
+            try { Directory.Delete(_defaultWorkspace, recursive: true); } catch { /* best effort */ }
+        }
     }
 }
 
@@ -155,6 +212,7 @@ public sealed class CapabilitiesOffFixture : AppFixture
     protected override IReadOnlyDictionary<string, string> ExtraEnv => new Dictionary<string, string>
     {
         ["PAGETOMOVIE_FAKE_DISABLED_CAPABILITIES"] = "video,image,review,music,voice",
+        ["PageToMovie__EnableReadCaches"] = "false",
     };
 }
 

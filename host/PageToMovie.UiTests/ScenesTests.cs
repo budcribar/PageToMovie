@@ -16,7 +16,7 @@ public class ScenesTests
         try
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/scenes");
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Scenes & clips" })).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Film", Exact = true })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Generate Batch" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Add scene" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" })).ToBeVisibleAsync();

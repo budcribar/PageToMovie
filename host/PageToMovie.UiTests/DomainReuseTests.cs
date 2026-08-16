@@ -22,7 +22,7 @@ public class DomainReuseTests
     [Fact]
     public async Task Cost_page_estimate_presence_matches_CostReportService_for_active_project()
     {
-        var repo = AppFixture.FindRepoRoot();
+        var repo = _fx.WorkspaceRootPath;
         var activeId = Ui.ActiveProjectId(repo);
         Assert.False(string.IsNullOrWhiteSpace(activeId));
 
@@ -59,7 +59,7 @@ public class DomainReuseTests
     [Fact]
     public async Task Scenes_page_lists_the_shot_plan_scenes_from_ProjectStore()
     {
-        var repo = AppFixture.FindRepoRoot();
+        var repo = _fx.WorkspaceRootPath;
         var activeId = Ui.ActiveProjectId(repo);
         Assert.False(string.IsNullOrWhiteSpace(activeId));
 
