@@ -47,8 +47,6 @@ public partial class Home : IAsyncDisposable
     }
 
 
-    internal bool? _healthOk;
-
     /// <summary>
     /// True when <c>GET /api/projects/forkable</c> has at least one timing-complete title.
     /// False until that list loads so Easy Start cards do not flash then vanish.
@@ -108,6 +106,7 @@ public partial class Home : IAsyncDisposable
         L.CultureChanged += _onCultureChanged;
         Hub.JobUpdated += Jobs.OnJobUpdated;
         Hub.JobLog += Jobs.OnJobLog;
+        Health.Recovered += OnServerRecoveredAsync;
         try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
         await Projects.LoadAsync();
         await Task.WhenAll(Costs.LoadDemoShowcaseAsync(), LoadEasyStartAvailabilityAsync());
@@ -119,6 +118,23 @@ public partial class Home : IAsyncDisposable
         {
             // SignalR optional for browse
         }
+    }
+
+
+    /// <summary>
+    /// Server back after an outage: reload everything this page fetched at init (projects, active
+    /// project, jobs, easy-start list) so nothing stays at the "No project selected" it fell to
+    /// while calls were failing, and make sure the hub is live again.
+    /// </summary>
+    private async Task OnServerRecoveredAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            await Projects.LoadAsync();
+            await Task.WhenAll(Costs.LoadDemoShowcaseAsync(), LoadEasyStartAvailabilityAsync());
+            await Hub.EnsureStartedAsync();
+            StateHasChanged();
+        });
     }
 
 
@@ -157,6 +173,7 @@ public partial class Home : IAsyncDisposable
             L.CultureChanged -= _onCultureChanged;
         Hub.JobUpdated -= Jobs.OnJobUpdated;
         Hub.JobLog -= Jobs.OnJobLog;
+        Health.Recovered -= OnServerRecoveredAsync;
         await Hub.DisposeAsync();
     }
 

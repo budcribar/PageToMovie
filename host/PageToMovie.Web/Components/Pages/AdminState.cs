@@ -90,6 +90,9 @@ public partial class Admin
             {
                 while (_timer is not null && await _timer.WaitForNextTickAsync(ct))
                 {
+                    // Paused during an outage so many admin tabs do not hammer a booting container;
+                    // the health probe owns retrying and the first tick after Up refreshes.
+                    if (S.Health.IsDown) continue;
                     try
                     {
                         // Always refresh so Jobs (running/queued) stay current even when

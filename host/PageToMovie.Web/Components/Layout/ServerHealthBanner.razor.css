@@ -1,0 +1,38 @@
+/* Slim, calm top strip — one sentence, no controls. Tinted translucently so it sits on the
+   app's dark and light themes alike: amber while waiting, red once the outage is long enough
+   to suggest a failed deploy, green while re-hydrating. */
+.server-health-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 1.25rem;
+    font-size: 0.875rem;
+    line-height: 1.3;
+    color: inherit;
+    background: rgba(245, 158, 11, 0.16);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.45);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.server-health-banner.is-long {
+    background: rgba(239, 68, 68, 0.16);
+    border-bottom-color: rgba(239, 68, 68, 0.5);
+}
+
+.server-health-banner.is-recovering {
+    background: rgba(34, 197, 94, 0.16);
+    border-bottom-color: rgba(34, 197, 94, 0.5);
+}
+
+.server-health-message {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.server-health-elapsed {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+}

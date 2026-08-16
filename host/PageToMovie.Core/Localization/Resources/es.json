@@ -359,5 +359,10 @@
     "AccountProviders": "Cuenta y proveedores",
     "SettingsForActiveProject": "Configuración para el proyecto activo:",
     "ActiveProject": "Proyecto activo:"
+  },
+  "ServerHealth": {
+    "Restarting": "El servidor se está reiniciando — reconectando…",
+    "StillDown": "Todavía no se puede contactar con el servidor — puede que no haya arrancado. Revisa el despliegue.",
+    "Recovering": "De vuelta en línea — actualizando…"
   }
 }

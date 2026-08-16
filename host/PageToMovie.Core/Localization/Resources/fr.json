@@ -359,5 +359,10 @@
     "AccountProviders": "Compte et fournisseurs",
     "SettingsForActiveProject": "Paramètres pour le projet actif :",
     "ActiveProject": "Projet actif :"
+  },
+  "ServerHealth": {
+    "Restarting": "Le serveur redémarre — reconnexion…",
+    "StillDown": "Impossible de joindre le serveur — il n'a peut-être pas démarré. Vérifiez le déploiement.",
+    "Recovering": "De retour en ligne — actualisation…"
   }
 }

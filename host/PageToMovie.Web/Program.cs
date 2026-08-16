@@ -12,6 +12,14 @@ builder.Services.Configure<EngineApiOptions>(
     builder.Configuration.GetSection(EngineApiOptions.SectionName));
 
 builder.Services.AddScoped<AdminSessionService>();
+// Server up/down prognosis. Fed by ServerHealthHandler (every HTTP call) and JobHubClient
+// (SignalR lifecycle); probes /health with backoff only while down.
+builder.Services.AddScoped(sp =>
+{
+    var health = new ServerHealthState();
+    health.Probe = ct => sp.GetRequiredService<EngineApiClient>().ProbeHealthAsync(ct);
+    return health;
+});
 builder.Services.AddScoped<ActiveProjectState>();
 builder.Services.AddScoped<StudioCapabilityState>();
 builder.Services.AddScoped<ThemeState>();
@@ -32,7 +40,8 @@ builder.Services.AddScoped(sp =>
         ? nav.BaseUri
         : opts.BaseUrl.TrimEnd('/') + "/";
     var minutes = opts.TimeoutMinutes > 0 ? opts.TimeoutMinutes : 30;
-    return new HttpClient
+    var handler = new ServerHealthHandler(sp.GetRequiredService<ServerHealthState>(), new HttpClientHandler());
+    return new HttpClient(handler)
     {
         BaseAddress = new Uri(baseUrl, UriKind.Absolute),
         Timeout = TimeSpan.FromMinutes(Math.Clamp(minutes, 5, 120)),
@@ -52,7 +61,7 @@ builder.Services.AddScoped(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<EngineApiOptions>>();
     var nav = sp.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-    return new JobHubClient(opts, sp.GetRequiredService<AdminSessionService>(), nav);
+    return new JobHubClient(opts, sp.GetRequiredService<AdminSessionService>(), nav, sp.GetRequiredService<ServerHealthState>());
 });
 
 builder.Services.AddScoped(sp =>

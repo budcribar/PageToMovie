@@ -1,0 +1,20 @@
+@implements IDisposable
+@inject ServerHealthState Health
+@inject IAppLocalizer L
+@using PageToMovie.Core.Localization
+@using PageToMovie.Web.Services
+
+@if (Health.IsDown)
+{
+    <div class="server-health-banner @(Health.IsLongOutage ? "is-long" : null) @(Health.Health == ServerHealth.Recovering ? "is-recovering" : null)"
+         data-testid="server-health-banner"
+         data-state="@Health.Health.ToString().ToLowerInvariant()"
+         role="status" aria-live="polite">
+        <span class="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true"></span>
+        <span class="server-health-message">@Message</span>
+        @if (Health.Health == ServerHealth.Down)
+        {
+            <span class="server-health-elapsed" data-testid="server-health-elapsed">@ElapsedText</span>
+        }
+    </div>
+}

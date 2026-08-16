@@ -359,5 +359,10 @@
     "AccountProviders": "Konto & Anbieter",
     "SettingsForActiveProject": "Einstellungen für aktives Projekt:",
     "ActiveProject": "Aktives Projekt:"
+  },
+  "ServerHealth": {
+    "Restarting": "Server startet neu — Verbindung wird wiederhergestellt…",
+    "StillDown": "Server weiterhin nicht erreichbar — der Start ist möglicherweise fehlgeschlagen. Deployment prüfen.",
+    "Recovering": "Wieder online — wird aktualisiert…"
   }
 }

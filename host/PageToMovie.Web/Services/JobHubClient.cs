@@ -10,6 +10,7 @@ public sealed class JobHubClient : IAsyncDisposable
     private readonly EngineApiOptions _opts;
     private readonly AdminSessionService? _session;
     private readonly NavigationManager? _nav;
+    private readonly ServerHealthState? _health;
     private HubConnection? _connection;
 
     public event Action<JobSnapshot>? JobUpdated;
@@ -22,11 +23,13 @@ public sealed class JobHubClient : IAsyncDisposable
     public JobHubClient(
         IOptions<EngineApiOptions> opts,
         AdminSessionService? session = null,
-        NavigationManager? nav = null)
+        NavigationManager? nav = null,
+        ServerHealthState? health = null)
     {
         _opts = opts.Value;
         _session = session;
         _nav = nav;
+        _health = health;
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -60,7 +63,26 @@ public sealed class JobHubClient : IAsyncDisposable
         _connection.On<string>(JobHubEvents.JobLog, line => JobLog?.Invoke(line));
         _connection.On<object>(JobHubEvents.AdminState, payload => AdminState?.Invoke(payload));
 
-        await _connection.StartAsync(ct);
+        // Hub lifecycle is a second outage signal (server restarts drop the socket before any
+        // REST call notices). Reconnected proves the server is back; a Closed with no error is a
+        // deliberate StopAsync, not an outage.
+        if (_health is not null)
+        {
+            var health = _health;
+            _connection.Reconnecting += ex => { health.ReportFailure(ex?.Message ?? "hub reconnecting"); return Task.CompletedTask; };
+            _connection.Reconnected += _ => { health.ReportSuccess(); return Task.CompletedTask; };
+            _connection.Closed += ex => { if (ex is not null) health.ReportFailure(ex); return Task.CompletedTask; };
+        }
+
+        try
+        {
+            await _connection.StartAsync(ct);
+        }
+        catch (Exception ex) when (_health is not null && ServerHealthState.IsOutageException(ex, ct))
+        {
+            _health.ReportFailure(ex);
+            throw;
+        }
     }
 
     /// <summary>Best-effort connect — SignalR is optional for browse-only pages, so failures are swallowed.</summary>
