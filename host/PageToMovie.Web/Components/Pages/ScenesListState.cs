@@ -498,6 +498,8 @@ public partial class Scenes
             var jobs = await S.Engine.GetJobAsync();
             S.Gen._job = jobs?.Job;
             await S.Gen.RefreshMyJobsAsync();
+            if (_scenes.Count > 0 && S._message?.StartsWith("Rebuilding shot plan", StringComparison.OrdinalIgnoreCase) == true)
+                S._message = null;
             await RefreshCastGateAsync();
             await RefreshResolutionLockAsync();
             await RefreshCostEstimateAsync();

@@ -16,7 +16,23 @@ public partial class InlineAlert
     [Parameter] public string Variant { get; set; } = "danger";
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Dismissible { get; set; }
+    [Parameter] public EventCallback OnDismiss { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _visible = true;
+
+    protected override void OnParametersSet()
+    {
+        _visible = true;
+    }
+
+    private async Task Dismiss()
+    {
+        _visible = false;
+        if (OnDismiss.HasDelegate)
+            await OnDismiss.InvokeAsync();
+    }
 
     public string EffectiveVariant => Severity switch
     {

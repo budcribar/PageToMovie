@@ -58,7 +58,7 @@
 
             <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/characters" Title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' IconClass="bi-people-fill-nav-menu" Label='@(L["Nav.Cast"])' TestId="nav-characters" Collapsed="Collapsed" />
 
-            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/locations" Title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' IconClass="bi-geo-alt-fill" Label="Locs" TestId="nav-locations" Collapsed="Collapsed" />
+            <NavMenu_NavItem Enabled="@(ActiveProject.CanCharacters)" Href="/locations" Title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' IconClass="bi-geo-alt-fill-nav-menu" Label="Locs" TestId="nav-locations" Collapsed="Collapsed" />
         }
         else if (Session.IsLoggedIn)
         {

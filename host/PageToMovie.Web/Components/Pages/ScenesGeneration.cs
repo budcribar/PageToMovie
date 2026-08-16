@@ -304,6 +304,7 @@ public partial class Scenes
         _lastListRefreshIndex = -1;
         _lastListRefreshScene = null;
         _lastListRefreshMessage = null;
+        S._message = null;
         await SoftReloadAsync();
         // A5: final remaining numbers after job ends
         try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }

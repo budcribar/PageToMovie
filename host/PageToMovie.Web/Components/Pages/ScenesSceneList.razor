@@ -84,10 +84,10 @@
         @* Batch generation is started from THIS all-scenes view, so its progress/message/result must
            show here too — the detail view below has its own copy for single-scene work. Without this,
            confirming Generate from the list started the job but showed nothing (dead-click symptom). *@
-        <InlineAlert Message="@Host._error" CssClass="mb-3" />
-        @if (!Host.Gen.JobRunning)
+        <InlineAlert Message="@Host._error" Dismissible="true" OnDismiss="() => Host._error = null" CssClass="mb-3" />
+        @if (!Host.Gen.JobRunning && !string.IsNullOrWhiteSpace(Host._message) && !Host._message.StartsWith("Rebuilding shot plan", StringComparison.OrdinalIgnoreCase))
         {
-            <InlineAlert Message="@Host._message" Variant="info" CssClass="mb-3" />
+            <InlineAlert Message="@Host._message" Variant="info" Dismissible="true" OnDismiss="() => Host._message = null" CssClass="mb-3" />
         }
         @if (Host.Gen.ShowLiveGenProgress && Host.Gen._job is not null)
         {
