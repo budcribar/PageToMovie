@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home_DemoFilmsCard
+public partial class Home_DemoFilmsCard : PageSliceComponent
 {
     [CascadingParameter] public Home Host { get; set; } = default;
     [CascadingParameter] public Home.HomeCosts? Costs { get; set; }

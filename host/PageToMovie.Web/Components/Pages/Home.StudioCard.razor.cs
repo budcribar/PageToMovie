@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home_StudioCard : IDisposable
+public partial class Home_StudioCard : PageSliceComponent
 {
     [CascadingParameter] public required Home Host { get; set; }
     [CascadingParameter] public Home.HomeProjects? Projects { get; set; }
@@ -21,18 +23,6 @@ public partial class Home_StudioCard : IDisposable
     [CascadingParameter] public Home.HomeCheckpoints? Checkpoints { get; set; }
     [CascadingParameter] public Home.HomeCosts? Costs { get; set; }
 
-    // All cascading values are IsFixed, so this card is not re-rendered when Home is. Handlers
-    // that live on Home (the delete confirm modal) mutate the project list / selection this card
-    // renders — without this the picker kept a deleted project in its list. Follow Home's renders.
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        Host.Rendered += OnHostRendered;
-    }
-
-    private void OnHostRendered() => StateHasChanged();
-
-    public void Dispose() => Host.Rendered -= OnHostRendered;
 
     private ElementReference NameInputRef
     {

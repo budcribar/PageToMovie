@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Components;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes_GenErrorAlert
+public partial class Scenes_GenErrorAlert : PageSliceComponent
 {
     [CascadingParameter] public Scenes Host { get; set; } = default;
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }

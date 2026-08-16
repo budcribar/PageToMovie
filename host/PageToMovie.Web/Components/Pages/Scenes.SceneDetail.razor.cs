@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes_SceneDetail
+public partial class Scenes_SceneDetail : PageSliceComponent
 {
     [CascadingParameter] public required Scenes Host { get; set; }
     [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }

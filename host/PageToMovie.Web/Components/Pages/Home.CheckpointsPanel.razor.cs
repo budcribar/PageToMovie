@@ -10,9 +10,11 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home_CheckpointsPanel
+public partial class Home_CheckpointsPanel : PageSliceComponent
 {
     [CascadingParameter] public Home Host { get; set; } = default;
     [CascadingParameter] public Home.HomeCheckpoints? Checkpoints { get; set; }

@@ -11,8 +11,19 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes : IAsyncDisposable
+public partial class Scenes : IAsyncDisposable, IPageSliceHost
 {
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Scenes_* pieces are slices.</summary>
+    public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        Rendered?.Invoke();
+    }
+
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private ScenesHistory? _history;
     internal ScenesHistory History => _history ??= new ScenesHistory(this);

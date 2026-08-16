@@ -8,9 +8,11 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Web.Components;
+
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home : IAsyncDisposable
+public partial class Home : IAsyncDisposable, IPageSliceHost
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private HomeJobs? _jobs;
@@ -84,13 +86,10 @@ public partial class Home : IAsyncDisposable
     }
 
 
-    /// <summary>
-    /// Raised after every Home render. The card children receive only <c>IsFixed</c> cascading
-    /// values, so Blazor never re-renders them when Home does — state changed by handlers that
-    /// live on Home (delete confirm, messages) would otherwise never reach them. Children that
-    /// read Home state subscribe and call their own StateHasChanged.
-    /// </summary>
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the card children are slices.</summary>
     public event Action? Rendered;
+
+    public void RenderRequestedBySlice() => StateHasChanged();
 
     protected override void OnAfterRender(bool firstRender)
     {
