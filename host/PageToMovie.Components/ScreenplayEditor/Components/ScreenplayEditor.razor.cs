@@ -69,18 +69,41 @@ public partial class ScreenplayEditor : ComponentBase
         StateHasChanged();
     }
 
+    [Inject]
+    public NavigationManager? Navigation { get; set; }
+
     public void OpenLocationModal(string? focusName = null)
     {
         CloseMenu();
-        FocusLocationName = focusName;
-        ShowLocationModal = true;
+        if (Navigation is not null)
+        {
+            var url = string.IsNullOrWhiteSpace(focusName)
+                ? "locations"
+                : $"locations?loc={Uri.EscapeDataString(focusName)}";
+            Navigation.NavigateTo(url);
+        }
+        else
+        {
+            FocusLocationName = focusName;
+            ShowLocationModal = true;
+        }
     }
 
     public void OpenCharacterModal(string? focusName = null)
     {
         CloseMenu();
-        FocusCharacterName = focusName;
-        ShowCharacterModal = true;
+        if (Navigation is not null)
+        {
+            var url = string.IsNullOrWhiteSpace(focusName)
+                ? "characters"
+                : $"characters?char={Uri.EscapeDataString(focusName)}";
+            Navigation.NavigateTo(url);
+        }
+        else
+        {
+            FocusCharacterName = focusName;
+            ShowCharacterModal = true;
+        }
     }
 
     public void OpenCharacterFromOutline(string? name) => OpenCharacterModal(name);
