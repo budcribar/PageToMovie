@@ -129,12 +129,12 @@
                         @onclick="() => Playback.PlaySceneCompositeAsync(ListState._detail.SceneNumber)">
                     ▶ Play scene
                 </button>
-                <button class="btn btn-sm btn-outline-secondary"
+                <button class="btn btn-sm btn-primary"
                         data-testid="clip-add-open"
                         disabled="@(Host._busy || Gen.JobRunning)"
-                        title="Add a new clip to this scene (define fields, then generate its video)"
+                        title="Add a new beat/shot to this scene (speaker, dialogue, action visual)"
                         @onclick="ClipForm.OpenAddClipDialog">
-                    + Add clip
+                    ➕ Add Beat
                 </button>
                 @if (ListState._detail.ClipsOnDisk > 0)
                 {
@@ -223,6 +223,12 @@
 
             @* Watch → edit hub: fix this scene without hunting nav *@
             <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
+                <button type="button" class="btn btn-sm btn-primary"
+                        disabled="@(Host._busy || Gen.JobRunning)"
+                        title="Add a new beat (speaker, dialogue, action visual) to this scene"
+                        @onclick="ClipForm.OpenAddClipDialog">
+                    ➕ Add Beat
+                </button>
                 <a class="btn btn-sm btn-outline-secondary"
                    href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)"
                    title="Edit dialogue and action for this scene in the full screenplay editor">✏️ Edit in Screenplay</a>
