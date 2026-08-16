@@ -361,17 +361,17 @@ internal static class ApiServiceConfiguration
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
+            c.Timeout = TimeSpan.FromSeconds(90);
         }));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GeminiImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
+            c.Timeout = TimeSpan.FromSeconds(90);
         }));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(FalImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
+            c.Timeout = TimeSpan.FromSeconds(90);
         }));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVisionClient>(c =>
         {
