@@ -24,6 +24,7 @@ public partial class Scenes
     private const string KindBatch = "batch";
     private const string KindRemux = "remux";
     private const string KindScene = "scene";
+    private const string KindStage2 = "stage2";
 
 
     internal JobSnapshot? _job;
@@ -140,9 +141,9 @@ public partial class Scenes
 
 
 
-    /// <summary>Jobs that belong on Scenes (not leftover stage2 / character jobs).</summary>
+    /// <summary>Jobs that belong on Scenes (not leftover character jobs).</summary>
     internal static bool IsScenesWorkflowJob(string? kind) =>
-        kind is KindScene or KindBatch or KindRemux or "music" or "lip_sync" or "video_edit";
+        kind is KindScene or KindBatch or KindRemux or KindStage2 or "stage2" or "music" or "lip_sync" or "video_edit";
 
 
 
@@ -198,6 +199,9 @@ public partial class Scenes
             return NonEmptyOr(job.Message, "Scoring background music…");
         if (string.Equals(kind, "lip_sync", StringComparison.OrdinalIgnoreCase))
             return NonEmptyOr(job.Message, "Lip-syncing dialogue…");
+        if (string.Equals(kind, KindStage2, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(kind, "stage2", StringComparison.OrdinalIgnoreCase))
+            return NonEmptyOr(job.Message, "Rebuilding shot plan from screenplay…");
         if (string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
             return RemuxLiveLabel(job.Message);
         if (job.Total > 0 &&
