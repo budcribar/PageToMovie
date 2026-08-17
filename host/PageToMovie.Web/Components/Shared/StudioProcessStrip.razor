@@ -11,7 +11,7 @@
 {
     <a class="ptm-step @(Active == "setup" ? "is-active" : "")"
        href="configuration"
-       title="Connect your AI API keys (bring your own key) before importing a book"
+       title="Connect your AI API keys (bring your own key) before importing pages"
        data-testid="studio-step-setup">
         <span class="ptm-step__num">0</span>
         <span class="ptm-step__body">
@@ -59,10 +59,10 @@
 }
 else
 {
-    @* Primary spine: 1 Book → 2 Estimate → 3 Screenplay → 4 Cast → 5 Locations → 6 Film → 7 Review *@
+    @* Primary spine: 1 Pages → 2 Estimate → 3 Screenplay → 4 Cast → 5 Locations → 6 Film → 7 Review *@
     <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
        href="@(BookLocked ? "javascript:void(0)" : "adaptation/import")"
-       title="@(BookLocked ? "Connect API keys in Setup first" : "Import book text")"
+       title="@(BookLocked ? "Connect API keys in Setup first" : "Import pages")"
        data-testid="studio-step-book"
        @onclick:preventDefault="@BookLocked">
         <span class="ptm-step__num">1</span>
