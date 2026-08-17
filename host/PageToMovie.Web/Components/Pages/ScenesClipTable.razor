@@ -60,7 +60,7 @@
                                     class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
                                     style="font-size:0.78rem; border-width:1px;"
                                     title="Click to play clip C@(cn.ToString("D2")) video"
-                                    @onclick="() => ClipForm.SelectClip(cn)">
+                                    @onclick="() => Playback.PlaySingleClipAsync(ListState._detail.SceneNumber, cn)">
                                 ▶ Play C@(cn.ToString("D2"))
                             </button>
                         }

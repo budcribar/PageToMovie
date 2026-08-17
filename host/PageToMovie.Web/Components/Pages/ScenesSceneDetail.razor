@@ -78,7 +78,7 @@
                 <button class="btn btn-sm btn-success"
                         disabled="@(Host._busy || Gen.JobRunning || (ListState._detail.ClipsOnDisk == 0 && !ListState._detail.CompositeExists))"
                         title="Play selected clips"
-                        @onclick="() => Playback.PlaySceneCompositeAsync(ListState._detail.SceneNumber)">
+                        @onclick="() => Playback.PlaySelectedClipsInSceneAsync(ListState._detail.SceneNumber)">
                     Play selected clips
                 </button>
                 @if (ListState._detail.ClipsOnDisk > 0)
@@ -243,4 +243,3 @@
     </div>
 
     <ScenesClipInspector />
-}

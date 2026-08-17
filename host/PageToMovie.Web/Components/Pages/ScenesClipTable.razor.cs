@@ -22,6 +22,7 @@ public partial class ScenesClipTable : PageSliceComponent
     [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipForm? ClipForm { get; set; }
+    [CascadingParameter] public Scenes.ScenesPlayback? Playback { get; set; }
 
 
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }

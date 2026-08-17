@@ -187,7 +187,14 @@ else
     <div class="card mb-3 border-primary">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
             <span>
-                Scene <code class="small">S@(playSn.ToString("D2"))</code>
+                @if (Playback._playingClip is int playCn)
+                {
+                    <span>Scene <code class="small">S@(playSn.ToString("D2"))</code> · Clip <code class="small">C@(playCn.ToString("D2"))</code></span>
+                }
+                else
+                {
+                    <span>Scene <code class="small">S@(playSn.ToString("D2"))</code></span>
+                }
             </span>
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideScenePlayer">Hide</button>
         </div>

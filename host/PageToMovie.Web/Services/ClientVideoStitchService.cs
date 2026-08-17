@@ -143,7 +143,8 @@ public sealed class ClientVideoStitchService
         int sceneNumber,
         SceneDetail? detail = null,
         CancellationToken ct = default,
-        bool includeServerFallback = true)
+        bool includeServerFallback = true,
+        IEnumerable<int>? clipNumbers = null)
     {
         // Ensure a fresh ?mt= media token before any ClipVideoUrl fallback (see CollectSceneMediaUrlsAsync).
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
@@ -152,8 +153,13 @@ public sealed class ClientVideoStitchService
         if (detail?.Clips is null || detail.Clips.Count == 0)
             return Array.Empty<string>();
 
+        var clipSet = clipNumbers?.ToHashSet();
         var list = new List<string>();
-        foreach (var clipNumber in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber).Select(c => c.ClipNumber))
+        var query = detail.Clips.Where(c => c.OnDisk);
+        if (clipSet is not null && clipSet.Count > 0)
+            query = query.Where(c => clipSet.Contains(c.ClipNumber));
+
+        foreach (var clipNumber in query.OrderBy(c => c.ClipNumber).Select(c => c.ClipNumber))
         {
             var local = _media is null
                 ? null

@@ -27,6 +27,7 @@ public partial class Scenes
 
 
     internal int? _playingScene;
+    internal int? _playingClip;
 
 
     internal long _sceneVideoKey;
@@ -176,6 +177,7 @@ public partial class Scenes
     {
         _clientSceneUrl = null;
         _playingScene = sn;
+        _playingClip = null;
         _showScenePlayer = true;
         _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         _inlineCompositeKey = _sceneVideoKey;
@@ -188,6 +190,7 @@ public partial class Scenes
         {
             _showScenePlayer = true;
             _playingScene = sn;
+            _playingClip = null;
             _clientSceneUrl = null;
             S._message = $"Downloading video clips for S{sn:D2} to local folder…";
         }
@@ -207,6 +210,7 @@ public partial class Scenes
         _showPreviewPlayer = false;
         _clientPreviewUrl = null;
         _playingScene = sn;
+        _playingClip = null;
         _showScenePlayer = true;
         _clientSceneUrl = null;
         try
@@ -266,12 +270,121 @@ public partial class Scenes
         }
     }
 
+    internal async Task PlaySingleClipAsync(int sn, int cn)
+    {
+        if (S._busy || _clientStitching) return;
+        _playingScene = sn;
+        _playingClip = cn;
+        _showScenePlayer = true;
+        _showPreviewPlayer = false;
+        _clientPreviewUrl = null;
+        _clientSceneUrl = null;
 
+        if (S.MediaFolder.IsConnected)
+        {
+            try
+            {
+                var relPath = $"assets/video/scene_{sn:D2}_clip_{cn:D2}.mp4";
+                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(sn, cn);
+                var localBlob = expectedSize is long exp
+                    ? await S.MediaFolder.GetCurrentBlobUrlAsync(S._projectId, relPath, exp)
+                    : await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
+                if (!string.IsNullOrWhiteSpace(localBlob))
+                {
+                    _clientSceneUrl = localBlob;
+                }
+            }
+            catch { /* fallback to server URL */ }
+        }
+
+        if (string.IsNullOrEmpty(_clientSceneUrl))
+        {
+            _clientSceneUrl = Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, sn, cn));
+        }
+
+        _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _inlineCompositeKey = _sceneVideoKey;
+        S._message = $"Playing S{sn:D2} · C{cn:D2}";
+        S.StateHasChanged();
+    }
+
+    internal async Task PlaySelectedClipsInSceneAsync(int sn)
+    {
+        if (S._busy || _clientStitching) return;
+        var selectedClipNums = S.ClipSel._selectedClips.OrderBy(x => x).ToList();
+        if (selectedClipNums.Count == 0)
+        {
+            await PlaySceneCompositeAsync(sn);
+            return;
+        }
+
+        if (selectedClipNums.Count == 1)
+        {
+            await PlaySingleClipAsync(sn, selectedClipNums[0]);
+            return;
+        }
+
+        S._busy = true;
+        _clientStitching = true;
+        S._error = null;
+        S._message = null;
+        _clientStitchStatus = $"Collecting {selectedClipNums.Count} clips…";
+        _showPreviewPlayer = false;
+        _clientPreviewUrl = null;
+        _playingScene = sn;
+        _playingClip = null;
+        _showScenePlayer = true;
+        _clientSceneUrl = null;
+        try
+        {
+            SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
+                ? S.List._detail
+                : null;
+            var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail, clipNumbers: selectedClipNums);
+            if (urls.Count == 0)
+            {
+                S._error = $"No on-disk video for selected clips in S{sn:D2}";
+                _showScenePlayer = false;
+                _playingScene = null;
+                return;
+            }
+
+            _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
+            await S.Stitch.RevokePreviewUrlAsync();
+            var result = await S.Stitch.ConcatAsync(urls);
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
+            {
+                S._error = result.Error ?? "Browser stitch failed";
+                _showScenePlayer = false;
+                _playingScene = null;
+                return;
+            }
+
+            _clientSceneUrl = result.Url;
+            _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            _inlineCompositeKey = _sceneVideoKey;
+            S._message = $"Playing {urls.Count} selected clips from S{sn:D2}";
+        }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            _showScenePlayer = false;
+            _playingScene = null;
+            _clientSceneUrl = null;
+        }
+        finally
+        {
+            S._busy = false;
+            _clientStitching = false;
+            _clientStitchStatus = null;
+        }
+    }
 
     internal async Task HideScenePlayer()
     {
         _showScenePlayer = false;
         _playingScene = null;
+        _playingClip = null;
         if (!string.IsNullOrEmpty(_clientSceneUrl))
         {
             _clientSceneUrl = null;
@@ -411,13 +524,31 @@ public partial class Scenes
         {
             foreach (var v in S.ClipVer._clipVersions)
             {
-                string? url;
-                if (v.ClientOnly && !string.IsNullOrEmpty(v.RelativePath))
-                    url = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, v.RelativePath);
-                else if (v.IsCurrent)
-                    url = S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
-                else
-                    url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+                string? url = null;
+                var relPath = !string.IsNullOrEmpty(v.RelativePath)
+                    ? v.RelativePath
+                    : $"assets/video/scene_{S.ClipVer._compareSceneNumber:D2}_clip_{S.ClipVer._compareClipNumber:D2}.mp4";
+
+                if (S.MediaFolder.IsConnected)
+                {
+                    try
+                    {
+                        var local = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
+                        if (!string.IsNullOrEmpty(local))
+                        {
+                            url = local;
+                        }
+                    }
+                    catch { /* fallback to server URL */ }
+                }
+
+                if (string.IsNullOrEmpty(url))
+                {
+                    if (v.IsCurrent)
+                        url = S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+                    else if (!string.IsNullOrEmpty(v.Mp4FileName))
+                        url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+                }
                 map[v.VersionId] = url;
             }
         }

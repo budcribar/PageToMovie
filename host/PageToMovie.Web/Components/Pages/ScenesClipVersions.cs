@@ -49,7 +49,32 @@ public partial class Scenes
             try
             {
                 var res = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
-                _clipVersions = res?.Versions;
+                _clipVersions = res?.Versions?.ToList();
+
+                if (_clipVersions is null || _clipVersions.Count == 0)
+                {
+                    var clip = S.List._detail?.Clips?.FirstOrDefault(c => c.ClipNumber == clipNumber);
+                    if (clip is not null && clip.OnDisk)
+                    {
+                        _clipVersions = new List<ClipVersionItem>
+                        {
+                            new ClipVersionItem
+                            {
+                                VersionId = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
+                                Scene = sceneNumber,
+                                Clip = clipNumber,
+                                Take = 1,
+                                IsCurrent = true,
+                                CreatedAtUtc = DateTime.UtcNow,
+                                Mp4FileName = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
+                                RelativePath = $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
+                                DurationSeconds = clip.ActualDurationSeconds ?? clip.DurationSeconds,
+                                VisualPrompt = clip.VisualPrompt
+                            }
+                        };
+                    }
+                }
+
                 _selectedCompareVersionId = _clipVersions?.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? _clipVersions?.FirstOrDefault()?.VersionId;
                 await S.Playback.RefreshCompareVideoUrlsAsync();
 

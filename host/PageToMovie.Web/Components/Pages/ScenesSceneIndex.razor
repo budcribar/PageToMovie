@@ -18,21 +18,6 @@
 }
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="scene-index">
-    <div class="d-flex align-items-center justify-content-end gap-1 mb-1 px-1">
-        <div class="d-flex align-items-center gap-1">
-            @if (list._selectedScene is not null)
-            {
-                <button type="button"
-                        class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-info"
-                        data-testid="scene-index-to-history"
-                        title="View history & changes for this scene"
-                        @onclick="() => History.OpenSceneHistoryAsync(list._selectedScene.Value)">
-                    📜 History
-                </button>
-            }
-        </div>
-    </div>
-
     <div class="small text-muted mb-2 px-1 d-flex flex-wrap align-items-center justify-content-between gap-1" data-testid="scene-index-summary">
         <div class="d-flex align-items-center gap-1">
             <span>@totalCount @(totalCount == 1 ? "scene" : "scenes")</span>
@@ -63,6 +48,17 @@
                 {
                     <a href="@($"/locations?loc={Uri.EscapeDataString(list._detail.PrimaryLocationId)}")" class="badge bg-warning-subtle text-warning border border-warning border-opacity-50 text-decoration-none" style="font-size:0.65rem;" title="Lock location set plate on Locations page before generating clips">⚠️ Loc Unlocked →</a>
                 }
+            }
+            @if (list._selectedScene is not null)
+            {
+                <button type="button"
+                        class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-info"
+                        style="font-size:0.75rem;"
+                        data-testid="scene-index-to-history"
+                        title="View history & changes for this scene"
+                        @onclick="() => History.OpenSceneHistoryAsync(list._selectedScene.Value)">
+                    📜 History
+                </button>
             }
         </div>
     </div>
@@ -184,14 +180,6 @@
                 </div>
 
                 <div class="flex-shrink-0 d-flex align-items-center gap-1" @onclick:stopPropagation="true">
-                    <button type="button"
-                            class="btn btn-sm btn-success rounded-circle p-0 d-flex align-items-center justify-content-center shadow-sm"
-                            style="width:1.5rem; height:1.5rem; font-size:0.65rem;"
-                            disabled="@(Host._busy || Host.Gen.JobRunning || (s.ClipsOnDisk == 0 && !s.CompositeExists))"
-                            title="Play scene S@(sn.ToString("D2"))"
-                            @onclick="() => Playback.PlaySceneCompositeAsync(sn)">
-                        ▶
-                    </button>
                     @if (s.HasBackgroundMusic)
                     {
                         <span title="Has background music" class="small">🎵</span>
