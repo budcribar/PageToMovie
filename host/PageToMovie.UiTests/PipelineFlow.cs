@@ -18,8 +18,8 @@ public static class PipelineFlow
     public static async Task CreateFreshProjectAsync(IPage page, string baseUrl, string name)
     {
         await page.GotoAsync($"{baseUrl}/?admin=1");
-        // "Drop a book" is the home heading in every state — a state-independent readiness marker.
-        await page.GetByRole(AriaRole.Heading, new() { Name = "Drop a book" })
+        // "Drop pages" is the home heading in every state — a state-independent readiness marker.
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Drop pages" })
                   .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
         // A fresh context shows the terms gate; its backdrop covers the home buttons. Dismiss first.
         var agree = page.GetByRole(AriaRole.Button, new() { Name = "Agree & continue" });

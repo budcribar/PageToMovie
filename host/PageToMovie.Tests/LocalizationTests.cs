@@ -50,7 +50,7 @@ public sealed class LocalizationTests
             Assert.Equal("es", CultureInfo.CurrentUICulture.Name);
             Assert.NotNull(receivedCulture);
             Assert.Equal("es", receivedCulture.Name);
-            Assert.Equal("Entrega un libro. Consigue una película.", _localizer["Home.DropABook"]);
+            Assert.Equal("Suelta páginas. Obtén una película.", _localizer["Home.DropABook"]);
         }
         finally
         {

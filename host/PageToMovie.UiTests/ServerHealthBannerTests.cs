@@ -25,7 +25,7 @@ public class ServerHealthBannerTests
         {
             // Home's heading is a state-independent readiness marker (works with an empty workspace).
             await page.GotoAsync($"{_fx.BaseUrl}/?admin=1");
-            await page.GetByRole(AriaRole.Heading, new() { Name = "Drop a book" })
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Drop pages" })
                       .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
             await Ui.DismissTermsAsync(page);
             var banner = page.GetByTestId("server-health-banner");

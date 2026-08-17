@@ -75,9 +75,9 @@
   "Home": {
     "Title": "Projets de studio de cinéma",
     "Subtitle": "Sélectionnez un projet existant ou importez un nouveau scénario pour démarrer la production.",
-    "DropABook": "Déposez un livre. Obtenez un film.",
-    "LandingSubtitle": "Transformez une histoire en court métrage avec votre voix — ou ouvrez le studio complet pour la distribution, l'estimation et le tournage de chaque scène.",
-    "LandingSubtitleStudio": "Transformez une histoire en court métrage. Ouvrez le studio complet pour la distribution, l'estimation et le tournage de chaque scène.",
+    "DropABook": "Déposez des pages. Obtenez un film.",
+    "LandingSubtitle": "Transformez une histoire en court métrage avec votre voix — ou ouvrez le studio complet pour la distribution, l'estimation et la production de film pour chaque scène.",
+    "LandingSubtitleStudio": "Ouvrez le studio complet pour la distribution, l'estimation et la production de film pour chaque scène.",
     "Book": "Livre",
     "Studio": "Studio",
     "Film": "Film",

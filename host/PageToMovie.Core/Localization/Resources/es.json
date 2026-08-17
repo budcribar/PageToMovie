@@ -75,9 +75,9 @@
   "Home": {
     "Title": "Proyectos de Cine",
     "Subtitle": "Selecciona un proyecto existente o importa un nuevo guión para comenzar la producción.",
-    "DropABook": "Entrega un libro. Consigue una película.",
-    "LandingSubtitle": "Convierte una historia en un cortometraje con tu voz — o abre el estudio completo para audicionar, calcular y filmar cada escena.",
-    "LandingSubtitleStudio": "Convierte una historia en un cortometraje. Abre el estudio completo para audicionar, calcular y filmar cada escena.",
+    "DropABook": "Suelta páginas. Obtén una película.",
+    "LandingSubtitle": "Convierte una historia en un cortometraje con tu voz — o abre el estudio completo para seleccionar el elenco, presupuestar y producir películas para cada escena.",
+    "LandingSubtitleStudio": "Abre el estudio completo para seleccionar el elenco, presupuestar y producir películas para cada escena.",
     "Book": "Libro",
     "Studio": "Estudio",
     "Film": "Película",
