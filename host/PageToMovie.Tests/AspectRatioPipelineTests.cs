@@ -95,6 +95,32 @@ public class AspectRatioPipelineTests
         Assert.Equal("16:9", gpvPhoto["target_aspect_ratio"]);
     }
 
+    [Theory]
+    [InlineData("Notes: Medium = illustratedpicturebook", "4:3")]
+    [InlineData("Notes: Medium = illustrated_picture_book", "4:3")]
+    [InlineData("Medium: illustrated_picture_book", "4:3")]
+    [InlineData("Visual Medium: picture_book", "4:3")]
+    [InlineData("Style: picturebook", "4:3")]
+    [InlineData("Notes: Medium = photoreal", "16:9")]
+    [InlineData("", "16:9")]
+    public void FountainStage1Importer_BuildStage1_resolves_aspect_ratio_from_fountain_metadata_when_omitted(string headerLine, string expectedRatio)
+    {
+        var fountain = $"""
+            Title: The Story
+            Author: Test Author
+            {headerLine}
+
+            EXT. MEADOW - DAY
+            Mary walks with the lamb.
+            """;
+        var parsed = FountainParser.Parse(fountain);
+
+        // Called without explicit visualMedium argument — must infer from Fountain metadata
+        var doc = FountainStage1Importer.BuildStage1(parsed);
+        var gpv = Assert.IsType<Dictionary<string, object?>>(doc["global_production_variables"]);
+        Assert.Equal(expectedRatio, gpv["target_aspect_ratio"]);
+    }
+
     [Fact]
     public void CameraDirectorClassifier_SystemPrompt_contains_headroom_and_framing_rules()
     {
