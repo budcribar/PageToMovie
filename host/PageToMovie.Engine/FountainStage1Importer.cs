@@ -144,9 +144,12 @@ public static class FountainStage1Importer
         {
             this.parsed = parsed;
             this.maxSeconds = maxSeconds;
+            var resolvedMedium = !string.IsNullOrWhiteSpace(visualMedium)
+                ? visualMedium
+                : ResolveVisualMediumFromFountain(parsed);
             this.targetAspectRatio = !string.IsNullOrWhiteSpace(targetAspectRatio)
                 ? targetAspectRatio
-                : VisualMediumStyles.DefaultAspectRatioFor(visualMedium);
+                : VisualMediumStyles.DefaultAspectRatioFor(resolvedMedium);
             _ = minSeconds;
             _ = absMaxSeconds;
         }
@@ -650,6 +653,21 @@ public static class FountainStage1Importer
 
         private static string? FirstTitle(FountainParser.ParseResult p, string key) =>
             p.TitlePage.TryGetValue(key, out var v) ? v : null;
+
+        private static string? ResolveVisualMediumFromFountain(FountainParser.ParseResult p)
+        {
+            var medium = FirstTitle(p, "Medium") ?? FirstTitle(p, "Visual Medium") ?? FirstTitle(p, "Style");
+            if (!string.IsNullOrWhiteSpace(medium)) return medium;
+
+            var notes = FirstTitle(p, "Notes");
+            if (!string.IsNullOrWhiteSpace(notes))
+            {
+                var match = Regex.Match(notes, @"(?:Medium|Style)\s*[:=]\s*([a-zA-Z0-9_-]+)", RegexOptions.IgnoreCase, CommonRegex.Timeout);
+                if (match.Success)
+                    return match.Groups[1].Value;
+            }
+            return null;
+        }
 
         /// <summary>Transition-only lines that must not become filmable beats/clips.</summary>
         private static bool IsNoopTransitionText(string? text)
