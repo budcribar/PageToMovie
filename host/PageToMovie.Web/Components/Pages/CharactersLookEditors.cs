@@ -33,6 +33,8 @@ public partial class Characters
 
         internal bool _panelPictureOpen = true;
 
+        internal bool _panelVoiceOpen;
+
         /// <summary>Last loaded/saved look text — skip scrub API when editors match.</summary>
         internal string _savedLookDescription = "";
 

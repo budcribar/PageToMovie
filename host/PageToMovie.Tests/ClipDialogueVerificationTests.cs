@@ -96,7 +96,7 @@ public class ClipDialogueVerificationTests
     {
         public bool IsConfigured => true;
 
-        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "gemini-2.5-flash", string detail = "low", System.Threading.CancellationToken ct = default) =>
+        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "gemini-2.5-flash", string detail = "low", double temperature = 0.0, System.Threading.CancellationToken ct = default) =>
             Task.FromResult(@"{ ""detectedSpeaker"": ""gemini-native-video"", ""transcribedDialogue"": ""Hello world!"", ""dialogueAccuracyScore"": 1.0, ""speakerMatch"": true, ""status"": ""verified"" }");
     }
 
@@ -112,7 +112,7 @@ public class ClipDialogueVerificationTests
         public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(string imagePath, int page, System.Collections.Generic.IReadOnlyList<CharacterClassifyHint> cast, string model = "grok-4.5", System.Threading.CancellationToken ct = default) =>
             Task.FromResult(new CharacterPageClassification());
 
-        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", System.Threading.CancellationToken ct = default) =>
+        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", double temperature = 0.0, System.Threading.CancellationToken ct = default) =>
             Task.FromResult(@"{ ""detectedSpeaker"": ""still-image-fallback"", ""transcribedDialogue"": ""Hello world!"", ""dialogueAccuracyScore"": 1.0, ""speakerMatch"": true, ""status"": ""verified"" }");
     }
 
@@ -242,7 +242,7 @@ public class ClipDialogueVerificationTests
         public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(string imagePath, int page, System.Collections.Generic.IReadOnlyList<CharacterClassifyHint> cast, string model = "grok-4.5", System.Threading.CancellationToken ct = default) =>
             Task.FromResult(new CharacterPageClassification());
 
-        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", System.Threading.CancellationToken ct = default) =>
+        public Task<string> CompleteWithImagesAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", double temperature = 0.0, System.Threading.CancellationToken ct = default) =>
             Task.FromResult(@"{ ""detectedSpeaker"": ""Buster"", ""transcribedDialogue"": ""Hello world!"", ""dialogueAccuracyScore"": 1.0, ""speakerMatch"": true, ""status"": ""verified"" }");
     }
 }

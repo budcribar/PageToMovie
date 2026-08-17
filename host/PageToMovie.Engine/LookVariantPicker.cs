@@ -35,26 +35,34 @@ public static class LookVariantPicker
 
         var paths = variants.Select(v => v.Path).ToList();
         var labels = string.Join(", ", variants.Select(v => $"#{v.Index}"));
+        var isCharacter = !string.Equals(subjectKind, "location", StringComparison.OrdinalIgnoreCase)
+                          && !string.Equals(subjectKind, "place", StringComparison.OrdinalIgnoreCase);
+
         var prompt =
-            "You are choosing the best " + subjectKind + " reference image for a film production.\n" +
-            "Subject key: " + subjectKey + "\n" +
-            "Description: " + Trunc(description, 400) + "\n" +
-            "Visual lock: " + Trunc(visualLock, 300) + "\n\n" +
-            "Images are labeled in order as: " + labels + "\n" +
-            "(Image 1 in the request = #" + variants[0].Index + ", etc.)\n\n" +
-            "Pick the single image that best matches the description and visual lock:\n" +
-            "- clear identity / place readability\n" +
-            "- consistent era and medium (photoreal live-action unless described otherwise)\n" +
-            "- usable as a locked reference plate (face for characters; architecture/set for locations)\n" +
-            "- avoid text overlays, watermarks, extra limbs, extreme crop\n\n" +
+            $"You are an expert production designer choosing the single best {subjectKind} master reference image for a film production.\n\n" +
+            $"Subject Key: {subjectKey}\n" +
+            $"Description: {Trunc(description, 400)}\n" +
+            $"Visual Lock: {Trunc(visualLock, 300)}\n\n" +
+            $"Images in order: {labels}\n" +
+            $"(Image 1 in this request = #{variants[0].Index}, Image 2 = #{variants.ElementAtOrDefault(1).Index}, etc.)\n\n" +
+            "Evaluate the candidates using these strict quality and fidelity weights:\n" +
+            (isCharacter
+                ? "1. ANATOMY & PHYSIQUE (Weight: 40%): Zero anatomical defects. Reject extra/missing limbs, malformed hands/fingers, melted or asymmetrical eyes, distorted facial structure, or floating artifacts.\n" +
+                  "2. FRAMING & COMPOSITION (Weight: 30%): Clean, well-centered portrait (head-and-shoulders / chest-up). Clear filmable lighting and direct or three-quarter gaze. Reject extreme close-up chops that cut off the head, or distant/tiny framing.\n" +
+                  "3. FIDELITY & TRAITS (Weight: 20%): Accurate depiction of described species (human vs animal), approximate age, hair/fur color, facial hair, and distinctive visual lock traits.\n" +
+                  "4. MEDIUM & PRODUCTION VALUE (Weight: 10%): Coherent visual medium (photoreal live-action vs stylized per prompt). Clean backdrop/setting without blur or visual noise.\n"
+                : "1. ARCHITECTURAL & SET COHERENCE (Weight: 40%): Structurally solid, believable geometry and realistic architectural features matching the setting description. Reject nonsensical layouts or floating structures.\n" +
+                  "2. FRAMING & ESTABLISHING VIEW (Weight: 30%): Filmable establishing angle that clearly communicates the space/room layout with good depth and cinematic lighting. Reject extreme zoom-in on blank walls or unintelligible clutter.\n" +
+                  "3. FIDELITY & TRAITS (Weight: 20%): Faithful to key location features, time period, and atmospheric elements in the visual lock.\n" +
+                  "4. MEDIUM & PRODUCTION VALUE (Weight: 10%): Coherent visual medium without rendering artifacts or visual noise.\n") +
+            "\nHARD DISQUALIFICATION RULES: Immediately disqualify any image with visible text/watermarks/numbers, severe anatomy distortion, or wrong species.\n\n" +
             "Return JSON only:\n" +
-            "{\"best\":1,\"reason\":\"short reason\"}\n" +
-            "where best is the 1-based position in this request (1.." + variants.Count +
-            "), not the variant filename number.\n";
+            "{\"best\": 1, \"reason\": \"short concise reason highlighting anatomy, framing, and fidelity\"}\n" +
+            $"where best is the 1-based position in this request (1..{variants.Count}), NOT the variant filename number.\n";
 
         try
         {
-            var raw = await vision.CompleteWithImagesAsync(prompt, paths, model: "", detail: "low", ct)
+            var raw = await vision.CompleteWithImagesAsync(prompt, paths, model: "", detail: "low", temperature: 0.0, ct: ct)
                 .ConfigureAwait(false);
             var pos = ParseBestPosition(raw, variants.Count);
             if (pos is >= 1 and int p && p <= variants.Count)

@@ -534,6 +534,7 @@ public sealed class GrokVisionClient : IVisionClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
@@ -574,6 +575,7 @@ public sealed class GrokVisionClient : IVisionClient
         var payload = new Dictionary<string, object?>
         {
             ["model"] = model,
+            ["temperature"] = temperature,
             ["input"] = new object[]
             {
                 new Dictionary<string, object?>

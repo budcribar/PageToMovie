@@ -15,8 +15,8 @@
 
 <PageTitle>@L["Nav.Cast"]</PageTitle>
 
-<StudioPageHeader Kicker="@(List._simpleMode ? "Simple · your voice" : "Studio · Step 2")"
-                   Title="@(List._simpleMode ? L["CharactersPage.NarratorVoice"] : L["Nav.Cast"])" LedeClass="">
+<StudioPageHeader Kicker="@(List._simpleMode ? "Simple · your voice" : "Studio · Step 4 · Cast")"
+                   Title="@(List._simpleMode ? L["CharactersPage.NarratorVoice"] : L["Nav.Cast"])" LedeClass="mb-1">
     @if (List._simpleMode)
     {
         <text>Record one sample for the narrator. Library pictures stay as-is — we only re-voice the lines. Want faces of family? Use full studio.</text>
@@ -29,7 +29,7 @@
 
 @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
 {
-    <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="cast-return-film">
+    <div class="alert alert-info py-2 small mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="cast-return-film">
         <span>@L["CharactersPage.EditingFromFilm"]</span>
         <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="cast-return-film-go">@L["Adaptation.BackToFilm"]</a>
     </div>
@@ -38,7 +38,7 @@
 
 @if (List._simpleMode)
 {
-    <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-voice-banner">
+    <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-2" data-testid="simple-voice-banner">
         <strong>Simple path.</strong>
         Pick the narrator (or lead), record the script below, then go to
         <a href="cost" class="alert-link">Estimate</a> or
@@ -68,7 +68,7 @@ else
 @* Setup actions only when needed — hide once cast exists / book pictures are matched *@
 @if (List.NeedsCastBuild)
 {
-    <div class="mb-3">
+    <div class="mb-2">
         <button type="button"
                 class="btn btn-primary btn-sm"
                 data-testid="characters-extract-cast"
@@ -82,7 +82,7 @@ else
 }
 else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
 {
-    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+    <div class="mb-2 d-flex flex-wrap align-items-center gap-2">
         <button type="button"
                 class="btn btn-primary btn-sm"
                 data-testid="characters-plan-looks"

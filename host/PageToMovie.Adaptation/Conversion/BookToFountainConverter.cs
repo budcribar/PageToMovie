@@ -995,15 +995,79 @@ promptVersion: "stage1-vision-meta-repair-v2",
         return result.Value?.FountainPackage;
     }
 
+    public sealed record LocationReplacement(string From, string To);
+
+    public static List<LocationReplacement> ParseLocationReplacements(string? raw)
+    {
+        var list = new List<LocationReplacement>();
+        if (string.IsNullOrWhiteSpace(raw)) return list;
+        try
+        {
+            var json = StripFences(raw);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var arr = root.ValueKind == JsonValueKind.Array
+                ? root
+                : root.TryGetProperty("replacements", out var reps) && reps.ValueKind == JsonValueKind.Array
+                    ? reps
+                    : default;
+            if (arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var el in arr.EnumerateArray())
+                {
+                    var from = el.TryGetProperty("from", out var f) ? f.GetString() : null;
+                    var to = el.TryGetProperty("to", out var t) ? t.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(from) && !string.IsNullOrWhiteSpace(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+                    {
+                        list.Add(new LocationReplacement(from.Trim(), to.Trim()));
+                    }
+                }
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    public static string ApplyLocationReplacements(string fountain, IReadOnlyList<LocationReplacement> replacements)
+    {
+        if (string.IsNullOrWhiteSpace(fountain) || replacements.Count == 0)
+            return fountain ?? "";
+
+        var lines = fountain.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (!SceneHeadingLineRegex.IsMatch(line)) continue;
+
+            foreach (var r in replacements)
+            {
+                if (line.Trim().Equals(r.From, StringComparison.OrdinalIgnoreCase))
+                {
+                    lines[i] = r.To;
+                    break;
+                }
+                var (prefix, loc, suffix) = SplitSceneHeadingParts(line);
+                if (loc.Equals(r.From, StringComparison.OrdinalIgnoreCase))
+                {
+                    var newSuffix = string.IsNullOrWhiteSpace(suffix) ? "" : " - " + suffix;
+                    lines[i] = $"{prefix.TrimEnd()} {r.To}{newSuffix}";
+                    break;
+                }
+            }
+        }
+        return string.Join("\n", lines);
+    }
+
     /// <summary>
-    /// One automatic rewrite pass when the draft still has vague multi-place headings.
-    /// Generation path — do not require operator hand-edits.
+    /// Fast targeted pass: rewrite vague multi-room headings (e.g. "INT. VARIOUS ROOMS - NIGHT")
+    /// into 1–2 concrete filmable places via small JSON mapping applied directly in C#.
     /// </summary>
     private static async Task<string> RepairVagueLocationHeadingsAsync(
         string system,
         string fountain,
         ChatCall chat)
     {
+        _ = system;
         var onProgress = chat.OnProgress;
         var bad = FindVagueLocationHeadings(fountain);
         if (bad.Count == 0 || !chat.Chat.IsConfigured)
@@ -1013,67 +1077,56 @@ promptVersion: "stage1-vision-meta-repair-v2",
             $"Repairing {bad.Count} vague location heading(s) (must be concrete rooms)…");
 
         var listed = string.Join("\n", bad.Select(h => "  - " + h));
-        var user = $"""
+        var user = $$"""
             LOCATION HEADING REPAIR (HARD)
-            The Fountain draft below is almost ready, but these scene headings use vague
-            multi-place language that cannot be filmed as a single location:
+            The following scene headings use vague multi-place language that cannot be filmed as a single location:
 
-            {listed}
+            {{listed}}
 
-            Rules:
-            - Return the COMPLETE Fountain screenplay again (not a patch list).
-            - Rewrite ONLY those bad headings (and adjust Action if a heading is removed).
-            - Every heading must name 1–2 concrete, filmable places a crew can light/dress.
-            - Forbidden in headings: VARIOUS, VARIOUS ROOMS, MULTIPLE, MULTIPLE LOCATIONS,
-              SEVERAL, SEVERAL ROOMS, ELSEWHERE, DIFFERENT ROOMS/PLACES/LOCATIONS,
-              AROUND THE HOUSE, THROUGHOUT THE HOUSE.
-            - Good replacements: INT. HALL AND SITTING ROOM - NIGHT, INT. STAIRS AND HALL - NIGHT.
-              Or drop the heading and fold a brief walk into the Action of the following scene.
-            - Do not change plot, cast tokens, or dialogue wording except as needed for heading fixes.
-            - No markdown fences. Fountain only.
+            For each bad heading:
+            - Provide a concrete replacement heading naming 1–2 filmable places (e.g. "INT. HALL AND SITTING ROOM - NIGHT").
+            - Forbidden in headings: VARIOUS, VARIOUS ROOMS, MULTIPLE, MULTIPLE LOCATIONS, SEVERAL, SEVERAL ROOMS, ELSEWHERE, DIFFERENT ROOMS/PLACES/LOCATIONS, AROUND THE HOUSE, THROUGHOUT THE HOUSE.
+
+            Return JSON only:
+            {
+              "replacements": [
+                { "from": "INT. VARIOUS ROOMS - NIGHT", "to": "INT. HALL AND SITTING ROOM - NIGHT" }
+              ]
+            }
             """;
 
         try
         {
-            var raw = await ExecuteStage1OperationAsync(
-                    chat with { Temperature = 0.1 }, system, user,
-                    ChatCallModes.BookToFountainLocationsRetry,
-                    "Location repair",
-promptVersion: "stage1-location-heading-repair-v1",
-                    correctionInstruction: "Rewrite every remaining vague scene heading as one or two concrete filmable locations.",
-                    validate: value => ValidateFountainRepair(value, FindVagueLocationHeadings, "vague_heading"),
-                    deterministicFallback: fountain,
-                    operationName: "stage1_location_heading_repair",
-                    fountainForFile: fountain).ConfigureAwait(false);
-            if (raw is null)
+            var raw = await chat.Chat.CompleteAsync(
+                "You are an expert script editor repairing vague scene headings into concrete filmable locations. Return JSON only.",
+                user,
+                chat.Model,
+                0.1,
+                ct: chat.Ct).ConfigureAwait(false);
+
+            var replacements = ParseLocationReplacements(raw);
+            if (replacements.Count == 0)
             {
-                onProgress?.Invoke("Location repair failed twice — keeping prior draft.");
+                onProgress?.Invoke("Location repair: no replacements received — keeping prior draft.");
                 return fountain;
             }
 
-            var repaired = StripBookPageTags(StripFences(raw));
-            if (!LooksLikeGoodFountain(repaired))
-            {
-                onProgress?.Invoke("Location repair unusable — keeping prior draft.");
-                return fountain;
-            }
-
-            var remaining = FindVagueLocationHeadings(repaired);
+            var updated = ApplyLocationReplacements(fountain, replacements);
+            var remaining = FindVagueLocationHeadings(updated);
             if (remaining.Count < bad.Count)
             {
                 onProgress?.Invoke(
                     remaining.Count == 0
                         ? "Location headings repaired."
                         : $"Location repair partial — {remaining.Count} vague heading(s) left.");
-                return repaired;
+                return updated;
             }
 
-            onProgress?.Invoke("Location repair did not clear vague headings — keeping prior draft.");
-            return fountain;
+            return updated;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            onProgress?.Invoke("Location repair failed — keeping prior draft.");
+            onProgress?.Invoke($"Location repair skipped: {ex.Message}");
             return fountain;
         }
     }
@@ -1118,15 +1171,15 @@ promptVersion: "stage1-location-heading-repair-v1",
         TrailingLocationNumberRegex.Replace(locName, "").Trim();
 
     /// <summary>
-    /// Chat pass: confirm which candidate location groups are truly the same place and unify
-    /// their wording; leave genuinely-different places untouched. Fires only when the cheap
-    /// pre-check above finds a candidate — most books never trigger this call.
+    /// Fast targeted pass: confirm which candidate location groups are truly the same place
+    /// and apply targeted replacements in C# rather than re-streaming the full screenplay.
     /// </summary>
     private static async Task<string> RepairLocationDriftAsync(
         string system,
         string fountain,
         ChatCall chat)
     {
+        _ = system;
         var onProgress = chat.OnProgress;
         var groups = FindLocationDriftCandidateGroups(fountain);
         if (groups.Count == 0 || !chat.Chat.IsConfigured)
@@ -1136,99 +1189,49 @@ promptVersion: "stage1-location-heading-repair-v1",
 
         var listed = string.Join("\n\n", groups.Select((g, i) =>
             $"  Group {i + 1}:\n" + string.Join("\n", g.Select(h => "    - " + h))));
-        var user = $"""
+        var user = $$"""
             LOCATION NORMALIZATION (CONFIRM, THEN FIX)
-            The Fountain draft below may describe the SAME physical place with different wording
-            across scenes. Each group below shares a location word and MIGHT be one place
-            described inconsistently — or might genuinely be different places. Decide each group
-            on its own.
+            The Fountain draft below may describe the SAME physical place with different wording across scenes. Each group below shares a location word and MIGHT be one place described inconsistently — or might genuinely be different places. Decide each group on its own.
 
-            {listed}
+            {{listed}}
 
-            Rules:
-            - Return the COMPLETE Fountain screenplay again (not a patch list).
-            - For a group that IS the same place, rewrite every heading in it to one canonical
-              wording (keep each scene's own DAY/NIGHT/time-of-day suffix unchanged).
-            - For a group that is genuinely different places, leave every heading in it exactly
-              as written — do not merge unrelated locations just because they share a word.
-            - Do not change plot, cast tokens, dialogue wording, or any heading outside these
-              groups.
-            - No markdown fences. Fountain only.
+            For each group:
+            - If they are the SAME place, specify which location alias to replace ("from") and which canonical location to replace it with ("to").
+            - If they are DIFFERENT places, do not include them in the replacements.
+
+            Return JSON only:
+            {
+              "replacements": [
+                { "from": "SIONNA'S DUPLEX", "to": "SIONNA'S HOUSE" }
+              ]
+            }
             """;
 
-        return await ExecuteNormalizationPassAsync(new(
-            system, fountain, user, chat with { Temperature = 0.1 },
-            ChatCallModes.BookToFountainLocationNormalizeRetry,
-            "Location normalization",
-            "stage1-location-normalize-v1",
-            "stage1_location_normalize",
-            "Location names checked.")).ConfigureAwait(false);
-    }
-
-    private readonly record struct NormalizationPass(
-        string System,
-        string Fountain,
-        string User,
-        ChatCall Chat,
-        string Mode,
-        string RetryLabel,
-        string PromptVersion,
-        string OperationName,
-        string SuccessMessage);
-
-    /// <summary>
-    /// Shared execute/validate/fallback for location-name and character-name normalization.
-    /// Both passes ask the model to unify aliases or leave genuine differences; neither can
-    /// re-run its candidate finder as a pass/fail signal.
-    /// </summary>
-    private static async Task<string> ExecuteNormalizationPassAsync(NormalizationPass pass)
-    {
         try
         {
-            var raw = await ExecuteStage1OperationAsync(
-                    pass.Chat, pass.System, pass.User,
-                    pass.Mode,
-                    pass.RetryLabel,
-                    promptVersion: pass.PromptVersion,
-                    correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
-                    validate: ValidateNormalizationRepair,
-                    deterministicFallback: pass.Fountain,
-                    operationName: pass.OperationName,
-                    fountainForFile: pass.Fountain).ConfigureAwait(false);
-            if (raw is null)
+            var raw = await chat.Chat.CompleteAsync(
+                "You are an expert script editor resolving duplicate location names into unified canonical locations. Return JSON only.",
+                user,
+                chat.Model,
+                0.1,
+                ct: chat.Ct).ConfigureAwait(false);
+
+            var replacements = ParseLocationReplacements(raw);
+            if (replacements.Count == 0)
             {
-                pass.Chat.Report($"{pass.RetryLabel} failed twice — keeping prior draft.");
-                return pass.Fountain;
+                onProgress?.Invoke("Locations checked (no duplicate drift found).");
+                return fountain;
             }
 
-            var repaired = StripBookPageTags(StripFences(raw));
-            if (!LooksLikeGoodFountain(repaired))
-            {
-                pass.Chat.Report($"{pass.RetryLabel} unusable — keeping prior draft.");
-                return pass.Fountain;
-            }
-
-            pass.Chat.Report(pass.SuccessMessage);
-            return repaired;
+            var updated = ApplyLocationReplacements(fountain, replacements);
+            onProgress?.Invoke($"Normalized {replacements.Count} location name(s).");
+            return updated;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            pass.Chat.Report($"{pass.RetryLabel} failed — keeping prior draft.");
-            return pass.Fountain;
+            onProgress?.Invoke($"Location normalization skipped: {ex.Message}");
+            return fountain;
         }
-    }
-
-    /// <summary>
-    /// Structural-only validation for the normalize passes below: unlike vague-heading/generic-
-    /// speaker repair, a "candidate" here isn't necessarily wrong — the model may correctly
-    /// decide two candidates are different and leave both alone, so re-running the same
-    /// candidate finder after repair can't be the pass/fail signal.
-    /// </summary>
-    private static IReadOnlyList<Stage1ValidationIssue> ValidateNormalizationRepair(string fountain)
-    {
-        if (!LooksLikeGoodFountain(fountain))
-            return [new Stage1ValidationIssue("invalid_fountain", "The response is not a usable Fountain screenplay.", FountainJsonPath)];
-        return Array.Empty<Stage1ValidationIssue>();
     }
 
     /// <summary>
@@ -1306,13 +1309,15 @@ promptVersion: "stage1-location-heading-repair-v1",
         };
 
     /// <summary>
-    /// Chat repair: replace generic numbered speakers with stable proper-name tokens.
+    /// Fast targeted pass: replace generic numbered speakers (FIRST OFFICER, MAN 2) with
+    /// stable proper-name tokens via JSON mapping applied directly in C#.
     /// </summary>
     private static async Task<string> RepairGenericNumberedSpeakersAsync(
         string system,
         string fountain,
         ChatCall chat)
     {
+        _ = system;
         var onProgress = chat.OnProgress;
         var bad = FindGenericNumberedSpeakers(fountain);
         if (bad.Count == 0 || !chat.Chat.IsConfigured)
@@ -1322,70 +1327,55 @@ promptVersion: "stage1-location-heading-repair-v1",
             $"Naming {bad.Count} generic numbered speaker(s) (stable cast tokens)…");
 
         var listed = string.Join("\n", bad.Select(n => "  - " + n));
-        var user = $"""
+        var user = $$"""
             SPEAKER NAMING REPAIR (HARD)
-            The Fountain draft below uses generic numbered / ordinal role cues that make
-            unstable cast keys for production (portraits, continuity, shot plans):
+            The Fountain draft below uses generic numbered / ordinal role cues that make unstable cast keys for production:
 
-            {listed}
+            {{listed}}
 
-            Rules:
-            - Return the COMPLETE Fountain screenplay again (not a patch list).
-            - Replace EVERY occurrence of those cues (including CONT'D / V.O. / O.S. lines)
-              with a proper ALL-CAPS name token. Examples:
-                FIRST OFFICER → OFFICER REYNOLDS
-                SECOND MERCHANT → MERCHANT HALES
-                FIRST BUSINESSMAN → MR. TOPPER (or a period surname)
-                MAN 2 / GUEST #3 → named people, not numbers
-            - Invent period-appropriate given names or surnames if the book is silent.
-            - Same person = same token every time. Distinct people = distinct tokens.
-            - Do not leave FIRST/SECOND/THIRD, OFFICER 1, BUSINESSMAN 2, MERCHANT #1, etc.
-            - Do not change plot, locations, or book-faithful dialogue wording except the cue names.
-            - No markdown fences. Fountain only.
+            For each generic speaker:
+            - Invent a stable, period-appropriate ALL-CAPS proper name (e.g. FIRST OFFICER → OFFICER REYNOLDS, SECOND MERCHANT → MERCHANT HALES, MAN 2 → MR. JOHNSON).
+
+            Return JSON only:
+            {
+              "replacements": [
+                { "from": "FIRST OFFICER", "to": "OFFICER REYNOLDS" }
+              ]
+            }
             """;
 
         try
         {
-            var raw = await ExecuteStage1OperationAsync(
-                    chat with { Temperature = 0.15 }, system, user,
-                    ChatCallModes.BookToFountainSpeakersRetry,
-                    "Speaker naming repair",
-promptVersion: "stage1-generic-speaker-repair-v1",
-                    correctionInstruction: "Replace every remaining generic numbered or ordinal character cue with stable proper-name tokens.",
-                    validate: value => ValidateFountainRepair(value, FindGenericNumberedSpeakers, "generic_speaker"),
-                    deterministicFallback: fountain,
-                    operationName: "stage1_generic_speaker_repair",
-                    fountainForFile: fountain)
-                .ConfigureAwait(false);
-            if (raw is null)
+            var raw = await chat.Chat.CompleteAsync(
+                "You are an expert script editor replacing generic numbered speakers with stable character names. Return JSON only.",
+                user,
+                chat.Model,
+                0.15,
+                ct: chat.Ct).ConfigureAwait(false);
+
+            var replacements = ParseNameReplacements(raw);
+            if (replacements.Count == 0)
             {
-                onProgress?.Invoke("Speaker naming repair failed twice — keeping prior draft.");
+                onProgress?.Invoke("Speaker naming: no replacements received — keeping prior draft.");
                 return fountain;
             }
 
-            var repaired = StripBookPageTags(StripFences(raw));
-            if (!LooksLikeGoodFountain(repaired))
-            {
-                onProgress?.Invoke("Speaker naming repair unusable — keeping prior draft.");
-                return fountain;
-            }
-
-            var remaining = FindGenericNumberedSpeakers(repaired);
+            var updated = ApplyNameReplacements(fountain, replacements);
+            var remaining = FindGenericNumberedSpeakers(updated);
             if (remaining.Count < bad.Count)
             {
                 onProgress?.Invoke(
                     remaining.Count == 0
                         ? "Generic speakers named."
                         : $"Speaker naming partial — {remaining.Count} generic cue(s) left.");
-                return repaired;
+                return updated;
             }
 
-            onProgress?.Invoke("Speaker naming did not clear generic cues — keeping prior draft.");
-            return fountain;
+            return updated;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            onProgress?.Invoke("Speaker naming repair failed — keeping prior draft.");
+            onProgress?.Invoke($"Speaker naming repair skipped: {ex.Message}");
             return fountain;
         }
     }
@@ -1932,129 +1922,36 @@ promptVersion: "stage1-generic-speaker-repair-v1",
     }
 
     /// <summary>
-    /// One automatic rewrite pass when continuous verse / V.O. narration was split by a real blank
-    /// line into silent Action. Mirrors the vague-heading / generic-speaker repair lifecycle:
-    /// detector → repair prompt → <see cref="ExecuteStage1OperationAsync"/> with a re-run validator
-    /// and a deterministic re-merge fallback. No-op when nothing is flagged.
+    /// Fast deterministic pass: re-merge continuous verse / V.O. narration that was split by
+    /// a real blank line into silent Action using C# RemergeSplitNarration.
     /// </summary>
-    private static async Task<string> RepairSplitNarrationAsync(
+    private static Task<string> RepairSplitNarrationAsync(
         string system,
         string fountain,
         ChatCall chat,
         Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure = null)
     {
-        var model = chat.Model;
-        var onProgress = chat.OnProgress;
-        var ct = chat.Ct;
-        const string operationName = "stage1_narration_split_repair";
-        const string promptVersion = "stage1-narration-split-repair-v1";
-
+        _ = system;
+        _ = onStructuralGateFailure;
         var split = FindSplitNarrationBlocks(fountain);
-        if (split.Count == 0 || !chat.Chat.IsConfigured)
-            return fountain;
+        if (split.Count == 0)
+            return Task.FromResult(fountain);
 
-        onProgress?.Invoke(
-            $"Repairing {split.Count} split narration block(s) (continuous verse must stay one V.O. cue)…");
+        chat.OnProgress?.Invoke(
+            $"Merging {split.Count} split narration block(s) into continuous voice-over…");
 
-        // Learning-loop sink — same route the multi-chunk structural gate uses (GenerationErrorLogger).
-        if (onStructuralGateFailure is not null)
+        var remerged = RemergeSplitNarration(fountain);
+        var remaining = FindSplitNarrationBlocks(remerged);
+        if (remaining.Count < split.Count)
         {
-            var summary = string.Join(
-                " | ",
-                split.Take(3).Select(s => $"{s.CueDisplay}: {FirstNonEmpty(s.OrphanActionLines)}"));
-            try
-            {
-                await onStructuralGateFailure(new StructuralGateFailure
-                {
-                    Stage = operationName,
-                    Model = model,
-                    ErrorType = "structural_gate_failure",
-                    ErrorMessage =
-                        $"Split narration ({promptVersion}): {split.Count} voice-over verse block(s) " +
-                        $"broken by a real blank line into silent action. {summary}",
-                    ResponseSummary = fountain.Length > 500 ? fountain[..500] : fountain,
-                }, ct).ConfigureAwait(false);
-            }
-            catch { /* logging must never break the repair it observes */ }
+            chat.OnProgress?.Invoke(
+                remaining.Count == 0
+                    ? "Split narration merged into continuous voice-over."
+                    : $"Narration split repair partial — {remaining.Count} block(s) left.");
+            return Task.FromResult(remerged);
         }
 
-        var listed = string.Join(
-            "\n",
-            split.Select(s => $"  - {s.CueDisplay} — orphaned verse begins: \"{FirstNonEmpty(s.OrphanActionLines)}\""));
-        var user = $"""
-            NARRATION CONTINUITY REPAIR (HARD)
-            In the Fountain draft below, continuous verse / voice-over narration was broken by a
-            real blank line, so every stanza after the first parses as silent Action instead of
-            spoken narration. Affected cue(s):
-
-            {listed}
-
-            Rules:
-            - Return the COMPLETE Fountain screenplay again (not a patch list).
-            - Keep each continuous verse / V.O. passage as ONE dialogue block under ONE cue.
-            - Separate stanzas with a Fountain two-space line break (a line holding exactly two
-              spaces), NEVER a real blank line — a real blank line ends the narration and drops
-              the rest to silent action.
-            - Attribute any bare standalone narration or verse with no cue (a closing moral, an
-              epigraph, a floating stanza) to NARRATOR (V.O.) so it is actually spoken.
-            - Do not change plot, cast tokens, locations, or book-faithful wording — only re-join
-              the split narration and attribute bare narration.
-            - No markdown fences. Fountain only.
-            """;
-
-        try
-        {
-            using var heartbeat = StartProgressHeartbeat(
-                onProgress,
-                "Still repairing split narration…",
-                TimeSpan.FromSeconds(20));
-            var raw = await ExecuteStage1OperationAsync(
-                    chat with { Temperature = 0.15 }, system, user,
-                    ChatCallModes.BookToFountainNarrationRetry,
-                    "Narration split repair",
-promptVersion: promptVersion,
-                    correctionInstruction:
-                        "Keep each continuous verse / V.O. passage as one dialogue block; separate "
-                        + "stanzas with a two-space line, never a real blank line.",
-                    validate: value => ValidateFountainRepair(
-                        value,
-                        f => FindSplitNarrationBlocks(f).Select(s => s.CueDisplay).ToList(),
-                        "split_narration"),
-                    deterministicFallback: RemergeSplitNarration(fountain),
-                    operationName: operationName,
-                    fountainForFile: fountain)
-                .ConfigureAwait(false);
-            if (raw is null)
-            {
-                onProgress?.Invoke("Narration split repair failed twice — keeping prior draft.");
-                return fountain;
-            }
-
-            var repaired = StripBookPageTags(StripFences(raw));
-            if (!LooksLikeGoodFountain(repaired))
-            {
-                onProgress?.Invoke("Narration split repair unusable — keeping prior draft.");
-                return fountain;
-            }
-
-            var remaining = FindSplitNarrationBlocks(repaired);
-            if (remaining.Count < split.Count)
-            {
-                onProgress?.Invoke(
-                    remaining.Count == 0
-                        ? "Split narration merged into continuous voice-over."
-                        : $"Narration split repair partial — {remaining.Count} block(s) left.");
-                return repaired;
-            }
-
-            onProgress?.Invoke("Narration split repair did not clear splits — keeping prior draft.");
-            return fountain;
-        }
-        catch (Exception)
-        {
-            onProgress?.Invoke("Narration split repair failed — keeping prior draft.");
-            return fountain;
-        }
+        return Task.FromResult(fountain);
     }
 
     private static string FirstNonEmpty(IReadOnlyList<string> lines) =>

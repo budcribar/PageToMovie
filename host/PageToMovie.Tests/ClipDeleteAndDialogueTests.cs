@@ -435,7 +435,7 @@ public class ClipDeleteAndDialogueTests
         public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast, string model = "grok-4.5", CancellationToken ct = default) =>
             Task.FromResult(new CharacterPageClassification());
 
-        public Task<string> CompleteWithImagesAsync(string prompt, IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", CancellationToken ct = default) =>
+        public Task<string> CompleteWithImagesAsync(string prompt, IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", double temperature = 0.0, CancellationToken ct = default) =>
             Task.FromResult("");
     }
 }

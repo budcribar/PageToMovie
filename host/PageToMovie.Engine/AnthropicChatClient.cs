@@ -121,6 +121,7 @@ public sealed class AnthropicChatClient : ChatProviderWithoutBookVision, IChatCl
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default)
     {
         var content = new List<object?>();

@@ -63,8 +63,9 @@ public sealed class MultiProviderVisionClient : IVisionClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default) =>
-        Resolve(model).CompleteWithImagesAsync(prompt, imagePaths, model, detail, ct);
+        Resolve(model).CompleteWithImagesAsync(prompt, imagePaths, model, detail, temperature, ct);
 
     private IVisionClient Resolve(string? model)
     {

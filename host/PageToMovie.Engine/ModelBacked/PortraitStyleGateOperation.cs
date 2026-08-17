@@ -27,7 +27,7 @@ internal sealed class PortraitStyleGateOperation(IVisionClient vision, string na
                       string.Join("\n", context.ValidationIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}")) +
                       "\nPrevious response:\n" + context.PreviousResponse;
         var raw = await vision.CompleteWithImagesAsync(
-            prompt, new[] { input.ImagePath }, input.Model, input.Detail, ct).ConfigureAwait(false);
+            prompt, new[] { input.ImagePath }, input.Model, input.Detail, ct: ct).ConfigureAwait(false);
         return new(raw, input.Model);
     }
 }

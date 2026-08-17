@@ -75,7 +75,7 @@ public sealed class SceneMusicCompositionService
 
         _log.LogInformation("Requesting music score composition for {Count} scenes in {Project}", scenesArray.Count, Path.GetFileName(projectDir));
 
-        var responseText = await _vision.CompleteWithImagesAsync(promptText, Array.Empty<string>(), model, detail: "low", ct).ConfigureAwait(false);
+        var responseText = await _vision.CompleteWithImagesAsync(promptText, Array.Empty<string>(), model, detail: "low", ct: ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(responseText))
         {
             _log.LogWarning("LLM returned empty response for music composition");

@@ -119,6 +119,7 @@ public interface IVisionClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default);
 }
 
@@ -141,6 +142,7 @@ public interface IGeminiVideoAnalysisClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default);
 }
 

@@ -22,6 +22,7 @@ public sealed class FakeGeminiChatClient : IGeminiVideoAnalysisClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default)
     {
         _log.LogInformation("Fake Gemini native-video analysis ({Count} media file(s))", imagePaths.Count);

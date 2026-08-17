@@ -149,7 +149,7 @@ public class CharacterBookPlateVisionGateTests
 
         public Task<string> CompleteWithImagesAsync(
             string prompt, IReadOnlyList<string> imagePaths, string model = "",
-            string detail = "low", CancellationToken ct = default) =>
+            string detail = "low", double temperature = 0.0, CancellationToken ct = default) =>
             Task.FromResult("");
     }
 }

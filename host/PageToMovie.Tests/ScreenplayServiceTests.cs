@@ -836,4 +836,50 @@ public class ScreenplayServiceTests : IDisposable
         Assert.Contains("screenplay.fountain", bp, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("veo_clips", bp, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ParseLocationReplacements_parses_json_array_and_object()
+    {
+        var json = """
+            {
+              "replacements": [
+                { "from": "INT. VARIOUS ROOMS - NIGHT", "to": "INT. HALLWAY - NIGHT" },
+                { "from": "SIONNA'S DUPLEX", "to": "SIONNA'S HOUSE" }
+              ]
+            }
+            """;
+        var parsed = AdaptationFountain.ParseLocationReplacements(json);
+        Assert.Equal(2, parsed.Count);
+        Assert.Equal("INT. VARIOUS ROOMS - NIGHT", parsed[0].From);
+        Assert.Equal("INT. HALLWAY - NIGHT", parsed[0].To);
+        Assert.Equal("SIONNA'S DUPLEX", parsed[1].From);
+        Assert.Equal("SIONNA'S HOUSE", parsed[1].To);
+    }
+
+    [Fact]
+    public void ApplyLocationReplacements_replaces_headings_and_locations_deterministically()
+    {
+        var fountain = """
+            Title: T
+
+            INT. VARIOUS ROOMS - NIGHT
+
+            The storm howls.
+
+            EXT. SIONNA'S DUPLEX - DAY
+
+            A car arrives.
+            """;
+        var replacements = new List<AdaptationFountain.LocationReplacement>
+        {
+            new("INT. VARIOUS ROOMS - NIGHT", "INT. HALLWAY - NIGHT"),
+            new("SIONNA'S DUPLEX", "SIONNA'S HOUSE")
+        };
+        var updated = AdaptationFountain.ApplyLocationReplacements(fountain, replacements);
+        Assert.Contains("INT. HALLWAY - NIGHT", updated);
+        Assert.DoesNotContain("INT. VARIOUS ROOMS - NIGHT", updated);
+        Assert.Contains("EXT. SIONNA'S HOUSE - DAY", updated);
+        Assert.DoesNotContain("SIONNA'S DUPLEX", updated);
+        Assert.Contains("The storm howls.", updated);
+    }
 }

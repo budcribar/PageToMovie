@@ -46,7 +46,7 @@ public class JitBenchmarkServiceTests
     {
         public bool IsConfigured => true;
 
-        public Task<string> CompleteWithImagesAsync(string prompt, IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", CancellationToken ct = default)
+        public Task<string> CompleteWithImagesAsync(string prompt, IReadOnlyList<string> imagePaths, string model = "grok-4.5", string detail = "low", double temperature = 0.0, CancellationToken ct = default)
         {
             return Task.FromResult("""
             {

@@ -76,6 +76,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default)
     {
         _log.LogInformation("Fake vision multi-image n={N}", imagePaths?.Count ?? 0);

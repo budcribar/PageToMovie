@@ -109,6 +109,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
         IReadOnlyList<string> imagePaths,
         string model = "",
         string detail = "low",
+        double temperature = 0.0,
         CancellationToken ct = default)
     {
         var parts = new List<object?>();
@@ -127,6 +128,10 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
             ["contents"] = new object[]
             {
                 new Dictionary<string, object?> { ["role"] = "user", [PartsKey] = parts },
+            },
+            ["generationConfig"] = new Dictionary<string, object?>
+            {
+                ["temperature"] = temperature,
             },
         };
         return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
