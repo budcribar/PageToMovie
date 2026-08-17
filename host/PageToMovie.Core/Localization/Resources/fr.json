@@ -335,7 +335,7 @@
     "ActivityHistory": "Activité / historique"
   },
   "ScenesPage": {
-    "Subtitle": "Générez et assemblez les clips sur votre machine. Consultez l'estimation avant le rendu final.",
+    "Subtitle": "Générez, éditez et vérifiez les clips.",
     "SelectMissing": "Sélectionner les manquants",
     "PlaySelected": "Lire la sélection",
     "VerifySceneDialogue": "Vérifier le dialogue de la scène",

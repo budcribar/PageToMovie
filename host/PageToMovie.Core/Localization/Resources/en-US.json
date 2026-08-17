@@ -335,7 +335,7 @@
     "ActivityHistory": "Activity / history"
   },
   "ScenesPage": {
-    "Subtitle": "Generate and stitch clips on your machine where possible. Check Estimate before a full render if you are watching credits.",
+    "Subtitle": "Generate, edit, and verify clips.",
     "SelectMissing": "Select missing",
     "PlaySelected": "Play selected",
     "VerifySceneDialogue": "Verify Scene Dialogue",

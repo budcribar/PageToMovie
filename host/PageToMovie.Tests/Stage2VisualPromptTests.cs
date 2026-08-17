@@ -605,6 +605,50 @@ public class Stage2VisualPromptTests : IDisposable
     }
 
     [Fact]
+    public void ClipCastTokens_includes_all_characters_in_visual_shot_even_if_stage1_only_listed_one()
+    {
+        var charSeeds = new Dictionary<string, object?>
+        {
+            ["Character_The_Lamb"] = new Dictionary<string, object?>
+            {
+                ["display_name_policy"] = "ok_anytime",
+                ["canonical_given_name"] = "The Lamb",
+            },
+            ["Character_Mary"] = new Dictionary<string, object?>
+            {
+                ["display_name_policy"] = "ok_anytime",
+                ["canonical_given_name"] = "Mary",
+            },
+            ["Character_Narrator"] = new Dictionary<string, object?>
+            {
+                ["display_name_policy"] = "never_on_screen",
+                ["canonical_given_name"] = "Narrator",
+            },
+        };
+
+        // Stage 1 initially classified only Character_The_Lamb on-screen, but the visual shot describes Mary alongside the lamb
+        var beat = new Dictionary<string, object?>
+        {
+            ["characters_on_screen"] = new List<object?> { "Character_The_Lamb" },
+            ["visual_event"] = "The lamb's white wash brightens on the lane. Medium two-shot tracking Mary and the lamb side by side.",
+            ["primary_subject"] = (object?)null,
+            ["speaker"] = "Character_Narrator",
+        };
+
+        var scene = new Dictionary<string, object?>
+        {
+            ["characters_on_screen"] = new List<object?> { "Character_Mary", "Character_The_Lamb" },
+            ["story_beats"] = new List<object?> { beat },
+        };
+
+        var cast = Stage2PlannerService.ClipCastTokensPublic(scene, beat, charSeeds);
+
+        // Both Mary and The Lamb must be included so both locked reference plates are attached
+        Assert.Contains("Character_Mary", cast, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("Character_The_Lamb", cast, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void EnsureEndCreditsScene_appends_credits_scene_when_missing()
     {
         var scenes = new List<Dictionary<string, object?>>

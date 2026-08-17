@@ -501,7 +501,11 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             return (accuracy, status, summary);
 
         var computedAcc = CalculateAccuracyScore(expectedDialogue, transcribed);
-        if (computedAcc < accuracy) accuracy = computedAcc;
+        if (computedAcc >= 0.99)
+            accuracy = 1.0;
+        else if (computedAcc < accuracy)
+            accuracy = computedAcc;
+
         if (accuracy < 0.5 && string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase))
             status = "mismatch";
         return (accuracy, status, summary);

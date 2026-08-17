@@ -2258,16 +2258,7 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?>? charSeeds = null)
     {
         var found = new List<string>();
-        // AI / enricher closed-set list preferred when present.
-        // Bug fix: previously short-circuited as soon as *any* character was found in
-        // characters_on_screen, even when all found characters are pure voice-only
-        // (display_name_policy = "never_on_screen", e.g. a narrator V.O.). This caused
-        // visible on-screen characters described in visual_event prose (like a hero animal
-        // bounding across a yard in an opening scene) to be silently dropped — resulting in
-        // no reference image being attached for the visually present lead.
-        // Fix: only short-circuit if at least one found character is visually present.
-        if (TryTakeOnScreenCastList(beat, found, charSeeds))
-            return found;
+        TryTakeOnScreenCastList(beat, found, charSeeds);
 
         var veText = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var ve) ? ve : null) ?? "";
         AddCharacterKeysFromText(found, veText);

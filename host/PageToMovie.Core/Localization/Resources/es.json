@@ -335,7 +335,7 @@
     "ActivityHistory": "Actividad / historial"
   },
   "ScenesPage": {
-    "Subtitle": "Genera y une clips en tu equipo cuando sea posible. Consulta Estimación antes del render completo.",
+    "Subtitle": "Genera, edita y verifica clips.",
     "SelectMissing": "Seleccionar faltantes",
     "PlaySelected": "Reproducir seleccionados",
     "VerifySceneDialogue": "Verificar diálogo de escenas",

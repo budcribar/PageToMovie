@@ -222,6 +222,16 @@ public class ClipDialogueVerificationTests
         Assert.Equal(1.0, score);
     }
 
+    [Fact]
+    public void CalculateAccuracyScore_FullMatch_Returns100Percent()
+    {
+        var exp = "And everywhere that Mary went, The lamb was sure to go.";
+        var act = "And everywhere that Mary went, the lamb was sure to go.";
+
+        var score = ClipDialogueVerificationService.CalculateAccuracyScore(exp, act);
+        Assert.Equal(1.0, score);
+    }
+
     private class MockVisionClient : PageToMovie.Engine.Abstractions.IVisionClient
     {
         public bool IsConfigured => true;
