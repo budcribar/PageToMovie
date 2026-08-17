@@ -65,20 +65,6 @@
             </div>
 
             <div class="nav-item px-3">
-                <NavLink class="@(ActiveProject.CanScenes ? "nav-link" : "nav-link disabled")" href="/scenes" title='@(ActiveProject.CanScenes ? "Scenes & film" : ActiveProject.ScenesBlockedReason)' data-testid="nav-scenes">
-                    <span class="bi bi-film-nav-menu" aria-hidden="true"></span>
-                    @if (!Collapsed) { <span class="nav-label">@L["Nav.Film"]</span> }
-                </NavLink>
-            </div>
-
-            <div class="nav-item px-3">
-                <NavLink class="@(ActiveProject.CanReview ? "nav-link" : "nav-link disabled")" href="/review" title='@(ActiveProject.CanReview ? "Review & export" : ActiveProject.ReviewBlockedReason)' data-testid="nav-review">
-                    <span class="bi bi-check2-square-nav-menu" aria-hidden="true"></span>
-                    @if (!Collapsed) { <span class="nav-label">@L["Nav.Review"]</span> }
-                </NavLink>
-            </div>
-
-            <div class="nav-item px-3">
                 <NavLink class="@(ActiveProject.CanCharacters ? "nav-link" : "nav-link disabled")" href="/characters" title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' data-testid="nav-characters">
                     <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Cast"]</span> }
@@ -89,6 +75,20 @@
                 <NavLink class="@(ActiveProject.CanCharacters ? "nav-link" : "nav-link disabled")" href="/locations" title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' data-testid="nav-locations">
                     <span class="bi bi-geo-alt-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Locations"]</span> }
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="@(ActiveProject.CanScenes ? "nav-link" : "nav-link disabled")" href="/scenes" title='@(ActiveProject.CanScenes ? "Scenes & film" : ActiveProject.ScenesBlockedReason)' data-testid="nav-scenes">
+                    <span class="bi bi-film-nav-menu" aria-hidden="true"></span>
+                    @if (!Collapsed) { <span class="nav-label">@L["Nav.Film"]</span> }
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="@(ActiveProject.CanReview ? "nav-link" : "nav-link disabled")" href="/review" title='@(ActiveProject.CanReview ? "Review & export" : ActiveProject.ReviewBlockedReason)' data-testid="nav-review">
+                    <span class="bi bi-check2-square-nav-menu" aria-hidden="true"></span>
+                    @if (!Collapsed) { <span class="nav-label">@L["Nav.Review"]</span> }
                 </NavLink>
             </div>
         }
