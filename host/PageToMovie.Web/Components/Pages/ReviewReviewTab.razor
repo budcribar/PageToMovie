@@ -16,7 +16,7 @@
                 <div class="d-flex align-items-center gap-3">
                     <div class="spinner-border text-info" role="status" style="width: 2rem; height: 2rem;"></div>
                     <div>
-                        <h5 class="fw-bold text-white mb-0">🤖 Executive AI Movie Review in Progress</h5>
+                        <h5 class="fw-bold text-white mb-0">@L["ReviewPage.ExecutiveAiReviewInProgress"]</h5>
                         <div class="small text-light mt-1">@AutoReview._reviewProgressStatus</div>
                     </div>
                 </div>
@@ -83,7 +83,7 @@
             <div class="card-body p-0">
                 @if (List._scenes.Count == 0)
                 {
-                    <EmptyState Message="No scenes — finish Adaptation first." CssClass="text-muted p-3 mb-0" />
+                    <EmptyState Message="@L["ReviewPage.NoScenesFinishAdaptation"]" CssClass="text-muted p-3 mb-0" />
                 }
                 else
                 {

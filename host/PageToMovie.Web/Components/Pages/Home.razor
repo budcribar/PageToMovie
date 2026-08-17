@@ -87,19 +87,17 @@ else
         </PromoCard>
     }
     else
-    {
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-            @if (_easyStartAvailable)
-            {
-            <button type="button"
-                    class="btn btn-link btn-sm px-0"
-                    data-testid="home-back-easy-start"
-                    @onclick="Projects.ExitFullStudio">
-                @L["Home.BackToEasyStart"]
-            </button>
-            }
-            <span class="small text-muted">@L["Home.FullStudio"]</span>
-        </div>
+        @if (_easyStartAvailable)
+        {
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <button type="button"
+                        class="btn btn-link btn-sm px-0"
+                        data-testid="home-back-easy-start"
+                        @onclick="Projects.ExitFullStudio">
+                    @L["Home.BackToEasyStart"]
+                </button>
+            </div>
+        }
 
         <CascadingValue Value="this" IsFixed="true">
             <CascadingValue Value="Projects" IsFixed="true">
@@ -117,12 +115,15 @@ else
     }
 }
 
-@* Demo films always visible under either mode *@
-<CascadingValue Value="this" IsFixed="true">
-    <CascadingValue Value="Costs" IsFixed="true">
-        <HomeDemoFilmsCard />
+@* Standalone demo films card only when not in full studio mode *@
+@if (!Session.IsLoggedIn || Projects.ShowEasyHome)
+{
+    <CascadingValue Value="this" IsFixed="true">
+        <CascadingValue Value="Costs" IsFixed="true">
+            <HomeDemoFilmsCard />
+        </CascadingValue>
     </CascadingValue>
-</CascadingValue>
+}
 
 
 <ProjectCollaboratorsModal IsOpen="Projects._showCollaboratorsModal" ProjectId="Projects._collaboratorsProjectId" OnClose="Projects.CloseCollaboratorsModal" />

@@ -1,15 +1,17 @@
+@inject IAppLocalizer L
+
 <div class="card mb-2 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
     <!-- Single Clean Line Header Row -->
     <div class="card-header bg-dark text-light d-flex flex-nowrap align-items-center gap-1 py-1 px-2 border-bottom border-secondary-subtle overflow-hidden">
         <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1 flex-shrink-0"
                 type="button"
                 @onclick="ToggleCollapse"
-                title="Collapse or expand this scene">
+                title="@L["ScreenplayEditor.ToggleCollapseScene"]">
             @(Scene.IsCollapsed ? "▶" : "▼")
         </button>
 
         <span class="badge text-bg-warning fw-bold flex-shrink-0"
-              title="Scene number — order of this scene in the screenplay">Scene @Scene.SceneNumber</span>
+              title="Scene number — order of this scene in the screenplay">@L.Format("ScreenplayEditor.SceneHeading", Scene.SceneNumber)</span>
 
         @* INT/EXT first, then Locations gear immediately before the place name *@
         <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light spe-sel spe-sel-env"
@@ -60,8 +62,8 @@
     @if (Scene.IsCollapsed)
     {
         <div class="card-body py-1 px-2 bg-dark-subtle text-secondary small d-flex justify-content-between align-items-center">
-            <span>Summary: <strong>@Scene.HeaderText</strong></span>
-            <span class="badge text-bg-dark border border-secondary-subtle" title="Beats — action lines, dialogue, and transitions in this scene">@Scene.Beats.Count Beats</span>
+            <span>@L["ScreenplayEditor.Summary"] <strong>@Scene.HeaderText</strong></span>
+            <span class="badge text-bg-dark border border-secondary-subtle" title="Beats — action lines, dialogue, and transitions in this scene">@L.Format("ScreenplayEditor.BeatsCount", Scene.Beats.Count)</span>
         </div>
     }
     else
@@ -70,7 +72,7 @@
             <div class="mb-1">
                 @if (Scene.Beats.Count == 0)
                 {
-                    <div class="bg-dark border border-secondary-subtle text-secondary rounded text-center py-2 small mb-2">No beats in this scene yet. Use the dropdown at the bottom left to add one.</div>
+                    <div class="bg-dark border border-secondary-subtle text-secondary rounded text-center py-2 small mb-2">@L["ScreenplayEditor.NoBeatsYet"]</div>
                 }
                 else
                 {
@@ -97,14 +99,14 @@
                                 title="Add a beat — Action (what we see), Dialogue (speech), or Transition (how we cut away)"
                                 value=""
                                 @onchange="OnInsertBeatSelected">
-                            <option value="" disabled selected>➕ Add Beat…</option>
-                            <option value="Action" title="@BeatType.Action.GetJargonHint()">🎬 Visual</option>
-                            <option value="Sound" title="@BeatType.Sound.GetJargonHint()">🔊 Sound</option>
-                            <option value="Dialogue" title="@BeatType.Dialogue.GetJargonHint()">🗣️ Dialogue</option>
-                            <option value="Transition" title="@BeatType.Transition.GetJargonHint()">🎞️ Transition</option>
+                            <option value="" disabled selected>@L["ScreenplayEditor.AddBeat"]</option>
+                            <option value="Action" title="@BeatType.Action.GetJargonHint()">@L["ScreenplayEditor.BeatVisual"]</option>
+                            <option value="Sound" title="@BeatType.Sound.GetJargonHint()">@L["ScreenplayEditor.BeatSound"]</option>
+                            <option value="Dialogue" title="@BeatType.Dialogue.GetJargonHint()">@L["ScreenplayEditor.BeatDialogue"]</option>
+                            <option value="Transition" title="@BeatType.Transition.GetJargonHint()">@L["ScreenplayEditor.BeatTransition"]</option>
                         </select>
                     </div>
-                    <span class="text-secondary small font-monospace" title="Total beats in this scene">@Scene.Beats.Count Beats Total</span>
+                    <span class="text-secondary small font-monospace" title="Total beats in this scene">@L.Format("ScreenplayEditor.BeatsTotal", Scene.Beats.Count)</span>
                 </div>
             </div>
         </div>

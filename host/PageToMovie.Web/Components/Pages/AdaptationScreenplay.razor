@@ -16,8 +16,8 @@
     @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
     {
         <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="screenplay-return-film">
-            <span>Editing script from Film — save, then return to the scene (regen clips if dialogue changed).</span>
-            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="screenplay-return-film-go">← Back to Film</a>
+            <span>@L["Adaptation.ReturnToFilmAlert"]</span>
+            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="screenplay-return-film-go">@L["Adaptation.BackToFilm"]</a>
         </div>
     }
 
@@ -47,15 +47,15 @@
 
                     @if (Editor._sceneCount > 0)
                     {
-                        <span class="small text-body-secondary">@Editor._sceneCount scenes</span>
+                        <span class="small text-body-secondary">@L.Format("Scenes.SceneCount", Editor._sceneCount)</span>
                     }
                     @if (Save._dirtyLocal)
                     {
-                        <span class="small text-muted">· unsaved</span>
+                        <span class="small text-muted">@L["ScreenplayPage.Unsaved"]</span>
                     }
                     else if (Save._lastSavedUtc is not null)
                     {
-                        <span class="small text-muted">· saved</span>
+                        <span class="small text-muted">@L["ScreenplayPage.Saved"]</span>
                     }
                 </div>
             </div>
@@ -68,7 +68,7 @@
                         @onclick="() => Save.SaveDraftAsync(manual: true)"
                         tabindex="@(Save._dirtyLocal ? 0 : -1)"
                         aria-hidden="@(!Save._dirtyLocal)">
-                    Save now
+                    @L["ScreenplayPage.SaveDraft"]
                 </button>
 
                 <div class="dropdown">
@@ -205,8 +205,8 @@
             @if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
             {
                 <div class="alert alert-light border small mb-3">
-                    Import a book or fountain first.
-                    <a class="ms-1" href="adaptation/import" data-testid="screenplay-go-import">Go to Import →</a>
+                    @L["Adaptation.ImportFirst"]
+                    <a class="ms-1" href="adaptation/import" data-testid="screenplay-go-import">@L["Adaptation.GoToImport"]</a>
                 </div>
             }
 
@@ -223,7 +223,7 @@
                     @if (Book.NeedsDraftFromBook)
                     {
                         <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
-                            <span class="text-body-secondary">Book text is ready — write a full draft:</span>
+                            <span class="text-body-secondary">@L["Adaptation.BookTextReadyWriteDraft"]</span>
                             <button class="btn btn-sm btn-primary"
                                     data-testid="screenplay-from-book"
                                     disabled="@(Busy || Jobs.JobRunning)"
@@ -240,7 +240,7 @@
             {
                 <div class="alert alert-warning py-2 small fe-warnings" data-testid="screenplay-from-book-banner">
                     <strong>@L["ScreenplayPage.NoUsableScreenplayYet"]</strong>
-                    Book text is ready for this project.
+                    @L["Adaptation.BookTextReady"]
                     <button class="btn btn-sm btn-primary ms-2"
                             data-testid="screenplay-from-book"
                             disabled="@(Busy || Jobs.JobRunning)"
@@ -256,11 +256,10 @@
                     <VisualMediumCard ProjectId="@ProjectId"
                                       Embedded="true"
                                       Disabled="@(Busy || Jobs.JobRunning)"
-                                      SaveLabel="Save & apply to screenplay"
+                                      SaveLabel="@L["ScreenplayPage.SaveAndApplyLook"]"
                                       OnChanged="Tools.OnLookChangedAsync" />
                     <p class="small text-body-secondary mb-0 mt-2">
-                        Look = visual style of the movie (live-action, anime, illustrated…). Saving rewrites
-                        description language to match that style — dialogue, scenes, and story stay the same. Re-approve afterward.
+                        @L["ScreenplayPage.LookDescriptionHelp"]
                     </p>
                 </div>
             }
@@ -268,7 +267,7 @@
             {
                 <div class="fe-sp-tools__panel mb-2" data-testid="screenplay-panel-fit">
                     <p class="small text-body-secondary mb-2">
-                        Set the film length. We trim the screenplay to fit — your full-length version is kept so you can re-fit anytime.
+                        @L["ScreenplayPage.FitFilmLengthHelp"]
                     </p>
                     <FilmLengthCard ProjectId="@ProjectId"
                                     Embedded="true"
@@ -277,9 +276,9 @@
                     @if (Tools.EstimateUsd is double est)
                     {
                         <div class="border rounded p-2 my-2 small text-body-secondary" data-testid="trim-cost-preview">
-                            Rough estimate at this length:
+                            @L["ScreenplayPage.RoughEstimatePrefix"]
                             <strong class="text-body">@($"${est:0.00}")</strong>
-                            — firms up after cast & voice.
+                            @L["ScreenplayPage.FirmsUpAfterCast"]
                         </div>
                     }
                     <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
@@ -363,33 +362,33 @@
                         }
                         else
                         {
-                            <span>Source passage for this scene</span>
+                            <span>@L["ScreenplayPage.SourcePassageScene"]</span>
                         }
                         @if (Book._bookContext?.PageNumber is int pn && Status?.Book.BookTextExists == true)
                         {
                             <span class="text-muted"> · section @pn</span>
                         }
                     </div>
-                    <div class="fe-book-window-drag-hint">Drag to move · resize from corner</div>
+                    <div class="fe-book-window-drag-hint">@L["ScreenplayPage.DragToMoveResize"]</div>
                 </div>
-                <button type="button" class="fe-book-window-close" @onclick="Book.CloseBookModal" aria-label="Close">×</button>
+                <button type="button" class="fe-book-window-close" @onclick="Book.CloseBookModal" aria-label="@L["Common.Close"]">×</button>
             </div>
             <div class="fe-book-window-body">
                 @if (Book._bookLoading)
                 {
-                    <div class="fe-book-empty">Looking up book text…</div>
+                    <div class="fe-book-empty">@L["ScreenplayPage.LookingUpBookText"]</div>
                 }
                 else if (Book._bookContext is null)
                 {
-                    <div class="fe-book-empty">No book context yet.</div>
+                    <div class="fe-book-empty">@L["ScreenplayPage.NoBookContextYet"]</div>
                 }
                 else if (!Book._bookContext.HasBook)
                 {
-                    <div class="fe-book-empty">No prepared book text for this project.</div>
+                    <div class="fe-book-empty">@L["ScreenplayPage.NoPreparedBookText"]</div>
                 }
                 else if (string.IsNullOrWhiteSpace(Book._bookContext.Excerpt))
                 {
-                    <div class="fe-book-empty">No matching book passage for this scene. Try editing the scene so dialogue or action echoes the book wording.</div>
+                    <div class="fe-book-empty">@L["ScreenplayPage.NoMatchingBookPassage"]</div>
                 }
                 else
                 {

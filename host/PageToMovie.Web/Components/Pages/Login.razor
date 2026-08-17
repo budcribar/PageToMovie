@@ -47,7 +47,7 @@
         {
             <form class="auth-form" @onsubmit="SubmitResetWithTokenAsync">
                 <div class="mb-3">
-                    <label class="form-label" for="reset-password-input">New password</label>
+                    <label class="form-label" for="reset-password-input">@L["Auth.NewPassword"]</label>
                     <div class="input-group">
                         <span class="input-group-text" aria-hidden="true">🔒</span>
                         <input id="reset-password-input"
@@ -55,14 +55,14 @@
                                class="form-control"
                                @bind="_password"
                                @bind:event="oninput"
-                               placeholder="New password"
+                               placeholder="@L["Auth.NewPassword"]"
                                autocomplete="new-password"
                                required />
                         <PasswordToggleButton Shown="_showPassword" OnToggle="ToggleShowPassword" />
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label" for="reset-confirm-input">Confirm new password</label>
+                    <label class="form-label" for="reset-confirm-input">@L["Auth.ConfirmNewPassword"]</label>
                     <div class="input-group">
                         <span class="input-group-text" aria-hidden="true">✓</span>
                         <input id="reset-confirm-input"
@@ -70,7 +70,7 @@
                                class="form-control"
                                @bind="_confirmPassword"
                                @bind:event="oninput"
-                               placeholder="Confirm password"
+                               placeholder="@L["Auth.ConfirmPassword"]"
                                autocomplete="new-password"
                                required />
                     </div>
@@ -80,10 +80,10 @@
                 <InlineAlert Message="@_info" Variant="success" CssClass="py-2" role="alert" />
 
                 <button type="submit" class="btn btn-gradient w-100 py-2 mt-2" disabled="@_busy">
-                    @(_busy ? "Updating…" : "Set new password")
+                    @(_busy ? L["Common.Updating"] : L["Auth.SetNewPassword"])
                 </button>
                 <button type="button" class="btn btn-link w-100 mt-2 text-decoration-none" @onclick="ExitResetTokenMode">
-                    ← Back to sign in
+                    @L["Auth.BackToSignIn"]
                 </button>
             </form>
         }
@@ -91,14 +91,14 @@
         {
             <form class="auth-form" @onsubmit="SubmitForgotAsync">
                 <div class="mb-3">
-                    <label class="form-label" for="forgot-username">Username or email</label>
+                    <label class="form-label" for="forgot-username">@L["Auth.UsernameOrEmail"]</label>
                     <div class="input-group">
                         <span class="input-group-text" aria-hidden="true">👤</span>
                         <input id="forgot-username"
                                class="form-control"
                                @bind="_username"
                                @bind:event="oninput"
-                               placeholder="username or you@example.com"
+                               placeholder="@L["Auth.UsernameOrEmailPlaceholder"]"
                                autocomplete="username"
                                required />
                     </div>
@@ -122,7 +122,7 @@
                     <label class="form-label" for="username-input">@L["Auth.Username"]</label>
                     <div class="input-group">
                         <span class="input-group-text" aria-hidden="true">👤</span>
-                        <input id="username-input" class="form-control" @bind="_username" @bind:event="oninput" placeholder="Enter username" autocomplete="username" required />
+                        <input id="username-input" class="form-control" @bind="_username" @bind:event="oninput" placeholder="@L["Auth.EnterUsernamePlaceholder"]" autocomplete="username" required />
                     </div>
                 </div>
 
@@ -142,7 +142,7 @@
                                    required />
                         </div>
                         <div class="form-text text-muted">
-                            We’ll send a confirmation link before you can sign in.
+                            @L["Auth.ConfirmationLinkEmailNotice"]
                         </div>
                     </div>
                 }
@@ -156,7 +156,7 @@
                                class="form-control"
                                @bind="_password"
                                @bind:event="oninput"
-                               placeholder="Enter password"
+                               placeholder="@L["Auth.EnterPasswordPlaceholder"]"
                                autocomplete="@(_isSignup ? "new-password" : "current-password")"
                                required />
                         <PasswordToggleButton Shown="_showPassword" OnToggle="ToggleShowPassword" />
@@ -174,7 +174,7 @@
                                    class="form-control"
                                    @bind="_confirmPassword"
                                    @bind:event="oninput"
-                                   placeholder="Confirm password"
+                                   placeholder="@L["Auth.ConfirmPassword"]"
                                    autocomplete="new-password"
                                    required />
                             <PasswordToggleButton Shown="_showPassword" OnToggle="ToggleShowPassword" />
@@ -193,7 +193,7 @@
                                         class="btn btn-link btn-sm p-0 mt-1"
                                         disabled="@_busy"
                                         @onclick="ResendConfirmationAsync">
-                                    Resend confirmation email
+                                    @L["Auth.ResendConfirmationEmail"]
                                 </button>
                             }
                         </div>
@@ -209,7 +209,7 @@
                                     class="btn btn-link btn-sm p-0 mt-1"
                                     disabled="@_busy"
                                     @onclick="ResendConfirmationAsync">
-                                Resend confirmation email
+                                @L["Auth.ResendConfirmationEmail"]
                             </button>
                         }
                     </div>
@@ -219,11 +219,11 @@
                     @if (_busy)
                     {
                         <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        <span>@(_isSignup ? "Creating account…" : "Signing in…")</span>
+                        <span>@(_isSignup ? L["Auth.CreatingAccount"] : L["Auth.SigningIn"])</span>
                     }
                     else
                     {
-                        <span>@(_isSignup ? "Create Account" : "Sign In")</span>
+                        <span>@(_isSignup ? L["Auth.CreateAccount"] : L["Auth.SignIn"])</span>
                     }
                 </button>
 
@@ -231,7 +231,7 @@
                 {
                     <div class="text-center mt-3">
                         <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" @onclick="EnterForgotMode">
-                            Forgot password?
+                            @L["Auth.ForgotPassword"]
                         </button>
                     </div>
                 }
@@ -241,27 +241,27 @@
         <div class="auth-footer text-center mt-4">
             @if (_resetTokenMode || _forgotMode)
             {
-                <span class="text-muted small">Remembered it? </span>
+                <span class="text-muted small">@L["Auth.RememberedIt"] </span>
                 <button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="BackToSignIn">
-                    Sign in
+                    @L["Auth.SignIn"]
                 </button>
             }
             else if (!_isSignup)
             {
-                <span class="text-muted">Don't have an account yet? </span>
+                <span class="text-muted">@L["Auth.DontHaveAccount"] </span>
                 <button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="() => SetMode(true)">
-                    Sign up now
+                    @L["Auth.SignUpNow"]
                 </button>
             }
             else
             {
-                <span class="text-muted">Already have an account? </span>
+                <span class="text-muted">@L["Auth.AlreadyHaveAccount"] </span>
                 <button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="() => SetMode(false)">
-                    Sign in
+                    @L["Auth.SignIn"]
                 </button>
             }
             <div class="mt-3">
-                <a href="/demo" class="small text-decoration-none">Watch public demos — no sign-in required</a>
+                <a href="/demo" class="small text-decoration-none">@L["Auth.WatchPublicDemos"]</a>
             </div>
         </div>
     </div>

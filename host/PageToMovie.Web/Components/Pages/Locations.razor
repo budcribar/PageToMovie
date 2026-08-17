@@ -17,7 +17,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h4 mb-0">@L["Nav.Locations"]</h1>
-            <p class="small text-muted mb-0">Set plates for every place in the plan — same flow as Cast: 3 looks, AI picks best, override anytime.</p>
+            <p class="small text-muted mb-0">@L["LocationsPage.Subtitle"]</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
             @if (NeedPlateCount > 0)
@@ -57,8 +57,8 @@
     @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
     {
         <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="locs-return-film">
-            <span>Editing from Film — return when you are done (regen the scene if the set plate changed).</span>
-            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="locs-return-film-go">← Back to Film</a>
+            <span>@L["LocationsPage.EditingFromFilm"]</span>
+            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="locs-return-film-go">@L["Adaptation.BackToFilm"]</a>
         </div>
     }
 
@@ -78,11 +78,11 @@
 
     @if (string.IsNullOrWhiteSpace(_projectId))
     {
-        <div class="text-muted">Select a project on Home first.</div>
+        <div class="text-muted">@L["LocationsPage.SelectProjectFirst"]</div>
     }
     else if (_loading)
     {
-        <div class="text-muted">Loading locations…</div>
+        <div class="text-muted">@L["LocationsPage.LoadingLocations"]</div>
     }
     else
     {
@@ -98,17 +98,17 @@
                                 title="Seeds kept on disk but not used in the current shot plan"
                                 @onclick="() => _showUnusedInPlan = !_showUnusedInPlan">
                             @(_showUnusedInPlan
-                                ? "Hide unused"
-                                : $"Show unused ({UnusedInPlanCount})")
+                                ? L["CharactersPage.HideUnused"]
+                                : L.Format("CharactersPage.ShowUnusedCount", UnusedInPlanCount))
                         </button>
                     }
                 </div>
                 <div class="small text-muted mb-2 px-1" data-testid="loc-index-summary">
-                    <span>@UsedInPlanCount used</span>
+                    <span>@L.Format("CharactersPage.UsedCount", UsedInPlanCount)</span>
                     <span class="mx-1">·</span>
-                    <span>@LockedPlateCount locked</span>
+                    <span>@L.Format("CharactersPage.LockedCount", LockedPlateCount)</span>
                     <span class="mx-1">·</span>
-                    <span class="@(NeedPlateCount > 0 ? "text-warning" : "")">@NeedPlateCount need plate</span>
+                    <span class="@(NeedPlateCount > 0 ? "text-warning" : "")">@L.Format("LocationsPage.NeedPlateCount", NeedPlateCount)</span>
                 </div>
                 <div class="list-group list-group-flush border rounded loc-index-list" style="max-height: 70vh; overflow: auto;">
                     @foreach (var loc in LocationsForUi)
@@ -152,14 +152,14 @@
                     }
                     @if (!LocationsForUi.Any())
                     {
-                        <div class="p-3 small text-muted">No locations yet. Approve a screenplay / rebuild cast so places are seeded.</div>
+                        <div class="p-3 small text-muted">@L["LocationsPage.NoLocationsYet"]</div>
                     }
                 </div>
             </div>
             <div class="col-12 col-md-8 col-lg-9">
                 @if (_selected is null)
                 {
-                    <div class="text-muted border rounded p-4">Select a place from the index to edit its look.</div>
+                    <div class="text-muted border rounded p-4">@L["LocationsPage.SelectPlaceFromIndex"]</div>
                 }
                 else
                 {
@@ -169,14 +169,14 @@
                             <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>
                             <span class="badge @(selectedLocked ? "text-bg-success" : "text-bg-secondary")"
                                   title="@(selectedLocked ? "Preferred plate is locked for video" : "No preferred plate yet")">
-                                @(selectedLocked ? "🔒 Locked" : "🔓 Unlocked")
+                                @(selectedLocked ? "🔒 " + L["LocationsPage.Locked"] : "🔓 " + L["LocationsPage.Unlocked"])
                             </span>
                         </div>
                         <div class="card-body">
                             @if (!string.IsNullOrWhiteSpace(_plateUrl))
                             {
                                 <div class="mb-3" data-testid="loc-locked-plate">
-                                    <div class="small text-muted mb-1">Preferred plate</div>
+                                    <div class="small text-muted mb-1">@L["LocationsPage.PreferredPlate"]</div>
                                     <div class="loc-preferred-frame">
                                         <img src="@_plateUrl" alt="Location plate" class="rounded border border-secondary loc-preferred-preview" />
                                         <span class="loc-plate-lock-icon is-locked" title="Locked preferred plate" aria-label="Locked">🔒</span>
@@ -186,8 +186,7 @@
                             else if (!_selected.Variants.Any(v => v.Exists))
                             {
                                 <div class="alert alert-secondary py-2 small mb-3" data-testid="loc-no-plate-yet">
-                                    No set plate yet. Use <strong>Generate looks for plan</strong> (all places + cast) or
-                                    <strong>Generate 3 looks</strong> for this place — AI auto-locks the best; you can re-lock anytime.
+                                    @L["LocationsPage.NoSetPlateYetAlert"]
                                 </div>
                             }
 

@@ -1,6 +1,7 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
+@inject IAppLocalizer L
 @* Operator-facing gen failure *@
 <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small">@(!string.IsNullOrWhiteSpace(Gen._job?.Message) ? $"Generation failed: {Gen._job.Message}" : "Generation failed. Try again.")</span>
-    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="ListState.ReloadListAsync">Refresh</button>
+    <span class="small">@(!string.IsNullOrWhiteSpace(Gen._job?.Message) ? $"{L["Scenes.GenerationFailed"]}: {Gen._job.Message}" : L["Scenes.GenerationFailedTryAgain"])</span>
+    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="ListState.ReloadListAsync">@L["Common.Refresh"]</button>
 </div>

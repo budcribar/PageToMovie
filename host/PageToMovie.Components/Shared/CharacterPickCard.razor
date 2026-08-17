@@ -1,4 +1,5 @@
 @namespace PageToMovie.Web.Components
+@inject IAppLocalizer L
 
 <div class="char-pick__card @(Selected ? "is-chosen" : null)"
      data-testid="@(TestId ?? "char-pick-card")">
@@ -16,7 +17,7 @@
             }
             else
             {
-                <span class="text-muted small">No image</span>
+                <span class="text-muted small">@L["Common.NoImage"]</span>
             }
             @if (ShowZoomBadge)
             {
@@ -33,7 +34,7 @@
             }
             else
             {
-                <span class="text-muted small">No image</span>
+                <span class="text-muted small">@L["Common.NoImage"]</span>
             }
         </div>
     }

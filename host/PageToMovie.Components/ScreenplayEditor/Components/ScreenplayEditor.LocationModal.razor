@@ -1,3 +1,5 @@
+@inject IAppLocalizer L
+
 @if (IsOpen)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
@@ -11,7 +13,7 @@
                         }
                         else
                         {
-                            <span>Story locations</span>
+                            <span>@L["ScreenplayEditor.StoryLocations"]</span>
                         }
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
@@ -19,12 +21,12 @@
                 <div class="modal-body p-3">
                     @if (!SingleLocationMode)
                     {
-                        <label class="form-label fw-semibold text-secondary small mb-1">Add location</label>
+                        <label class="form-label fw-semibold text-secondary small mb-1">@L["ScreenplayEditor.AddLocation"]</label>
                         <div class="input-group input-group-sm mb-3">
                             <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewLocationName" placeholder="e.g. KIRK STREET APARTMENT" />
                             <button class="btn btn-info fw-semibold px-3" type="button" @onclick="AddLocation" disabled="@string.IsNullOrWhiteSpace(NewLocationName)">+ Add</button>
                         </div>
-                        <label class="form-label fw-semibold text-secondary small">Locations (@OrderedLocationNames.Count)</label>
+                        <label class="form-label fw-semibold text-secondary small">@L.Format("ScreenplayEditor.LocationsCount", OrderedLocationNames.Count)</label>
                     }
                     <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 420px;">
                         @foreach (var locName in OrderedLocationNames)
@@ -40,18 +42,18 @@
                                     </div>
                                     @if (!SingleLocationMode)
                                     {
-                                        <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveLocation(locName)" title="Delete location">✕</button>
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveLocation(locName)" title="@L["ScreenplayEditor.DeleteLocation"]">✕</button>
                                     }
                                 </div>
 
                                 <div class="mb-2">
-                                    <label class="form-label text-secondary small mb-0">Description</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.Description"]</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="3"
                                               @bind="profile.Description" @bind:after="OnChanged"
                                               placeholder="Atmosphere, lighting, key objects…"></textarea>
                                 </div>
                                 <div>
-                                    <label class="form-label text-secondary small mb-0">Visual lock</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.VisualLock"]</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="2"
                                               @bind="profile.VisualLock" @bind:after="OnChanged"
                                               placeholder="Look that must stay consistent for this place…"></textarea>
@@ -61,7 +63,7 @@
                         @if (OrderedLocationNames.Count == 0)
                         {
                             <div class="text-secondary small border border-secondary-subtle rounded p-3">
-                                No locations yet. Add a name above, or set a place on a scene heading.
+                                @L["ScreenplayEditor.NoLocationsYet"]
                             </div>
                         }
                     </div>
@@ -71,9 +73,9 @@
                        href="@FullLocsHref"
                        data-testid="loc-modal-open-locs"
                        title="Set plates and locked looks live on Locations">
-                        @(string.IsNullOrWhiteSpace(FocusName) ? "Open Locations editor →" : $"Open Locs · {FocusName} →")
+                        @(string.IsNullOrWhiteSpace(FocusName) ? L["ScreenplayEditor.OpenLocationsEditor"] : $"Open Locs · {FocusName} →")
                     </a>
-                    <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
+                    <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">@L["Common.Done"]</button>
                 </div>
             </div>
         </div>

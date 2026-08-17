@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Abstractions;
@@ -1541,11 +1542,65 @@ promptVersion: "stage1-generic-speaker-repair-v1",
     /// genuinely-different people untouched. Fires only when the cheap pre-check finds a
     /// candidate — most books never trigger this call.
     /// </summary>
+    public sealed record NameReplacement(string From, string To);
+
+    public static List<NameReplacement> ParseNameReplacements(string? raw)
+    {
+        var list = new List<NameReplacement>();
+        if (string.IsNullOrWhiteSpace(raw)) return list;
+        try
+        {
+            var json = StripFences(raw);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var arr = root.ValueKind == JsonValueKind.Array
+                ? root
+                : root.TryGetProperty("replacements", out var reps) && reps.ValueKind == JsonValueKind.Array
+                    ? reps
+                    : default;
+            if (arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var el in arr.EnumerateArray())
+                {
+                    var from = el.TryGetProperty("from", out var f) ? f.GetString() : null;
+                    var to = el.TryGetProperty("to", out var t) ? t.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(from) && !string.IsNullOrWhiteSpace(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+                    {
+                        list.Add(new NameReplacement(from.Trim(), to.Trim()));
+                    }
+                }
+            }
+        }
+        catch { }
+        return list;
+    }
+
+    public static string ApplyNameReplacements(string fountain, IReadOnlyList<NameReplacement> replacements)
+    {
+        var result = fountain;
+        foreach (var r in replacements)
+        {
+            var pattern = $@"\b{Regex.Escape(r.From)}\b";
+            result = Regex.Replace(result, pattern, match =>
+            {
+                if (match.Value.Equals(r.From.ToUpperInvariant(), StringComparison.Ordinal))
+                    return r.To.ToUpperInvariant();
+                return r.To;
+            }, RegexOptions.IgnoreCase, CommonRegex.Timeout);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Fast targeted pass: confirm which candidate name groups are the same person with drifted
+    /// spelling and apply targeted replacements in C# rather than re-streaming the full screenplay.
+    /// </summary>
     private static async Task<string> RepairNameDriftAsync(
         string system,
         string fountain,
         ChatCall chat)
     {
+        _ = system;
         var onProgress = chat.OnProgress;
         var groups = FindNameDriftCandidateGroups(fountain);
         if (groups.Count == 0 || !chat.Chat.IsConfigured)
@@ -1555,33 +1610,49 @@ promptVersion: "stage1-generic-speaker-repair-v1",
 
         var listed = string.Join("\n\n", groups.Select((g, i) =>
             $"  Group {i + 1}:\n" + string.Join("\n", g.Select(n => "    - " + n))));
-        var user = $"""
+        var user = $$"""
             NAME NORMALIZATION (CONFIRM, THEN FIX)
-            The Fountain draft below may spell the SAME person's name inconsistently across
-            mentions (character cues and prose/dialogue alike) — e.g. a typo carried over from
-            the source book. Each group below is a near-spelling-match and MIGHT be one person
-            — or might genuinely be different people. Decide each group on its own.
+            The following name groups are near-spelling-matches from the screenplay and MIGHT be the same person with a typo/inconsistent spelling — or might genuinely be different people.
 
-            {listed}
+            {{listed}}
 
-            Rules:
-            - Return the COMPLETE Fountain screenplay again (not a patch list).
-            - For a group that IS the same person, unify every occurrence (cues, action lines,
-              dialogue, parentheticals) to one canonical spelling — pick whichever spelling
-              appears more often, or the more standard spelling if it's a tie.
-            - For a group that is genuinely different people, leave every occurrence exactly as
-              written.
-            - Do not change plot, locations, or dialogue wording except the spelling itself.
-            - No markdown fences. Fountain only.
+            For each group:
+            - If they are the SAME person, specify which spelling variant to replace ("from") and which canonical spelling to replace it with ("to").
+            - If they are DIFFERENT people, do not include them in the replacements.
+
+            Return JSON only:
+            {
+              "replacements": [
+                { "from": "Olsen", "to": "Olson" }
+              ]
+            }
             """;
 
-        return await ExecuteNormalizationPassAsync(new(
-            system, fountain, user, chat with { Temperature = 0.1 },
-            ChatCallModes.BookToFountainNameNormalizeRetry,
-            "Name normalization",
-            "stage1-name-normalize-v1",
-            "stage1_name_normalize",
-            "Names checked.")).ConfigureAwait(false);
+        try
+        {
+            var raw = await chat.Chat.CompleteAsync(
+                "You are an expert script editor resolving character name spelling inconsistencies. Return JSON only.",
+                user,
+                chat.Model,
+                0.1,
+                ct: chat.Ct).ConfigureAwait(false);
+
+            var replacements = ParseNameReplacements(raw);
+            if (replacements.Count == 0)
+            {
+                onProgress?.Invoke("Names checked (no spelling drift found).");
+                return fountain;
+            }
+
+            var updated = ApplyNameReplacements(fountain, replacements);
+            onProgress?.Invoke($"Normalized {replacements.Count} name spelling(s).");
+            return updated;
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke($"Name normalization skipped: {ex.Message}");
+            return fountain;
+        }
     }
 
     // ── split narration (continuous V.O./verse broken by a real blank line) ───────────────

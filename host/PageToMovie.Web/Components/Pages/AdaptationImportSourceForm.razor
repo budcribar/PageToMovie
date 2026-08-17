@@ -1,8 +1,9 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
+@inject IAppLocalizer L
 @using Microsoft.AspNetCore.Components.Forms
 
-<h5 class="card-title mb-1">Import source</h5>
-<p class="text-muted small mb-3">PDF, text, or fountain — then the pipeline runs. You can edit after.</p>
+<h5 class="card-title mb-1">@L["Adaptation.ImportSource"]</h5>
+<p class="text-muted small mb-3">@L["Adaptation.ImportSourceSubtitle"]</p>
 
 <label class="ptm-dropzone @(Host.Busy || Host.Jobs.JobRunning || Host.Drop._importing || !Host.Gate.ImportReady ? "ptm-dropzone--disabled" : "") @(Host.Drop._dragOver && Host.Gate.ImportReady ? "ptm-dropzone--active" : "")"
        data-testid="import-dropzone"
@@ -22,8 +23,8 @@
                disabled="@(Host.Busy || Host.Jobs.JobRunning || Host.Drop._importing || !Host.Gate.ImportReady)" />
     <div class="ptm-dropzone__inner" aria-hidden="true">
         <div class="ptm-dropzone__icon">📖</div>
-        <div class="ptm-dropzone__title">Drop your book here</div>
-        <div class="ptm-dropzone__hint">or click to choose a file</div>
+        <div class="ptm-dropzone__title">@L["Adaptation.DropBookHere"]</div>
+        <div class="ptm-dropzone__hint">@L["Adaptation.OrClickToChooseFile"]</div>
         <div class="ptm-dropzone__types">.pdf · .txt · .fountain</div>
     </div>
 </label>
@@ -31,7 +32,7 @@
 @if (!string.IsNullOrWhiteSpace(Host.Drop._chosenFileName))
 {
     <div class="fs-file-chosen mt-2" data-testid="import-file-name">
-        <span class="fs-file-chosen-label">Selected:</span>@Host.Drop._chosenFileName
+        <span class="fs-file-chosen-label">@L["Adaptation.SelectedLabel"]</span>@Host.Drop._chosenFileName
     </div>
 }
 
@@ -40,15 +41,14 @@
 {
     <div class="d-flex flex-wrap gap-2 mt-3" data-testid="import-continue-actions">
         <a class="btn btn-success btn-sm" data-testid="import-continue-screenplay" href="adaptation/screenplay">
-            Continue to screenplay →
+            @L["Adaptation.ContinueToScreenplay"]
         </a>
         @* B7: fountain/book draft ready — DecisionCard is the pre-gen hub *@
         <a class="btn btn-outline-primary btn-sm" data-testid="import-go-estimate" href="cost">
-            Go to Estimate →
+            @L["CostPage.GoToEstimate"]
         </a>
     </div>
     <p class="small text-muted mt-2 mb-0" data-testid="import-estimate-hint">
-        Fountain or draft on disk: open <strong>Estimate</strong> for cost/duration and Generate or Edit plan
-        (approve the screenplay first if Estimate is still blocked).
+        @L["Adaptation.ImportEstimateHint"]
     </p>
 }

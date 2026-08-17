@@ -10,28 +10,34 @@
 <PageTitle>@L["DemoPage.Title"]</PageTitle>
 
 <div class="demo-page">
-    <header class="demo-hero">
-        <StudioPageHeader Kicker="Studio · Public gallery" Title="@L["Nav.Demo"]" CssClass="mb-0">
+    <header class="demo-hero mb-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="min-w-0">
+                <div class="ptm-adapt-kicker mb-0">Studio · Public gallery</div>
+                <h1 class="ptm-adapt-title fs-4 mb-0">@L["Nav.Demo"]</h1>
+            </div>
+            @if (!_loading && _demos.Count > 0)
+            {
+                <div class="d-flex align-items-center gap-3 flex-shrink-0">
+                    <span class="demo-hero-meta mb-0">@_demos.Count film@(_demos.Count == 1 ? "" : "s") on the wall</span>
+                    <div class="demo-sort btn-group btn-group-sm" role="group" aria-label="Sort gallery">
+                        <button type="button"
+                                class="btn @(_sort == "top" ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="SortByTopAsync">@L["DemoPage.MostStars"]</button>
+                        <button type="button"
+                                class="btn @(_sort == "new" ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="SortByNewAsync">@L["DemoPage.Newest"]</button>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="small text-muted mt-1">
             @L["DemoPage.Subtitle"]
             @if (!Session.IsLoggedIn)
             {
-                <span class="text-muted"> Sign in to star.</span>
+                <span> · Sign in to star.</span>
             }
-        </StudioPageHeader>
-        @if (!_loading && _demos.Count > 0)
-        {
-            <div class="demo-hero-toolbar">
-                <p class="demo-hero-meta mb-0">@_demos.Count film@(_demos.Count == 1 ? "" : "s") on the wall</p>
-                <div class="demo-sort btn-group btn-group-sm" role="group" aria-label="Sort gallery">
-                    <button type="button"
-                            class="btn @(_sort == "top" ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick="SortByTopAsync">@L["DemoPage.MostStars"]</button>
-                    <button type="button"
-                            class="btn @(_sort == "new" ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick="SortByNewAsync">@L["DemoPage.Newest"]</button>
-                </div>
-            </div>
-        }
+        </div>
     </header>
 
     <InlineAlert Message="@_error" />

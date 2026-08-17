@@ -38,10 +38,10 @@ public partial class Login : IDisposable
     {
         get
         {
-            if (_resetTokenMode) return "Reset password";
-            if (_forgotMode) return "Forgot password";
-            if (_isSignup) return "Sign Up";
-            return "Sign In";
+            if (_resetTokenMode) return L["Auth.ResetPassword"];
+            if (_forgotMode) return L["Auth.ForgotPassword"];
+            if (_isSignup) return L["Auth.SignUp"];
+            return L["Auth.SignIn"];
         }
     }
 

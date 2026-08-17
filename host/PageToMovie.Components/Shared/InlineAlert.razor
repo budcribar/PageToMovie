@@ -1,4 +1,5 @@
 @namespace PageToMovie.Web.Components
+@inject IAppLocalizer L
 
 @if (_visible && (ChildContent is not null || !string.IsNullOrEmpty(Message)))
 {
@@ -13,7 +14,7 @@
         }
         @if (Dismissible)
         {
-            <button type="button" class="btn-close" aria-label="Close" @onclick="Dismiss"></button>
+            <button type="button" class="btn-close" aria-label="@L["Common.Close"]" @onclick="Dismiss"></button>
         }
     </div>
 }

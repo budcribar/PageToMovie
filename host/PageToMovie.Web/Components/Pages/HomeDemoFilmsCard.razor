@@ -4,20 +4,21 @@
 @using PageToMovie.Core.Util
 @using Microsoft.AspNetCore.Components
 
-<div class="card home-showcase-card mb-3" data-testid="home-demo-films-card">
-    <div class="card-body py-3">
-        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
-            <div class="min-w-0">
-                <div class="ptm-adapt-kicker mb-1">@L["Home.PageToMovieChannel"]</div>
-                <div class="fw-semibold fs-5 mb-0">@L["Home.DemoFilms"]</div>
-                <div class="small text-muted text-truncate" title="@Host.Costs._demoShowcaseHint">@Host.Costs._demoShowcaseHint</div>
+@code {
+    [Parameter] public bool Inline { get; set; }
+}
+
+@if (Inline)
+{
+    @if (Host.Costs._publicDemos.Count > 0)
+    {
+        <div class="home-showcase-inline pt-2 mt-2 border-top border-secondary border-opacity-25" data-testid="home-demo-films-card">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                <span class="small fw-semibold text-secondary text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.05em;">@L["Home.DemoFilms"]</span>
+                <a href="/demo" class="btn btn-sm btn-link text-decoration-none px-0 py-0 flex-shrink-0" style="font-size: 0.78rem;" data-testid="home-open-demo-gallery">
+                    @L["Home.OpenGallery"] →
+                </a>
             </div>
-            <a href="/demo" class="btn btn-sm btn-primary flex-shrink-0" data-testid="home-open-demo-gallery">
-                @L["Home.OpenGallery"]
-            </a>
-        </div>
-        @if (Host.Costs._publicDemos.Count > 0)
-        {
             <div class="home-showcase-thumbs" aria-label="Recent demo films">
                 @foreach (var d in Host.Costs._publicDemos.Take(4))
                 {
@@ -43,6 +44,47 @@
                     </a>
                 }
             </div>
-        }
+        </div>
+    }
+}
+else
+{
+    <div class="card home-showcase-card mb-2" data-testid="home-demo-films-card">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                <span class="small fw-semibold text-secondary text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.05em;">@L["Home.DemoFilms"]</span>
+                <a href="/demo" class="btn btn-sm btn-primary flex-shrink-0" data-testid="home-open-demo-gallery">
+                    @L["Home.OpenGallery"]
+                </a>
+            </div>
+            @if (Host.Costs._publicDemos.Count > 0)
+            {
+                <div class="home-showcase-thumbs" aria-label="Recent demo films">
+                    @foreach (var d in Host.Costs._publicDemos.Take(4))
+                    {
+                        var yt = YouTubeVideoId.Extract(d.YoutubeId) ?? YouTubeVideoId.Extract(d.YoutubeUrl);
+                        var href = DemoHref(yt, d);
+                        var thumb = yt is not null
+                            ? YouTubeVideoId.ThumbnailUrl(yt, "mqdefault")
+                            : null;
+                        <a class="home-showcase-thumb"
+                           href="@href"
+                           target="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "_blank" : null)"
+                           rel="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "noopener noreferrer" : null)"
+                           title="@d.Title">
+                            @if (thumb is not null)
+                            {
+                                <img src="@thumb" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="home-showcase-thumb__ph" aria-hidden="true">▶</span>
+                            }
+                            <span class="home-showcase-thumb__label">@d.Title</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
     </div>
-</div>
+}

@@ -10,8 +10,8 @@
 }
 
 .demo-hero {
-    margin-bottom: 1.5rem;
-    padding: 1.25rem 1.25rem 1.15rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1.15rem 0.75rem;
     border-radius: 1rem;
     background:
         radial-gradient(900px 220px at 8% -30%, rgba(148, 163, 184, 0.14), transparent 55%),
@@ -21,7 +21,6 @@
 }
 
 .demo-hero-meta {
-    margin: 0.85rem 0 0;
     font-size: 0.85rem;
     color: var(--fs-text-subtle);
 }
@@ -32,7 +31,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    margin-top: 0.85rem;
+    margin-top: 0.5rem;
 }
 
 .demo-star-btn {

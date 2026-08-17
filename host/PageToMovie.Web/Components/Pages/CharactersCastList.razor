@@ -16,7 +16,7 @@
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="cast-index">
     <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
-        <span class="small fw-semibold">Cast index</span>
+        <span class="small fw-semibold">@L["CharactersPage.CastIndex"]</span>
         @if (List.UnusedInPlanCount > 0)
         {
             <button type="button"
@@ -25,18 +25,18 @@
                     title="Seeds kept on disk but not in any scene of the current plan"
                     @onclick="() => List._showUnusedInPlan = !List._showUnusedInPlan">
                 @(List._showUnusedInPlan
-                    ? "Hide unused"
-                    : $"Show unused ({List.UnusedInPlanCount})")
+                    ? L["CharactersPage.HideUnused"]
+                    : L.Format("CharactersPage.ShowUnusedCount", List.UnusedInPlanCount))
             </button>
         }
     </div>
     <div class="small text-muted mb-2 px-1" data-testid="cast-index-summary">
-        <span title="In the current shot plan">@List.UsedInPlanCount used</span>
+        <span title="In the current shot plan">@L.Format("CharactersPage.UsedCount", List.UsedInPlanCount)</span>
         <span class="mx-1">·</span>
-        <span title="Locked preferred look">@List.LockedLookCount locked</span>
+        <span title="Locked preferred look">@L.Format("CharactersPage.LockedCount", List.LockedLookCount)</span>
         <span class="mx-1">·</span>
         <span class="@(List.NeedLookCount > 0 ? "text-warning" : "")"
-              title="Faces still missing a preferred look">@List.NeedLookCount need look</span>
+              title="Faces still missing a preferred look">@L.Format("CharactersPage.NeedLookCount", List.NeedLookCount)</span>
     </div>
     <div class="list-group list-group-flush border rounded cast-index-list"
          style="max-height: 70vh; overflow: auto;">
@@ -119,7 +119,7 @@
         }
         @if (roster.Count == 0)
         {
-            <div class="p-3 small text-muted">No cast in this list. Build cast from the screenplay, or show unused.</div>
+            <div class="p-3 small text-muted">@L["CharactersPage.NoCastInList"]</div>
         }
     </div>
 </div>

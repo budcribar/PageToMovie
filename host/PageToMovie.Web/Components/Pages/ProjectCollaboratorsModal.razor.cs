@@ -190,15 +190,15 @@ public sealed partial class ProjectCollaboratorsModal : IDisposable
             if (res is { Ok: true })
             {
                 statusMessage = res.Delivered
-                    ? "Invite sent — expires in 48 hours."
-                    : "Invite created. Share this link: " + res.InviteUrl;
+                    ? L["Collaborators.InviteSentExpires48h"]
+                    : L["Collaborators.InviteCreatedShareLink"] + " " + res.InviteUrl;
                 isError = !res.Delivered;
                 searchHandle = "";
                 emailInput = "";
             }
             else
             {
-                statusMessage = res?.Error ?? "Could not send the invite.";
+                statusMessage = res?.Error ?? L["Collaborators.CouldNotSendInvite"];
                 isError = true;
             }
         }

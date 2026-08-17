@@ -1,3 +1,5 @@
+@inject IAppLocalizer L
+
 @if (IsOpen)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
@@ -11,7 +13,7 @@
                         }
                         else
                         {
-                            <span>Story characters</span>
+                            <span>@L["ScreenplayEditor.StoryCharacters"]</span>
                         }
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
@@ -20,14 +22,13 @@
                     @if (FocusMissingFromCast)
                     {
                         <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
-                            <strong>@FocusName</strong> is speaking on a line but is not in the cast yet.
-                            Pick a cast member on that line, or add them below.
+                            @L.Format("ScreenplayEditor.FocusMissingFromCast", FocusName ?? "")
                         </div>
                     }
 
                     @if (!SingleCharacterMode)
                     {
-                        <label class="form-label fw-semibold text-secondary small mb-1">Add character</label>
+                        <label class="form-label fw-semibold text-secondary small mb-1">@L["ScreenplayEditor.AddCharacter"]</label>
                         <div class="input-group input-group-sm mb-3">
                             <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewCharacterName" placeholder="e.g. BUSTER" />
                             <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add</button>
@@ -37,7 +38,7 @@
                     @if (!SingleCharacterMode)
                     {
                         var names = GetOrderedCharacterNames();
-                        <label class="form-label fw-semibold text-secondary small">Cast (@names.Count)</label>
+                        <label class="form-label fw-semibold text-secondary small">@L.Format("ScreenplayEditor.CastCount", names.Count)</label>
                     }
                     <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 420px;">
                         @{ var charaNames = GetOrderedCharacterNames(); }
@@ -54,7 +55,7 @@
                                         <h6 class="mb-0 fw-bold text-warning text-uppercase">@charaName</h6>
                                         @if (profile.Speaks)
                                         {
-                                            <span class="badge text-bg-success">Speaks</span>
+                                             <span class="badge text-bg-success">@L["ScreenplayEditor.Speaks"]</span>
                                         }
                                         @if (!string.IsNullOrWhiteSpace(profile.SpeciesKind))
                                         {
@@ -63,24 +64,24 @@
                                     </div>
                                     @if (!SingleCharacterMode)
                                     {
-                                        <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="Remove from list">✕</button>
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="@L["ScreenplayEditor.RemoveFromList"]">✕</button>
                                     }
                                 </div>
 
                                 <div class="mb-2">
-                                    <label class="form-label text-secondary small mb-0">Description</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.Description"]</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary" rows="2"
                                               @bind="profile.Description" @bind:after="OnChanged"
                                               placeholder="Who they are and how they look…"></textarea>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label text-secondary small mb-0">Visual lock</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.VisualLock"]</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary" rows="2"
                                               @bind="profile.VisualLockPrompt" @bind:after="OnChanged"
                                               placeholder="Appearance that must stay consistent…"></textarea>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label text-secondary small mb-0">Visual medium</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.VisualMedium"]</label>
                                     <select class="form-select form-select-sm bg-dark text-light border-secondary"
                                             @bind="profile.VisualMedium" @bind:after="OnChanged">
                                         @foreach (var medium in Enum.GetValues<PageToMovie.Core.Models.VisualMedium>())
@@ -90,7 +91,7 @@
                                     </select>
                                 </div>
                                 <div class="mb-1">
-                                    <label class="form-label text-secondary small mb-0">Wardrobe always</label>
+                                    <label class="form-label text-secondary small mb-0">@L["ScreenplayEditor.WardrobeAlways"]</label>
                                     <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
                                            @bind="profile.WardrobeAlways" @bind:after="OnChanged"
                                            placeholder="e.g. red collar; dark coat" />
@@ -98,7 +99,7 @@
                                 @if (!string.IsNullOrWhiteSpace(profile.VoiceLabel) || !string.IsNullOrWhiteSpace(profile.VoiceProfile))
                                 {
                                     <div class="small text-secondary mt-1">
-                                        Voice:
+                                        @L["ScreenplayEditor.VoiceLabel"]
                                         @if (!string.IsNullOrWhiteSpace(profile.VoiceLabel))
                                         {
                                             <strong class="text-light">@profile.VoiceLabel</strong>
@@ -114,7 +115,7 @@
                         @if (charaNames.Count == 0)
                         {
                             <div class="text-secondary small border border-secondary-subtle rounded p-3">
-                                No cast yet. Build cast on the Cast step, or add a name above.
+                                @L["ScreenplayEditor.NoCastYet"]
                             </div>
                         }
                     </div>
@@ -124,9 +125,9 @@
                        href="@FullCastHref"
                        data-testid="char-modal-open-cast"
                        title="Looks, voice, and locked plates live on Cast">
-                        @(string.IsNullOrWhiteSpace(FocusName) ? "Open Cast editor →" : $"Open Cast · {FocusName} →")
+                        @(string.IsNullOrWhiteSpace(FocusName) ? L["ScreenplayEditor.OpenCastEditor"] : $"Open Cast · {FocusName} →")
                     </a>
-                    <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
+                    <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">@L["Common.Done"]</button>
                 </div>
             </div>
         </div>

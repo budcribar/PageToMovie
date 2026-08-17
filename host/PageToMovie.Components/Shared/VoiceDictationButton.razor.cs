@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using PageToMovie.Core.Localization;
 
 namespace PageToMovie.Web.Components;
 
@@ -14,6 +15,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     private const int WaveBarCount = 12;
 
     [Inject] public required IJSRuntime Js { get; set; }
+    [Inject] public IAppLocalizer? L { get; set; }
 
     /// <summary>Current field value (appended or replaced with spoken text).</summary>
     [Parameter] public string Text { get; set; } = "";
@@ -179,8 +181,8 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
         _level = 0;
         _error = error switch
         {
-            "not-allowed" => "Microphone permission denied.",
-            "no-speech" => "No speech heard — try again.",
+            "not-allowed" => L?["VoiceDictation.MicrophonePermissionDenied"] ?? "Microphone permission denied.",
+            "no-speech" => L?["VoiceDictation.NoSpeechHeard"] ?? "No speech heard — try again.",
             "aborted" => null,
             _ => error,
         };

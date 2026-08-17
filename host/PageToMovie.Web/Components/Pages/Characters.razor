@@ -30,8 +30,8 @@
 @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
 {
     <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="cast-return-film">
-        <span>Editing from Film — return when you are done (regen the clip/scene if video should update).</span>
-        <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="cast-return-film-go">← Back to Film</a>
+        <span>@L["CharactersPage.EditingFromFilm"]</span>
+        <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="cast-return-film-go">@L["Adaptation.BackToFilm"]</a>
     </div>
 }
 
@@ -75,7 +75,7 @@ else
                 disabled="@(_busy || Jobs.JobRunning || List._extractingCast)"
                 title="One step: names + looks from screenplay and book (when present)"
                 @onclick="List.ExtractCastAsync">
-            @(List._extractingCast ? "Building cast…" : L["CharactersPage.BuildCast"])
+            @(List._extractingCast ? L["CharactersPage.BuildingCast"] : L["CharactersPage.BuildCast"])
         </button>
         <span class="small text-muted ms-2">Screenplay + book → names, voices, and portrait-ready looks</span>
     </div>
@@ -133,11 +133,11 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
     <div class="alert alert-warning" data-testid="char-style-override">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
             <div>
-                <strong>This look's style doesn't match the project.</strong>
+                <strong>@L["CharactersPage.StyleMismatchProject"]</strong>
                 <div class="small">@LookPipe._styleRejectMessage</div>
-                <div class="small mt-1">To use it anyway, tell us why — it helps improve the checks:</div>
+                <div class="small mt-1">@L["CharactersPage.TellUsWhyOverride"]</div>
             </div>
-            <button type="button" class="btn-close" aria-label="Keep the suggestion (don't use this look)"
+            <button type="button" class="btn-close" aria-label="@L["CharactersPage.DismissStyleSuggestion"]"
                     data-testid="char-style-override-dismiss"
                     @onclick="LookPipe.DismissStyleReject"></button>
         </div>
@@ -146,19 +146,19 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
                     data-testid="char-override-ai-wrong"
                     disabled="@_busy"
                     @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "ai_wrong")'>
-                The check is wrong — this look does match
+                @L["CharactersPage.CheckIsWrong"]
             </button>
             <button type="button" class="btn btn-sm btn-warning fw-semibold"
                     data-testid="char-override-preference"
                     disabled="@_busy"
                     @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "user_preference")'>
-                My creative choice — mix styles on purpose
+                @L["CharactersPage.CreativeChoice"]
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-testid="char-override-other"
                     disabled="@_busy"
                     @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "other")'>
-                Other
+                @L["CharactersPage.OtherReason"]
             </button>
         </div>
     </div>
@@ -207,7 +207,7 @@ else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
             <div class="d-flex align-items-center gap-2 mb-2">
                 <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
                 <div class="small fw-semibold">
-                    @(List._rebuildCastHadExisting ? "Rebuilding cast…" : "Building cast…")
+                    @(List._rebuildCastHadExisting ? L["CharactersPage.RebuildingCast"] : L["CharactersPage.BuildingCast"])
                 </div>
             </div>
             <div class="progress progress-busy" style="height: 0.35rem;"
@@ -248,7 +248,7 @@ else if (Jobs._job is not null &&
 
 @if (List._chars is null)
 {
-    <EmptyState Message="Loading…" CssClass="text-muted" />
+    <EmptyState Message="@L["Common.Loading"]" CssClass="text-muted" />
 }
 else if (List._extractingCast)
 {
@@ -256,7 +256,7 @@ else if (List._extractingCast)
 }
 else if (!List.HasCast)
 {
-    <InlineAlert Variant="warning" Message="No cast yet. Approve the screenplay, then build the cast."
+    <InlineAlert Variant="warning" Message="@L["CharactersPage.NoCastYet"]"
                  data-testid="characters-empty" />
 }
 else if (List.OperatorCastCount == 0)
@@ -288,7 +288,7 @@ else
                 <p class="text-muted">
                     @(List._simpleMode
                         ? "Pick the narrator (or lead) on the left, then record your sample."
-                        : "Click a character in the Cast index to review or change their look.")
+                        : L["CharactersPage.ClickCharacterIndex"])
                 </p>
             }
             else if (List._simpleMode)
@@ -350,9 +350,9 @@ else
                 @if (LookPipe._deleteConfirm is not null)
                 {
                     <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2">
-                        <span class="small">Delete this picture?</span>
-                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="LookPipe.ConfirmDeleteImageAsync">Delete</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LookPipe.CancelDeleteImage">Cancel</button>
+                        <span class="small">@L["CharactersPage.DeletePictureConfirm"]</span>
+                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="LookPipe.ConfirmDeleteImageAsync">@L["Common.Delete"]</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LookPipe.CancelDeleteImage">@L["Common.Cancel"]</button>
                     </div>
                 }
             }

@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject EngineApiClient Engine
 @inject AdminSessionService Session
+@inject IAppLocalizer L
 
 @if (IsOpen)
 {
@@ -20,8 +21,8 @@
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content bg-dark text-white border-secondary">
                 <div class="modal-header py-3 border-secondary">
-                    <h5 class="modal-title fw-semibold" id="invite-collab-title">Invite collaborator</h5>
-                    <button type="button" class="btn-close btn-close-white" aria-label="Close" @onclick="Close"></button>
+                    <h5 class="modal-title fw-semibold" id="invite-collab-title">@L["Collaborators.InviteCollaboratorTitle"]</h5>
+                    <button type="button" class="btn-close btn-close-white" aria-label="@L["Common.Close"]" @onclick="Close"></button>
                 </div>
                 <div class="modal-body">
                     @if (!string.IsNullOrWhiteSpace(statusMessage))
@@ -30,13 +31,13 @@
                     }
 
                     <div class="mb-3 position-relative">
-                        <label class="form-label" for="invite-handle">Handle</label>
+                        <label class="form-label" for="invite-handle">@L["Collaborators.Handle"]</label>
                         <div class="input-group">
                             <span class="input-group-text bg-dark text-white border-secondary">@@</span>
                             <input id="invite-handle"
                                    type="text"
                                    class="form-control bg-dark text-white border-secondary"
-                                   placeholder="Type a letter — matching handles appear"
+                                   placeholder="@L["Collaborators.HandlePlaceholder"]"
                                    autocomplete="off"
                                    role="combobox"
                                    aria-expanded="@(_suggestions.Count > 0)"
@@ -49,7 +50,7 @@
                         </div>
                         @if (_searching)
                         {
-                            <div class="form-text text-white-50">Searching…</div>
+                            <div class="form-text text-white-50">@L["Common.Searching"]</div>
                         }
                         else if (_suggestions.Count > 0)
                         {
@@ -75,33 +76,33 @@
                         }
                         else if (_searchAttempted && searchHandle.Trim().Length >= 1 && !_searching)
                         {
-                            <div class="form-text text-white-50">No matching handles. Invite by email below, or try another letter.</div>
+                            <div class="form-text text-white-50">@L["Collaborators.NoMatchingHandlesHelp"]</div>
                         }
                         else
                         {
-                            <div class="form-text text-white-50">Type to filter everyone with a public handle (e.g. <kbd>b</kbd> shows all B… names).</div>
+                            <div class="form-text text-white-50">@L["Collaborators.TypeToFilterHandlesHelp"]</div>
                         }
                     </div>
 
                     <div class="mb-0">
-                        <label class="form-label" for="invite-email">Email <span class="text-white-50 fw-normal">(optional)</span></label>
+                        <label class="form-label" for="invite-email">@L["Collaborators.Email"] <span class="text-white-50 fw-normal">@L["Collaborators.Optional"]</span></label>
                         <input id="invite-email"
                                type="email"
                                class="form-control bg-dark text-white border-secondary"
-                               placeholder="if they don’t have a handle yet"
+                               placeholder="@L["Collaborators.EmailPlaceholder"]"
                                autocomplete="email"
                                @bind="emailInput"
                                @bind:event="oninput" />
-                        <div class="form-text text-white-50">Use email only when they have no handle yet.</div>
+                        <div class="form-text text-white-50">@L["Collaborators.UseEmailOnlyNoHandle"]</div>
                     </div>
                 </div>
                 <div class="modal-footer py-2 border-secondary">
-                    <button type="button" class="btn btn-outline-secondary" @onclick="Close" disabled="@isSending">Cancel</button>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Close" disabled="@isSending">@L["Common.Cancel"]</button>
                     <button type="button"
                             class="btn btn-primary"
                             disabled="@(isSending || (string.IsNullOrWhiteSpace(searchHandle) && string.IsNullOrWhiteSpace(emailInput)))"
                             @onclick="SendInvite">
-                        @(isSending ? "Sending…" : "Send invite")
+                        @(isSending ? L["Collaborators.Sending"] : L["Collaborators.SendInvite"])
                     </button>
                 </div>
             </div>

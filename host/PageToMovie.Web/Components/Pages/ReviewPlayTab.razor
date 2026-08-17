@@ -27,7 +27,7 @@
 {
     <div class="card mb-3 border-secondary">
         <div class="card-body py-2 small text-muted">
-            Combining full cut in browser… @Playback._clientStitchStatus
+            @L["ReviewPage.CombiningFullCutBrowser"] @Playback._clientStitchStatus
         </div>
     </div>
 }
@@ -57,7 +57,7 @@ else if (Playback._showWipPlayer && (!string.IsNullOrEmpty(Playback._clientWipUr
             {
                 <span class="small text-muted">updated @Playback._wipUpdatedAt · @Review.FormatBytes(Playback._wipBytes)</span>
             }
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideWipPlayerAsync">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideWipPlayerAsync">@L["Common.Hide"]</button>
         </div>
         <div class="card-body py-2">
             @{ var wipNeedsRebuild = Playback._wipStale && string.IsNullOrEmpty(Playback._clientWipUrl); }
@@ -71,7 +71,7 @@ else if (Playback._showWipPlayer && (!string.IsNullOrEmpty(Playback._clientWipUr
             {
                 <div class="py-3 text-center text-muted">
                     <p class="mb-2">@Playback._wipReason — connect your local media folder to rebuild this movie from your synced clips.</p>
-                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Playback.ConnectFolderForWipAsync">Connect folder</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Playback.ConnectFolderForWipAsync">@L["ReviewPage.ConnectFolder"]</button>
                 </div>
             }
             else
@@ -85,12 +85,12 @@ else if (Playback._showWipPlayer && (!string.IsNullOrEmpty(Playback._clientWipUr
                        src="@(string.IsNullOrEmpty(Playback._clientWipUrl) ? Playback.WipServerSrc() : Playback._clientWipUrl)"
                        @key="Playback._wipVideoKey"
                        onloadeddata="this.play().catch(function(){})">
-                    Your browser does not support HTML5 video.
+                    @L["ReviewPage.Html5VideoNotSupported"]
                 </video>
                 @if (string.IsNullOrEmpty(Playback._clientWipUrl))
                 {
                     <div class="mt-2">
-                        <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="small text-muted">Open in new tab</a>
+                        <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="small text-muted">@L["ReviewPage.OpenInNewTab"]</a>
                     </div>
                 }
             }
@@ -110,7 +110,7 @@ else if (Playback._showWipPlayer && (!string.IsNullOrEmpty(Playback._clientWipUr
                     <span class="badge bg-info text-dark ms-1">client stitch</span>
                 }
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideScenePlayerAsync">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideScenePlayerAsync">@L["Common.Hide"]</button>
         </div>
         <div class="card-body py-2">
             <video controls playsinline autoplay
@@ -118,12 +118,12 @@ else if (Playback._showWipPlayer && (!string.IsNullOrEmpty(Playback._clientWipUr
                    src="@(string.IsNullOrEmpty(Playback._clientSceneUrl) ? Playback.SceneServerSrc(playSn) : Playback._clientSceneUrl)"
                    @key="Playback._sceneVideoKey"
                    onloadeddata="this.play().catch(function(){})">
-                Your browser does not support HTML5 video.
+                @L["ReviewPage.Html5VideoNotSupported"]
             </video>
             <p class="small text-muted mb-0 mt-2">
                 @if (string.IsNullOrEmpty(Playback._clientSceneUrl))
                 {
-                    <a href="@Engine.CompositeVideoUrl(Host._projectId, playSn)" target="_blank" rel="noopener">Open in new tab</a>
+                    <a href="@Engine.CompositeVideoUrl(Host._projectId, playSn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
                 }
                 else
                 {
@@ -137,7 +137,7 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
 {
     <div class="card mb-3 border-secondary">
         <div class="card-body py-2 small text-muted">
-            Combining scene in browser… @Playback._clientStitchStatus
+            @L["ReviewPage.CombiningSceneBrowser"] @Playback._clientStitchStatus
         </div>
     </div>
 }
@@ -150,7 +150,7 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
                 Clip
                 <code class="small">S@(clipSn.ToString("D2"))C@(clipCn.ToString("D2"))</code>
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideClipPlayer">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideClipPlayer">@L["Common.Hide"]</button>
         </div>
         <div class="card-body py-2">
             <video controls playsinline autoplay
@@ -158,10 +158,10 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
                    src="@Playback.ClipServerSrc(clipSn, clipCn)"
                    @key="Playback._clipVideoKey"
                    onloadeddata="this.play().catch(function(){})">
-                Your browser does not support HTML5 video.
+                @L["ReviewPage.Html5VideoNotSupported"]
             </video>
             <p class="small text-muted mb-0 mt-2">
-                <a href="@Engine.ClipVideoUrl(Host._projectId, clipSn, clipCn)" target="_blank" rel="noopener">Open in new tab</a>
+                <a href="@Engine.ClipVideoUrl(Host._projectId, clipSn, clipCn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
                 · after regen, <strong>Play scene</strong> stitches the updated cut in the browser
             </p>
         </div>
@@ -172,20 +172,20 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
         <div class="card-header border-secondary d-flex justify-content-between align-items-center py-2.5" style="background-color: #1e293b !important;">
             <div class="d-flex align-items-center gap-2">
                 <span class="fs-5">🎬</span>
-                <span class="fw-bold fs-6">Full Movie Player</span>
+                <span class="fw-bold fs-6">@L["ReviewPage.FullMoviePlayer"]</span>
                 @if (string.IsNullOrEmpty(Playback._clientWipUrl) && !string.IsNullOrEmpty(Playback._wipUpdatedAt))
                 {
                     <span class="badge bg-dark border border-secondary text-white-50">updated @Playback._wipUpdatedAt · @Review.FormatBytes(Playback._wipBytes)</span>
                 }
             </div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="List.SetTabReview">Back to Review</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="List.SetTabReview">@L["ReviewPage.BackToReview"]</button>
         </div>
         <div class="card-body p-3">
             @if (Playback._clientStitching)
             {
                 <div class="p-5 text-center text-info">
                     <div class="spinner-border text-info me-2" role="status"></div>
-                    <div class="fw-semibold mt-2">Stitching full movie preview in browser…</div>
+                    <div class="fw-semibold mt-2">@L["ReviewPage.StitchingFullMovieBrowser"]</div>
                     <div class="small text-muted mt-1">@Playback._clientStitchStatus</div>
                 </div>
             }
@@ -195,7 +195,7 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
                        style="width:100%;max-height:75vh;background:#000;border-radius:0.5rem;"
                        src="@(string.IsNullOrEmpty(Playback._clientWipUrl) ? Playback.WipServerSrc() : Playback._clientWipUrl)"
                        @key="Playback._wipVideoKey">
-                    Your browser does not support HTML5 video.
+                    @L["ReviewPage.Html5VideoNotSupported"]
                 </video>
                 <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary flex-wrap gap-2">
                     <span class="small text-muted">
@@ -211,10 +211,10 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
                     <div class="d-flex gap-2">
                         @if (string.IsNullOrEmpty(Playback._clientWipUrl))
                         {
-                            <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">Open MP4 in new tab</a>
+                            <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">@L["ReviewPage.OpenMp4NewTab"]</a>
                         }
                         <button type="button" class="btn btn-sm btn-info text-white" @onclick="List.SetTabShare">
-                            Share film →
+                            @L["ReviewPage.ShareFilm"]
                         </button>
                     </div>
                 </div>

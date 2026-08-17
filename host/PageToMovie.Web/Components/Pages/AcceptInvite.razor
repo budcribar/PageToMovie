@@ -2,24 +2,25 @@
 @using System.Net.Http.Json
 @using System.Text.Json
 @inject HttpClient Http
+@inject IAppLocalizer L
 
 <div class="container py-4" style="max-width: 32rem;">
-    <h3>Project invite</h3>
-    @if (_loading) { <p class="text-muted">Loading invite…</p> }
-    else if (_preview is null) { <InlineAlert Message="@(_error ?? "Invite not found or already used.")" Variant="warning" /> }
+    <h3>@L["Invite.ProjectInviteTitle"]</h3>
+    @if (_loading) { <p class="text-muted">@L["Invite.LoadingInvite"]</p> }
+    else if (_preview is null) { <InlineAlert Message="@(_error ?? L["Invite.InviteNotFoundOrUsed"])" Variant="warning" /> }
     else
     {
         <div class="card"><div class="card-body">
-            <p>You have been invited to collaborate on <code>@_preview.ProjectId</code></p>
-            <p>Role: <span class="badge text-bg-primary">@_preview.Role</span></p>
+            <p>@L.Format("Invite.InvitedToCollaborateOn", _preview.ProjectId)</p>
+            <p>@L.Format("Invite.RoleLabel", _preview.Role)</p>
             @if (!string.IsNullOrEmpty(_status)) {
                 <InlineAlert Variant="@(_accepted ? "success" : "warning")" CssClass="py-2" Message="@_status" />
             }
             @if (!_accepted) {
-                <BusyButton Label="Accept invite" Busy="_busy" CssClass="btn btn-primary" OnClick="AcceptAsync" />
-                <p class="small text-muted mt-2">Sign in first; access is granted to your current user id.</p>
+                <BusyButton Label="@L["Invite.AcceptInviteButton"]" Busy="_busy" CssClass="btn btn-primary" OnClick="AcceptAsync" />
+                <p class="small text-muted mt-2">@L["Invite.SignInFirstHelp"]</p>
             } else {
-                <a class="btn btn-success" href="@($"/studio?project={Uri.EscapeDataString(_preview.ProjectId)}")">Open project</a>
+                <a class="btn btn-success" href="@($"/studio?project={Uri.EscapeDataString(_preview.ProjectId)}")">@L["Invite.OpenProjectButton"]</a>
             }
         </div></div>
     }

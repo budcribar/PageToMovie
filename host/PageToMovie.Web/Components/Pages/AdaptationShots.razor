@@ -1,24 +1,25 @@
 @page "/adaptation/shots"
 @inherits AdaptationPageBase
+@inject IAppLocalizer L
 
-<PageTitle>Film · Shot plan</PageTitle>
+<PageTitle>@L["Adaptation.ShotPlan"]</PageTitle>
 
 <AdaptationShell Host="this" Step="shots">
     @if (Status is not null)
     {
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span>Shot plan</span>
+                <span>@L["Adaptation.ShotPlan"]</span>
                 @if (!Jobs.JobRunning && Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                 {
                     <span class="small text-muted">
-                        <strong>@Status.Stage2.Stage2Scenes</strong> scenes ·
-                        <strong>@Status.Stage2.Stage2Clips</strong> clips
+                        <strong>@Status.Stage2.Stage2Scenes</strong> @L["Scenes.Scenes"] ·
+                        <strong>@Status.Stage2.Stage2Clips</strong> @L["Scenes.Clips"]
                     </span>
                 }
                 else if (!Jobs.JobRunning && Status.Stage2.Stage2Stale)
                 {
-                    <span class="badge bg-warning text-dark">needs update</span>
+                    <span class="badge bg-warning text-dark">@L["Adaptation.NeedsUpdate"]</span>
                 }
             </div>
             <div class="card-body">
@@ -28,16 +29,16 @@
                         @if (AutoGen)
                         {
                             <span data-testid="shots-autogen">
-                                From Estimate → Generate: building the shot plan, then starting fill-holes on Film.
+                                @L["Adaptation.AutoGenNotice"]
                             </span>
                         }
                         else
                         {
                             <span>
-                                From Estimate → Generate: build the shot plan here, then open Film to generate clips.
+                                @L["Adaptation.ManualGenNotice"]
                             </span>
                         }
-                        <a class="alert-link ms-1" href="cost">Back to Estimate</a>
+                        <a class="alert-link ms-1" href="cost">@L["ScreenplayPage.BackToEstimate"]</a>
                     </InlineAlert>
                 }
                 @* Status alerts only when idle — during a job the progress card is the single surface *@
@@ -46,19 +47,19 @@
                     @if (!Status.Stage1.Present || Status.Stage1.SceneCount <= 0)
                     {
                         <InlineAlert Variant="secondary" CssClass="py-2 small mb-3">
-                            Approve the <a href="adaptation/screenplay">screenplay</a> first.
+                            <a href="adaptation/screenplay">@L["Adaptation.ApproveScreenplayFirst"]</a>
                         </InlineAlert>
                     }
                     else if (Status.Stage2.Stage2Stale)
                     {
                         <InlineAlert Variant="warning" CssClass="py-2 small mb-3">
-                            Screenplay changed — update the shot plan before making video.
+                            @L["Adaptation.ScreenplayChangedUpdateShots"]
                         </InlineAlert>
                     }
                     else if (!Status.Stage2.Stage2Ready)
                     {
                         <InlineAlert Variant="warning" CssClass="py-2 small mb-3">
-                            Screenplay has @Status.Stage2.Stage1Scenes scene(s) but no shot plan yet.
+                            @L.Format("Adaptation.ScreenplayScenesNoShots", Status.Stage2.Stage1Scenes)
                         </InlineAlert>
                     }
                 }
@@ -71,7 +72,7 @@
                            data-testid="shots-to-screenplay"
                            href="adaptation/screenplay"
                            title="Edit scene beats, dialogue lines, and visual actions in the screenplay editor">
-                            ✏️ Edit Screenplay Beats
+                            @L["Adaptation.EditScreenplayBeats"]
                         </a>
                         <button class="btn btn-primary"
                                 data-testid="shots-build"
@@ -82,7 +83,7 @@
                         @if (Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                         {
                             <a class="btn btn-outline-primary" data-testid="shots-to-scenes" href="scenes"
-                               title="Create video clips from this shot plan">Open Scenes →</a>
+                               title="Create video clips from this shot plan">@L["Adaptation.OpenScenesLink"]</a>
                         }
                         <div data-testid="shots-status"
                              data-ready="@(Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale ? "true" : "false")"

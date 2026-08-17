@@ -13,9 +13,9 @@
         <div class="card-header border-secondary d-flex justify-content-between align-items-center py-2.5" style="background-color: #1e293b !important;">
             <div class="d-flex align-items-center gap-2">
                 <span class="fs-5">📤</span>
-                <span class="fw-bold fs-6">Share &amp; Export Film</span>
+                <span class="fw-bold fs-6">@L["ReviewPage.ShareExportFilm"]</span>
             </div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="List.SetTabReview">Back to Review</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="List.SetTabReview">@L["ReviewPage.BackToReview"]</button>
         </div>
         <div class="card-body p-4 text-white">
 <div class="alert alert-secondary border-secondary py-2 px-3 mb-3 small" data-testid="review-share-channel-note">
@@ -60,7 +60,7 @@
     <div class="card p-4 my-2 text-center bg-dark text-white border-primary shadow" data-testid="review-publish-progress">
         <div class="d-flex justify-content-center align-items-center gap-3 mb-3">
             <div class="spinner-border text-primary" role="status" style="width: 2.2rem; height: 2.2rem;"></div>
-            <h5 class="fw-bold text-white mb-0">Publishing Film to Demo Gallery</h5>
+            <h5 class="fw-bold text-white mb-0">@L["ReviewPage.PublishingToGallery"]</h5>
         </div>
         <p class="text-light small mb-3">@Share._publishProgressStatus</p>
         <div class="progress mb-3" style="height: 20px; background: rgba(255,255,255,0.15); border-radius: 8px;">
@@ -81,12 +81,12 @@
 else
 {
             <div class="mb-3">
-                <label class="form-label small fw-semibold">Film Title</label>
+                <label class="form-label small fw-semibold">@L["ReviewPage.FilmTitle"]</label>
                 <input class="form-control bg-dark text-white border-secondary" @bind="Share._demoTitle" maxlength="120"
                        placeholder="e.g. The Tell-Tale Heart" />
             </div>
             <div class="mb-3">
-                <label class="form-label small fw-semibold">About this film</label>
+                <label class="form-label small fw-semibold">@L["ReviewPage.AboutThisFilm"]</label>
                 <textarea class="form-control bg-dark text-white border-secondary" rows="3" @bind="Share._demoDescription"
                           placeholder="A short description for the gallery wall..." maxlength="800"></textarea>
             </div>
@@ -94,19 +94,19 @@ else
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="demoMadeForKids" @bind="Share._demoMadeForKids" />
                     <label class="form-check-label small" for="demoMadeForKids">
-                        Made for kids (YouTube child-audience setting).
+                        @L["ReviewPage.MadeForKids"]
                     </label>
                 </div>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="demoAiDisclosure" @bind="Share._demoIsAiSynthetic" />
                     <label class="form-check-label small" for="demoAiDisclosure">
-                        Contains AI-generated visuals or audio.
+                        @L["ReviewPage.ContainsAiDisclosure"]
                     </label>
                 </div>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="demoGuidelines" @bind="Share._demoAcceptedGuidelines" />
                     <label class="form-check-label small" for="demoGuidelines">
-                        I confirm this film is appropriate for a general audience.
+                        @L["ReviewPage.AppropriateAudienceConfirmation"]
                     </label>
                 </div>
             </div>
@@ -126,21 +126,21 @@ else
         </p>
         <div class="d-flex gap-2">
             <button type="button" class="btn btn-warning btn-sm fw-bold text-dark" @onclick="Share.ConfirmIncompleteAndPublishAsync">
-                Proceed &amp; Upload Partial Cut
+                @L["ReviewPage.ProceedUploadPartialCut"]
             </button>
             <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Share.CancelIncompleteWarning">
-                Cancel
+                @L["Common.Cancel"]
             </button>
         </div>
     </div>
 }
 
             <div class="d-flex justify-content-end gap-2 pt-3 border-top border-secondary">
-                <button type="button" class="btn btn-outline-secondary" @onclick="List.SetTabReview">Cancel</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="List.SetTabReview">@L["Common.Cancel"]</button>
                 <button type="button" class="btn btn-primary px-4" data-testid="review-save-confirm"
                         disabled="@(Host._busy || !Share._demoAcceptedGuidelines)"
                         @onclick="Host.ConfirmSaveAsync">
-                    Publish to Page to Movie gallery
+                    @L["ReviewPage.PublishToGallery"]
                 </button>
             </div>
 }

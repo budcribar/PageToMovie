@@ -1,4 +1,5 @@
 @namespace PageToMovie.Web.Components
+@inject IAppLocalizer L
 @* Grayed control with hover reason + link to Settings focused on a capability. *@
 <div class="d-inline-flex flex-wrap align-items-center gap-1 @CssClass"
      title="@(Enabled ? (TitleWhenEnabled ?? "") : BlockedReason)"
@@ -14,7 +15,7 @@
            href="@SettingsHref"
            title="@BlockedReason"
            data-testid="@(TestId)-setup-link">
-            Set up →
+            @L["Common.SetUpLink"]
         </a>
     }
 </div>

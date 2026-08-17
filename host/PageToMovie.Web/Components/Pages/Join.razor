@@ -2,33 +2,34 @@
 @inject EngineApiClient Engine
 @inject AdminSessionService Session
 @inject NavigationManager Nav
+@inject IAppLocalizer L
 @using Microsoft.AspNetCore.WebUtilities
 
-<PageTitle>Accept invite — PageToMovie</PageTitle>
+<PageTitle>@L["Join.PageTitle"] — PageToMovie</PageTitle>
 
 <div class="container py-5" style="max-width: 32rem;">
     <div class="card">
         <div class="card-body text-center py-5">
-            <h1 class="h4 mb-3">🤝 Project invite</h1>
+            <h1 class="h4 mb-3">🤝 @L["Join.Heading"]</h1>
 
             @if (string.IsNullOrWhiteSpace(_token))
             {
-                <p class="text-danger mb-0">This invite link is missing its token.</p>
+                <p class="text-danger mb-0">@L["Join.MissingToken"]</p>
             }
             else if (!Session.IsLoggedIn)
             {
-                <p class="mb-3">Sign in or create an account, then open this same link again from your email to accept the invite.</p>
-                <a class="btn btn-primary" href="/login">Sign in</a>
+                <p class="mb-3">@L["Join.SignInRequiredHelp"]</p>
+                <a class="btn btn-primary" href="/login">@L["Auth.SignIn"]</a>
             }
             else if (_busy)
             {
-                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Working…</span></div>
-                <p class="text-muted mt-3 mb-0">Forking project…</p>
+                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">@L["Common.Working"]</span></div>
+                <p class="text-muted mt-3 mb-0">@L["Join.ForkingProject"]</p>
             }
             else if (_forkedProjectId is not null)
             {
-                <p class="text-success mb-3">Forked as <strong>@_forkedTitle</strong> — it's ready in your project list.</p>
-                <a class="btn btn-primary" href="/">Go to your projects</a>
+                <p class="text-success mb-3">@L.Format("Join.ForkedSuccess", _forkedTitle ?? "")</p>
+                <a class="btn btn-primary" href="/">@L["Join.GoToYourProjects"]</a>
             }
             else if (_error is not null)
             {

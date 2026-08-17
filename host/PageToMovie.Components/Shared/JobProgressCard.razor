@@ -1,4 +1,5 @@
 @namespace PageToMovie.Web.Components
+@inject IAppLocalizer L
 @using System.Linq
 
 @if (Visible)
@@ -18,7 +19,7 @@
                     }
                     else if (Indeterminate)
                     {
-                        <span>Working…</span>
+                        <span>@L["Common.Working"]</span>
                     }
                     @if (!string.IsNullOrWhiteSpace(DisplayElapsed) && IsActive)
                     {
@@ -36,7 +37,7 @@
                             data-testid="@(CancelTestId ?? $"{TestId}-cancel")"
                             disabled="@CancelDisabled"
                             @onclick="OnCancel">
-                        @CancelLabel
+                        @(CancelLabel == "Cancel" ? L["Common.Cancel"] : CancelLabel)
                     </button>
                 }
             </div>
@@ -62,7 +63,7 @@
                 @if (IsActive && Total > 0)
                 {
                     <div class="small text-muted mt-1" data-testid="@(TestId)-fraction">
-                        @Index of @Total
+                        @L.Format("Common.FractionOf", Index, Total)
                     </div>
                 }
             }
@@ -73,7 +74,7 @@
             @if (ShowLog && LogLines is { Count: > 0 })
             {
                 <details class="mt-2" open="@OpenLogByDefault">
-                    <summary class="small text-muted" style="cursor:pointer">@LogSummary</summary>
+                    <summary class="small text-muted" style="cursor:pointer">@(LogSummary == "Details (admin)" ? L["Common.DetailsAdmin"] : LogSummary)</summary>
                     <pre class="small mb-0 mt-1" style="max-height: 160px; overflow: auto;">@string.Join("\n", LogLines.TakeLast(LogMaxLines))</pre>
                 </details>
             }

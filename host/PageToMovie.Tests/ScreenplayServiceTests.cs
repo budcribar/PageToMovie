@@ -551,6 +551,35 @@ public class ScreenplayServiceTests : IDisposable
     }
 
     [Fact]
+    public void ApplyNameReplacements_unifies_spelling_accurately_and_fast()
+    {
+        var rawJson = """
+            {
+              "replacements": [
+                { "from": "Olsen", "to": "Olson" }
+              ]
+            }
+            """;
+        var reps = AdaptationFountain.ParseNameReplacements(rawJson);
+        Assert.Single(reps);
+        Assert.Equal("Olsen", reps[0].From);
+        Assert.Equal("Olson", reps[0].To);
+
+        var fountain = """
+            OLSEN
+            Hello there.
+
+            NARRATOR (V.O.)
+            Mrs. Olsen walked in.
+            """;
+
+        var updated = AdaptationFountain.ApplyNameReplacements(fountain, reps);
+        Assert.Contains("OLSON", updated);
+        Assert.Contains("Mrs. Olson walked in.", updated);
+        Assert.DoesNotContain("Olsen", updated);
+    }
+
+    [Fact]
     public void NormalizeSceneHeadingWording_unifies_prefixed_hallway()
     {
         var fountain = """

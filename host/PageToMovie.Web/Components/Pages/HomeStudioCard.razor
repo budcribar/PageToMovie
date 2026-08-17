@@ -6,8 +6,8 @@
 @using PageToMovie.Core.Models
 @using Microsoft.AspNetCore.Components
 
-<div class="card mb-3 home-studio-card" data-testid="home-studio-card">
-    <div class="card-body py-3">
+<div class="card mb-2 home-studio-card" data-testid="home-studio-card">
+    <div class="card-body py-2 px-3">
         @{
             var selectedId = Host.Projects.SelectedProjectId;
             var activeMeta = Host.Projects.FindProject(selectedId);
@@ -289,6 +289,7 @@
             }
 
             <StudioProcessStrip Active="@Host.HomeActiveStep" FullStudio="true" />
+            <HomeDemoFilmsCard Inline="true" />
         }
         else
         {
@@ -362,11 +363,11 @@
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content bg-dark text-white border-secondary shadow">
                         <div class="modal-header border-secondary py-2">
-                            <h5 class="modal-title fs-6 mb-0" id="home-new-project-title">Create new project</h5>
+                            <h5 class="modal-title fs-6 mb-0" id="home-new-project-title">@L["Home.CreateNewProjectModalTitle"]</h5>
                             <button type="button"
                                     class="btn-close btn-close-white"
                                     disabled="@Host._busy"
-                                    aria-label="Cancel"
+                                    aria-label="@L["Common.Cancel"]"
                                     @onclick="Host.Projects.ToggleNewProjectAsync"></button>
                         </div>
                         <div class="modal-body">
@@ -377,7 +378,7 @@
                                     <a href="configuration" class="alert-link">Open Setup →</a>
                                 </div>
                             }
-                            <label class="form-label small text-muted mb-1" for="home-new-project-name">Project name</label>
+                            <label class="form-label small text-muted mb-1" for="home-new-project-name">@L["Home.ProjectNameLabel"]</label>
                             <input @ref="NameInputRef"
                                    id="home-new-project-name"
                                    class="form-control form-control-sm bg-white text-dark border-secondary fw-medium"
@@ -387,10 +388,10 @@
                                    @oninput="Host.Projects.OnNewNameInput"
                                    @onkeydown="Host.Projects.OnNewNameKeyDown"
                                    disabled="@Host._busy"
-                                   placeholder="Enter project name…"
+                                   placeholder="@L["Home.EnterProjectNamePlaceholder"]"
                                    maxlength="80"
                                    autofocus
-                                   aria-label="New project name" />
+                                   aria-label="@L["Home.NewProjectNameAriaLabel"]" />
                         </div>
                         <div class="modal-footer border-secondary py-2">
                             <button type="button"
@@ -398,14 +399,14 @@
                                     data-testid="home-new-project-cancel"
                                     disabled="@Host._busy"
                                     @onclick="Host.Projects.ToggleNewProjectAsync">
-                                Cancel
+                                @L["Common.Cancel"]
                             </button>
                             <button type="button"
                                     class="btn btn-success btn-sm"
                                     data-testid="home-create-project"
                                     disabled="@(Host._busy || string.IsNullOrWhiteSpace(Host.Projects._newName))"
                                     @onclick="Host.Projects.CreateProjectAsync">
-                                Create
+                                @L["Home.CreateButton"]
                             </button>
                         </div>
                     </div>

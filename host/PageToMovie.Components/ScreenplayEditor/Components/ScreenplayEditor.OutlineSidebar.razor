@@ -1,9 +1,11 @@
+@inject IAppLocalizer L
+
 <div class="card bg-dark-subtle border-secondary-subtle h-100 shadow-sm">
     <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-1 px-2 border-bottom border-secondary-subtle">
         <div class="d-flex align-items-center gap-1 overflow-hidden">
             @if (!IsCompact)
             {
-                <span class="badge text-bg-primary fw-bold px-2 py-1" title="Scenes Outline">Scenes</span>
+                <span class="badge text-bg-primary fw-bold px-2 py-1" title="Scenes Outline">@L["Nav.Scenes"]</span>
             }
         </div>
         <div class="d-flex align-items-center gap-1">
@@ -29,10 +31,10 @@
                 @if (Characters.Count == 0)
                 {
                     <p class="text-secondary small px-1 mb-0">
-                        No cast yet — open Cast to build characters.
+                        @L["ScreenplayEditor.NoCastYetOutline"]
                     </p>
                     <button type="button" class="btn btn-sm btn-outline-warning" @onclick="OpenCastEditor">
-                        Open Characters…
+                        @L["ScreenplayEditor.OpenCharacters"]
                     </button>
                 }
                 else
@@ -66,15 +68,15 @@
                 @if (Locations.Count == 0)
                 {
                     <p class="text-secondary small px-1 mb-0">
-                        No locations yet — from scene headings and location seeds.
+                        @L["ScreenplayEditor.NoLocationsYetOutline"]
                     </p>
                     <button type="button" class="btn btn-sm btn-outline-info" @onclick="OpenLocationEditor">
-                        Open Locations…
+                        @L["ScreenplayEditor.OpenLocations"]
                     </button>
                 }
                 else
                 {
-                    <div class="small text-secondary px-1 mb-1">@Locations.Count · places</div>
+                    <div class="small text-secondary px-1 mb-1">@Locations.Count · @L["ScreenplayEditor.Places"]</div>
                     @foreach (var name in Locations)
                     {
                         var isFocus = !string.IsNullOrWhiteSpace(FocusedLocation)

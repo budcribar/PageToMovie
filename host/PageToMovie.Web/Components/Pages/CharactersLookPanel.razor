@@ -24,7 +24,7 @@
                             <button type="button" class="btn btn-sm btn-outline-warning" disabled="@Host._busy"
                                     title="Unlock this character look so it can be changed"
                                     @onclick="LookPipe.UnlockAsync"
-                                    @onclick:stopPropagation="true">Unlock</button>
+                                    @onclick:stopPropagation="true">@L["Common.Unlock"]</button>
                         }
                     </div>
                     @if (LookEdit._panelPictureOpen)
@@ -37,14 +37,14 @@
                                     @if (Jobs.JobRunning)
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-danger ms-2 py-0"
-                                                disabled="@Host._busy" @onclick="Jobs.CancelAsync">Cancel</button>
+                                                disabled="@Host._busy" @onclick="Jobs.CancelAsync">@L["Common.Cancel"]</button>
                                     }
                                 </div>
                             }
                             else if (LookPipe._mode == Characters.Mode.Compare && LookPipe._allCandidates.Count > 0)
                             {
                                 <div class="char-pick">
-                                    <div class="small fw-semibold mb-1">Pick the best look</div>
+                                    <div class="small fw-semibold mb-1">@L["CharactersPage.PickBestLook"]</div>
                                     <p class="small text-muted mb-3 mb-md-2">
                                         Click a picture to zoom and compare detail. Use <strong>Use this look</strong> only when you’ve chosen.
                                     </p>
@@ -59,7 +59,7 @@
                                                                FrameTitle="@($"Click to save this look for {List._selected?.DisplayName}")"
                                                                FrameAriaLabel="@($"Use look {c.Label}")"
                                                                OnFrameClick="@(() => LookPipe.LockCandidateAsync(c))"
-                                                               UseLabel="Use this look"
+                                                               UseLabel="@L["CharactersPage.UseThisLook"]"
                                                                UseTitle="Save as preferred look for film"
                                                                UseDisabled="@(Host._busy || Jobs.JobRunning)"
                                                                OnUse="@(() => LookPipe.LockCandidateAsync(c))"
@@ -113,10 +113,10 @@
                                                 <button type="button" class="btn btn-sm btn-outline-primary"
                                                         disabled="@(Host._busy || Jobs.JobRunning)"
                                                         @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Generate)">
-                                                    Generate new looks
+                                                    @L["CharactersPage.GenerateNewLooks"]
                                                 </button>
                                                 <label class="btn btn-sm btn-outline-primary mb-0 @(Host._busy || Jobs.JobRunning ? "disabled" : "")">
-                                                    Replace with upload
+                                                    @L["CharactersPage.ReplaceWithUpload"]
                                                     <InputFile OnChange="LookPipe.OnUploadRefAsync"
                                                                accept=".png,.jpg,.jpeg,.webp,.gif"
                                                                class="d-none"
@@ -127,25 +127,25 @@
                                                     <button type="button" class="btn btn-sm btn-outline-secondary"
                                                             disabled="@(Host._busy || Jobs.JobRunning)"
                                                             @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Book)">
-                                                        From book pictures
+                                                        @L["CharactersPage.FromBookPictures"]
                                                     </button>
                                                 }
                                                 <button type="button" class="btn btn-sm btn-outline-danger"
                                                         disabled="@(Host._busy || Jobs.JobRunning)"
                                                         @onclick="@(() => LookPipe.RequestDeleteImage("preferred", 0))">
-                                                    Remove
+                                                    @L["Common.Remove"]
                                                 </button>
                                             </div>
                                             <CharacterLookPanel Description="@LookEdit._editDescription"
-                                                               DescriptionChanged="LookEdit.OnLookDescriptionChanged"
-                                                               VisualLock="@LookEdit._editVisualLock"
-                                                               VisualLockChanged="LookEdit.OnLookVisualLockChanged"
-                                                               ImageEditInstruction="@LookEdit._imageEditInstruction"
-                                                               ImageEditInstructionChanged="LookEdit.OnImageEditInstructionChanged"
-                                                               ShowDescription="false"
-                                                               ShowImageEditInstruction="true"
-                                                               Busy="@(Host._busy || Jobs.JobRunning)"
-                                                               TestId="char-tweak-preferred">
+                                                                DescriptionChanged="LookEdit.OnLookDescriptionChanged"
+                                                                VisualLock="@LookEdit._editVisualLock"
+                                                                VisualLockChanged="LookEdit.OnLookVisualLockChanged"
+                                                                ImageEditInstruction="@LookEdit._imageEditInstruction"
+                                                                ImageEditInstructionChanged="LookEdit.OnImageEditInstructionChanged"
+                                                                ShowDescription="false"
+                                                                ShowImageEditInstruction="true"
+                                                                Busy="@(Host._busy || Jobs.JobRunning)"
+                                                                TestId="char-tweak-preferred">
                                                 <Actions>
                                                     <CapabilityLockedControl Enabled="Caps.ImageReady"
                                                                              BlockedReason="@StudioCapabilityState.ImageBlockedReason"
@@ -155,7 +155,7 @@
                                                                 disabled="@(Host._busy || Jobs.JobRunning || string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction))"
                                                                 @onclick="LookPipe.StartRegenerateAsync"
                                                                 data-testid="char-tweak-preferred-go">
-                                                            Tweak face
+                                                            @L["CharactersPage.TweakFace"]
                                                         </button>
                                                     </CapabilityLockedControl>
                                                 </Actions>
@@ -172,17 +172,17 @@
                                                 disabled="@(Host._busy || Jobs.JobRunning)"
                                                 @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Generate)"
                                                 data-testid="char-route-generate">
-                                            <strong>Generate from description</strong>
+                                            <strong>@L["CharactersPage.GenerateFromDescription"]</strong>
                                             <div class="small opacity-75">Edit look text → create 3 options → pick one</div>
                                         </button>
                                         <label class="btn btn-outline-primary text-start mb-0 @(Host._busy || Jobs.JobRunning ? "disabled" : "")"
-                                               data-testid="char-route-upload">
-                                            <strong>Upload a photo</strong>
+                                                data-testid="char-route-upload">
+                                            <strong>@L["CharactersPage.UploadPhoto"]</strong>
                                             <div class="small opacity-75">Your picture becomes the preferred look — no description needed</div>
                                             <InputFile OnChange="LookPipe.OnUploadRefAsync"
-                                                       accept=".png,.jpg,.jpeg,.webp,.gif"
-                                                       class="d-none"
-                                                       disabled="@(Host._busy || Jobs.JobRunning)" />
+                                                        accept=".png,.jpg,.jpeg,.webp,.gif"
+                                                        class="d-none"
+                                                        disabled="@(Host._busy || Jobs.JobRunning)" />
                                         </label>
                                         @if (LookBook.CanUseBookPictures)
                                         {
@@ -191,12 +191,12 @@
                                                     disabled="@(Host._busy || Jobs.JobRunning)"
                                                     @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Book)"
                                                     data-testid="char-route-book">
-                                                <strong>Guide from book pictures</strong>
+                                                <strong>@L["CharactersPage.GuideFromBookPictures"]</strong>
                                                 <div class="small opacity-75">Pick illustrations from the PDF, then generate looks from them</div>
                                             </button>
                                         }
                                     </div>
-                                }
+                                }                   }
                                 else if (LookPipe._pictureRoute == Characters.PictureRoute.Generate)
                                 {
                                     <div class="d-flex justify-content-between align-items-center mb-2">

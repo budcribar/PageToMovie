@@ -1,19 +1,20 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
+@inject IAppLocalizer L
 @* Import in flight (or reattached after browser exit) — hide drop zone so progress has the room. *@
-<h5 class="card-title mb-1">Importing</h5>
+<h5 class="card-title mb-1">@L["Adaptation.Importing"]</h5>
 @if (!string.IsNullOrWhiteSpace(Host.Drop._chosenFileName))
 {
     <p class="text-muted small mb-3 text-truncate" title="@Host.Drop._chosenFileName">
-        <span class="text-body-secondary">From</span> @Host.Drop._chosenFileName
+        <span class="text-body-secondary">@L["Adaptation.From"]</span> @Host.Drop._chosenFileName
     </p>
 }
 else
 {
-    <p class="text-muted small mb-3">Hang tight — the pipeline is running on the server (safe if you closed the browser).</p>
+    <p class="text-muted small mb-3">@L["Adaptation.ImportRunningHelp"]</p>
 }
 
 <JobProgressCard Status="@ImportJobStatus"
-                 Message="@(Host.Drop._importStatus.Length > 0 ? Host.Drop._importStatus : (Host.Jobs.Job?.Message ?? "Working…"))"
+                 Message="@(Host.Drop._importStatus.Length > 0 ? Host.Drop._importStatus : (Host.Jobs.Job?.Message ?? L["Common.Working"]))"
                  DetailMessage="@(AdaptationPageBase.AdaptationStepUi.LongAdaptHint(Host.Jobs.Job, Host.Jobs.JobRunning || Host.Drop._importing))"
                  Index="@(Host.Jobs.Job?.Index ?? Host.Jobs.ProgressIndex)"
                  Total="@(Host.Jobs.Job?.Total ?? (Host.Jobs.ProgressTotal > 0 ? Host.Jobs.ProgressTotal : 10))"
