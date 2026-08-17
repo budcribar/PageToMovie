@@ -160,7 +160,7 @@
                 </div>
 
                 <div class="flex-shrink-0">
-                    <span class="badge @(s.ClipsComplete ? "bg-success text-white" : (s.ClipsOnDisk > 0 ? "bg-warning text-dark" : "bg-secondary text-light")) px-1 py-1 rounded">
+                    <span class="badge @SceneBadgeClass(s) px-1 py-1 rounded">
                         S@(sn.ToString("D2"))
                     </span>
                 </div>

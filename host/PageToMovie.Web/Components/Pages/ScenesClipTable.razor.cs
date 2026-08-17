@@ -41,4 +41,14 @@ public partial class ScenesClipTable : PageSliceComponent
         if (id.Length > 14) return id[..12] + "…";
         return id;
     }
+
+    private static string ClipDialogueTitle(ClipSummary c)
+    {
+        if (!string.IsNullOrWhiteSpace(c.Dialogue))
+            return $"{c.Speaker}: {c.Dialogue} (click to edit)";
+        if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
+            return c.VisualPrompt;
+        return "Click to edit beat fields";
+    }
 }
+

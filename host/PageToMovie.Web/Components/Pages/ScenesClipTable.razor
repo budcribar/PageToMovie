@@ -131,7 +131,7 @@
                         }
                     </td>
                     <td class="small clip-dialogue-cell"
-                        title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? (string.IsNullOrWhiteSpace(c.VisualPrompt) ? "Click to edit beat fields" : c.VisualPrompt) : $"{c.Speaker}: {c.Dialogue} (click to edit)")"
+                        title="@ClipDialogueTitle(c)"
                         style="cursor:pointer;"
                         @onclick:stopPropagation="true"
                         @onclick="() => ClipForm.OpenClipEditor(c)">

@@ -770,21 +770,10 @@ public partial class Scenes
             {
                 switch (el.Type)
                 {
-                    case PageToMovie.Fountain.FountainParser.ElementType.SceneHeading:
-                        sb.AppendLine(el.Text);
-                        sb.AppendLine();
-                        break;
                     case PageToMovie.Fountain.FountainParser.ElementType.Character:
-                        sb.AppendLine(el.Text);
-                        break;
                     case PageToMovie.Fountain.FountainParser.ElementType.Parenthetical:
                         sb.AppendLine(el.Text);
                         break;
-                    case PageToMovie.Fountain.FountainParser.ElementType.Dialogue:
-                        sb.AppendLine(el.Text);
-                        sb.AppendLine();
-                        break;
-                    case PageToMovie.Fountain.FountainParser.ElementType.Action:
                     default:
                         sb.AppendLine(el.Text);
                         sb.AppendLine();

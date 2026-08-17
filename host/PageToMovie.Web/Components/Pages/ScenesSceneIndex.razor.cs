@@ -33,10 +33,27 @@ public partial class ScenesSceneIndex : PageSliceComponent
         }
     }
 
-    private string ItemTitle(SceneSummary s)
+    private static string SceneBadgeClass(SceneSummary s)
     {
-        var dur = s.ActualDurationSeconds is double ad ? $"{Scenes.FormatClock(ad)} actual" : (s.PlannedDurationSeconds is double pd ? $"~{Scenes.FormatClock(pd)} plan" : "");
+        if (s.ClipsComplete) return "bg-success text-white";
+        if (s.ClipsOnDisk > 0) return "bg-warning text-dark";
+        return "bg-secondary text-light";
+    }
+
+    private static string FormatSceneDuration(SceneSummary s)
+    {
+        if (s.ActualDurationSeconds is double ad)
+            return $"{Scenes.FormatClock(ad)} actual";
+        if (s.PlannedDurationSeconds is double pd)
+            return $"~{Scenes.FormatClock(pd)} plan";
+        return "";
+    }
+
+    private static string ItemTitle(SceneSummary s)
+    {
+        var dur = FormatSceneDuration(s);
         var setting = string.IsNullOrWhiteSpace(s.Setting) ? "No setting" : s.Setting;
-        return $"Scene S{s.SceneNumber:D2}: {setting} ({s.ClipsOnDisk}/{s.ClipCount} clips{(!string.IsNullOrEmpty(dur) ? $" · {dur}" : "")})";
+        var durSuffix = !string.IsNullOrEmpty(dur) ? $" · {dur}" : "";
+        return $"Scene S{s.SceneNumber:D2}: {setting} ({s.ClipsOnDisk}/{s.ClipCount} clips{durSuffix})";
     }
 }
