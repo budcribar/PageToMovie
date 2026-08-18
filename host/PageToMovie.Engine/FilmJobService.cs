@@ -5588,7 +5588,7 @@ public sealed class FilmJobService
         built = await ApplyPromptBudgetAsync(built, ctx.ModelEntry).ConfigureAwait(false);
         await WriteAndLogPromptAsync(ctx.ProjectId, ctx.ProjectDir, ctx.Scene, ctx.Clip, built, ctx.Ct)
             .ConfigureAwait(false);
-        await LogPromptRefsAsync(built, ctx.PrevVideoPath).ConfigureAwait(false);
+        await LogPromptRefsAsync(built, ctx.PrevVideoPath, ctx.ExtendSourceFileId).ConfigureAwait(false);
 
         var supportsContinue = SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).SupportsVideoContinue;
         var duration = await ResolveClipDurationAsync(ctx, built, supportsContinue).ConfigureAwait(false);
@@ -5686,11 +5686,12 @@ public sealed class FilmJobService
 
     private async Task LogContinuityOrReseedAsync(ClipGenContext ctx)
     {
-        if (ctx.PrevVideoPath is not null)
+        if (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null)
         {
+            var src = ctx.PrevVideoPath is not null ? Path.GetFileName(ctx.PrevVideoPath) : ctx.ExtendSourceFileId;
             await AppendLogAsync(
                 $"  [Continuity] Imagine video-extend from S{ctx.Scene:D2}C{ctx.Clip - 1:D2} " +
-                $"({Path.GetFileName(ctx.PrevVideoPath)})");
+                $"({src})");
             return;
         }
         if (ctx.ReseedFresh && ctx.ExtendSourcePath is not null)
@@ -5748,7 +5749,7 @@ public sealed class FilmJobService
     private void EnsureClipRefsForMode(ClipGenContext ctx, ClipVideoPromptBuilder.PromptBuildResult built)
     {
         // Fresh / reseed: every on-screen cast key must have a locked ref attached
-        if (ctx.PrevVideoPath is null)
+        if (ctx.PrevVideoPath is null && ctx.ExtendSourceFileId is null)
             EnsureFreshGenHasLockedRefs(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles);
         else
         {
@@ -5809,7 +5810,7 @@ public sealed class FilmJobService
     }
 
     private async Task LogPromptRefsAsync(
-        ClipVideoPromptBuilder.PromptBuildResult built, string? prevVideoPath)
+        ClipVideoPromptBuilder.PromptBuildResult built, string? prevVideoPath, string? extendSourceFileId)
     {
         if (built.Prompt.Contains("<VoiceLock>", StringComparison.OrdinalIgnoreCase))
             await AppendLogAsync("  [Voice] VOICE LOCK from character profile");
@@ -5821,7 +5822,7 @@ public sealed class FilmJobService
                 FormatRefLocationSuffix(built));
             return;
         }
-        if (prevVideoPath is not null)
+        if (prevVideoPath is not null || extendSourceFileId is not null)
             await AppendLogAsync("  [Refs] video-extend — locked plates not attached to API (IDENTITY text only)");
         else if (built.LocationKey is { Length: > 0 })
             await AppendLogAsync($"  [Refs] no plates attached · set={built.LocationKey} (no locked plate or no slots)");
@@ -5851,7 +5852,7 @@ public sealed class FilmJobService
         // Reference-conditioned / continuation generation is bounded by the model's own
         // tighter extension cap (catalog MaxExtensionSeconds), not a bare hardcoded 10 — keeps
         // this correct if a future model's real ref-conditioned max differs from Grok's ~10s.
-        if (ctx.PrevVideoPath is not null || built.ReferenceImagePaths.Count > 0)
+        if (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null || built.ReferenceImagePaths.Count > 0)
             duration = ClipDurationEstimator.ResolveActualDurationForModel(ctx.Model, duration, isExtensionMode: true);
         return duration;
     }
@@ -6173,8 +6174,8 @@ public sealed class FilmJobService
                 costDurationSec,
                 ctx.Resolution,
                 ctx.Model,
-                hasRefImage: built.ReferenceImagePaths.Count > 0 || ctx.PrevVideoPath is not null,
-                isExtend: ctx.PrevVideoPath is not null,
+                hasRefImage: built.ReferenceImagePaths.Count > 0 || ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null,
+                isExtend: ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null,
                 requestId: requestId,
                 requestedDurationSec: duration,
                 userId: Snapshot.UserId ?? _user.UserId,
