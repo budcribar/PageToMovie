@@ -243,31 +243,16 @@ public static class MediaEndpoints
             var full = Path.Combine(dir, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? ".");
 
-            var keepMediaOnServer = await ReadKeepMediaOnServerAsync(dir, ct);
-            if (!isCharacterImage && !keepMediaOnServer)
+            // Clips: the user's folder + the provider (sidecar source_url / file_id) are the durable
+            // homes; the server copy is released once the browser has it. (The former
+            // "keep_media_on_server" opt-out for curated sources is retired — forks and shares
+            // reference clips by source_url / file_id, and the demo gallery keeps its own movie.mp4.)
+            if (!isCharacterImage)
                 await WriteClientStorageMarkerAndDeleteServerCopyAsync(full, dto, userId, ct);
 
             store.InvalidateSceneListCache(id);
         }
         catch { /* non-fatal */ }
-    }
-
-    private static async Task<bool> ReadKeepMediaOnServerAsync(string projectDir, CancellationToken ct)
-    {
-        // Curated/forkable source projects opt out of offload (project.json "keep_media_on_server":
-        // true) so their clips stay server-side and remain available to forks + the voice-dub input.
-        // A stopgap for clips generated before source_url capture; rebuilt movies re-fetch by URL.
-        try
-        {
-            var pjPath = Path.Combine(projectDir, "project.json");
-            if (!File.Exists(pjPath))
-                return false;
-            using var pjDoc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(pjPath, ct));
-            return pjDoc.RootElement.TryGetProperty("keep_media_on_server", out var kEl)
-                && kEl.ValueKind == System.Text.Json.JsonValueKind.True;
-        }
-        catch { /* default: offload as usual */ }
-        return false;
     }
 
     private static async Task WriteClientStorageMarkerAndDeleteServerCopyAsync(

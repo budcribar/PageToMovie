@@ -5950,8 +5950,7 @@ public sealed class FilmJobService
             // Media does not live on the server: the copy above existed only for the duration probe,
             // telemetry, lead-in trim and dialogue verification. The user's folder (client save via the
             // proxy URL) and the provider (source_url / file_id in the sidecar) are the durable homes.
-            // Kept only when the project opts in (curated/forkable sources) or under fakes, whose
-            // provider "URLs" are local fixture paths with no durable host.
+            // Kept only under fakes, whose provider "URLs" are local fixture paths with no durable host.
             await DeleteTransientServerClipAsync(ctx, mp4Path).ConfigureAwait(false);
         }
         return overrunSec;
@@ -5962,7 +5961,6 @@ public sealed class FilmJobService
         try
         {
             if (_opts.UseFakes) return;
-            if (await ProjectKeepsMediaOnServerAsync(ctx.ProjectDir, ctx.Ct).ConfigureAwait(false)) return;
             if (!File.Exists(mp4Path)) return;
             File.Delete(mp4Path);
             await AppendLogAsync($"  [Media] server copy of {Path.GetFileName(mp4Path)} released (provider-hosted; saved to your folder via the browser)");
@@ -5971,20 +5969,6 @@ public sealed class FilmJobService
         {
             _log.LogWarning(ex, "Could not release transient server clip {Path}", mp4Path);
         }
-    }
-
-    /// <summary>project.json "keep_media_on_server": curated / forkable sources keep clips server-side.</summary>
-    internal static async Task<bool> ProjectKeepsMediaOnServerAsync(string projectDir, CancellationToken ct)
-    {
-        try
-        {
-            var pj = Path.Combine(projectDir, "project.json");
-            if (!File.Exists(pj)) return false;
-            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(pj, ct).ConfigureAwait(false));
-            return doc.RootElement.TryGetProperty("keep_media_on_server", out var k)
-                && k.ValueKind == JsonValueKind.True;
-        }
-        catch { return false; }
     }
 
     private async Task TryTrimPredecessorFromDownloadedClipAsync(ClipGenContext ctx, string mp4Path, double predDur)

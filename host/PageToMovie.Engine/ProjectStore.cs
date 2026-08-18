@@ -1806,6 +1806,14 @@ public sealed partial class ProjectStore
             ct.ThrowIfCancellationRequested();
             if (ForkSkipExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 continue;
+            // Media is referenced, not copied: the .clip.json sidecars carry the provider source_url
+            // (fetchable by anyone) and file_id (account-scoped). Skip what belongs to the SOURCE
+            // owner only — .client.json markers describe their local folder, _extend_src_*.json
+            // hold file_ids minted with their key; the fork re-mints its own on first extend.
+            var fileName = Path.GetFileName(file);
+            if (fileName.EndsWith(ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)
+                || fileName.StartsWith("_extend_src_", StringComparison.OrdinalIgnoreCase))
+                continue;
             var rel = Path.GetRelativePath(sourcePath, file);
             if (rel.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, 2)[0] == ".git")
                 continue; // never copy the source's own Git history into the fork
@@ -3375,7 +3383,11 @@ public sealed partial class ProjectStore
     private void FillLocationPlateStatus(string projectId, LocationSummary row)
     {
         var path = ResolveLocationRefPath(projectId, row.Key);
-        var hasLockedPlate = path is not null && File.Exists(path) && new FileInfo(path).Length >= 64;
+        // Same contract as characters (ReadCharacterRefState): a plate that lives only in the
+        // user's folder (.client.json marker) IS locked — the browser pre-flight uploads it for
+        // the duration of a generation. Requiring the physical server file (446c39ab) showed
+        // client-storage users their locked plates as unlocked.
+        var hasLockedPlate = path is not null;
         row.Locked = hasLockedPlate;
         row.HasPreferred = hasLockedPlate;
         if (hasLockedPlate && path is not null)

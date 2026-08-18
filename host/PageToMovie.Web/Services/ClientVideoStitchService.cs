@@ -573,10 +573,8 @@ public sealed class ClientVideoStitchService
 
             // Client storage is primary, same as every other clip type: save locally and register the
             // hash with the server (writes a .client.json sidecar — see POST .../media/register) rather
-            // than treating the server upload as the main copy. Best-effort — a forkable/curated source
-            // project (project.json "keep_media_on_server") ignores the registration and needs the real
-            // file server-side instead, and the register endpoint doesn't tell the caller which case it
-            // is — so this alone is never sufficient on its own; see the always-upload fallback below.
+            // than treating the server upload as the main copy. Best-effort — the register call can
+            // fail (offline, no folder), so this alone is never sufficient; see the upload fallback below.
             if (_media is not null)
             {
                 var (savedOk, _, sha256, sizeBytes, _) =

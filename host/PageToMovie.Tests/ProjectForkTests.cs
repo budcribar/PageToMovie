@@ -51,6 +51,10 @@ public class ProjectForkTests
             await File.WriteAllTextAsync(
                 Path.Combine(sourceDir, "assets", "video", "scene_01_clip_01.clip.json"),
                 """{"source_file_id":"file_abc123"}""");
+            // Owner-only artefacts: a local-folder marker (their disk) and an extend-source marker
+            // (a file_id minted with their key). Neither means anything to the fork.
+            await File.WriteAllTextAsync(Path.Combine(sourceDir, "assets", "video", "scene_01_clip_01.mp4.client.json"), "{}");
+            await File.WriteAllTextAsync(Path.Combine(sourceDir, "assets", "video", "_extend_src_s01c02.json"), """{"file_id":"file_owner_only"}""");
 
             var fork = await store.ForkProjectAsync(source.Id, "collaborator1");
 
@@ -63,6 +67,8 @@ public class ProjectForkTests
             Assert.False(File.Exists(Path.Combine(fork.Path, "assets", "video", "scene_01_clip_01.mp4")));
             Assert.True(File.Exists(Path.Combine(fork.Path, "assets", "video", "scene_01_clip_01.clip.json")));
             Assert.Equal("file_abc123", store.TryReadClipSourceFileId(fork.Id, 1, 1));
+            Assert.False(File.Exists(Path.Combine(fork.Path, "assets", "video", "scene_01_clip_01.mp4.client.json")), "fork must not inherit the source owner's local-folder marker");
+            Assert.False(File.Exists(Path.Combine(fork.Path, "assets", "video", "_extend_src_s01c02.json")), "fork must not inherit the source owner's extend-source file_id");
             // Fork has its own Git package (text only) with an initial commit
             Assert.True(Directory.Exists(Path.Combine(fork.Path, ".git")));
         }
