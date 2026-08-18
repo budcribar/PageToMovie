@@ -17,16 +17,15 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class CharactersLookPanel : PageSliceComponent
 {
     [CascadingParameter] public required Characters Host { get; set; }
-    [CascadingParameter] public Characters.CharactersListState? List { get; set; }
+    [CascadingParameter] public Characters.CharactersListState List { get; set; } = default!;
 
-    [CascadingParameter] public Characters.CharactersJobs? Jobs { get; set; }
+    [CascadingParameter] public Characters.CharactersJobs Jobs { get; set; } = default!;
 
-    [CascadingParameter] public Characters.CharactersLookPipeline? LookPipe { get; set; }
+    [CascadingParameter] public Characters.CharactersLookPipeline LookPipe { get; set; } = default!;
 
-    [CascadingParameter] public Characters.CharactersLookEditors? LookEdit { get; set; }
+    [CascadingParameter] public Characters.CharactersLookEditors LookEdit { get; set; } = default!;
 
-    [CascadingParameter] public Characters.CharactersLookBook? LookBook { get; set; }
+    [CascadingParameter] public Characters.CharactersLookBook LookBook { get; set; } = default!;
 
-    [CascadingParameter] public Characters.CharactersVoice? Voice { get; set; }
-
+    [CascadingParameter] public Characters.CharactersVoice Voice { get; set; } = default!;
 }

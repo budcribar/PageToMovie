@@ -129,13 +129,14 @@ public partial class Characters
         {
             S.Voice._voicePreviewBusy = false;
             if (snap.Status == "done" &&
-                string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
+                snap.CharKey is { } charKey &&
+                string.Equals(charKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
             {
                 S._error = null;
                 S.Voice._voicePreviewError = null;
                 S.Voice._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 S.Voice._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                    S._projectId, snap.CharKey, S.Voice._voiceAudioBust);
+                    S._projectId, charKey, S.Voice._voiceAudioBust);
                 S.Voice._voicePreviewStale = false;
                 S.Voice._voicePreviewHint = "Film voice sample ready.";
                 S._message = null;

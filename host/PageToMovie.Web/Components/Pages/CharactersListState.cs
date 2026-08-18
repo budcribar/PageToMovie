@@ -158,7 +158,7 @@ public partial class Characters
             var all = CharactersForUi.ToList();
             var byBase = all
                 .Where(c => !string.IsNullOrWhiteSpace(c.VariantOf))
-                .GroupBy(c => c.VariantOf, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(c => c.VariantOf!, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<CharacterSummary>)g.ToList(), StringComparer.OrdinalIgnoreCase);
             var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
