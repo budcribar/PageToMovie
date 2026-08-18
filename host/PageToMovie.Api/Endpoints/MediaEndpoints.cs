@@ -125,6 +125,8 @@ public static class MediaEndpoints
     MediaProxyTicketStore tickets,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
+    IHttpClientFactory httpFactory,
+    HttpContext httpContext,
     CancellationToken ct)
     {
     var ticketValid = false;
@@ -154,7 +156,18 @@ public static class MediaEndpoints
             return Results.BadRequest(new { ok = false, error = "Invalid media path" });
 
         if (!File.Exists(fullPath))
+        {
+            // Clips do not live on the server: a generated clip is provider-hosted (sidecar
+            // source_url) until the browser saves it locally. Stream it through, never store it.
+            if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+            {
+                var upstream = TryReadSidecarSourceUrl(fullPath);
+                if (!string.IsNullOrWhiteSpace(upstream) && Uri.TryCreate(upstream, UriKind.Absolute, out var up)
+                    && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
+                    return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
+            }
             return Results.NotFound(new { ok = false, error = "File not found" });
+        }
 
         var ext = Path.GetExtension(fullPath).ToLowerInvariant();
         var contentType = ext switch
@@ -359,6 +372,20 @@ public static class MediaEndpoints
         };
         var fixtureStream = File.OpenRead(fixturePath);
         return Results.Stream(fixtureStream, contentType: fixtureCtype, fileDownloadName: Path.GetFileName(fixturePath));
+    }
+
+    /// <summary>source_url from the clip's .clip.json sidecar (provider-hosted video), or null.</summary>
+    private static string? TryReadSidecarSourceUrl(string mp4FullPath)
+    {
+        try
+        {
+            var sidecar = Path.ChangeExtension(mp4FullPath, null) + ".clip.json";
+            if (!File.Exists(sidecar)) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(sidecar));
+            return doc.RootElement.TryGetProperty("source_url", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String
+                ? u.GetString() : null;
+        }
+        catch { return null; }
     }
 
     private static async Task<IResult> ProxyUpstreamMediaAsync(

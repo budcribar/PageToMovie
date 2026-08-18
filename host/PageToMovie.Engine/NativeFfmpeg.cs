@@ -41,7 +41,12 @@ public static class NativeFfmpeg
 
             using var proc = Process.Start(psi);
             if (proc is null) return false;
-            proc.WaitForExit(30000);
+            if (!proc.WaitForExit(30000))
+            {
+                // ExitCode throws on a live process and the child would outlive us; kill it.
+                try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                return false;
+            }
             return proc.ExitCode == 0 && File.Exists(outputPath) && new FileInfo(outputPath).Length >= 1024;
         }
         catch
@@ -87,7 +92,12 @@ public static class NativeFfmpeg
 
             using var proc = Process.Start(psi);
             if (proc is null) return false;
-            proc.WaitForExit(30000);
+            if (!proc.WaitForExit(30000))
+            {
+                // ExitCode throws on a live process and the child would outlive us; kill it.
+                try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                return false;
+            }
             return proc.ExitCode == 0 && File.Exists(outputPath) && new FileInfo(outputPath).Length >= 1024;
         }
         catch

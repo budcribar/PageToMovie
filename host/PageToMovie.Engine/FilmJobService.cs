@@ -5908,7 +5908,7 @@ public sealed class FilmJobService
             s.PredecessorDurationSec = ctx.ExtendInputDurationSec;
         });
         await AppendLogAsync(
-            $"  [Grok] video ready for client save → {relPath} (not stored on server disk)");
+            $"  [Grok] video ready for client save → {relPath} (server copy is transient; provider-hosted)");
     }
 
     private async Task<double> DownloadClipAndRecordTelemetryAsync(
@@ -5945,7 +5945,46 @@ public sealed class FilmJobService
         {
             _log.LogWarning(ex, "Could not save MP4 bytes to server project directory for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
         }
+        finally
+        {
+            // Media does not live on the server: the copy above existed only for the duration probe,
+            // telemetry, lead-in trim and dialogue verification. The user's folder (client save via the
+            // proxy URL) and the provider (source_url / file_id in the sidecar) are the durable homes.
+            // Kept only when the project opts in (curated/forkable sources) or under fakes, whose
+            // provider "URLs" are local fixture paths with no durable host.
+            await DeleteTransientServerClipAsync(ctx, mp4Path).ConfigureAwait(false);
+        }
         return overrunSec;
+    }
+
+    private async Task DeleteTransientServerClipAsync(ClipGenContext ctx, string mp4Path)
+    {
+        try
+        {
+            if (_opts.UseFakes) return;
+            if (await ProjectKeepsMediaOnServerAsync(ctx.ProjectDir, ctx.Ct).ConfigureAwait(false)) return;
+            if (!File.Exists(mp4Path)) return;
+            File.Delete(mp4Path);
+            await AppendLogAsync($"  [Media] server copy of {Path.GetFileName(mp4Path)} released (provider-hosted; saved to your folder via the browser)");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not release transient server clip {Path}", mp4Path);
+        }
+    }
+
+    /// <summary>project.json "keep_media_on_server": curated / forkable sources keep clips server-side.</summary>
+    internal static async Task<bool> ProjectKeepsMediaOnServerAsync(string projectDir, CancellationToken ct)
+    {
+        try
+        {
+            var pj = Path.Combine(projectDir, "project.json");
+            if (!File.Exists(pj)) return false;
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(pj, ct).ConfigureAwait(false));
+            return doc.RootElement.TryGetProperty("keep_media_on_server", out var k)
+                && k.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
     }
 
     private async Task TryTrimPredecessorFromDownloadedClipAsync(ClipGenContext ctx, string mp4Path, double predDur)
@@ -7274,9 +7313,30 @@ public sealed class FilmJobService
     /// MediaSyncLocator is for new, single-clip call sites that also need sha256/size (Takes
     /// list, playback staleness) — see its doc comment for the fuller "why".
     /// </summary>
-    private static bool ClipPresentOnServerOrClient(string mp4Path) =>
+    /// <summary>
+    /// A clip "exists" when its bytes are on the server, registered in the user's local folder
+    /// (.client.json), or hosted by the provider (sidecar carries source_url / file_id). The last
+    /// case is the normal state now that the server keeps no MP4 after generation — without it a
+    /// generated-but-not-yet-saved clip would be regenerated (and paid for) as "missing".
+    /// </summary>
+    internal static bool ClipPresentOnServerOrClient(string mp4Path) =>
         (File.Exists(mp4Path) && new FileInfo(mp4Path).Length >= 1024) ||
-        File.Exists(mp4Path + ".client.json");
+        File.Exists(mp4Path + ".client.json") ||
+        SidecarHasProviderSource(mp4Path);
+
+    internal static bool SidecarHasProviderSource(string mp4Path)
+    {
+        var sidecar = Path.ChangeExtension(mp4Path, null) + ".clip.json";
+        if (!File.Exists(sidecar)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(sidecar));
+            var r = doc.RootElement;
+            return (r.TryGetProperty("source_url", out var u) && u.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(u.GetString()))
+                || (r.TryGetProperty("source_file_id", out var f) && f.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(f.GetString()));
+        }
+        catch { return false; }
+    }
 
     private static bool ShouldRefreshArtifactIndex(string? kind)
     {
