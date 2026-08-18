@@ -554,7 +554,7 @@ public partial class Scenes
 
     internal double EstimateSelectedCostUsd()
     {
-        if (_costReport is null) return 0;
+        if (_costReport is null || S.ClipSel.EstimateSelectedClips() == 0) return 0;
         var sum = 0.0;
         // The end-credits card renders client-side (canvas → ffmpeg.wasm) for free — see
         // StartBatchAsync, which already splits it out of the paid video-model batch. The cost

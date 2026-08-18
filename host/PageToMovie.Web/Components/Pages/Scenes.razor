@@ -433,7 +433,7 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                             EstimatedCostUsd="List.EstimateSelectedCostUsd()"
                             AllCredits="@(List._selected.All(Gen.IsCreditsSceneNum))"
                             Busy="_busy"
-                            GenerateDisabled="@(_busy || List._selected.Count == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
+                            GenerateDisabled="@(_busy || List._selected.Count == 0 || ClipSel.EstimateSelectedClips() == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
                             OnClose="Gen.CloseGenerateConfirm"
                             OnConfirm="Gen.ConfirmGenerateAsync" />
 }

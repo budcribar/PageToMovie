@@ -5,19 +5,28 @@
 @if (Visible)
 {
     <DarkModalShell Visible="true" OnClose="OnClose">
-        <Title>@L["Scenes.GenerateVideoTitle"]</Title>
+        <Title>@L["Scenes.GenerateConfirmTitle"]</Title>
         <ChildContent>
-            <p class="mb-3">
-                @L.Format("Scenes.GenerateConfirmSummary", EstimatedClips, SelectedCount)
-            </p>
+            @if (EstimatedClips == 0)
+            {
+                <div class="alert alert-info py-2 small mb-3">
+                    All clips in the selected scene(s) are already generated. To re-generate existing clips, use Regenerate on the individual clip or scene.
+                </div>
+            }
+            else
+            {
+                <p class="mb-3">
+                    @L.Format("Scenes.GenerateConfirmSummary", EstimatedClips, SelectedCount)
+                </p>
+            }
 
             <div class="mb-3">
-                <label class="form-label small text-muted" for="genResConfirm">@L["Scenes.Resolution"]</label>
+                <label class="form-label small text-muted" for="genResConfirm">@L["Common.Resolution"]</label>
                 @if (ResolutionLocked)
                 {
                     <div class="d-flex align-items-center gap-2">
                         <span class="badge bg-secondary">@(ResolutionLock ?? Resolution)</span>
-                        <span class="small text-muted">@L["Scenes.ResolutionLockedClipsExist"]</span>
+                        <span class="small text-muted">@L["Scenes.ResolutionLockedHelp"]</span>
                     </div>
                 }
                 else
@@ -55,7 +64,7 @@
                             <option value="@m.Id">@m.DisplayName</option>
                         }
                     </select>
-                    <div class="form-text text-muted">@L["Scenes.OneOffBatchGeneratorHint"]</div>
+                    <div class="form-text text-muted">@L["Scenes.ModelBatchOverrideHelp"]</div>
                 </div>
             }
 
@@ -72,7 +81,7 @@
             </div>
             @if (AllCredits)
             {
-                <div class="small text-muted mt-1">@L["Scenes.EndCreditsRenderInstantly"]</div>
+                <div class="small text-muted mt-1">@L["Scenes.EndCreditsNoCostHelp"]</div>
             }
         </ChildContent>
         <Footer>
@@ -82,7 +91,7 @@
                     data-testid="generate-confirm-go"
                     disabled="@GenerateDisabled"
                     @onclick="OnConfirm">
-                @L.Format("Scenes.GenerateSelectedScenes", SelectedCount)
+                @L.Format("Scenes.GenerateScenesButton", SelectedCount)
             </button>
         </Footer>
     </DarkModalShell>
