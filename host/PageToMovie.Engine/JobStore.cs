@@ -163,5 +163,6 @@ public sealed class JobStore : IJobStore
         FinishedAt = s.FinishedAt,
         ClientMediaUrl = s.ClientMediaUrl,
         ClientRelativePath = s.ClientRelativePath,
+        PredecessorDurationSec = s.PredecessorDurationSec,
     };
 }

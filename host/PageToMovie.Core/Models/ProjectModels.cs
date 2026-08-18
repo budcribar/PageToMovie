@@ -146,6 +146,8 @@ public class JobProgress
     public string? ClientMediaUrl { get; set; }
     /// <summary>Project-relative path under the client media folder, e.g. assets/video/scene_01_clip_01.mp4.</summary>
     public string? ClientRelativePath { get; set; }
+    /// <summary>For video-extend jobs: duration of predecessor in seconds for client-side ffmpeg.wasm trimming.</summary>
+    public double? PredecessorDurationSec { get; set; }
 }
 
 public sealed class JobSnapshot : JobProgress

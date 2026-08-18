@@ -5875,6 +5875,7 @@ public sealed class FilmJobService
             s.ClientRelativePath = relPath;
             s.Scene = ctx.Scene;
             s.Clip = ctx.Clip;
+            s.PredecessorDurationSec = ctx.ExtendInputDurationSec;
         });
         await AppendLogAsync(
             $"  [Grok] video ready for client save → {relPath} (not stored on server disk)");

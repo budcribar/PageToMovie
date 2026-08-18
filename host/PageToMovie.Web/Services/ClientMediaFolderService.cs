@@ -442,21 +442,25 @@ public sealed class ClientMediaFolderService
         // exists to fix, so on ANY failure here we surface it and return without saving,
         // rather than silently falling through to save the un-sliced video.
         var extendKey = $"{pid}|{snap.Scene}|{snap.Clip}";
-        double? extendSourceSec = null;
-        lock (_pendingExtendSourceSeconds)
+        double? extendSourceSec = snap.PredecessorDurationSec;
+        if (extendSourceSec is null)
         {
-            if (_pendingExtendSourceSeconds.Remove(extendKey, out var sec))
-                extendSourceSec = sec;
+            lock (_pendingExtendSourceSeconds)
+            {
+                if (_pendingExtendSourceSeconds.Remove(extendKey, out var sec))
+                    extendSourceSec = sec;
+            }
         }
-        if (extendSourceSec is not { } srcSec)
+        if (extendSourceSec is not { } srcSec || srcSec <= 0.1)
             return (url, null, false);
 
         var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
         var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
         var newDurationSec = combinedSec is { } c && c > srcSec + 0.1 ? c - srcSec : (double?)null;
-        var slice = newDurationSec is { } nd
-            ? await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, nd, null)
-            : null;
+        if (newDurationSec is null)
+            return (url, null, false);
+
+        var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
             LastStatus = $"Video-extend slice failed for {rel} " +
