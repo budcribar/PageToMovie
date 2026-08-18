@@ -5628,7 +5628,7 @@ public sealed class FilmJobService
         return overrunSec;
     }
 
-    private static IReadOnlyList<string>? ClipReferenceImagesForSubmit(
+    internal static IReadOnlyList<string>? ClipReferenceImagesForSubmit(
         string? prevVideoPath, string? extendSourceFileId, ClipVideoPromptBuilder.PromptBuildResult built) =>
         prevVideoPath is null && extendSourceFileId is null && built.ReferenceImagePaths.Count > 0
             ? built.ReferenceImagePaths

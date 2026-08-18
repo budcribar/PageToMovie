@@ -80,4 +80,26 @@ public class FreshGenLockGateTests
         Assert.DoesNotContain("Character_The_Choir", keys); // cast_kind:"chorus" → exempt at gen gate
         Assert.Contains("Character_Ebenezer", keys);        // real individual → still needs a locked ref
     }
+
+    [Fact]
+    public void ClipReferenceImagesForSubmit_returns_null_when_extending_via_file_id_or_path()
+    {
+        var built = new ClipVideoPromptBuilder.PromptBuildResult
+        {
+            ReferenceImagePaths = new[] { "/path/to/char_ref.png", "/path/to/loc_ref.png" },
+        };
+
+        // Fresh gen: attachments preserved
+        var freshRefs = FilmJobService.ClipReferenceImagesForSubmit(null, null, built);
+        Assert.NotNull(freshRefs);
+        Assert.Equal(2, freshRefs.Count);
+
+        // Extend via previous local video path: attachments suppressed
+        var pathExtendRefs = FilmJobService.ClipReferenceImagesForSubmit("/path/to/prev.mp4", null, built);
+        Assert.Null(pathExtendRefs);
+
+        // Extend via server cached file_id: attachments suppressed
+        var fileIdExtendRefs = FilmJobService.ClipReferenceImagesForSubmit(null, "file_abc123", built);
+        Assert.Null(fileIdExtendRefs);
+    }
 }
