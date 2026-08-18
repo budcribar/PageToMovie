@@ -1756,6 +1756,76 @@ public class UserDatabaseService
     /// Append one API call for BYOK cost attribution. Never throws to callers — telemetry must not break gen.
     /// </summary>
 
+    /// <summary>
+    /// Duration percentiles of provider calls per Admin timeout bucket over the last
+    /// <paramref name="days"/> days. Buckets map cost categories: video → Video; characters →
+    /// Image (portraits, plates); screenplay/review → Chat; music/voice → Audio. Percentiles are
+    /// over successful calls; TimedOut counts calls that failed with a timeout-shaped error.
+    /// </summary>
+    public async Task<List<TimeoutBucketStatsDto>> GetTimeoutBucketStatsAsync(int days = 30, CancellationToken ct = default)
+    {
+        EnsureDatabaseInitialized();
+        var since = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 365)).ToString("o");
+        var byBucket = new Dictionary<string, List<double>>(StringComparer.Ordinal)
+        {
+            ["Image"] = new(), ["Video"] = new(), ["Chat"] = new(), ["Audio"] = new(),
+        };
+        var timedOut = new Dictionary<string, int>(StringComparer.Ordinal) { ["Image"] = 0, ["Video"] = 0, ["Chat"] = 0, ["Audio"] = 0 };
+        using var conn = new SqliteConnection(ConnectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"SELECT COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other') AS cat,
+                                    duration_ms, ok, COALESCE(error, '')
+                             FROM {SqlLit.UserApiCalls}
+                             WHERE ts >= @since AND duration_ms IS NOT NULL AND duration_ms > 0";
+        cmd.Parameters.AddWithValue("@since", since);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var bucket = BucketForCategory(r.IsDBNull(0) ? "" : r.GetString(0));
+            if (bucket is null) continue;
+            var ms = r.GetDouble(1);
+            var ok = !r.IsDBNull(2) && r.GetInt64(2) != 0;
+            var err = r.IsDBNull(3) ? "" : r.GetString(3);
+            if (ok) byBucket[bucket].Add(ms / 1000.0);
+            else if (err.Contains("timeout", StringComparison.OrdinalIgnoreCase) || err.Contains("timed out", StringComparison.OrdinalIgnoreCase) || err.Contains("canceled", StringComparison.OrdinalIgnoreCase))
+                timedOut[bucket]++;
+        }
+        var list = new List<TimeoutBucketStatsDto>();
+        foreach (var (bucket, secs) in byBucket)
+        {
+            secs.Sort();
+            list.Add(new TimeoutBucketStatsDto
+            {
+                Bucket = bucket,
+                Count = secs.Count,
+                P50Seconds = Percentile(secs, 0.50),
+                P95Seconds = Percentile(secs, 0.95),
+                P99Seconds = Percentile(secs, 0.99),
+                MaxSeconds = secs.Count == 0 ? 0 : (int)Math.Ceiling(secs[^1]),
+                TimedOutCount = timedOut[bucket],
+            });
+        }
+        return list;
+    }
+
+    internal static string? BucketForCategory(string category) => category.Trim().ToLowerInvariant() switch
+    {
+        CostCategories.Video => "Video",
+        CostCategories.Characters => "Image",
+        CostCategories.Screenplay or CostCategories.Review => "Chat",
+        CostCategories.Music or CostCategories.Voice => "Audio",
+        _ => null,
+    };
+
+    internal static int Percentile(List<double> sortedSeconds, double p)
+    {
+        if (sortedSeconds.Count == 0) return 0;
+        var idx = (int)Math.Ceiling(p * sortedSeconds.Count) - 1;
+        idx = Math.Clamp(idx, 0, sortedSeconds.Count - 1);
+        return (int)Math.Ceiling(sortedSeconds[idx]);
+    }
+
     public async Task<List<UserApiCallRow>> ListUserApiCallsAsync(
         string userId,
         int take = 100,

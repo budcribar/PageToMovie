@@ -338,89 +338,89 @@ internal static class ApiServiceConfiguration
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVideoClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokVideoClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(15);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Video));
         // Single provider (xAI only) — bind IVideoEditClient straight to the concrete client, same
         // pattern as ILipSyncClient/FalLipSyncClient below (no MultiProvider* dispatcher needed).
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVideoEditClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokVideoEditClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(15);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Video));
         builder.Services.AddSingleton<IVideoEditClient>(sp => sp.GetRequiredService<GrokVideoEditClient>());
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiVideoClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GeminiVideoClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(15);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Video));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalVideoClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(FalVideoClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(15);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Video));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Image));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GeminiImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Image));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalImageClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(FalImageClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Image));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVisionClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokVisionClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Image));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokChatClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GrokChatClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(20);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Chat));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<AnthropicChatClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(AnthropicChatClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(20);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Chat));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiChatClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(GeminiChatClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(20);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Chat));
         // ClipDialogueVerificationService needs Gemini's real native-video capability specifically
         // (not whatever IVisionClient's routing config points at) — see IGeminiVideoAnalysisClient.
         builder.Services.AddSingleton<IGeminiVideoAnalysisClient>(sp => sp.GetRequiredService<GeminiChatClient>());
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalAudioClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(FalAudioClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<SunoClient>(c =>
         {
             c.BaseAddress = new Uri(SunoClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(2); // each submit/poll call is short; overall wait spans many such calls
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket // each submit/poll call is short; overall wait spans many such calls
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<AiMusicApiClient>(c =>
         {
             c.BaseAddress = new Uri(AiMusicApiClient.ApiBase);
-            c.Timeout = TimeSpan.FromMinutes(2);
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<ElevenLabsMusicClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
-            c.Timeout = TimeSpan.FromMinutes(5); // composing a full-scene track can take a while
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket // composing a full-scene track can take a while
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<ElevenLabsScribeClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
-            c.Timeout = TimeSpan.FromMinutes(3); // STT on a short dialogue segment
-        }));
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket // STT on a short dialogue segment
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
         builder.Services.AddSingleton<IAudioClient, MultiProviderAudioClient>();
         // Lip-sync and voice-clone narration: explicit, human-triggered actions only (never wired
         // into any automatic job/pipeline — see the lip-sync / voice/clone / voice/speak routes).

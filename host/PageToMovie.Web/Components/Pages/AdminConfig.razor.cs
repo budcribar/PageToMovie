@@ -12,6 +12,24 @@ public partial class AdminConfig
 {
 
     private RuntimeConfigDto? _cfg;
+    private Dictionary<string, TimeoutBucketStatsDto> _timeoutStats = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"recent p95 42s · p99 71s (n=120)" — evidence next to each timeout field; empty when no calls yet.</summary>
+    private string TimeoutEvidence(string bucket)
+    {
+        if (!_timeoutStats.TryGetValue(bucket, out var st) || st.Count == 0) return "no recent calls";
+        var to = st.TimedOutCount > 0 ? $" · {st.TimedOutCount} timed out" : "";
+        return $"recent p95 {st.P95Seconds}s · p99 {st.P99Seconds}s · max {st.MaxSeconds}s (n={st.Count}){to}";
+    }
+
+    private static string TimeoutEvidenceClass(TimeoutBucketStatsDto? st, int configured) =>
+        st is null || st.Count == 0 ? "text-muted"
+        : st.P99Seconds > configured ? "text-danger"
+        : st.P99Seconds * 3 < configured ? "text-warning"
+        : "text-success";
+
+    private string TimeoutEvidenceClassFor(string bucket, int configured) =>
+        TimeoutEvidenceClass(_timeoutStats.TryGetValue(bucket, out var st) ? st : null, configured);
     internal string? _error;
     internal string? _message;
     internal bool _busy;
@@ -106,6 +124,12 @@ public partial class AdminConfig
                 _videoTimeoutSeconds = _cfg.Timeouts?.VideoTimeoutSeconds ?? 900;
                 _chatTimeoutSeconds = _cfg.Timeouts?.ChatTimeoutSeconds ?? 1200;
                 _audioTimeoutSeconds = _cfg.Timeouts?.AudioTimeoutSeconds ?? 300;
+                try
+                {
+                    var stats = await Api.GetAdminTimeoutStatsAsync();
+                    _timeoutStats = (stats?.Stats ?? new()).ToDictionary(x => x.Bucket, x => x, StringComparer.OrdinalIgnoreCase);
+                }
+                catch { /* evidence is optional */ }
             }
         }
         catch (Exception ex)

@@ -71,6 +71,7 @@ public static class AdminEndpoints
         // </summary>
         app.MapPost("/api/admin/users/delete", PostAdminUsersDelete);
         app.MapGet("/api/admin/config", GetAdminConfig);
+        app.MapGet("/api/admin/config/timeout-stats", GetAdminTimeoutStats);
         app.MapPut("/api/admin/config", PutAdminConfig);
         app.MapGet("/api/admin/models-catalog", GetAdminModelsCatalog);
         app.MapPut("/api/admin/models-catalog", PutAdminModelsCatalog);
@@ -918,6 +919,16 @@ public static class AdminEndpoints
         if (!string.Equals(target.UserId, target.Username, StringComparison.OrdinalIgnoreCase))
             deletedDemos += await demos.HardDeleteAllByUserAsync(target.Username, ct);
         return deletedDemos;
+    }
+
+    /// <summary>Observed provider-call durations per timeout bucket (p50/p95/p99, last 30 days) — evidence for the Network &amp; Timeouts card.</summary>
+    private static async Task<IResult> GetAdminTimeoutStats(IUserContext user, UserDatabaseService userDb, CancellationToken ct)
+    {
+        if (!user.IsAdmin)
+            return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
+                statusCode: StatusCodes.Status403Forbidden);
+        var stats = await userDb.GetTimeoutBucketStatsAsync(days: 30, ct).ConfigureAwait(false);
+        return Results.Ok(new { ok = true, days = 30, stats });
     }
 
     private static IResult GetAdminConfig(IUserContext user, IRuntimeConfigStore config)

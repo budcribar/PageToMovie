@@ -447,6 +447,20 @@ public sealed class EngineApiClient
         return await SendJsonAsync<BookCacheAdminDto>(req, ct);
     }
 
+    public sealed class TimeoutStatsDto
+    {
+        public bool Ok { get; set; }
+        public int Days { get; set; }
+        public List<TimeoutBucketStatsDto> Stats { get; set; } = new();
+    }
+
+    /// <summary>Observed provider-call durations per Admin timeout bucket (last 30 days).</summary>
+    public async Task<TimeoutStatsDto?> GetAdminTimeoutStatsAsync(CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/admin/config/timeout-stats");
+        return await SendJsonAsync<TimeoutStatsDto>(req, ct);
+    }
+
     public async Task<RuntimeConfigDto?> GetAdminConfigAsync(CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/api/admin/config");

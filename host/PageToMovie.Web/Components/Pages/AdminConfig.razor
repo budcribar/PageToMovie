@@ -155,24 +155,29 @@
                         <div class="card-header">Network &amp; timeouts</div>
                         <div class="card-body">
                             <div class="form-text mb-2">
-                                HTTP request timeout ceilings (in seconds) for provider API clients.
+                                Per-request time limits (seconds) for provider API calls, applied immediately. Under each field: what recent successful calls actually took
+                                (green = comfortable, amber = limit is &gt;3× p99 and could be tighter, red = p99 already exceeds the limit).
                             </div>
                             <div class="row g-2">
                                 <div class="col-6">
                                     <label class="form-label">Image (sec)</label>
                                     <InputNumber class="form-control" @bind-Value="_imageTimeoutSeconds" min="10" max="3600" />
+                                    <div class="form-text @TimeoutEvidenceClassFor("Image", _imageTimeoutSeconds)" data-testid="timeout-evidence-image">@TimeoutEvidence("Image")</div>
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label">Video (sec)</label>
                                     <InputNumber class="form-control" @bind-Value="_videoTimeoutSeconds" min="30" max="7200" />
+                                    <div class="form-text @TimeoutEvidenceClassFor("Video", _videoTimeoutSeconds)" data-testid="timeout-evidence-video">@TimeoutEvidence("Video")</div>
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label">Chat / Script (sec)</label>
                                     <InputNumber class="form-control" @bind-Value="_chatTimeoutSeconds" min="30" max="7200" />
+                                    <div class="form-text @TimeoutEvidenceClassFor("Chat", _chatTimeoutSeconds)" data-testid="timeout-evidence-chat">@TimeoutEvidence("Chat")</div>
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label">Audio / Music (sec)</label>
                                     <InputNumber class="form-control" @bind-Value="_audioTimeoutSeconds" min="10" max="3600" />
+                                    <div class="form-text @TimeoutEvidenceClassFor("Audio", _audioTimeoutSeconds)" data-testid="timeout-evidence-audio">@TimeoutEvidence("Audio")</div>
                                 </div>
                             </div>
                         </div>

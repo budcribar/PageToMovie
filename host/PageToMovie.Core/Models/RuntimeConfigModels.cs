@@ -20,6 +20,19 @@ public sealed class RuntimeConfigDto
     public string? UpdatedBy { get; set; }
 }
 
+/// <summary>Observed provider-call durations per timeout bucket (successful calls, recent window) —
+/// so the Admin timeouts are set from data, not guessed.</summary>
+public sealed class TimeoutBucketStatsDto
+{
+    public string Bucket { get; set; } = "";
+    public int Count { get; set; }
+    public int P50Seconds { get; set; }
+    public int P95Seconds { get; set; }
+    public int P99Seconds { get; set; }
+    public int MaxSeconds { get; set; }
+    public int TimedOutCount { get; set; }
+}
+
 public sealed class TimeoutsRuntimeDto
 {
     public int ImageTimeoutSeconds { get; set; } = 300;
