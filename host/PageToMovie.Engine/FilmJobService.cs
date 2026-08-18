@@ -5472,16 +5472,18 @@ public sealed class FilmJobService
 
         var prevDur = prevClipInfo.Value.DurationSeconds ?? 5.0;
 
-        // Case 1: Predecessor has valid source_file_id and duration <= maxInputSeconds
-        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1)
-        {
-            return (null, prevClipInfo.Value.SourceFileId, null, prevDur);
-        }
-
-        // Case 2: Predecessor local MP4 exists and duration <= maxInputSeconds
+        // Case 1: Predecessor local standalone MP4 exists and duration <= maxInputSeconds.
+        // We prefer the local standalone file because predecessor's remote source_file_id may contain
+        // un-trimmed accumulated predecessor footage from earlier extends (e.g. [C01 + C02]).
         if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.LocalMp4Path) && File.Exists(prevClipInfo.Value.LocalMp4Path) && prevDur <= maxInputSeconds + 0.1)
         {
             return (prevClipInfo.Value.LocalMp4Path, null, null, prevDur);
+        }
+
+        // Case 2: Predecessor has valid source_file_id and duration <= maxInputSeconds (e.g. Clip 1 fresh anchor)
+        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1)
+        {
+            return (null, prevClipInfo.Value.SourceFileId, null, prevDur);
         }
 
         // Case 3 / 4: Duration > maxInputSeconds -> tail trimming required
