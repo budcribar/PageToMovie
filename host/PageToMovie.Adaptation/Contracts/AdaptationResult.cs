@@ -22,6 +22,7 @@ public sealed class AdaptationResult
     public required BookAnalysisResult Analysis { get; init; }
 
     public bool UsedHeuristicFallback { get; init; }
+    public string? HeuristicFallbackReason { get; init; }
     public string PromptContentSha256 { get; init; } = "";
     public AdaptationConvertManifest? ConvertManifest { get; init; }
     public string? Notes { get; init; }

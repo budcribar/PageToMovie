@@ -65,7 +65,7 @@
                     <span class="char-list-thumb @(hasVoice ? "char-list-thumb--voice" : "char-list-thumb--voice-missing")"
                           title="@(hasVoice ? "Voice" : "No voice profile")"
                           aria-hidden="true">
-                        <span class="char-list-thumb__icon">♪</span>
+                        <span class="char-list-thumb__icon"><i class="bi bi-music-note-beamed"></i></span>
                     </span>
                 }
                 else if (c.IsGroup && thumb is null)
@@ -73,7 +73,7 @@
                     <span class="char-list-thumb char-list-thumb--group"
                           title="Group / chorus (no single face required)"
                           aria-hidden="true">
-                        <span class="char-list-thumb__icon">👥</span>
+                        <span class="char-list-thumb__icon"><i class="bi bi-people-fill"></i></span>
                     </span>
                 }
                 else if (thumb is { Length: > 0 })

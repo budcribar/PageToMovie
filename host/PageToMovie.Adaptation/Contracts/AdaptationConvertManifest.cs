@@ -32,6 +32,7 @@ public sealed class AdaptationConvertManifest
     public int? TargetRuntimeMinutes { get; init; }
 
     public bool UsedHeuristicFallback { get; init; }
+    public string? HeuristicFallbackReason { get; init; }
 
     public string VisionMetaStatus { get; init; } = "";
     public string AdaptationReportStatus { get; init; } = "";

@@ -162,6 +162,7 @@ public sealed class AdaptationService
             : NaturalRuntime.MinMinutes);
 
         var usedHeuristic = false;
+        string? heuristicFallbackReason = null;
 
         var defaults = AdaptationPromptTokens.Default(promptMinutes, request.VisualMedium);
         var tokens = new AdaptationPromptTokens
@@ -203,7 +204,11 @@ public sealed class AdaptationService
                 request.Temperature,
                 request.ReasoningEffort),
             budgetOverride: budgetOverride,
-            onHeuristicFallback: _ => usedHeuristic = true,
+            onHeuristicFallback: reason =>
+            {
+                usedHeuristic = true;
+                heuristicFallbackReason = reason;
+            },
             onStructuralGateFailure: onStructuralGateFailure,
             bookSession: bookSession,
             fountainSession: fountainSession,
@@ -248,6 +253,7 @@ public sealed class AdaptationService
             NaturalRuntimeMinutes = runtime.NaturalMinutes,
             TargetRuntimeMinutes = promptMinutes,
             UsedHeuristicFallback = usedHeuristic,
+            HeuristicFallbackReason = heuristicFallbackReason,
             VisionMetaStatus = conversion.VisionMetaStatus.ToString(),
             AdaptationReportStatus = conversion.AdaptationReportStatus.ToString(),
             BookFileSessionId = bookSession?.FileId,
@@ -269,6 +275,7 @@ public sealed class AdaptationService
             Runtime = runtimeUsed,
             Analysis = analysis,
             UsedHeuristicFallback = usedHeuristic,
+            HeuristicFallbackReason = heuristicFallbackReason,
             PromptContentSha256 = promptSha,
             ConvertManifest = manifest,
             Notes = conversion.VisionMetaError,

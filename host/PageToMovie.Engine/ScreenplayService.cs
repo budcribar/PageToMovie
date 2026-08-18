@@ -1139,7 +1139,7 @@ public static string NormalizeText(string text)
             : new Progress<string>(onProgress);
 
         if (chat is null || !chat.IsConfigured)
-            return SaveHeuristicDraft(store, projectId, title, book, author);
+            return SaveHeuristicDraft(store, projectId, title, book, author, "Chat client unconfigured or missing provider API key");
 
         var bookSession = await TryCreateBookFileSessionAsync(
             bookFileSessionFactory, cache.BookIdentity, book, model, onProgress, ct)
@@ -1174,6 +1174,24 @@ public static string NormalizeText(string text)
             onStructuralGateFailure: onGate,
             bookSession: bookSession,
             fountainSession: fountainSession).ConfigureAwait(false);
+
+        if (result.UsedHeuristicFallback)
+        {
+            if (errorLogger is not null)
+            {
+                _ = errorLogger.LogAsync(new GenerationErrorRecord
+                {
+                    ProjectId = projectId,
+                    JobId = jobId,
+                    Stage = "stage1_adaptation",
+                    Model = model,
+                    ErrorType = "heuristic_fallback",
+                    ErrorMessage = result.HeuristicFallbackReason ?? "Stage‑1 screenplay used heuristic fallback",
+                    Resolved = false,
+                }, ct);
+            }
+            onProgress?.Invoke($"Stage‑1 fallback to basic draft: {result.HeuristicFallbackReason ?? "structural issue"}");
+        }
 
         var fountain = result.Fountain;
         var visionFromScript = ProjectVisionMeta.MapVision(result.VisionMeta);
@@ -1234,11 +1252,33 @@ public static string NormalizeText(string text)
     }
 
     private static SaveResult SaveHeuristicDraft(
-        ProjectStore store, string projectId, string title, string book, string? author)
+        ProjectStore store, string projectId, string title, string book, string? author, string? reason = null)
     {
         var hFountain = AdaptationService.FixDraftDate(AdaptationService.ConvertHeuristic(title, book, author));
         var hSave = SaveDraft(store, projectId, hFountain);
         if (!hSave.Ok) return hSave;
+        var projectDir = store.GetProjectDir(projectId);
+        try
+        {
+            var manifest = new AdaptationConvertManifest
+            {
+                CompletedUtc = DateTime.UtcNow.ToString("o"),
+                ModelId = "heuristic",
+                AdaptationVersion = AdaptationVersion.Current,
+                RuntimeMode = "unlimited",
+                UsedHeuristicFallback = true,
+                HeuristicFallbackReason = reason ?? "Chat client unconfigured or offline",
+                Title = title,
+                Author = author,
+                FountainChars = hFountain.Length,
+                SceneCountApprox = BookToFountainConverter.CountSceneHeadings(hFountain),
+            };
+            _ = ProjectStage1ConvertManifest.WriteAsync(projectDir, manifest);
+        }
+        catch
+        {
+            /* best-effort manifest */
+        }
         hSave.Message = "Screenplay draft ready — review and approve";
         return hSave;
     }
