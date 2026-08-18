@@ -5317,6 +5317,7 @@ public sealed class FilmJobService
         public bool ReseedFresh { get; set; }
         public string? ExtendSourcePath { get; init; }
         public string? CreatedTempTrimPath { get; init; }
+        public double? ExtendInputDurationSec { get; set; }
     }
 
     private async Task<ClipGenContext> CreateClipGenContextAsync(
@@ -5347,9 +5348,9 @@ public sealed class FilmJobService
         var model = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
         var modelEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
 
-        var (extendSourcePath, extendSourceFileId, tempTrimPath) = wantContinue
+        var (extendSourcePath, extendSourceFileId, tempTrimPath, extendInputDur) = wantContinue
             ? await ResolveExtendInputAsync(projectDir, scene, clip, modelEntry, ct).ConfigureAwait(false)
-            : (null, null, null);
+            : (null, null, null, null);
 
         var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
 
@@ -5376,6 +5377,7 @@ public sealed class FilmJobService
             ExtendSourceFileId = extendSourceFileId,
             ExtendSourcePath = extendSourcePath,
             CreatedTempTrimPath = tempTrimPath,
+            ExtendInputDurationSec = extendInputDur,
         };
     }
 
@@ -5442,7 +5444,7 @@ public sealed class FilmJobService
         }
     }
 
-    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath)>
+    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath, double? PredecessorDurationSec)>
         ResolveExtendInputAsync(
             string projectDir,
             int scene,
@@ -5451,39 +5453,42 @@ public sealed class FilmJobService
             CancellationToken ct)
     {
         if (clip <= 1 || !modelEntry.SupportsVideoContinue)
-            return (null, null, null);
+            return (null, null, null, null);
 
         // 1. Check if client already uploaded an explicit _extend_src_ file
         var explicitSrc = Path.Combine(
             projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
         if (File.Exists(explicitSrc) && new FileInfo(explicitSrc).Length >= 1024)
-            return (explicitSrc, null, null);
+        {
+            var explicitDur = await Mp4DurationReader.TryReadSecondsAsync(explicitSrc, ct).ConfigureAwait(false);
+            return (explicitSrc, null, null, explicitDur);
+        }
 
         // 2. Inspect predecessor clip take/sidecar
         var maxInputSeconds = modelEntry.MaxEditInputDurationSeconds ?? 8.7;
         var prevClipInfo = TryReadPredecessorClipDetails(projectDir, scene, clip - 1);
         if (prevClipInfo is null)
-            return (null, null, null);
+            return (null, null, null, null);
 
         var prevDur = prevClipInfo.Value.DurationSeconds ?? 5.0;
 
         // Case 1: Predecessor has valid source_file_id and duration <= maxInputSeconds
         if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1)
         {
-            return (null, prevClipInfo.Value.SourceFileId, null);
+            return (null, prevClipInfo.Value.SourceFileId, null, prevDur);
         }
 
         // Case 2: Predecessor local MP4 exists and duration <= maxInputSeconds
         if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.LocalMp4Path) && File.Exists(prevClipInfo.Value.LocalMp4Path) && prevDur <= maxInputSeconds + 0.1)
         {
-            return (prevClipInfo.Value.LocalMp4Path, null, null);
+            return (prevClipInfo.Value.LocalMp4Path, null, null, prevDur);
         }
 
         // Case 3 / 4: Duration > maxInputSeconds -> tail trimming required
         return await TrimPredecessorForExtendAsync(projectDir, scene, clip, prevClipInfo.Value, maxInputSeconds, ct).ConfigureAwait(false);
     }
 
-    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath)>
+    private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath, double? PredecessorDurationSec)>
         TrimPredecessorForExtendAsync(
             string projectDir,
             int scene,
@@ -5507,7 +5512,7 @@ public sealed class FilmJobService
             {
                 _log.LogWarning(ex, "Failed to download predecessor video from source_url for tail trimming: {Url}", prevClipInfo.SourceUrl);
                 TryDeleteExtendInputTemp(downloadedTempFile);
-                return (null, null, null);
+                return (null, null, null, null);
             }
         }
 
@@ -5518,12 +5523,12 @@ public sealed class FilmJobService
             if (NativeFfmpeg.TryTrimTail(sourceVideoToTrim, trimmedDest, keepSeconds))
             {
                 TryDeleteExtendInputTemp(downloadedTempFile);
-                return (trimmedDest, null, trimmedDest);
+                return (trimmedDest, null, trimmedDest, keepSeconds);
             }
             TryDeleteExtendInputTemp(downloadedTempFile);
         }
 
-        return (null, null, null);
+        return (null, null, null, null);
     }
 
     private static string? ResolvePreviousClipVisual(
@@ -5664,6 +5669,7 @@ public sealed class FilmJobService
             "fresh gen with locked refs (not video-extend)");
         ctx.PrevVideoPath = null; // API: attach refs
         ctx.ExtendSourceFileId = null;
+        ctx.ExtendInputDurationSec = null;
         // Keep prevVisual for continuity prose only
     }
 
@@ -5679,6 +5685,7 @@ public sealed class FilmJobService
         ctx.ReseedFresh = true;
         ctx.PrevVideoPath = null;
         ctx.ExtendSourceFileId = null;
+        ctx.ExtendInputDurationSec = null;
         await AppendLogAsync(
             $"  [Speech] S{ctx.Scene:D2}C{ctx.Clip:D2} is first spoken after silence — " +
             "fresh gen with locked refs (not video-extend) so the opening word is not clipped");
@@ -5893,6 +5900,12 @@ public sealed class FilmJobService
             if (bytesLength > 0)
             {
                 await AppendLogAsync($"  [Media] Saved {bytesLength} bytes to {Path.GetFileName(mp4Path)}");
+
+                if (ctx.ExtendInputDurationSec is { } predDur && predDur > 0.1 && (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null))
+                {
+                    await TryTrimPredecessorFromDownloadedClipAsync(ctx, mp4Path, predDur).ConfigureAwait(false);
+                }
+
                 overrunSec = await RecordDownloadedClipTelemetryAsync(
                     ctx, built, mp4Path, duration, supportsContinue).ConfigureAwait(false);
             }
@@ -5902,6 +5915,36 @@ public sealed class FilmJobService
             _log.LogWarning(ex, "Could not save MP4 bytes to server project directory for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
         }
         return overrunSec;
+    }
+
+    private async Task TryTrimPredecessorFromDownloadedClipAsync(ClipGenContext ctx, string mp4Path, double predDur)
+    {
+        try
+        {
+            var totalDur = await Mp4DurationReader.TryReadSecondsAsync(mp4Path, ctx.Ct).ConfigureAwait(false);
+            if (totalDur is not { } td || td <= predDur + 0.2)
+                return;
+
+            var dir = Path.GetDirectoryName(mp4Path) ?? "";
+            var tempOut = Path.Combine(dir, $"_trim_{Path.GetFileName(mp4Path)}");
+            if (NativeFfmpeg.TryTrimHead(mp4Path, tempOut, predDur))
+            {
+                File.Move(tempOut, mp4Path, overwrite: true);
+                var newBytes = new FileInfo(mp4Path).Length;
+                await AppendLogAsync($"  [Extend] Trimmed {predDur:F2}s predecessor lead-in → {td - predDur:F2}s standalone delta ({newBytes} bytes)");
+            }
+            else
+            {
+                if (File.Exists(tempOut))
+                {
+                    try { File.Delete(tempOut); } catch { /* ignore */ }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not trim predecessor lead-in from extended clip S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
+        }
     }
 
     private async Task<double> RecordDownloadedClipTelemetryAsync(
