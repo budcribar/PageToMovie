@@ -220,7 +220,7 @@ public sealed class GrokImageClient : IImageClient
 
     private static List<string> SelectUsableReferencePaths(IReadOnlyList<string> referenceImagePaths, int identityCap) =>
         referenceImagePaths
-            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .Where(MediaDataUri.IsExistingMediaPath)
             .Take(identityCap)
             .ToList();
 

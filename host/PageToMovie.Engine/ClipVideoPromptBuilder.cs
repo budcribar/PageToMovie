@@ -303,6 +303,12 @@ public static class ClipVideoPromptBuilder
                 orderedPaths.Add(locPath);
                 locationImageTag = $"<IMAGE_{n}>";
                 locationRefAttached = true;
+                imageTagByKey[locationKey] = locationImageTag;
+                if (locationKey.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
+                {
+                    var bare = locationKey["Loc_".Length..];
+                    imageTagByKey[bare] = locationImageTag;
+                }
             }
         }
 

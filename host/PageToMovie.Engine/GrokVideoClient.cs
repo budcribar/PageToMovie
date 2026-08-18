@@ -119,7 +119,7 @@ public sealed class GrokVideoClient : IVideoClient
     }
 
     private static bool IsExistingMediaPath(string? p) =>
-        !string.IsNullOrWhiteSpace(p) && File.Exists(p);
+        MediaDataUri.IsExistingMediaPath(p);
 
     private async Task<SubmitSetup> BuildSubmitSetupAsync(
         int durationSeconds,

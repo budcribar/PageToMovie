@@ -1240,4 +1240,68 @@ public class ClipVideoPromptBuilderTests
 
         Assert.Equal(ClipVideoPromptBuilder.ModeVideoExtend, built.Mode);
     }
+
+    [Fact]
+    public void MediaDataUri_IsExistingMediaPath_Recognizes_ClientMarkers_And_Variants()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-media-data-uri-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var refPath = Path.Combine(dir, "loc_country_lane_ref.png");
+            var clientMarker = refPath + ProjectStore.ClientMarkerExtension;
+            var variantPath = Path.Combine(dir, "loc_country_lane_variant_01.png");
+
+            Assert.False(MediaDataUri.IsExistingMediaPath(refPath));
+
+            // 1. Client marker enables IsExistingMediaPath
+            File.WriteAllText(clientMarker, "{\"storage\":\"client\"}");
+            Assert.True(MediaDataUri.IsExistingMediaPath(refPath));
+
+            // 2. Variant resolution when ref is missing
+            File.WriteAllBytes(variantPath, Enumerable.Repeat((byte)7, 128).ToArray());
+            var resolved = MediaDataUri.ResolveExistingMediaPath(refPath);
+            Assert.NotNull(resolved);
+            Assert.Equal(variantPath, resolved);
+
+            // 3. Direct ref file resolution when present
+            File.WriteAllBytes(refPath, Enumerable.Repeat((byte)8, 128).ToArray());
+            resolved = MediaDataUri.ResolveExistingMediaPath(refPath);
+            Assert.NotNull(resolved);
+            Assert.Equal(refPath, resolved);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Build_Tags_LocationKey_In_ActionText_When_LocationPlate_Attached()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-loc-tag-" + Guid.NewGuid().ToString("N"));
+        var locDir = Path.Combine(dir, "assets", "locations");
+        Directory.CreateDirectory(locDir);
+        File.WriteAllBytes(Path.Combine(locDir, "loc_country_lane_ref.png"), Enumerable.Repeat((byte)1, 128).ToArray());
+
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "Walking along Loc_Country_Lane into the distance.",
+              "characters_on_screen": [],
+              "location_id": "Loc_Country_Lane",
+              "audio_payload": { "dialogue": "" }
+            }
+            """).RootElement;
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, dir, new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(), maxRefs: 3);
+
+        Assert.True(built.LocationRefAttached);
+        Assert.Equal("<IMAGE_1>", built.LocationImageTag);
+        Assert.Contains("Loc_Country_Lane <IMAGE_1>", built.Prompt);
+
+        try { Directory.Delete(dir, true); } catch { }
+    }
 }
+

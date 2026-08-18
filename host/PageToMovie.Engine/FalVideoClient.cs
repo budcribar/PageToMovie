@@ -113,10 +113,10 @@ public sealed class FalVideoClient : IVideoClient
 
     private static string? ResolveInitImagePath(string? startFrameImagePath, IReadOnlyList<string>? referenceImagePaths)
     {
-        if (!string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath))
-            return startFrameImagePath;
-        if (referenceImagePaths is { Count: > 0 } && File.Exists(referenceImagePaths[0]))
-            return referenceImagePaths[0];
+        if (MediaDataUri.IsExistingMediaPath(startFrameImagePath))
+            return MediaDataUri.ResolveExistingMediaPath(startFrameImagePath);
+        if (referenceImagePaths is { Count: > 0 } && MediaDataUri.IsExistingMediaPath(referenceImagePaths[0]))
+            return MediaDataUri.ResolveExistingMediaPath(referenceImagePaths[0]);
         return null;
     }
 
