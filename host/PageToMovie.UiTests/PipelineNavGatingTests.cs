@@ -60,11 +60,10 @@ public class PipelineNavGatingTests
             await Assertions.Expect(page.GetByTestId("cast-index")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 90_000 });
             Assert.True(await page.GetByTestId("char-list-item").CountAsync() >= 1, "expected at least one cast member");
-            // Since the 7-step spine (ActiveProjectState: CanScenes = CanReview = screenplayReady) Film and
-            // Review open on screenplay approval; the shot plan is built from Film. (Review checklist #4
-            // tracks whether stale-shot-plan / cast-not-ready should re-gate these.)
+            // Film opens on approval — the shot plan is built FROM Film in the Manual workflow — but
+            // Review needs a current shot plan to review, so it stays gated until one exists.
             await AssertNavOpenAsync(page, "nav-scenes");
-            await AssertNavOpenAsync(page, "nav-review");
+            await AssertNavBlockedAsync(page, "nav-review", "Build the shot plan first");
 
             // ── 3. Shot plan via the real "Build" button on the Shots page (SignalR job flow).
             //      Building the plan doesn't need locked looks (that gate is video generation). ──
@@ -83,6 +82,7 @@ public class PipelineNavGatingTests
             await Assertions.Expect(page.GetByTestId("nav-scenes")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("nav-review")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await AssertNavOpenAsync(page, "nav-scenes");
+            await AssertNavOpenAsync(page, "nav-review");
 
             // ── 4. Scenes page shows the plan (via the step link, not a deep link). ──
             await page.GetByTestId("shots-to-scenes").ClickAsync();

@@ -88,6 +88,8 @@ public class ActiveProjectStateReadinessTests
         Assert.Equal("grok-4", state.Status.PlanningModel);
         Assert.True(state.CanCharacters);
         Assert.True(state.CanScenes);
+        Assert.True(state.CanReview);
+        Assert.Null(state.ScenesWarning);
         Assert.True(state.CanEstimate);
         Assert.Equal("", state.ScenesBlockedReason);
     }
@@ -167,6 +169,56 @@ public class ActiveProjectStateReadinessTests
         Assert.NotNull(state.Status);
         Assert.True(state.CanCharacters);              // screenplay approved
         Assert.True(state.CanScenes);                   // screenplay approved, shot plan builds in Film
+        // A stale plan (Ready=false here) is not "ready" — Review has nothing current to review.
+        Assert.False(state.CanReview);
+        Assert.Equal("Build the shot plan first", state.ReviewBlockedReason);
+    }
+
+    [Fact]
+    public async Task Ready_but_stale_plan_gates_review_and_warns_on_film()
+    {
+        const string json = """
+            {
+              "ok": true,
+              "projectId": "Demo",
+              "adaptation": {
+                "xaiConfigured": true,
+                "screenplay": { "readyForShots": true, "signed": true },
+                "stage2": { "stage2Ready": true, "stage2Clips": 4, "stage2Stale": true },
+                "cast": { "readyForShots": true }
+              }
+            }
+            """;
+
+        var state = await LoadReadiness(json);
+
+        Assert.True(state.CanScenes);                   // Film stays reachable: the fix (rebuild) lives there
+        Assert.Contains("update the shot plan", state.ScenesWarning, StringComparison.OrdinalIgnoreCase);
+        Assert.False(state.CanReview);
+        Assert.Equal("Update the shot plan first", state.ReviewBlockedReason);
+    }
+
+    [Fact]
+    public async Task Cast_not_ready_warns_on_film_but_does_not_block_it()
+    {
+        const string json = """
+            {
+              "ok": true,
+              "projectId": "Demo",
+              "adaptation": {
+                "xaiConfigured": true,
+                "screenplay": { "readyForShots": true, "signed": true },
+                "stage2": { "stage2Ready": true, "stage2Clips": 4, "stage2Stale": false },
+                "cast": { "readyForShots": false }
+              }
+            }
+            """;
+
+        var state = await LoadReadiness(json);
+
+        Assert.True(state.CanScenes);
+        Assert.Contains("Lock every character", state.ScenesWarning);
+        Assert.True(state.CanReview);                   // plan is current; Review is about clips, not cast
     }
 
     [Fact]

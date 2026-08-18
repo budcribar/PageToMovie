@@ -79,9 +79,16 @@
             </div>
 
             <div class="nav-item px-3">
-                <NavLink class="@(ActiveProject.CanScenes ? "nav-link" : "nav-link disabled")" href="/scenes" title='@(ActiveProject.CanScenes ? "Scenes & film" : ActiveProject.ScenesBlockedReason)' data-testid="nav-scenes">
+                <NavLink class="@(ActiveProject.CanScenes ? "nav-link" : "nav-link disabled")" href="/scenes"
+                         title='@(!ActiveProject.CanScenes ? ActiveProject.ScenesBlockedReason : (ActiveProject.ScenesWarning ?? "Scenes & film"))'
+                         data-testid="nav-scenes" data-warning="@(ActiveProject.ScenesWarning is not null ? "true" : "false")">
                     <span class="bi bi-film-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Film"]</span> }
+                    @if (ActiveProject.CanScenes && ActiveProject.ScenesWarning is not null)
+                    {
+                        @* Film is reachable (the shot plan is built there) but needs attention: stale plan / cast unlocked. *@
+                        <span class="badge rounded-pill bg-warning text-dark ms-1" style="font-size:0.6rem;" data-testid="nav-scenes-warning" aria-label="@ActiveProject.ScenesWarning">!</span>
+                    }
                 </NavLink>
             </div>
 

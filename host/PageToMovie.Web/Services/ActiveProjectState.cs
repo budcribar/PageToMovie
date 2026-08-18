@@ -32,6 +32,8 @@ public sealed class ActiveProjectState
     private const string ShotPlanBlockedReason = "Finish the shot plan first";
     public string ScenesBlockedReason { get; private set; } = ShotPlanBlockedReason;
     public string ReviewBlockedReason { get; private set; } = ShotPlanBlockedReason;
+    /// <summary>Film is reachable but something needs attention there (stale shot plan, cast not locked).</summary>
+    public string? ScenesWarning { get; private set; }
     public string EstimateBlockedReason { get; private set; } = "Finish importing the book and approve the screenplay first";
 
     public event Action? Changed;
@@ -224,17 +226,57 @@ public sealed class ActiveProjectState
     private void ApplyReadinessFromJson(JsonElement root)
     {
         var screenplayReady = ReadScreenplayReady(root);
+        var (shotsReady, stage2Stale) = ReadStage2(root);
+        var castReady = ReadCastReady(root);
 
         CanCharacters = screenplayReady;
         CharactersBlockedReason = screenplayReady ? "" : ScreenplayNotApprovedReason;
+        // Film opens on approval: in the Manual workflow the shot plan is built FROM Film, so gating
+        // it on the plan would lock the user out of the page that builds it. Stale plan / cast not
+        // ready are surfaced as a warning on the step (ScenesWarning), not a block.
         CanScenes = screenplayReady;
-        CanReview = screenplayReady;
+        ScenesBlockedReason = screenplayReady ? "" : ScreenplayNotApprovedReason;
+        ScenesWarning = ScenesWarningFor(screenplayReady, shotsReady, stage2Stale, castReady);
+        // Review needs something to review: a current (non-stale) shot plan.
+        CanReview = screenplayReady && shotsReady && !stage2Stale;
+        ReviewBlockedReason = !screenplayReady ? ScreenplayNotApprovedReason
+            : !shotsReady ? "Build the shot plan first"
+            : stage2Stale ? "Update the shot plan first"
+            : "";
         CanEstimate = screenplayReady;
         EstimateBlockedReason = screenplayReady
             ? ""
             : "Finish importing the book and approve the screenplay first";
-        ScenesBlockedReason = screenplayReady ? "" : ScreenplayNotApprovedReason;
-        ReviewBlockedReason = ScenesBlockedReason;
+    }
+
+    private static (bool ShotsReady, bool Stage2Stale) ReadStage2(JsonElement root)
+    {
+        var shotsReady = false;
+        var stage2Stale = false;
+        if (TryGetCamelOrPascal(root, "stage2", "Stage2", out var s2))
+        {
+            shotsReady = PropBool(s2, "stage2Ready", "Stage2Ready")
+                && PropInt(s2, "stage2Clips", "Stage2Clips") > 0;
+            stage2Stale = PropBool(s2, "stage2Stale", "Stage2Stale");
+        }
+        return (shotsReady, stage2Stale);
+    }
+
+    private static bool ReadCastReady(JsonElement root)
+    {
+        var castReady = true;
+        if (TryGetCamelOrPascal(root, "cast", "Cast", out var ca))
+            castReady = PropBool(ca, "readyForShots", "ReadyForShots");
+        return castReady;
+    }
+
+    /// <summary>Non-blocking heads-up shown on the Film step (null when nothing to warn about).</summary>
+    internal static string? ScenesWarningFor(bool screenplayReady, bool shotsReady, bool stage2Stale, bool castReady)
+    {
+        if (!screenplayReady) return null;
+        if (shotsReady && stage2Stale) return "Screenplay changed — update the shot plan before making video";
+        if (shotsReady && !castReady) return "Lock every character look + voice before generating video";
+        return null;
     }
 
     private static bool ReadScreenplayReady(JsonElement root)
@@ -288,6 +330,7 @@ public sealed class ActiveProjectState
         CharactersBlockedReason = ScreenplayNotApprovedReason;
         ScenesBlockedReason = ShotPlanBlockedReason;
         ReviewBlockedReason = ShotPlanBlockedReason;
+        ScenesWarning = null;
         EstimateBlockedReason = "Finish importing the book and approve the screenplay first";
     }
 }
