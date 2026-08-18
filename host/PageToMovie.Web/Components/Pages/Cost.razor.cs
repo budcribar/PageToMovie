@@ -71,9 +71,9 @@ public partial class Cost : IAsyncDisposable
     internal string PrePruneUndoTitle =>
         _prePruneCheckpointLabel ?? "Restore the screenplay from just before prune";
 
-    [Inject] private IJSRuntime Js { get; set; } = null;
-    [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null;
-    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null;
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
+    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;
 
     protected override async Task OnParametersSetAsync()
     {

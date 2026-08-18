@@ -36,7 +36,7 @@ public partial class ScenesSceneList : PageSliceComponent
     {
         get
         {
-            if (Playback.CanPlaySelected)
+            if (Playback?.CanPlaySelected == true)
                 return "Stitch selected scenes in the browser (composites or clips)";
             if (Host.List._selected.Count == 0)
                 return "Select one or more scenes first";
@@ -48,7 +48,7 @@ public partial class ScenesSceneList : PageSliceComponent
     {
         get
         {
-            if (Dialogue.SelectedScenesHaveClipsToVerify)
+            if (Dialogue?.SelectedScenesHaveClipsToVerify == true)
                 return "Check the spoken words in each finished clip against the screenplay";
             if (Host.List._selected.Count == 0)
                 return "Select one or more scenes with finished clips first";

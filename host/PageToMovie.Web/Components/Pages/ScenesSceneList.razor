@@ -138,7 +138,7 @@
                                 Generate @Host.List.GenerateBatchNoun
                                 @if (Host.List._selected.Count > 0)
                                 {
-                                    <span class="batch-go__meta">· ~@ClipSel.EstimateSelectedClips() clips</span>
+                                    <span class="batch-go__meta">· ~@(ClipSel?.EstimateSelectedClips() ?? 0) clips</span>
                                 }
                             </span>
                         }
@@ -170,9 +170,9 @@
                     <button type="button"
                             data-testid="scenes-play-selected"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Playback._clientStitching || !Playback.CanPlaySelected)"
+                            disabled="@(Host._busy || (Playback?._clientStitching == true) || !(Playback?.CanPlaySelected == true))"
                             title="@PlaySelectedTitle"
-                            @onclick="Playback.PlaySelectedAsync">
+                            @onclick="() => Playback?.PlaySelectedAsync() ?? Task.CompletedTask">
                         ▶ @L["ScenesPage.PlaySelected"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
@@ -181,9 +181,9 @@
                                              TestId="scenes-verify-dialogue-cap">
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Host.Gen.JobRunning || Dialogue._verifyingClip || !Dialogue.SelectedScenesHaveClipsToVerify)"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || (Dialogue?._verifyingClip == true) || !(Dialogue?.SelectedScenesHaveClipsToVerify == true))"
                             title="@VerifyDialogueTitle"
-                            @onclick="Dialogue.VerifySelectedScenesDialogueAsync">
+                            @onclick="() => Dialogue?.VerifySelectedScenesDialogueAsync() ?? Task.CompletedTask">
                         🔍 @L["ScenesPage.VerifySceneDialogue"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     </CapabilityLockedControl>
@@ -301,7 +301,7 @@
                                         class="btn btn-sm btn-link text-secondary p-0 ms-1 text-decoration-none"
                                         title="View changes & history for scene S@(sn.ToString("D2"))"
                                         @onclick:stopPropagation="true"
-                                        @onclick="() => History.OpenSceneHistoryAsync(sn)">
+                                        @onclick="() => History?.OpenSceneHistoryAsync(sn) ?? Task.CompletedTask">
                                     📜
                                 </button>
                                 @if (s.LockedByOther)
@@ -361,9 +361,9 @@
                                 <button type="button"
                                         class="btn btn-sm btn-warning text-black fw-bold py-0 px-2"
                                         data-testid="scene-row-score-music"
-                                        disabled="@(Host._busy || Host.Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
+                                        disabled="@(Host._busy || Host.Gen.JobRunning || (Music?._scoringMusic == true) || !Caps.MusicReady || s.LockedByOther)"
                                         title="@(Caps.MusicReady ? "Score background music for this scene" : StudioCapabilityState.MusicBlockedReason)"
-                                        @onclick="() => Music.OpenScoreMenu(sn)">
+                                        @onclick="() => Music?.OpenScoreMenu(sn)">
                                     🎵 Score
                                 </button>
                                 @if (s.HasBackgroundMusic)
@@ -371,7 +371,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-link text-info p-0 ms-1 text-decoration-none"
                                             title="View & compare past audio takes for this scene"
-                                            @onclick="() => Music.OpenMusicCompareAsync(sn)">
+                                            @onclick="() => Music?.OpenMusicCompareAsync(sn) ?? Task.CompletedTask">
                                         🎧
                                     </button>
                                 }

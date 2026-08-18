@@ -4,14 +4,14 @@
      data-testid="@TestId">
     <button type="button"
             class="btn btn-sm @(_listening ? "btn-danger" : "btn-outline-secondary") py-0 px-2 voice-dictation-btn"
-            title="@(_listening ? L["VoiceDictation.Stop"] : Title)"
+            title="@(_listening ? (L?["VoiceDictation.Stop"] ?? "Stop") : Title)"
             disabled="@(!Supported || Disabled)"
             data-testid="@(TestId)-btn"
             aria-expanded="@(_popoverOpen ? "true" : "false")"
             @onclick="ToggleAsync">
         @if (_listening)
         {
-            <span aria-hidden="true">●</span><span> @L["VoiceDictation.Stop"]</span>
+            <span aria-hidden="true">●</span><span> @(L?["VoiceDictation.Stop"] ?? "Stop")</span>
         }
         else
         {
@@ -32,13 +32,13 @@
              @onclick:stopPropagation="true">
             <div class="voice-dictation-popover__head">
                 <span class="voice-dictation-popover__status @(_listening ? "is-live" : "")">
-                    @(_listening ? L["VoiceDictation.Listening"] : L["VoiceDictation.EditBeforeGenerate"])
+                    @(_listening ? (L?["VoiceDictation.Listening"] ?? "Listening…") : (L?["VoiceDictation.EditBeforeGenerate"] ?? "Edit before you generate"))
                 </span>
                 <button type="button"
                         class="btn btn-link btn-sm text-muted p-0"
                         @onclick="CancelAsync"
                         data-testid="@(TestId)-close">
-                    @L["Common.Cancel"]
+                    @(L?["Common.Cancel"] ?? "Cancel")
                 </button>
             </div>
 
@@ -51,17 +51,17 @@
                 }
             </div>
 
-            <label class="form-label small mb-1">@L["VoiceDictation.Tweak"]</label>
+            <label class="form-label small mb-1">@(L?["VoiceDictation.Tweak"] ?? "Tweak")</label>
             <textarea class="form-control form-control-sm mb-2"
                       rows="3"
                       disabled="@Disabled"
                       value="@_draft"
                       @oninput="OnDraftInput"
-                      placeholder="@L["VoiceDictation.Placeholder"]"
+                      placeholder="@(L?["VoiceDictation.Placeholder"] ?? "Speak, pick a hint, or type…")"
                       data-testid="@(TestId)-draft"></textarea>
 
             <div class="voice-dictation-tips">
-                <div class="voice-dictation-tips__label">@L["VoiceDictation.TrySaying"]</div>
+                <div class="voice-dictation-tips__label">@(L?["VoiceDictation.TrySaying"] ?? "Try saying")</div>
                 <div class="voice-dictation-tips__chips">
                     @foreach (var tip in Suggestions ?? Array.Empty<string>())
                     {
@@ -81,14 +81,14 @@
                 <button type="button"
                         class="btn btn-sm btn-outline-secondary"
                         @onclick="CancelAsync">
-                    @L["Common.Cancel"]
+                    @(L?["Common.Cancel"] ?? "Cancel")
                 </button>
                 <button type="button"
                         class="btn btn-sm btn-primary"
                         disabled="@(Disabled || string.IsNullOrWhiteSpace(_draft))"
                         @onclick="UseDraftAsync"
                         data-testid="@(TestId)-use">
-                    @L["VoiceDictation.UseThis"]
+                    @(L?["VoiceDictation.UseThis"] ?? "Use this")
                 </button>
             </div>
         </div>
