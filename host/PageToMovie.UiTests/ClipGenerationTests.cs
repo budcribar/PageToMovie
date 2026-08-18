@@ -44,24 +44,32 @@ public class ClipGenerationTests
             await Assertions.Expect(page.GetByTestId("scenes-play-selected")).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             // Verify generated project files on disk
-            var projectDir = Path.Combine(_fx.WorkspaceRootPath, projectName);
-            var videoDir = Path.Combine(projectDir, "assets", "video");
+            // Projects are namespaced (projects/{owner}/{slug}); find the folder by slug.
+            var projectsRoot = Path.Combine(_fx.WorkspaceRootPath, "projects");
+            var projectDir = Directory.Exists(projectsRoot)
+                ? Directory.GetDirectories(projectsRoot, projectName, SearchOption.AllDirectories).FirstOrDefault()
+                : null;
+            Assert.False(projectDir is null, $"Project folder '{projectName}' not found under {projectsRoot}");
+            var videoDir = Path.Combine(projectDir!, "assets", "video");
             Assert.True(Directory.Exists(videoDir), $"Expected video directory at {videoDir}");
 
-            // Verify .clip.json sidecar files were created for each generated clip
-            for (var c = 1; c <= clips; c++)
+            // Verify .clip.json sidecar files were created for every generated clip: one per clip across
+            // ALL scenes ("data-clip-count" is the whole plan, not scene 1), each naming its scene/clip.
+            var sidecarFiles = Directory.GetFiles(videoDir, "scene_*_clip_*.clip.json");
+            // The end-credits card renders client-side (canvas → ffmpeg.wasm), so it has no server sidecar.
+            Assert.True(sidecarFiles.Length >= clips - 1, $"Expected at least {clips - 1} sidecar manifests (all clips but the client-rendered credits), found {sidecarFiles.Length}");
+            var seen = new HashSet<(int Scene, int Clip)>();
+            foreach (var f in sidecarFiles)
             {
-                var sidecarPattern = $"scene_01_clip_{c:D2}*.clip.json";
-                var sidecarFiles = Directory.GetFiles(videoDir, sidecarPattern);
-                Assert.True(sidecarFiles.Length > 0, $"Expected sidecar manifest for scene 01 clip {c}");
-
-                var sidecarText = await File.ReadAllTextAsync(sidecarFiles[0]);
-                using var sidecarDoc = System.Text.Json.JsonDocument.Parse(sidecarText);
+                using var sidecarDoc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(f));
                 var root = sidecarDoc.RootElement;
-                Assert.Equal(1, root.GetProperty("scene").GetInt32());
-                Assert.Equal(c, root.GetProperty("clip").GetInt32());
-                Assert.True(root.TryGetProperty("duration_seconds", out var dur) && dur.GetDouble() > 0);
+                var sc = root.GetProperty("scene").GetInt32();
+                var cl = root.GetProperty("clip").GetInt32();
+                Assert.True(sc >= 1 && cl >= 1, $"sidecar {Path.GetFileName(f)} has scene {sc} / clip {cl}");
+                Assert.True(root.TryGetProperty("duration_seconds", out var dur) && dur.GetDouble() > 0, $"sidecar {Path.GetFileName(f)} has no duration");
+                seen.Add((sc, cl));
             }
+            Assert.Contains((1, 1), seen);
         }
         finally { await ctx.CloseAsync(); }
     }

@@ -1,5 +1,6 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Scenes — Scene index (sidebar) *@
+@* Page-local to Scenes — the one Scene Index (sidebar): states, selection toolbar, scene list.
+   This is the only overview of the shot plan (the flat all-scenes table was retired 2026-08-18). *@
 @inject StudioCapabilityState Caps
 @inject AdminSessionService Session
 @inject IAppLocalizer L
@@ -15,9 +16,77 @@
     var totalCount = list._scenes?.Count ?? 0;
     var completeCount = list._scenes?.Count(s => s.ClipsComplete) ?? 0;
     var missingCount = totalCount - completeCount;
+    var selCount = list._selected.Count;
+    var canGenerate = (Host.IsSimpleFilm || (selCount > 0 && list.CastReady)) && !Host.Gen.JobRunning;
+    var genDisabled = Host._busy || Host.Gen.JobRunning || list.SelectedLockedByOther
+                      || (!Host.IsSimpleFilm && (selCount == 0 || !list.CastReady));
 }
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="scene-index">
+@if (list._scenes is null)
+{
+    @* ---- Loading / failed / no shot plan yet ---- *@
+    @if (!string.IsNullOrWhiteSpace(Host._error))
+    {
+        <EmptyState Message="@($"Could not load scenes: {Host._error}")"
+                    ActionHref="scenes"
+                    ActionLabel="Retry"
+                    CssClass="text-muted" />
+    }
+    else if (Host._busy)
+    {
+        <EmptyState Message="Loading scenes…" CssClass="text-muted" />
+    }
+    else if (VoiceSubstitutionOverlayGate.IsMissingSceneList(list._scenes))
+    {
+        <EmptyState Message="No scene list yet. Rebuild the shot plan from the screenplay, then return here."
+                    ActionHref="adaptation/shots"
+                    ActionLabel="Open shot plan →"
+                    CssClass="text-muted" />
+    }
+}
+else if (list._scenes.Count == 0)
+{
+    @if (Host.Gen.JobRunning && Host.Gen._job is not null)
+    {
+        <div class="my-3">
+            <JobProgressCard Status="@Host.Gen._job.Status"
+                             Message="@Scenes.ScenesGeneration.LiveGenStatusLabel(Host.Gen._job)"
+                             Index="Host.Gen._job.Index"
+                             Total="Host.Gen._job.Total"
+                             Percent="Host.Gen.LiveGenProgressPercent(Host.Gen._job)"
+                             TestId="scenes-live-progress"
+                             CssClass="border-primary shadow-sm" />
+        </div>
+    }
+    else if (Host._busy)
+    {
+        <div class="card p-4 text-center my-3 bg-dark bg-opacity-25 border-secondary border-opacity-25" data-testid="scenes-empty-shotplan">
+            <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+            <h5 class="fw-semibold mb-1">Building shot plan…</h5>
+            <p class="text-muted small mb-0">Converting your approved screenplay into scenes and clips.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card p-4 text-center my-3 bg-dark bg-opacity-25 border-secondary border-opacity-25" data-testid="scenes-empty-shotplan">
+            <h5 class="fw-semibold mb-1">No shot plan yet</h5>
+            <p class="text-muted small mb-3">Build the shot plan to convert your approved screenplay into scenes and clips.</p>
+            <div>
+                <button type="button"
+                        class="btn btn-primary fw-semibold"
+                        disabled="@Host._busy"
+                        @onclick="list.RebuildShotPlanAsync"
+                        data-testid="scenes-build-shotplan-btn">
+                    Build shot plan
+                </button>
+            </div>
+        </div>
+    }
+}
+else
+{
+    @* ---- Summary line ---- *@
     <div class="small text-muted mb-2 px-1 d-flex flex-wrap align-items-center justify-content-between gap-1" data-testid="scene-index-summary">
         <div class="d-flex align-items-center gap-1">
             <span>@totalCount @(totalCount == 1 ? "scene" : "scenes")</span>
@@ -63,19 +132,20 @@
         </div>
     </div>
 
+    @* ---- Selection + actions ---- *@
     <div class="card mb-2 p-2 bg-dark bg-opacity-25 border-secondary border-opacity-50">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-1">
             <div class="form-check form-check-inline mb-0 small">
                 <input class="form-check-input" type="checkbox" id="masterSceneCheck"
-                       data-testid="scene-index-select-all"
+                       data-testid="scenes-select-all"
                        checked="@list.AreAllVisibleSelected()"
                        disabled="@(Host._busy || scenes.Count == 0)"
                        @onchange="e => list.ToggleSelectAllShown((bool)(e.Value ?? false))" />
                 <label class="form-check-label text-muted" for="masterSceneCheck" style="cursor:pointer;">
-                    @(list._selected.Count > 0 ? $"{list._selected.Count} selected" : L["ScenesPage.SelectAll"])
+                    @(selCount > 0 ? $"{selCount} selected" : L["ScenesPage.SelectAll"])
                 </label>
             </div>
-            @if (list._selected.Count > 0)
+            @if (selCount > 0)
             {
                 <button type="button" class="btn btn-link btn-sm py-0 px-1 text-muted text-decoration-none small"
                         data-testid="scene-index-clear-selection"
@@ -103,25 +173,66 @@
                 </div>
             }
         </div>
-        @if (list._selected.Count > 0)
-        {
-            <div class="d-flex align-items-center gap-1 mb-2">
-                <button type="button" class="btn btn-sm btn-outline-success py-1 px-2 flex-grow-1 text-nowrap" style="font-size:0.75rem;"
-                        data-testid="scene-index-play-selected"
-                        disabled="@(Host._busy || !Playback.CanPlaySelected)"
-                        title="Preview selected scenes combined in browser"
-                        @onclick="Playback.PlaySelectedAsync">
-                    ▶ Play (@list._selected.Count)
+
+        @* Generate is the primary action; the confirm modal (cost + resolution) is the only way to start a batch. *@
+        <CapabilityLockedControl Enabled="@(Host.IsSimpleFilm || Caps.VideoReady)"
+                                 BlockedReason="@StudioCapabilityState.VideoBlockedReason"
+                                 SettingsHref="@StudioCapabilityState.VideoSettingsHref"
+                                 TestId="scenes-generate-batch-cap">
+            <button type="button"
+                    data-testid="scenes-generate-batch"
+                    class="btn batch-go w-100 mb-1 @(canGenerate ? "batch-go--ready" : "")"
+                    disabled="@genDisabled"
+                    title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : "Generate only missing clips in selected scenes")"
+                    @onclick="Host.Gen.OpenGenerateConfirmAsync">
+                @if (Host.Gen.JobRunning)
+                {
+                    <span class="batch-go__spin" aria-hidden="true"></span>
+                    <span>Generating…</span>
+                }
+                else
+                {
+                    <span class="batch-go__play" aria-hidden="true">▶</span>
+                    <span>
+                        Generate @list.GenerateBatchNoun
+                        @if (selCount > 0)
+                        {
+                            <span class="batch-go__meta">· ~@(ClipSel?.EstimateSelectedClips() ?? 0) clips</span>
+                        }
+                    </span>
+                }
+            </button>
+        </CapabilityLockedControl>
+
+        @* Selection-scoped actions: always visible so they are discoverable, disabled until a scene is checked. *@
+            <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+                <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 flex-grow-1 text-nowrap" style="font-size:0.75rem;"
+                        data-testid="scenes-play-selected"
+                        disabled="@(Host._busy || (Playback?._clientStitching == true) || !(Playback?.CanPlaySelected == true))"
+                        title="@PlaySelectedTitle"
+                        @onclick="() => Playback?.PlaySelectedAsync() ?? Task.CompletedTask">
+                    ▶ @L["ScenesPage.PlaySelected"]@(selCount > 0 ? $" ({selCount})" : "")
                 </button>
-                <button type="button" class="btn btn-sm btn-warning text-dark py-1 px-2 flex-grow-1 text-nowrap fw-semibold" style="font-size:0.75rem;"
-                        data-testid="scene-index-gen-selected"
-                        disabled="@(Host._busy || Host.Gen.JobRunning || !list.CastReady)"
-                        title="Generate/re-render clips for selected scenes"
-                        @onclick="Host.Gen.OpenGenerateConfirmAsync">
-                    ⚡ Gen (@list._selected.Count)
+                <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 flex-grow-1 text-nowrap" style="font-size:0.75rem;"
+                        data-testid="scenes-regenerate-selected"
+                        disabled="@genDisabled"
+                        title="Re-render all clips in selected scenes (prompts for confirmation)"
+                        @onclick="Host.Gen.OpenRegenerateConfirmAsync">
+                    🔄 Regenerate@(selCount > 0 ? $" ({selCount})" : "")
                 </button>
+                <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
+                                         BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
+                                         SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
+                                         TestId="scenes-verify-dialogue-cap">
+                    <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 text-nowrap" style="font-size:0.75rem;"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || (Dialogue?._verifyingClip == true) || !(Dialogue?.SelectedScenesHaveClipsToVerify == true))"
+                            title="@VerifyDialogueTitle"
+                            @onclick="() => Dialogue?.VerifySelectedScenesDialogueAsync() ?? Task.CompletedTask">
+                        🔍 @L["ScenesPage.VerifySceneDialogue"]@(selCount > 0 ? $" ({selCount})" : "")
+                    </button>
+                </CapabilityLockedControl>
             </div>
-        }
+
         <div class="input-group input-group-sm">
             <span class="input-group-text bg-dark border-secondary text-muted py-0 px-2">🔍</span>
             <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary"
@@ -133,9 +244,56 @@
             {
                 <button class="btn btn-outline-secondary py-0 px-2" type="button" @onclick="() => _filterText = string.Empty">✕</button>
             }
+            <button class="btn btn-outline-secondary py-0 px-2" type="button"
+                    data-testid="scenes-select-toggle"
+                    disabled="@Host._busy"
+                    title="Filter by character, location or setting text"
+                    @onclick="() => list._showFilters = !list._showFilters">
+                @(list.HasActiveFilters ? "Filters •" : "Filters")
+            </button>
+        </div>
+
+        @* Shot-plan level actions: small and secondary, but present (they used to live only on the retired table view). *@
+        <div class="d-flex flex-wrap align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-50 small">
+            <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
+                    disabled="@(Host._busy || Host.Gen.JobRunning)"
+                    title="@(selCount > 0
+                        ? $"Regenerate the shot plan for only the {selCount} checked scene{(selCount == 1 ? "" : "s")} from the screenplay (others untouched)"
+                        : "Regenerate the shot plan — nothing checked, this rebuilds every scene from the screenplay")"
+                    @onclick="list.RebuildShotPlanAsync">
+                📝 @L["ScenesPage.RebuildShotPlan"]
+            </button>
+            <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
+                    data-testid="scenes-add-scene"
+                    disabled="@(Host._busy || Host.Gen.JobRunning)"
+                    title="Add a new empty scene to the shot plan"
+                    @onclick="() => list.AddSceneAsync(false)">
+                ➕ @L["ScenesPage.AddScene"]
+            </button>
+            @if (!Host.Gen.HasCreditsScene)
+            {
+                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
+                        data-testid="scenes-add-credits"
+                        disabled="@(Host._busy || Host.Gen.JobRunning)"
+                        title="Re-add the end-credits scene (normally added automatically)"
+                        @onclick="() => list.AddSceneAsync(true)">
+                    🎬 @L["ScenesPage.AddCredits"]
+                </button>
+            }
+            @if (!Host.IsSimpleFilm)
+            {
+                <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
+                        data-testid="scenes-view-screenplay"
+                        disabled="@Host._busy"
+                        title="Read the current screenplay (view only — does not re-open it)"
+                        @onclick="Host.ViewScreenplay">
+                    📄 @L["ScenesPage.Screenplay"] @L["ScenesPage.View"]
+                </button>
+            }
         </div>
     </div>
 
+    @* ---- Scene list ---- *@
     <div class="list-group list-group-flush border rounded scene-index-list"
          style="max-height: 72vh; overflow-y: auto;">
         @foreach (var s in scenes)
@@ -148,7 +306,7 @@
             <div @key="sn"
                  class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2 px-2 @(isActive ? "active" : "") @(isSel ? "border-start border-3 border-primary" : "")"
                  style="cursor:pointer;"
-                 data-testid="scene-index-item"
+                 data-testid="scene-row"
                  data-scene-number="@sn"
                  title="@ItemTitle(s)"
                  @onclick="() => list.OpenSceneAsync(sn)">
@@ -181,6 +339,10 @@
                         {
                             <span>· ~@Scenes.FormatClock(pd)</span>
                         }
+                        @if (s.LockedByOther)
+                        {
+                            <span class="badge bg-warning text-dark" style="font-size:0.6rem;" title="Locked by @s.LockOwnerUserId">🔒</span>
+                        }
                     </div>
                 </div>
 
@@ -204,6 +366,10 @@
                 {
                     <span>No scenes match "@_filterText".</span>
                 }
+                else if (list.HasActiveFilters)
+                {
+                    <span>No scenes match the current filters.</span>
+                }
                 else
                 {
                     <span>No scenes in this shot plan.</span>
@@ -211,4 +377,5 @@
             </div>
         }
     </div>
+}
 </div>

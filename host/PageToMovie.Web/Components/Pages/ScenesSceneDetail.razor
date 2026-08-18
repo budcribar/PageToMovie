@@ -112,6 +112,22 @@
                         @L.Format("ScenesPage.OpenInVideoEditor", ClipRegen._preferredVideoEditor)
                     </button>
                 }
+                @* Per-scene actions that used to live only on the retired all-scenes table. *@
+                <button type="button"
+                        class="btn btn-sm btn-warning text-black fw-bold"
+                        data-testid="scene-row-score-music"
+                        disabled="@(Host._busy || Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || Host.DetailLockedByOther)"
+                        title="@(Caps.MusicReady ? "Score background music for this scene" : StudioCapabilityState.MusicBlockedReason)"
+                        @onclick="() => Music.OpenScoreMenu(ListState._detail.SceneNumber)">
+                    🎵 @L["ScenesPage.Score"]
+                </button>
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        disabled="@(Host._busy || Gen.JobRunning || Host.DetailLockedByOther)"
+                        title="Delete scene S@(ListState._detail.SceneNumber.ToString("D2")) from plan"
+                        @onclick="() => ListState.RequestDeleteScene(ListState._detail.SceneNumber)">
+                    🗑️
+                </button>
                 @if (Host.DetailLockedByOther)
                 {
                     <span class="badge bg-warning text-dark">🔒 @Host._detailLockOwner</span>

@@ -309,29 +309,38 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
     <CascadingValue Value="Dialogue" IsFixed="true">
     <CascadingValue Value="History" IsFixed="true">
 
-        @if (List._selectedScene is null)
+        @* Authoritative counts for tests / the process strip — page-level so they never depend on layout. *@
+        @if (List._scenes is not null && List._scenes.Count > 0)
         {
-            <div class="col-12">
-                <ScenesSceneList />
-            </div>
+            <div data-testid="scenes-status"
+                 data-scene-count="@List._scenes.Count"
+                 data-clip-count="@List._scenes.Sum(s => s.ClipCount)"
+                 data-clips-on-disk="@List._scenes.Sum(s => s.ClipsOnDisk)"
+                 data-scenes-complete="@List._scenes.Count(s => s.ClipsComplete)"
+                 class="visually-hidden" aria-hidden="true"></div>
         }
-        else
-        {
-            <div class="row g-3">
-                <ScenesSceneIndex />
+        @* One layout: Scene Index on the left (states, selection, actions, list), the open scene on the right. *@
+        <div class="row g-3">
+            <ScenesSceneIndex />
 
-                <div class="col-12 col-md-8 col-lg-9">
-                    @if (List._detail is null)
+            <div class="col-12 col-md-8 col-lg-9">
+                @if (List._selectedScene is null)
+                {
+                    @if (List._scenes is { Count: > 0 })
                     {
-                        <EmptyState Message="Loading scene…" CssClass="text-muted" />
+                        <EmptyState Message="Pick a scene on the left to see its clips and beats." CssClass="text-muted" />
                     }
-                    else
-                    {
-                        <ScenesSceneDetail />
-                    }
-                </div>
+                }
+                else if (List._detail is null)
+                {
+                    <EmptyState Message="Loading scene…" CssClass="text-muted" />
+                }
+                else
+                {
+                    <ScenesSceneDetail />
+                }
             </div>
-        }
+        </div>
 
     </CascadingValue>
     </CascadingValue>

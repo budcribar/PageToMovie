@@ -53,16 +53,18 @@ public class PipelineNavGatingTests
             await PipelineFlow.WaitForSignOffLandingAsync(page);
             await Assertions.Expect(page.GetByTestId("cost-page")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("nav-characters")).ToBeVisibleAsync(new() { Timeout = 30_000 });
-            await Assertions.Expect(page.GetByTestId("nav-characters-disabled")).ToHaveCountAsync(0);
+            await AssertNavOpenAsync(page, "nav-characters");
             await page.GetByTestId("nav-characters").ClickAsync();
             await page.WaitForURLAsync(new Regex("/characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 30_000 });
             // The sign-off extracted the cast (fake planning): the roster is populated.
             await Assertions.Expect(page.GetByTestId("cast-index")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 90_000 });
             Assert.True(await page.GetByTestId("char-list-item").CountAsync() >= 1, "expected at least one cast member");
-            // Film/Review still gated (no shot plan yet).
-            await AssertNavBlockedAsync(page, "nav-scenes");
-            await AssertNavBlockedAsync(page, "nav-review");
+            // Since the 7-step spine (ActiveProjectState: CanScenes = CanReview = screenplayReady) Film and
+            // Review open on screenplay approval; the shot plan is built from Film. (Review checklist #4
+            // tracks whether stale-shot-plan / cast-not-ready should re-gate these.)
+            await AssertNavOpenAsync(page, "nav-scenes");
+            await AssertNavOpenAsync(page, "nav-review");
 
             // ── 3. Shot plan via the real "Build" button on the Shots page (SignalR job flow).
             //      Building the plan doesn't need locked looks (that gate is video generation). ──
@@ -80,7 +82,7 @@ public class PipelineNavGatingTests
             // The job's completion refreshed readiness: Film and Review gates are open now.
             await Assertions.Expect(page.GetByTestId("nav-scenes")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("nav-review")).ToBeVisibleAsync(new() { Timeout = 30_000 });
-            await Assertions.Expect(page.GetByTestId("nav-scenes-disabled")).ToHaveCountAsync(0);
+            await AssertNavOpenAsync(page, "nav-scenes");
 
             // ── 4. Scenes page shows the plan (via the step link, not a deep link). ──
             await page.GetByTestId("shots-to-scenes").ClickAsync();
@@ -115,12 +117,21 @@ public class PipelineNavGatingTests
 
     /// <summary>A gated nav item renders as a disabled span carrying the blocked reason as its title,
     /// and the enabled link variant is absent.</summary>
+    private static async Task AssertNavOpenAsync(IPage page, string testId)
+    {
+        var link = page.GetByTestId(testId);
+        await Assertions.Expect(link).ToBeVisibleAsync(new() { Timeout = 20_000 });
+        await Assertions.Expect(link).Not.ToHaveClassAsync(new Regex(@"(^|\s)disabled(\s|$)"), new() { Timeout = 20_000 });
+    }
+
+    // Nav contract (7-step sidebar): a gated step is the same NavLink carrying the "disabled" class and
+    // its blocked reason as the title — there is no separate *-disabled element any more.
     private static async Task AssertNavBlockedAsync(IPage page, string testId, string? expectedReason = null)
     {
-        var disabled = page.GetByTestId(testId + "-disabled");
-        await Assertions.Expect(disabled).ToBeVisibleAsync(new() { Timeout = 20_000 });
-        await Assertions.Expect(page.GetByTestId(testId)).ToHaveCountAsync(0);
-        var title = await disabled.GetAttributeAsync("title") ?? "";
+        var link = page.GetByTestId(testId);
+        await Assertions.Expect(link).ToBeVisibleAsync(new() { Timeout = 20_000 });
+        await Assertions.Expect(link).ToHaveClassAsync(new Regex(@"(^|\s)disabled(\s|$)"), new() { Timeout = 20_000 });
+        var title = await link.GetAttributeAsync("title") ?? "";
         Assert.False(string.IsNullOrWhiteSpace(title), $"{testId} is gated but shows no blocked reason");
         if (expectedReason is not null)
             Assert.Equal(expectedReason, title);

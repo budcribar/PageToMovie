@@ -117,7 +117,7 @@ public class ScenesPipelineTests
             await Assertions.Expect(page.GetByTestId("scene-row").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
             // Open the first scene (click its S## badge) → the per-scene clip select bar appears.
             await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
-            await Assertions.Expect(page.GetByTestId("clip-select-bar")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.GetByTestId("clip-select-all")).ToBeVisibleAsync(new() { Timeout = 30_000 });
         }
         finally { await ctx.CloseAsync(); }
     }

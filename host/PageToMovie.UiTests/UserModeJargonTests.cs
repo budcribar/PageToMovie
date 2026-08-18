@@ -45,7 +45,8 @@ public class UserModeJargonTests
 
             if (route != "/")
             {
-                await page.Locator($"a[href='{route}']").First.ClickAsync();
+                // Nav hrefs may carry a sub-route (Book → /adaptation/import); match on prefix.
+                await page.Locator($"a[href='{route}'], a[href^='{route}/']").First.ClickAsync();
                 await Assertions.Expect(page).ToHaveURLAsync(new Regex(Regex.Escape(route), RegexOptions.None, CommonRegex.Timeout));
             }
             await page.WaitForTimeoutAsync(1000);

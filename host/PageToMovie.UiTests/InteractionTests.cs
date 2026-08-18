@@ -79,8 +79,8 @@ public class InteractionTests
             // Click the first scene row's badge → opens its detail card (the "+ Add clip" control
             // is always present once a scene's detail is loaded, unlike clip-select-bar which only
             // renders when a clip is missing on disk or checked).
-            await page.Locator("tbody tr").First.Locator("span.badge").First.ClickAsync();
-            await Assertions.Expect(page.GetByTestId("clip-add-open")).ToBeVisibleAsync();
+            await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
+            await Assertions.Expect(page.GetByTestId("scene-edit-hub")).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }
     }
