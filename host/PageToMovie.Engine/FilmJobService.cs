@@ -6459,7 +6459,7 @@ public sealed class FilmJobService
         {
             var path = ClipVideoPromptBuilder.ResolveCharacterRefPathPublic(projectDir, key)
                        ?? _projects.ResolveCharacterRefPath(projectId, key);
-            if (path is null || !File.Exists(path))
+            if (path is null || !File.Exists(path) || new FileInfo(path).Length < 64)
                 missing.Add(key);
         }
         return missing;

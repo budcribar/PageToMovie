@@ -106,6 +106,45 @@ public sealed class ClientMediaFolderService
         _hubHooked = true;
         await _hub.EnsureStartedAsync();
         _hub.JobUpdated += OnJobUpdated;
+        _hub.AssetUploadRequested += OnAssetUploadRequestedAsync;
+    }
+
+    private async Task OnAssetUploadRequestedAsync(string projectId, string relativePath)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(relativePath))
+            return;
+
+        try
+        {
+            var bytes = await ReadLocalBytesAsync($"{projectId}/{relativePath}", minBytes: 64);
+            if (bytes is null || bytes.Length < 64) return;
+
+            var fileName = Path.GetFileName(relativePath);
+            if (relativePath.StartsWith("assets/locations/", StringComparison.OrdinalIgnoreCase))
+            {
+                var stem = Path.GetFileNameWithoutExtension(fileName);
+                if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
+                    stem = stem[..^"_ref".Length];
+                await using var ms = new MemoryStream(bytes);
+                await _api.UploadLocationRefAsync(projectId, stem, ms, fileName);
+                LastStatus = $"Uploaded {fileName} to server on demand.";
+                Changed?.Invoke();
+            }
+            else if (relativePath.StartsWith("assets/characters/", StringComparison.OrdinalIgnoreCase))
+            {
+                var stem = Path.GetFileNameWithoutExtension(fileName);
+                if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
+                    stem = stem[..^"_ref".Length];
+                await using var ms = new MemoryStream(bytes);
+                await _api.UploadCharacterRefAsync(projectId, stem, ms, fileName);
+                LastStatus = $"Uploaded {fileName} to server on demand.";
+                Changed?.Invoke();
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
     }
 
     private void OnJobUpdated(JobSnapshot snap)

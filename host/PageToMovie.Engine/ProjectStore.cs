@@ -3330,17 +3330,8 @@ public sealed partial class ProjectStore
         return dir;
     }
 
-    /// <summary>Canonical locked set plate: <c>{loc_key_lower}_ref.png</c>.</summary>
-    public static string LocationRefFileName(string locKey)
-    {
-        var k = (locKey ?? "").Trim().Replace(' ', '_').Replace('\\', '/');
-        k = Path.GetFileName(k).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
-            k = "unknown_location";
-        if (k.EndsWith(StoreLit.RefPngSuffix, StringComparison.OrdinalIgnoreCase))
-            return k;
-        return $"{k}_ref.png";
-    }
+    public static string LocationRefFileName(string locKey) =>
+        ProjectAssetNaming.LocationRefFileName(locKey);
 
     public static string LocationVariantFileName(string locKey, int index)
     {
@@ -3349,6 +3340,12 @@ public sealed partial class ProjectStore
             stem = stem[..^"_ref".Length];
         return $"{stem}_variant_{Math.Clamp(index, 1, 9):D2}.png".ToLowerInvariant();
     }
+
+    /// <summary>
+    /// Candidate on-disk names for a locked location plate (canonical + Loc_ aliases).
+    /// </summary>
+    public static IEnumerable<string> LocationRefFileNameCandidates(string locKey) =>
+        ProjectAssetNaming.LocationRefFileNameCandidates(locKey);
 
     /// <summary>Absolute path to locked location plate if present and non-empty.</summary>
     public string? ResolveLocationRefPath(string projectId, string locKey)
@@ -3381,7 +3378,7 @@ public sealed partial class ProjectStore
         var hasLockedPlate = path is not null && File.Exists(path) && new FileInfo(path).Length >= 64;
         row.Locked = hasLockedPlate;
         row.HasPreferred = hasLockedPlate;
-        if (hasLockedPlate)
+        if (hasLockedPlate && path is not null)
         {
             row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
             row.PreferredUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
@@ -3477,64 +3474,14 @@ public sealed partial class ProjectStore
     /// Canonical locked ref: <c>{character_key_lower}_ref.png</c>
     /// e.g. Character_Mom → character_mom_ref.png.
     /// </summary>
-    public static string CharacterRefFileName(string charKey)
-    {
-        var k = (charKey ?? "").Trim().Replace(' ', '_').Replace('\\', '/');
-        k = Path.GetFileName(k).ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
-            k = "unknown_character";
-        if (k.EndsWith(StoreLit.RefPngSuffix, StringComparison.OrdinalIgnoreCase))
-            return k;
-        return $"{k}_ref.png";
-    }
+    public static string CharacterRefFileName(string charKey) =>
+        ProjectAssetNaming.CharacterRefFileName(charKey);
 
     /// <summary>
     /// Candidate on-disk names for a locked ref (canonical + short aliases + common typos).
     /// </summary>
-    public static IEnumerable<string> CharacterRefFileCandidates(string charKey)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var list = new List<string>();
-        void Add(string? name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return;
-            name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
-            if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + StoreLit.RefPngSuffix;
-            if (seen.Add(name))
-                list.Add(name);
-        }
-
-        Add(CharacterRefFileName(charKey));
-        var raw = (charKey ?? "").Trim();
-        var bare = raw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
-            ? raw[JsonKeys.CharacterPrefix.Length..]
-            : raw;
-        Add($"{bare}_ref.png");
-        Add(bare);
-        if (bare.StartsWith("The_", StringComparison.OrdinalIgnoreCase))
-        {
-            var noThe = bare["The_".Length..];
-            Add($"character_{noThe}_ref.png");
-            Add($"{noThe}_ref.png");
-        }
-        // Dad / Daddy alias
-        if (bare.Equals("Dad", StringComparison.OrdinalIgnoreCase) ||
-            bare.Equals("Daddy", StringComparison.OrdinalIgnoreCase))
-        {
-            Add("character_daddy_ref.png");
-            Add("character_dad_ref.png");
-            Add("daddy_ref.png");
-            Add("dad_ref.png");
-        }
-        if (bare.Equals("Mom", StringComparison.OrdinalIgnoreCase) ||
-            bare.Equals("Mum", StringComparison.OrdinalIgnoreCase))
-        {
-            Add("character_mom_ref.png");
-            Add("mom_ref.png");
-        }
-        return list;
-    }
+    public static IEnumerable<string> CharacterRefFileCandidates(string charKey) =>
+        ProjectAssetNaming.CharacterRefFileCandidates(charKey);
 
     /// <summary>Character seed token object from blueprint/scenes, or null.</summary>
     public JsonElement? GetCharacterSeed(string projectId, string charKey)

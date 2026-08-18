@@ -1326,6 +1326,8 @@ public static class JobHubEvents
     public const string JobLog = "JobLog";
     /// <summary>Admin ops group snapshot push (Phase C).</summary>
     public const string AdminState = "AdminState";
+    /// <summary>Demand-upload request from server to client for a missing local asset.</summary>
+    public const string RequestAssetUpload = "RequestAssetUpload";
 }
 
 // ---- Cost / ledger ----

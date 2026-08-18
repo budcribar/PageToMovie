@@ -1303,5 +1303,36 @@ public class ClipVideoPromptBuilderTests
 
         try { Directory.Delete(dir, true); } catch { }
     }
+
+    [Fact]
+    public void ProjectAssetNaming_Matches_Canonical_And_Alias_Filenames()
+    {
+        var locCandidates = ProjectAssetNaming.LocationRefFileNameCandidates("Loc_Country_Lane").ToList();
+        Assert.Contains("loc_country_lane_ref.png", locCandidates);
+        Assert.Contains("country_lane_ref.png", locCandidates);
+
+        var charCandidates = ProjectAssetNaming.CharacterRefFileCandidates("Character_Mary").ToList();
+        Assert.Contains("character_mary_ref.png", charCandidates);
+        Assert.Contains("mary_ref.png", charCandidates);
+    }
+
+    [Fact]
+    public async Task MediaDataUri_FileToDataUriAsync_Throws_FileNotFoundException_When_Only_Marker_Exists()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-marker-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var target = Path.Combine(dir, "loc_country_lane_ref.png");
+            File.WriteAllText(target + ProjectStore.ClientMarkerExtension, "{\"storage\":\"client\"}");
+
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                MediaDataUri.FileToDataUriAsync(target, CancellationToken.None));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
 }
 

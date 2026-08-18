@@ -1097,35 +1097,8 @@ public static class ClipVideoPromptBuilder
         return null;
     }
 
-    public static IEnumerable<string> LocationRefFileCandidates(string locKey)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var list = new List<string>();
-        AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName(locKey));
-        var raw = (locKey ?? "").Trim();
-        if (raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
-        {
-            var bare = raw["Loc_".Length..];
-            AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName(bare));
-            AddLocationRefCandidate(list, seen, bare + "_ref.png");
-        }
-        else
-        {
-            AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName("Loc_" + raw));
-        }
-        return list;
-    }
-
-    private static void AddLocationRefCandidate(List<string> list, HashSet<string> seen, string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-        name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
-        if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-            name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
-        if (seen.Add(name))
-            list.Add(name);
-    }
+    public static IEnumerable<string> LocationRefFileCandidates(string locKey) =>
+        ProjectStore.LocationRefFileNameCandidates(locKey);
 
     public static List<string> ClipCharacterKeys(JsonElement clipEl)
     {

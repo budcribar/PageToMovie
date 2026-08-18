@@ -64,6 +64,13 @@ internal static class MediaDataUri
     public static async Task<string> FileToDataUriAsync(string path, CancellationToken ct)
     {
         var resolvedPath = ResolveExistingMediaPath(path) ?? path;
+        if (!File.Exists(resolvedPath) || new FileInfo(resolvedPath).Length <= 0)
+        {
+            throw new FileNotFoundException(
+                $"Media file '{Path.GetFileName(path)}' not found on server at '{resolvedPath}'. " +
+                "Ensure client media folder is connected so required reference plates are uploaded to the server before generation.",
+                resolvedPath);
+        }
 
         var bytes = await File.ReadAllBytesAsync(resolvedPath, ct).ConfigureAwait(false);
         if (bytes.Length > MaxBytes)

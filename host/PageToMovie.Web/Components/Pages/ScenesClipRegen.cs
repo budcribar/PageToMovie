@@ -82,6 +82,9 @@ public partial class Scenes
             // when this runs from the scene-list page rather than a scene-detail view).
             var detailCache = new Dictionary<int, SceneDetail?>();
 
+            // Ensure required character and location reference plates are uploaded from local media folder.
+            await EnsureReferencePlatesUploadedAsync(targets, detailCache);
+
             // Video-extend continuity (see FilmJobService.GenerateOneClipAsync + ClientMediaFolderService.
             // PrepareExtendSourceAsync): resolved once per batch, not per target, since it's the same
             // active project setting for every clip here.
@@ -93,6 +96,83 @@ public partial class Scenes
                 var sceneDetail = await GetSceneDetailCachedAsync(sn, detailCache);
                 await UploadPredecessorIfMissingAsync(sn, cn - 1, sceneDetail);
                 await PrepareExtendIfNeededAsync(sn, cn, sceneDetail, extendModel);
+            }
+        }
+
+        private async Task EnsureReferencePlatesUploadedAsync(
+            List<(int Scene, int Clip)> targets, Dictionary<int, SceneDetail?> detailCache)
+        {
+            var charactersToUpload = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var locationsToUpload = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var sceneNums = targets.Select(t => t.Scene).Distinct();
+            foreach (var sn in sceneNums)
+            {
+                var d = await GetSceneDetailCachedAsync(sn, detailCache);
+                if (d is null) continue;
+                if (!string.IsNullOrWhiteSpace(d.PrimaryLocationId))
+                    locationsToUpload.Add(d.PrimaryLocationId);
+
+                if (d.Clips is not null)
+                {
+                    foreach (var c in d.Clips)
+                    {
+                        if (c.CharactersOnScreen is not null)
+                        {
+                            foreach (var ch in c.CharactersOnScreen)
+                                if (!string.IsNullOrWhiteSpace(ch))
+                                    charactersToUpload.Add(ch);
+                        }
+                    }
+                }
+            }
+
+            foreach (var locKey in locationsToUpload)
+            {
+                await UploadLocationPlateIfAvailableLocallyAsync(locKey);
+            }
+
+            foreach (var charKey in charactersToUpload)
+            {
+                await UploadCharacterPlateIfAvailableLocallyAsync(charKey);
+            }
+        }
+
+        private async Task UploadLocationPlateIfAvailableLocallyAsync(string locKey)
+        {
+            var candidates = ProjectAssetNaming.LocationRefFileNameCandidates(locKey);
+            foreach (var cand in candidates)
+            {
+                var rel = $"assets/locations/{cand}";
+                var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
+                if (!found || size < 64) continue;
+
+                var bytes = await S.MediaFolder.ReadLocalBytesAsync($"{S._projectId}/{rel}", minBytes: 64);
+                if (bytes is not null && bytes.Length >= 64)
+                {
+                    await using var ms = new MemoryStream(bytes);
+                    await S.Engine.UploadLocationRefAsync(S._projectId, locKey, ms, cand);
+                    break;
+                }
+            }
+        }
+
+        private async Task UploadCharacterPlateIfAvailableLocallyAsync(string charKey)
+        {
+            var candidates = ProjectAssetNaming.CharacterRefFileCandidates(charKey);
+            foreach (var cand in candidates)
+            {
+                var rel = $"assets/characters/{cand}";
+                var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
+                if (!found || size < 64) continue;
+
+                var bytes = await S.MediaFolder.ReadLocalBytesAsync($"{S._projectId}/{rel}", minBytes: 64);
+                if (bytes is not null && bytes.Length >= 64)
+                {
+                    await using var ms = new MemoryStream(bytes);
+                    await S.Engine.UploadCharacterRefAsync(S._projectId, charKey, ms, cand);
+                    break;
+                }
             }
         }
 
