@@ -214,10 +214,10 @@ public sealed class GrokVideoClient : IVideoClient
     {
         if (hasContinue)
         {
-            string? videoUri = null;
-            if (string.IsNullOrWhiteSpace(extendSourceFileId) && continueFromVideoPath is not null && File.Exists(continueFromVideoPath))
-                videoUri = await FileToDataUriAsync(continueFromVideoPath, ct);
-            return (videoUri, null, null);
+            // A local predecessor MP4 is uploaded to xAI Files once and referenced by file_id (see
+            // UploadVideoFileAsync) instead of being inlined as a multi-MB data-URI on every attempt.
+            // The upload is the same path a browser-trimmed delta takes — no server copy needed.
+            return (null, null, null);
         }
         if (hasStart)
         {
@@ -315,8 +315,14 @@ public sealed class GrokVideoClient : IVideoClient
         CancellationToken ct)
     {
         var hasFileId = !string.IsNullOrWhiteSpace(setup.ExtendSourceFileId);
+        var extendFileId = setup.ExtendSourceFileId;
+        if (!hasFileId && !string.IsNullOrWhiteSpace(setup.ContinueFromVideoPath) && File.Exists(setup.ContinueFromVideoPath))
+        {
+            extendFileId = await UploadVideoFileAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
+            hasFileId = true;
+        }
         var videoDict = hasFileId
-            ? new Dictionary<string, object?> { ["file_id"] = setup.ExtendSourceFileId }
+            ? new Dictionary<string, object?> { ["file_id"] = extendFileId }
             : new Dictionary<string, object?> { ["url"] = setup.VideoUri ?? string.Empty };
 
         var extPayload = new Dictionary<string, object?>
@@ -360,8 +366,8 @@ public sealed class GrokVideoClient : IVideoClient
         {
             _log.LogWarning(ex, "Grok video extend file_id '{FileId}' failed; falling back to local file upload '{Path}'",
                 setup.ExtendSourceFileId, setup.ContinueFromVideoPath);
-            var uploadUri = await FileToDataUriAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
-            extPayload["video"] = new Dictionary<string, object?> { ["url"] = uploadUri };
+            var freshId = await UploadVideoFileAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
+            extPayload["video"] = new Dictionary<string, object?> { ["file_id"] = freshId };
             using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
             return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                 extResp, ct, "request_id",
@@ -442,7 +448,41 @@ public sealed class GrokVideoClient : IVideoClient
             SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9");
     }
 
+    /// <summary>
+    /// Upload a local MP4 to xAI Files (<c>POST /files</c>, multipart) and return its <c>file_id</c>.
+    /// xAI keeps user uploads until deleted (<c>expires_at: null</c>) and <c>videos/extensions</c>
+    /// accepts them as input — verified live 2026-08-18: upload → extend → new clip. This is how a
+    /// browser-trimmed extension delta re-enters the chain with a fresh id, and how a dead handle is
+    /// recovered from the user's local copy, without the server ever keeping the bytes.
+    /// </summary>
+    public async Task<string> UploadVideoFileAsync(string path, CancellationToken ct)
+    {
+        await using var fs = File.OpenRead(path);
+        return await UploadVideoStreamAsync(fs, Path.GetFileName(path), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Stream form of <see cref="UploadVideoFileAsync"/> (browser → server relay, no disk).</summary>
+    public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct)
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("assistants"), "purpose");
+        var part = new StreamContent(mp4);
+        part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
+        form.Add(part, "file", string.IsNullOrWhiteSpace(fileName) ? "clip.mp4" : fileName);
+        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Post, "files", form, ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"xAI video upload HTTP {(int)resp.StatusCode}: {(body.Length > 600 ? body[..600] : body)}");
+        using var doc = JsonDocument.Parse(body);
+        var id = doc.RootElement.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException("xAI video upload response had no id.");
+        _log.LogInformation("Grok video file uploaded → {FileId} ({Name})", id, fileName);
+        return id!;
+    }
+
     private static Task<string> FileToDataUriAsync(string path, CancellationToken ct) =>
+
         MediaDataUri.FileToDataUriAsync(path, ct);
 
     public async Task<string> PollForVideoUrlAsync(

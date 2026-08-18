@@ -5444,6 +5444,23 @@ public sealed class FilmJobService
         }
     }
 
+    /// <summary>Parse an extend-source marker: (file_id, duration_seconds); (null, null) when malformed.</summary>
+    internal static (string? FileId, double? Seconds) TryReadExtendSourceMarker(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var fid = root.TryGetProperty("file_id", out var f) ? f.GetString() : null;
+            double? sec = root.TryGetProperty("duration_seconds", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : null;
+            return (string.IsNullOrWhiteSpace(fid) ? null : fid, sec);
+        }
+        catch { return (null, null); }
+    }
+
+    /// <summary>Marker written by the clip upload endpoint when a browser-trimmed extend source was relayed to xAI Files.</summary>
+    public static string ExtendSourceMarkerName(int scene, int clip) => $"_extend_src_s{scene:D2}c{clip:D2}.json";
+
     private async Task<(string? ExtendSourcePath, string? ExtendSourceFileId, string? CreatedTempTrimPath, double? PredecessorDurationSec)>
         ResolveExtendInputAsync(
             string projectDir,
@@ -5455,7 +5472,18 @@ public sealed class FilmJobService
         if (clip <= 1 || !modelEntry.SupportsVideoContinue)
             return (null, null, null, null);
 
-        // 1. Check if client already uploaded an explicit _extend_src_ file
+        // 0. Browser-trimmed delta relayed to xAI Files: marker holds the file_id (+ its duration,
+        //    which is exactly the lead-in the extension result carries and the client trims).
+        var markerPath = Path.Combine(projectDir, AssetsFolder, VideoFolder, ExtendSourceMarkerName(scene, clip));
+        if (File.Exists(markerPath))
+        {
+            var (fid, sec) = TryReadExtendSourceMarker(await File.ReadAllTextAsync(markerPath, ct).ConfigureAwait(false));
+            if (!string.IsNullOrWhiteSpace(fid))
+                return (null, fid, null, sec);
+            _log.LogWarning("Unreadable extend-source marker {Path}; falling back", markerPath);
+        }
+
+        // 1. Check if client already uploaded an explicit _extend_src_ file (fakes / legacy path)
         var explicitSrc = Path.Combine(
             projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
         if (File.Exists(explicitSrc) && new FileInfo(explicitSrc).Length >= 1024)

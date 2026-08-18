@@ -422,7 +422,7 @@ public static class SceneClipEndpoints
     }
 }
 
-    private static async Task<IResult> PostProjectsIdScenesSceneClipsClipUpload(string id, int scene, int clip, string? kind, HttpContext httpContext, ProjectStore store, CancellationToken ct)
+    private static async Task<IResult> PostProjectsIdScenesSceneClipsClipUpload(string id, int scene, int clip, string? kind, double? seconds, HttpContext httpContext, ProjectStore store, IServiceProvider services, CancellationToken ct)
     {
     if (!httpContext.Request.HasFormContentType)
         return Results.BadRequest(new { ok = false, error = "Form data expected." });
@@ -433,6 +433,31 @@ public static class SceneClipEndpoints
         return Results.BadRequest(new { ok = false, error = "Valid MP4 file expected." });
 
     var projectDir = await store.GetProjectDirAsync(id, ct);
+
+    // "extend-source": the browser-trimmed continuation input for video-extend. Media must not
+    // live on the server, so relay the bytes straight to xAI Files and keep only the file_id
+    // (+ duration) in a small marker; FilmJobService.ResolveExtendInputAsync reads it first.
+    // Fakes / no xAI client (tests, offline) fall back to the on-disk file below.
+    if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase)
+        && services.GetService(typeof(GrokVideoClient)) is GrokVideoClient grok && grok.IsConfigured)
+    {
+        await using var src = file.OpenReadStream();
+        var fileId = await grok.UploadVideoStreamAsync(src, $"extend_src_s{scene:D2}c{clip:D2}.mp4", ct).ConfigureAwait(false);
+        var markerDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+        Directory.CreateDirectory(markerDir);
+        var marker = Path.Combine(markerDir, FilmJobService.ExtendSourceMarkerName(scene, clip));
+        await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            file_id = fileId,
+            duration_seconds = seconds,
+            uploaded_utc = DateTime.UtcNow.ToString("o"),
+            bytes = file.Length,
+        }), ct).ConfigureAwait(false);
+        // A stale on-disk source from before this change must not shadow the marker.
+        var legacy = Path.Combine(markerDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+        if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { /* best effort */ } }
+        return Results.Ok(new { ok = true, projectId = id, scene, clip, fileId, seconds });
+    }
     var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
     Directory.CreateDirectory(destDir);
     // "extend-source": the client's tail-trimmed continuation input for video-extend (see
