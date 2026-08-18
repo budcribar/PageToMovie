@@ -49,6 +49,55 @@ public sealed class FountainFileSessionTests : IDisposable
         Assert.DoesNotContain("Secret line", session.LastInstruction, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Unuploaded_fountain_session_does_not_throw_in_chat_executor()
+    {
+        var chat = new EchoChatClient();
+        var emptyFountainSession = new UnuploadedFountainSession();
+        var request = new PageToMovie.Adaptation.Conversion.Stage1ChatExecutor.Request(
+            "system",
+            "user",
+            "model",
+            0.2,
+            "mode",
+            "v1",
+            "correction");
+
+        var result = await PageToMovie.Adaptation.Conversion.Stage1ChatExecutor.ExecuteAsync(
+            chat,
+            request,
+            _ => Array.Empty<PageToMovie.Adaptation.Conversion.Stage1ValidationIssue>(),
+            CancellationToken.None,
+            fountainSession: emptyFountainSession);
+
+        Assert.True(result.Success);
+        Assert.Equal("Title: T\n\nINT. ROOM - DAY\n\nHERO\nHi.\n\nFADE OUT.\n\nTHE END\n", result.Value?.FountainPackage);
+    }
+
+    private sealed class EchoChatClient : IChatClient
+    {
+        public bool IsConfigured => true;
+        public Task<string> CompleteAsync(
+            string systemPrompt,
+            string userPrompt,
+            string model,
+            double temperature = 0.2,
+            CancellationToken ct = default,
+            string? mode = null,
+            string? reasoningEffort = null) =>
+            Task.FromResult("Title: T\n\nINT. ROOM - DAY\n\nHERO\nHi.\n\nFADE OUT.\n\nTHE END\n");
+    }
+
+    private sealed class UnuploadedFountainSession : IFountainFileSession
+    {
+        public bool IsAvailable => true;
+        public string? FileId => null;
+
+        public Task EnsureUploadedAsync(string fountainText, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<string> CompleteAsync(string systemPrompt, string instructionWithoutFountainBody, string model, double temperature = 0.2, CancellationToken ct = default) =>
+            throw new InvalidOperationException("xAI fountain file_id missing — call EnsureUploadedAsync first.");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_dir, true); } catch { /* ignore */ }

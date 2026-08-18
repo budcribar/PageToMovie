@@ -13,6 +13,10 @@
     <ProjectReference Include="..\PageToMovie.Fountain\PageToMovie.Fountain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PageToMovie.Tests" />
+  </ItemGroup>
+
   <!-- Stage-1 prompt embeds so Adaptation is self-contained (Railway-safe). -->
   <ItemGroup Condition="Exists('..\..\prompts')">
     <EmbeddedResource Include="..\..\prompts\book_to_fountain.txt"

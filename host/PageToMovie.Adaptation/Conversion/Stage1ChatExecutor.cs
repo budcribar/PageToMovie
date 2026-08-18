@@ -129,7 +129,7 @@ internal static class Stage1ChatExecutor
         IBookFileSession? bookSession,
         CancellationToken ct)
     {
-        if (fountainSession is { IsAvailable: true })
+        if (fountainSession is { IsAvailable: true } && !string.IsNullOrWhiteSpace(fountainSession.FileId))
         {
             return await fountainSession.CompleteAsync(
                 request.SystemPrompt, request.UserPrompt, request.Model,
@@ -183,7 +183,7 @@ internal static class Stage1ChatExecutor
         var corrTemp = Math.Min(request.Temperature, 0.15);
         try
         {
-            if (fountainSession is { IsAvailable: true })
+            if (fountainSession is { IsAvailable: true } && !string.IsNullOrWhiteSpace(fountainSession.FileId))
             {
                 var shortCorrection = BuildShortCorrection(
                     request, findings,
