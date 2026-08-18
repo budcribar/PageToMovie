@@ -5759,11 +5759,11 @@ public sealed class FilmJobService
     {
         // Fresh / reseed: every on-screen cast key must have a locked ref attached
         if (ctx.PrevVideoPath is null && ctx.ExtendSourceFileId is null)
-            EnsureFreshGenHasLockedRefs(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles);
+            EnsureFreshGenHasLockedRefs(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles, ctx.ClipEl, ctx.BlueprintRoot);
         else
         {
             // Extend still requires locks on disk even when API cannot attach them
-            EnsureOnScreenLocksExist(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles);
+            EnsureOnScreenLocksExist(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles, ctx.ClipEl, ctx.BlueprintRoot);
         }
     }
 
@@ -6428,15 +6428,18 @@ public sealed class FilmJobService
         string projectId,
         string projectDir,
         ClipVideoPromptBuilder.PromptBuildResult built,
-        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles)
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        JsonElement clipEl,
+        JsonElement? blueprintRoot)
     {
-        var missing = MissingOnScreenLockKeys(projectId, projectDir, built, profiles);
-        if (missing.Count == 0) return;
+        var (missingCast, mustCast, _) = ClassifyMissingRefs(projectId, projectDir, built, profiles, clipEl, blueprintRoot);
+        if (mustCast.Count > 0) throw UncastRoleException(mustCast);
+        if (missingCast.Count == 0) return;
 
         throw new InvalidOperationException(
             "Locked character reference images required on disk before video-extend " +
             "(identity continuity even though the API cannot attach plates). " +
-            $"Missing ref for: {string.Join(", ", missing)}. " +
+            $"Missing ref for: {string.Join(", ", missingCast)}. " +
             "Open Characters → generate + lock a portrait for each on-screen role.");
     }
 
@@ -6448,24 +6451,66 @@ public sealed class FilmJobService
         string projectId,
         string projectDir,
         ClipVideoPromptBuilder.PromptBuildResult built,
-        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles)
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        JsonElement clipEl,
+        JsonElement? blueprintRoot)
     {
-        var missing = MissingOnScreenLockKeys(projectId, projectDir, built, profiles);
-        if (missing.Count > 0)
+        var (missingCast, mustCast, textOnly) = ClassifyMissingRefs(projectId, projectDir, built, profiles, clipEl, blueprintRoot);
+        if (mustCast.Count > 0) throw UncastRoleException(mustCast);
+        if (missingCast.Count > 0)
         {
             throw new InvalidOperationException(
                 "Locked character reference images required for fresh video gen (avoids face drift). " +
-                $"Missing ref for: {string.Join(", ", missing)}. " +
+                $"Missing ref for: {string.Join(", ", missingCast)}. " +
                 "Open Characters → generate + lock a portrait for each on-screen role.");
         }
 
-        var onScreen = OnScreenVisualKeys(built, profiles);
-        if (onScreen.Count > 0 && built.ReferenceImagePaths.Count == 0)
+        // Extras rendered from description do not need (and cannot have) a plate; only cast
+        // members on screen require an attached reference.
+        var onScreenCast = OnScreenVisualKeys(built, profiles).Except(textOnly, StringComparer.OrdinalIgnoreCase).ToList();
+        if (onScreenCast.Count > 0 && built.ReferenceImagePaths.Count == 0)
         {
             throw new InvalidOperationException(
                 "Fresh video gen built a prompt with on-screen cast but attached 0 reference images. " +
-                "Lock portraits under Characters and retry.");
+                $"On screen: {string.Join(", ", onScreenCast)}. Lock portraits under Characters and retry.");
         }
+    }
+
+    /// <summary>
+    /// Split on-screen keys without an attached/locked plate into: cast members missing a lock
+    /// (fail-fast — the user can lock one), un-cast roles that must be cast (speak or recur), and
+    /// un-cast extras allowed to render from description (see <see cref="UncastOnScreenPolicy"/>).
+    /// </summary>
+    private (List<string> MissingCast, List<UncastOnScreenPolicy.Decision> MustCast, List<string> TextOnly) ClassifyMissingRefs(
+        string projectId,
+        string projectDir,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        JsonElement clipEl,
+        JsonElement? blueprintRoot)
+    {
+        var missingCast = new List<string>();
+        var mustCast = new List<UncastOnScreenPolicy.Decision>();
+        var textOnly = new List<string>();
+        foreach (var key in MissingOnScreenLockKeys(projectId, projectDir, built, profiles))
+        {
+            if (profiles.ContainsKey(key)) { missingCast.Add(key); continue; }
+            var d = UncastOnScreenPolicy.Decide(key, clipEl, blueprintRoot);
+            if (d.TextOnly) textOnly.Add(key); else mustCast.Add(d);
+        }
+        if (textOnly.Count > 0)
+            _ = AppendLogAsync($"  [Cast] {textOnly.Count} background role(s) rendered from description (not in cast, non-speaking, single clip): {string.Join(", ", textOnly)}");
+        return (missingCast, mustCast, textOnly);
+    }
+
+    private static InvalidOperationException UncastRoleException(List<UncastOnScreenPolicy.Decision> mustCast)
+    {
+        var parts = mustCast.Select(d => d.SpeaksInClip
+            ? $"{d.Key} (speaks)"
+            : $"{d.Key} (appears in {d.ClipAppearances} clips)");
+        return new InvalidOperationException(
+            "On-screen role(s) not in the cast need a locked portrait because they speak or recur: " +
+            $"{string.Join(", ", parts)}. Add them under Characters and lock a look, or rewrite the shot plan so they appear once, silently.");
     }
 
     /// <summary>

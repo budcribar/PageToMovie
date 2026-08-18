@@ -104,14 +104,10 @@ project); Generate Batch / AI-edit modals unrenderable (mangled attributes since
 slices (Home/Scenes/Characters/Review/Configuration/Admin/ProjectCosts/AdaptationImport/
 SimpleVoice/SimpleRevoice) not re-rendering with their page; Review tab orphan "}".
 
-**Blocking since 2026-08-16 (upstream 47803939 / 174696c9):** fresh clip generation now fails a
-clip whose on-screen cast has no locked reference image — under the Tell-Tale Heart fixture S03 C2
-puts the Officer on screen but cast extraction yields only Narrator + Old Man, so there is no
-portrait to lock and the batch ends `partial`/`error` ("…attached 0 reference images. Lock portraits
-under Characters and retry."). This blocks the `ui` collection seed and every generated-clips test
-(ClipGeneration, ReviewFlow, AI-edit, ScenesPipeline varied cast). Either the guard must tolerate /
-auto-provision missing on-screen cast, or the shot plan must not put un-cast characters on screen —
-a user cannot follow the "lock portraits" advice for a character Characters does not list.
+**Resolved 2026-08-18:** un-cast on-screen roles now follow `UncastOnScreenPolicy` — a silent role
+in a single clip renders from its description; a role that speaks or recurs must be cast (the guard
+names it and why). The dead `RequestAssetUpload` client listener was removed; plates reach the
+server via the browser pre-flight (`EnsureReferencePlatesUploadedAsync`).
 
 Still failing / parked:
 - `FilmLengthFlowTests` — **Skipped**: .txt book import under the fakes leaves the import page

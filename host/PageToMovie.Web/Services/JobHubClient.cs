@@ -16,7 +16,6 @@ public sealed class JobHubClient : IAsyncDisposable
     public event Action<JobSnapshot>? JobUpdated;
     public event Action<string>? JobLog;
     public event Action<object?>? AdminState;
-    public event Func<string, string, Task>? AssetUploadRequested;
 
     public bool IsConnected =>
         _connection?.State == HubConnectionState.Connected;
@@ -63,12 +62,6 @@ public sealed class JobHubClient : IAsyncDisposable
         _connection.On<JobSnapshot>(JobHubEvents.JobUpdated, snap => JobUpdated?.Invoke(snap));
         _connection.On<string>(JobHubEvents.JobLog, line => JobLog?.Invoke(line));
         _connection.On<object>(JobHubEvents.AdminState, payload => AdminState?.Invoke(payload));
-        _connection.On<string, string>(JobHubEvents.RequestAssetUpload, async (projectId, relPath) =>
-        {
-            if (AssetUploadRequested is not null)
-                await AssetUploadRequested.Invoke(projectId, relPath);
-        });
-
         // Hub lifecycle is a second outage signal (server restarts drop the socket before any
         // REST call notices). Reconnected proves the server is back; a Closed with no error is a
         // deliberate StopAsync, not an outage.
