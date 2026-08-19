@@ -26,6 +26,10 @@ Status: ☐ open · ☑ resolved (with decision).
 | 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase (`SimpleVoiceMoviePhase.razor`) | SimpleVoice record phase (`SimpleVoiceRecordPhase.razor`) — same action on two phases of one flow |
 | 16 | ☐ | Verification report open | Clip row status badge (opens report) | Clip inspector status badge (opens the same report) — consistent pair, maybe fine |
 
+| 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay (`Demo.FilmCard.razor:12`, ▶ + "Watch on YouTube") | Film title link (`Demo.FilmCard.razor:47`) · "Watch on YouTube ↗" link (`Demo.FilmCard.razor:59`) — three links per card to the same URL |
+| 18 | ☐ | Open the demo gallery | Left-nav "Demo" | Home demo-films card "Open gallery" — rendered in TWO variants (inline `HomeDemoFilmsCard.razor:18` + card `:56`), both with the same `home-open-demo-gallery` testid |
+| 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" (`Demo.FilmCard.razor:113`) | Home easy-start story list fork (same action, different surface — may be intentional) |
+
 ## Resolved this session (for reference)
 - ☑ "Edit in Screenplay" on Film scene detail — removed (nav covers it).
 - ☑ "Show Fountain Script" — renamed "📜 Screenplay", moved to scene header.
