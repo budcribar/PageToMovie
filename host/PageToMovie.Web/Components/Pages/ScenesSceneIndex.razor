@@ -185,22 +185,15 @@ else
                     disabled="@genDisabled"
                     title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : "Generate only missing clips in selected scenes")"
                     @onclick="Host.Gen.OpenGenerateConfirmAsync">
-                @if (Host.Gen.JobRunning)
-                {
-                    <span class="batch-go__spin" aria-hidden="true"></span>
-                    <span>Generating…</span>
-                }
-                else
-                {
-                    <span class="batch-go__play" aria-hidden="true">▶</span>
-                    <span>
-                        Generate @list.GenerateBatchNoun
-                        @if (selCount > 0)
-                        {
-                            <span class="batch-go__meta">· ~@(ClipSel?.EstimateSelectedClips() ?? 0) clips</span>
-                        }
-                    </span>
-                }
+                @* Progress lives in the generation modal (and the card above the scene); the button just disables. *@
+                <span class="batch-go__play" aria-hidden="true">▶</span>
+                <span>
+                    Generate @list.GenerateBatchNoun
+                    @if (selCount > 0)
+                    {
+                        <span class="batch-go__meta">· ~@(ClipSel?.EstimateSelectedClips() ?? 0) clips</span>
+                    }
+                </span>
             </button>
         </CapabilityLockedControl>
 
@@ -316,7 +309,7 @@ else
                     <input class="form-check-input" type="checkbox"
                            checked="@isSel"
                            disabled="@Host._busy"
-                           @onchange="e => list.ToggleSelect(sn, (bool)(e.Value ?? false))" />
+                           @onchange="e => list.ToggleSelectAndOpenAsync(sn, (bool)(e.Value ?? false))" />
                 </div>
 
                 <div class="flex-shrink-0">

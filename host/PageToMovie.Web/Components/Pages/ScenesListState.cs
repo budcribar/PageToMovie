@@ -831,6 +831,15 @@ public partial class Scenes
         _selectionMode = "";
     }
 
+    /// <summary>Checkbox in the scene index: select AND show that scene in the detail (checking S03 while
+    /// S02 is open left S02 on screen — surprising). Unchecking leaves the detail alone.</summary>
+    internal async Task ToggleSelectAndOpenAsync(int sn, bool on)
+    {
+        ToggleSelect(sn, on);
+        if (on && _selectedScene != sn)
+            await OpenSceneAsync(sn);
+    }
+
 
 
     internal void SelectAll()
