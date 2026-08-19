@@ -179,8 +179,15 @@ public sealed class Stage2PlannerService
 
         var screenplay = ScreenplayService.Get(_projects, projectId);
         if (!screenplay.Status.Signed && screenplay.Status.DraftExists)
+        {
+            // Say what was compared: the Screenplay page can read "Approved" while this gate disagrees
+            // (draft saved/normalised after sign-off, or a stale page) — the hashes settle it.
+            var st = screenplay.Status;
             throw new InvalidOperationException(
-                "Approve the screenplay before building a shot plan (draft has unapproved changes).");
+                "Approve the screenplay before building a shot plan (draft has unapproved changes). " +
+                $"draft {Short(st.DraftHash)} saved {st.DraftMtime ?? "?"} vs approved {Short(st.SignedHash)} at {st.SignedAt ?? "never"}. " +
+                "Open Screenplay → Re-approve.");
+        }
 
         onProgress?.Invoke($"Loading screenplay: {Path.GetFileName(fountainPath)}");
         var stage1 = ScreenplayService.BuildModelFromFountainText(screenplay.Text, durMinSeconds, durMaxSeconds, durAbsMaxSeconds);
@@ -1381,6 +1388,8 @@ public sealed class Stage2PlannerService
         }
         return result;
     }
+
+    private static string Short(string? hash) => string.IsNullOrEmpty(hash) ? "(none)" : hash.Length > 8 ? hash[..8] : hash;
 
     private static bool IsOwnClip(Dictionary<string, object?> beat) =>
         beat.TryGetValue(Keys.OwnClip, out var v) && v is true;
