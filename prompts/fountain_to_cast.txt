@@ -107,7 +107,7 @@ Return ONLY a JSON object (no markdown fences, no commentary):
       "canonical_given_name": "Display name",
       "display_name_policy": "ok_anytime | never_on_screen | withheld_until_reveal",
       "voice_label": "short label",
-      "voice_profile": "1–3 sentences age/sex/pitch/pace/energy; same voice every scene",
+      "voice_profile": "1–3 sentences; MUST open with sex and age range (e.g. 'Adult male, 40s, …' / 'Girl, about 8, …') then pitch/pace/energy; same voice every scene — a profile that omits sex lets each clip pick a different voice",
       "performance_notes": "optional: how this role addresses camera or partners when speaking",
       "reference_image_placeholder": "character_example_ref.png",
       "source_image_pages": [2, 4],

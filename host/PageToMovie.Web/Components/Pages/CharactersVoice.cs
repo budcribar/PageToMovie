@@ -156,6 +156,14 @@ public partial class Characters
         }
 
 
+        /// <summary>Quick fix from the voice card: pin male/female/boy/girl at the front of the profile and save.</summary>
+        internal async Task SetVoiceSexAsync(string sexWord)
+        {
+            _editVoiceProfile = VoiceProfileGuard.WithSex(_editVoiceProfile, sexWord);
+            MarkVoiceStaleIfPlaying();
+            await SaveVoiceAsync(silent: true);
+        }
+
         internal Task OnVoiceProfileChanged(string value)
         {
             _editVoiceProfile = value ?? "";

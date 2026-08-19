@@ -27,6 +27,7 @@ public sealed class Stage2PlannerService
     /// </summary>
     public const string GlobalNegativeDefault =
         "no legible text, no watermarks, no logos, no extra limbs, " +
+        "bodies stay intact (no detached or separating heads, limbs or body parts), " +
         "blur/obscure environmental signage or screens, no name tags, no name badges, " +
         "no embroidered names, no lower thirds, no personal names on clothing or props";
 

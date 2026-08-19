@@ -1534,8 +1534,10 @@ public static class ClipVideoPromptBuilder
             prof is null ||
             string.IsNullOrWhiteSpace(prof.VoiceProfile))
             return "";
+        // Every clip is generated independently: the profile text is the only cross-clip voice
+        // identity. Say so, so the model does not re-cast the voice per clip.
         return " " + PromptTags.Wrap("VoiceLock",
-            $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)}");
+            $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)} — exactly this one voice (same sex, age and timbre) as in every other clip of this film.");
     }
 
     private static List<string> CollectAudioLayers(string score, string ambient, string sfx)
