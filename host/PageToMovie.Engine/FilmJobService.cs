@@ -5303,9 +5303,13 @@ public sealed class FilmJobService
     /// Applies carried-forward padding to a clip's requested duration, never exceeding the resolved
     /// model's absolute ceiling (<paramref name="absMaxSeconds"/>).
     /// </summary>
+    /// <summary>Measured overruns below this are probe noise, not real padding — a 0.04 s carry used to
+    /// become a whole extra billed second ("+0.0s carried … 5s to 6s") while the prompt still said 5 s.</summary>
+    public const double MinCarryoverPaddingSec = 0.5;
+
     public static int ApplyIncomingDurationPadding(
         int durationSeconds, double incomingDurationPaddingSec, int absMaxSeconds) =>
-        incomingDurationPaddingSec > 0
+        incomingDurationPaddingSec >= MinCarryoverPaddingSec
             ? Math.Min(absMaxSeconds, durationSeconds + (int)Math.Ceiling(incomingDurationPaddingSec))
             : durationSeconds;
 
@@ -5951,7 +5955,7 @@ public sealed class FilmJobService
         // hardcoded provider assumption.
         var (durMin, durMax, durAbsMax) = ClipDurationEstimator.ResolveBoundsForModel(ctx.Model);
         var duration = ClipDurationEstimator.EstimateForClip(ctx.ClipEl, durMin, durMax, durAbsMax);
-        if (supportsContinue && ctx.IncomingDurationPaddingSec > 0)
+        if (supportsContinue && ctx.IncomingDurationPaddingSec >= MinCarryoverPaddingSec)
         {
             var padded = ApplyIncomingDurationPadding(duration, ctx.IncomingDurationPaddingSec, durAbsMax);
             await AppendLogAsync(

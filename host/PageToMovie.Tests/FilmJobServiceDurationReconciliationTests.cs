@@ -89,6 +89,15 @@ public class FilmJobServiceDurationReconciliationTests
     }
 
     [Fact]
+    public void ApplyIncomingDurationPadding_IgnoresProbeNoiseBelowHalfASecond()
+    {
+        // A 0.04 s measured overrun is not a reason to bill a whole extra second.
+        Assert.Equal(5, FilmJobService.ApplyIncomingDurationPadding(durationSeconds: 5, incomingDurationPaddingSec: 0.04, absMaxSeconds: 12));
+        Assert.Equal(5, FilmJobService.ApplyIncomingDurationPadding(durationSeconds: 5, incomingDurationPaddingSec: 0.49, absMaxSeconds: 12));
+        Assert.Equal(6, FilmJobService.ApplyIncomingDurationPadding(durationSeconds: 5, incomingDurationPaddingSec: 0.5, absMaxSeconds: 12));
+    }
+
+    [Fact]
     public void ApplyIncomingDurationPadding_NoOpWhenNoPaddingCarried()
     {
         var unchanged = FilmJobService.ApplyIncomingDurationPadding(
