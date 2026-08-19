@@ -1368,3 +1368,19 @@ public class PreviousClipQuoteRedactionTests
         Assert.Contains("OFF-CAMERA VOICEOVER Character_Narrator says [a line already spoken in the previous clip", redacted);
     }
 }
+
+public class VoiceOnlyPresenceStripTests
+{
+    [Fact]
+    public void Voice_only_role_is_removed_from_on_screen_lists_wardrobe_and_tails()
+    {
+        var text = "EXT. SCHOOLHOUSE - DAY. also on screen: Character_Mary, Character_Narrator. THE LAMB waits. " +
+                   "OFF-CAMERA VOICEOVER Character_Narrator says \"x\". Character_Narrator still wears wool jacket, trousers, leather boots, felt hat <Lighting>soft</Lighting> Character_Mary is on screen. Character_Narrator is on screen.";
+        var outp = PageToMovie.Engine.ClipVideoPromptBuilder.StripVoiceOnlyPresence(text, new[] { "Character_Narrator" });
+        Assert.DoesNotContain("still wears", outp);
+        Assert.DoesNotContain("Character_Narrator is on screen", outp);
+        Assert.Contains("also on screen: Character_Mary.", outp);
+        Assert.Contains("OFF-CAMERA VOICEOVER Character_Narrator says", outp); // the speaker line stays
+        Assert.Contains("Character_Mary is on screen.", outp);
+    }
+}

@@ -127,12 +127,13 @@
                                 <div class="card bg-dark border-secondary h-100 p-2">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="badge bg-info text-dark">Selected Take</span>
-                                        @if (Versions.Count(v => !v.IsCurrent) > 0)
+                                        @if (Versions.Count > 1)
                                         {
-                                            <select class="form-select form-select-sm w-auto" @bind="SelectedCompareVersionId">
-                                                @foreach (var v in Versions.Where(v => !v.IsCurrent))
+                                            @* Any take can be compared against the active one (the active one is marked). *@
+                                            <select class="form-select form-select-sm w-auto" @bind="SelectedCompareVersionId" data-testid="takes-compare-select">
+                                                @foreach (var v in Versions.OrderByDescending(x => x.Take))
                                                 {
-                                                    <option value="@v.VersionId">Take @v.Take (@v.CreatedAtUtc.ToLocalTime().ToString("MMM d, h:mm tt"))</option>
+                                                    <option value="@v.VersionId">@(v.IsCurrent ? "★ " : "")Take @v.Take (@v.CreatedAtUtc.ToLocalTime().ToString("MMM d, h:mm tt"))</option>
                                                 }
                                             </select>
                                         }
