@@ -1356,3 +1356,15 @@ public class PromptCompressionKeepsVoiceLockTests
         Assert.True(lockText.Length <= 140, lockText);
     }
 }
+
+public class PreviousClipQuoteRedactionTests
+{
+    [Fact]
+    public void Previous_clip_context_keeps_the_speaker_but_not_the_words()
+    {
+        var prev = "MARY walks. OFF-CAMERA VOICEOVER Character_Narrator says \"But still he lingered near, And waited patiently about.\". Soft light.";
+        var redacted = PageToMovie.Engine.ClipVideoPromptBuilder.RedactSpokenQuotes(prev);
+        Assert.DoesNotContain("lingered near", redacted);
+        Assert.Contains("OFF-CAMERA VOICEOVER Character_Narrator says [a line already spoken in the previous clip", redacted);
+    }
+}

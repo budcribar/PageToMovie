@@ -351,7 +351,10 @@ public static class ClipVideoPromptBuilder
         if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) &&
             mode is ModeContinue or ModeVideoExtend)
         {
-            var prevClean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
+            // The previous clip's spoken line must not ride into this clip: quoting it verbatim in the
+            // context ("OFF-CAMERA VOICEOVER C3 says \"…\"") is an invitation to speak it again
+            // (Mary19 S03C02 repeated S03C01's narration). Keep who spoke, drop the words.
+            var prevClean = RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys));
             var note = mode == ModeVideoExtend
                 ? "already provided as video input — continue from its last frame"
                 : "context — match look and continue motion from its end";
@@ -731,6 +734,18 @@ public static class ClipVideoPromptBuilder
             visual,
             @"(?<=(?:lip-syncs|says|narrates(?:\s+exactly)?)\s+)""([^""]*)""",
             m => "\"" + SanitizeSpokenDialogue(m.Groups[1].Value) + "\"",
+            RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>Replace quoted spoken lines after lip-syncs / says / narrates with a marker — used for
+    /// the PREVIOUS clip's context so its dialogue is never re-spoken in the new clip.</summary>
+    internal static string RedactSpokenQuotes(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? "";
+        return CommonRegex.Replace(
+            text,
+            @"(?<=(?:lip-syncs|says|narrates(?:\s+exactly)?)\s+)""[^""]*""",
+            "[a line already spoken in the previous clip - do NOT repeat it]",
             RegexOptions.IgnoreCase);
     }
 
