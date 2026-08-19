@@ -3412,7 +3412,29 @@ public sealed partial class ProjectStore
                 Exists = true,
                 Url = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/variants/{i}",
             });
+            // LockVariantAsync copies the variant bytes into the ref, so an exact match tells us
+            // which look is the locked one (the tile grid shows the lock on it after a reload).
+            if (hasLockedPlate && path is not null && row.PreferredVariantIndex is null && SameFileBytes(path, full))
+                row.PreferredVariantIndex = i;
         }
+    }
+
+    private static bool SameFileBytes(string a, string b)
+    {
+        try
+        {
+            var fa = new FileInfo(a); var fb = new FileInfo(b);
+            if (!fa.Exists || !fb.Exists || fa.Length != fb.Length) return false;
+            using var sa = File.OpenRead(a); using var sb = File.OpenRead(b);
+            Span<byte> ba = stackalloc byte[8192]; Span<byte> bb = stackalloc byte[8192];
+            while (true)
+            {
+                var na = sa.Read(ba); var nb = sb.Read(bb);
+                if (na != nb || !ba[..na].SequenceEqual(bb[..nb])) return false;
+                if (na == 0) return true;
+            }
+        }
+        catch { return false; }
     }
 
     /// <summary>Write description + visual_lock into location_seed_tokens (cast_seeds / blueprint).</summary>

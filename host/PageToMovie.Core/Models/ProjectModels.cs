@@ -432,6 +432,10 @@ public sealed class LocationSummary
     public string? PreferredRelativePath { get; set; }
     /// <summary>Generated set plate options (variant_01..).</summary>
     public List<CharacterImageRef> Variants { get; set; } = new();
+    /// <summary>Which variant the locked plate was taken from (1-based), when it can be told —
+    /// the ref is a byte-copy of the chosen variant. Null for a plate that lives only in the
+    /// user's folder or was uploaded/edited rather than picked.</summary>
+    public int? PreferredVariantIndex { get; set; }
     /// <summary>
     /// True when this location is referenced by the current shot plan / scenes.
     /// Unused seeds stay in cast_seeds but are hidden from the default Locations list.

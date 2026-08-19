@@ -62,6 +62,9 @@ public partial class Locations : IDisposable
     {
         if (_selected is null || !(_selected.HasPreferred || _selected.Locked)) return false;
         if (_lastLockedVariantIndex is int last && last == variantIndex) return true;
+        // Server-derived: the ref plate is a byte-copy of the chosen variant, so after a reload the
+        // locked look is still known (before this, tile #1 showed unlocked while it was the plate).
+        if (_selected.PreferredVariantIndex is int pv) return pv == variantIndex;
         var existing = _selected.Variants.Where(x => x.Exists).Select(x => x.Index ?? 0).Where(i => i > 0).ToList();
         if (existing.Count == 1 && existing[0] == variantIndex) return true;
         return false;

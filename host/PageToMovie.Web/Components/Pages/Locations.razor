@@ -166,11 +166,8 @@
                     var selectedLocked = _selected.Locked && _selected.HasPreferred;
                     <div class="card bg-dark border-secondary">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            @* Lock state is shown on the plate itself and in the index — no separate pill. *@
                             <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>
-                            <span class="badge @(selectedLocked ? "text-bg-success" : "text-bg-secondary")"
-                                  title="@(selectedLocked ? "Preferred plate is locked for video" : "No preferred plate yet")">
-                                @(selectedLocked ? "🔒 " + L["LocationsPage.Locked"] : "🔓 " + L["LocationsPage.Unlocked"])
-                            </span>
                         </div>
                         <div class="card-body">
                             @if (!string.IsNullOrWhiteSpace(_plateUrl))
