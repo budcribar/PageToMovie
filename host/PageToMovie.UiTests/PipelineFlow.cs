@@ -209,7 +209,15 @@ public static class PipelineFlow
                 if (chars.length) break;
                 await new Promise(r=>setTimeout(r,1500));
             }
-            if (!chars.length) return JSON.stringify({err:'no cast extracted', activeId:id});
+            if (!chars.length) {
+                // Diagnostic for the intermittent case: was the chat model configured on this project
+                // when sign-off ran? (sign-off skips extraction when the chat client is unconfigured).
+                const cfg = await fetch('/api/projects/'+E+'/config', {headers:h}).then(r=>r.json()).catch(e=>({fetchErr:String(e)}));
+                const c = cfg.config||cfg.Config||cfg;
+                return JSON.stringify({err:'no cast extracted', activeId:id,
+                    chat_model:c.chat_model_name||c.ChatModelName, planning_model:c.planning_model_name||c.PlanningModelName,
+                    chat_provider:c.chat_provider||c.ChatProvider});
+            }
             for (const c of chars) {
                 const key = c.key||c.Key; const K = encodeURIComponent(key);
                 const v = await fetch('/api/jobs/character-variants', {method:'POST', headers:h,

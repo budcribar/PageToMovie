@@ -443,7 +443,13 @@ public static class AdaptationEndpoints
     {
         // AI cast sidecar after approve (closed cast for Characters / plates)
         if (!chat.IsConfigured)
-            return null;
+        {
+            // Visible skip: an unconfigured chat client at sign-off is the one path that leaves a
+            // project with an approved screenplay and no cast (seen intermittently in UI runs while
+            // the per-project config write is still in flight). Say so instead of returning nothing.
+            Console.Error.WriteLine($"[sign-off] {id}: cast extraction skipped — chat client not configured");
+            return new { ok = false, skipped = "chat_not_configured", error = "Cast extraction skipped: no chat model configured at sign-off." };
+        }
         try
         {
             // force:false — respects ExtractAsync's own skip-if-present guard. Sign-off still

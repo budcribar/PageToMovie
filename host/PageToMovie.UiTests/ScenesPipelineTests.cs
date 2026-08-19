@@ -144,11 +144,27 @@ public class ScenesPipelineTests
 
             // Scene 1's clip 1 in this fixture is ~10s (over the 8.7s edit cap) — clip 2 (~5s) is
             // the one guaranteed eligible, so this exercises the real button rather than guessing.
-            var playSecondClip = page.GetByRole(AriaRole.Button, new() { Name = "▶ Play C02" });
-            await Assertions.Expect(playSecondClip).ToBeVisibleAsync(new() { Timeout = 30_000 });
-            await playSecondClip.ClickAsync();
+            // The inspector follows the clip-table row selection (not the Play button), so select
+            // clip 2 by clicking its row (the checkbox itself is multi-select and stops propagation).
+            var clip2Row = page.GetByTestId("clip-select-2").Locator("xpath=ancestor::tr[1]");
+            await Assertions.Expect(clip2Row).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            // Click a plain cell (Duration) — the row centre lands on the Clip cell's own buttons
+            // (Play / Takes / Delete), which open their modals instead of selecting the row.
+            await clip2Row.Locator("td").Nth(2).ClickAsync();
 
             var editOpen = page.GetByTestId("clip-video-edit-open");
+            if (await editOpen.CountAsync() == 0)
+            {
+                // Diagnostic: what did the detail render after the row click?
+                await page.WaitForTimeoutAsync(3_000);
+                var dump = await page.EvaluateAsync<string>(@"() => {
+                    const ids = [...document.querySelectorAll('[data-testid]')].map(e => e.getAttribute('data-testid'));
+                    const main = document.querySelector('main') || document.body;
+                    const row = document.querySelector('[data-testid=clip-select-2]')?.closest('tr');
+                    return JSON.stringify({rowClass: row?.className, testids: ids.slice(0, 80), text: main.innerText.slice(1200, 3000)});
+                }");
+                Assert.True(await editOpen.CountAsync() > 0, "clip-video-edit-open not rendered after selecting clip 2: " + dump);
+            }
             await Assertions.Expect(editOpen).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(editOpen).ToBeEnabledAsync(new() { Timeout = 15_000 });
 

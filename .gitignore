@@ -392,3 +392,6 @@ data/keys/
 # local sqlite runtime
 data/pagetomovie.db*
 
+
+# throwaway debugging scripts — never commit
+host/scratch/

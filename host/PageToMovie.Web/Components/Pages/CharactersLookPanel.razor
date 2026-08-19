@@ -394,7 +394,7 @@
         }
     </div>
 
-    @* Collapsible Voice Section (starts collapsed by default) *@
+    @* Collapsible Voice Section — opens by default for a speaking role without a voice (see CharactersListState.VoiceCardOpensByDefault) *@
     @if (Voice.ShowVoiceFields(selected))
     {
         <div class="card mb-2" data-testid="char-voice-card">
@@ -403,18 +403,23 @@
                         class="char-panel-toggle border-0 bg-transparent text-start p-0 flex-grow-1 d-flex justify-content-between align-items-center gap-2"
                         @onclick="() => LookEdit._panelVoiceOpen = !LookEdit._panelVoiceOpen">
                     <div>
-                        <strong class="small">Voice (optional)</strong>
+                        <strong class="small">Voice</strong>
+                        @* Same rule as cast readiness: a speaking role needs a voice before Film can generate. *@
                         @if (Characters.CharactersVoice.HasVoiceProfile(selected))
                         {
-                            <span class="badge text-bg-success ms-1" style="font-size:0.65rem">Profile set</span>
+                            <span class="badge text-bg-success ms-1" style="font-size:0.65rem" data-testid="char-voice-badge">Profile set</span>
                         }
                         else if (selected.HasVoiceCloneSample)
                         {
-                            <span class="badge text-bg-info text-dark ms-1" style="font-size:0.65rem">Clone sample</span>
+                            <span class="badge text-bg-info text-dark ms-1" style="font-size:0.65rem" data-testid="char-voice-badge">Clone sample</span>
+                        }
+                        else if (selected.Speaks && !selected.IsGroup)
+                        {
+                            <span class="badge text-bg-warning text-dark ms-1" style="font-size:0.65rem" data-testid="char-voice-badge" title="This character speaks — pick or record a voice before generating video">Required — speaking role</span>
                         }
                         else
                         {
-                            <span class="badge text-bg-secondary ms-1" style="font-size:0.65rem">Default</span>
+                            <span class="badge text-bg-secondary ms-1" style="font-size:0.65rem" data-testid="char-voice-badge">Optional</span>
                         }
                     </div>
                     <span class="small text-muted">@(LookEdit._panelVoiceOpen ? "▲" : "▼")</span>

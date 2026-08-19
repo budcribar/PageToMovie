@@ -109,6 +109,22 @@ in a single clip renders from its description; a role that speaks or recurs must
 names it and why). The dead `RequestAssetUpload` client listener was removed; plates reach the
 server via the browser pre-flight (`EnsureReferencePlatesUploadedAsync`).
 
+**2026-08-18 full serial run:** 105 passed / 6 failed / 1 skipped (26 min). Fixed after the run:
+`Speaking_character_shows_a_voice_section` (now clears the Narrator's extracted voice profile via
+the API and asserts the voice card opens with the "Required — speaking role" badge — option B),
+`AI_edit_button…` (re-pointed to the clip-table row selection; the row centre lands on the Clip
+cell's Play/Takes/Delete buttons, so click the Duration cell). Both green on rerun.
+
+Intermittent (seen once each in this run, green on rerun): `Opening_a_scene_shows_its_clip_select_bar`
+— Stage 2 reported "No screenplay draft" right after sign-off; and the earlier "no cast extracted"
+on a 2nd project. Both smell like the per-project config PUT / sign-off ordering. Instrumentation
+added: sign-off now returns `cast.skipped = "chat_not_configured"` (and logs it) instead of null,
+and `PipelineFlow` dumps the project's chat/planning model on the no-cast path.
+
+`PageToMovie.Tests.StructuredOperationArtifactsTests.Mary_cast_replay…` failed once in a parallel
+unit run and passed 2129/2129 on two reruns; suspect `PAGETOMOVIE_USE_FAKES` env toggling by the
+API-factory tests changing the catalog default mid-run. Not yet isolated.
+
 Still failing / parked:
 - `FilmLengthFlowTests` — **Skipped**: .txt book import under the fakes leaves the import page
   busy > 2 min (film-length controls disabled). Investigate the fake Stage-1 book job.

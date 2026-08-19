@@ -466,7 +466,15 @@ public partial class Characters
         {
             // Single card for picture + voice; always expanded when a character is selected.
             S.LookEdit._panelPictureOpen = true;
+            // Voice card: open when it matters. Cast readiness (ProjectStore) requires a voice for
+            // every speaking role, so a speaker without a profile must not find that requirement
+            // folded away behind a grey "Default" badge; once set (or for non-speaking roles) it
+            // stays collapsed to keep the panel calm.
+            S.LookEdit._panelVoiceOpen = VoiceCardOpensByDefault(_selected);
         }
+
+        internal static bool VoiceCardOpensByDefault(CharacterSummary? c) =>
+            c is not null && c.Speaks && !c.IsGroup && !CharactersVoice.HasVoiceProfile(c);
 
 
 

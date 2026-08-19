@@ -49,11 +49,36 @@ public class CharactersFlowTests
         {
             await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl, "CharVoice_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
-            // Narrator speaks, so its detail panel offers a voice section (not the silent/animal hint).
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
+
+            // Extraction seeds a voice_profile description for every role, so the Narrator arrives with
+            // "Profile set". Clear it through the app's own API (empty string clears the seed) so this
+            // drives the case the rule exists for: a speaking role with no voice.
+            var cleared = await page.EvaluateAsync<string>(@"async () => {
+                const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return 'no session';
+                const s = JSON.parse(raw);
+                const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||''), 'Content-Type':'application/json'};
+                const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
+                const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id; if (!id) return 'no active';
+                const E = encodeURIComponent(id);
+                const chars = (await fetch('/api/projects/'+E+'/characters', {headers:h}).then(r=>r.json())).characters || [];
+                const n = chars.find(c => /narrator/i.test(c.key||c.Key||'') || /narrator/i.test(c.name||c.Name||''));
+                if (!n) return 'no narrator: ' + chars.map(c=>c.key||c.Key).join(',');
+                const r = await fetch('/api/projects/'+E+'/characters/'+encodeURIComponent(n.key||n.Key)+'/voice',
+                    {method:'POST', headers:h, body: JSON.stringify({voiceProfile:'', voiceLabel:''})}).then(r=>r.json());
+                return r.ok ? 'ok' : JSON.stringify(r);
+            }");
+            Assert.Equal("ok", cleared);
+            await page.ReloadAsync();
+            await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
+
+            // Narrator speaks and now has no voice: cast readiness will require one, so the voice card
+            // must be OPEN with a "Required" badge — not folded away behind a grey Default (6df5a85c).
             await page.EvaluateAsync(
                 "() => [...document.querySelectorAll('[data-testid=char-list-item]')].find(b => /narrator/i.test(b.textContent))?.click()");
-            await Assertions.Expect(page.GetByTestId("char-voice-section")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.GetByTestId("char-voice-card")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.GetByTestId("char-voice-badge")).ToContainTextAsync("Required", new() { Timeout = 15_000 });
+            await Assertions.Expect(page.GetByTestId("char-voice-section")).ToBeVisibleAsync(new() { Timeout = 15_000 });
         }
         finally { await ctx.CloseAsync(); }
     }
