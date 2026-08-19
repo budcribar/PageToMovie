@@ -1804,7 +1804,7 @@ public sealed class Stage2PlannerService
         };
     }
 
-    private static string BuildVisualPrompt(
+    internal static string BuildVisualPrompt(
         Dictionary<string, object?> beat,
         Dictionary<string, object?> scene,
         Dictionary<string, object?> locSeeds,
@@ -1820,9 +1820,15 @@ public sealed class Stage2PlannerService
 
         var place = LocationLockPhrase(scene, beat, locSeeds);
         var style = EnsureCastStyleLock(RenderStyleLock(scene), cast, charSeeds);
+        // A voice-only role (never_on_screen) is never "on screen" and has no wardrobe to keep: listing
+        // the narrator here (and "Character_Narrator still wears wool jacket…" below) put a man in the
+        // yard in Mary19 S03. Visual cast = cast minus voice-only roles.
+        var visualCast = cast.Where(t => !IsNeverOnScreenCharacter(t, charSeeds)).ToList();
+        if (IsNeverOnScreenCharacter(primary, charSeeds))
+            primary = visualCast.Count > 0 ? visualCast[0] : "";
         ve = AttachSubjectIfMissing(ve, primary, charSeeds);
 
-        var others = cast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
+        var others = visualCast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
         var othersBit = others.Count > 0 ? $"also on screen: {string.Join(", ", others)}" : "";
         // CAST COUNT + CHARACTER VARIABLES owned by ClipVideoPromptBuilder at gen time.
 
@@ -1834,7 +1840,7 @@ public sealed class Stage2PlannerService
         var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
         var mustBit = mustNot.Count > 0 ? $"must not: {string.Join("; ", mustNot)}" : "";
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
-        var ward = WardrobeContinuityClause(wardrobe, cast, primary);
+        var ward = WardrobeContinuityClause(wardrobe, visualCast, primary);
 
         // Join full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.

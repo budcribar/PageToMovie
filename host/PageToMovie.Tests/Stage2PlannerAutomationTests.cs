@@ -629,3 +629,43 @@ public class Stage2DuplicateActionVoKeepsItsOwnClipTests
         Assert.Equal("And everywhere that Mary went, The lamb was sure to go.", afterMono[1]["dialogue"]);
     }
 }
+
+public class Stage2VoiceOnlyNeverOnScreenTests
+{
+    /// <summary>Mary19 S03: "also on screen: Character_Mary, Character_Narrator … Character_Narrator still wears
+    /// wool jacket, trousers, leather boots, felt hat" — a voice-only narrator listed as on screen with a
+    /// wardrobe. Voice-only roles are never on screen and have no clothes in the prompt.</summary>
+    [Fact]
+    public void Voice_only_role_is_not_listed_on_screen_and_gets_no_wardrobe_line()
+    {
+        var charSeeds = new Dictionary<string, object?>
+        {
+            ["Character_Narrator"] = new Dictionary<string, object?> { ["display_name_policy"] = "never_on_screen", ["description"] = "Off-screen verse narrator." },
+            ["Character_Mary"] = new Dictionary<string, object?> { ["display_name_policy"] = "ok_anytime", ["description"] = "Girl about eight, rose ribbon." },
+            ["Character_The_Lamb"] = new Dictionary<string, object?> { ["display_name_policy"] = "ok_anytime", ["description"] = "Tiny white lamb." },
+        };
+        var scene = new Dictionary<string, object?>
+        {
+            ["scene_number"] = 3, ["setting"] = "EXT. SCHOOLHOUSE - DAY",
+            ["characters_on_screen"] = new List<object?> { "Character_The_Lamb", "Character_Mary", "Character_Narrator" },
+        };
+        var beat = new Dictionary<string, object?>
+        {
+            ["beat_id"] = "b2", ["visual_event"] = "THE LAMB runs to MARY and lays his head upon her arm.",
+            ["dialogue"] = "And then he ran to her.", ["speaker"] = "Character_Narrator", ["delivery"] = "voiceover_internal",
+            ["primary_subject"] = "Character_The_Lamb",
+        };
+        var wardrobe = new Dictionary<string, List<string>>
+        {
+            ["Character_Narrator"] = new() { "wool jacket", "felt hat" },
+            ["Character_Mary"] = new() { "rose ribbon", "pale pinafore" },
+        };
+
+        var prompt = PageToMovie.Engine.Stage2PlannerService.BuildVisualPrompt(beat, scene, new(), charSeeds, wardrobe);
+
+        Assert.DoesNotContain("Character_Narrator still wears", prompt);
+        Assert.DoesNotContain("also on screen: Character_Narrator", prompt);
+        Assert.DoesNotContain(", Character_Narrator", prompt.Split("OFF-CAMERA")[0]);
+        Assert.Contains("Character_Mary still wears", prompt);
+    }
+}
