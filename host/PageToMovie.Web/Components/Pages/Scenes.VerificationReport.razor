@@ -139,6 +139,37 @@
                         </div>
                     </div>
 
+                    @* What the verifier found, by tier — the reasons behind the score *@
+                    @if (Report.Issues is { Count: > 0 })
+                    {
+                        <div class="card bg-dark border-secondary mb-3" data-testid="verify-issues">
+                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
+                                🔎 Issues found (@Report.Issues.Count)
+                            </div>
+                            <div class="card-body py-2">
+                                @foreach (var tier in IssueTiers)
+                                {
+                                    var items = Report.Issues.Where(i => tier.Match(i.Kind)).ToList();
+                                    if (items.Count == 0) continue;
+                                    <div class="mb-2">
+                                        <span class="badge @tier.BadgeClass me-1">@tier.Label</span>
+                                        <span class="small text-secondary">@tier.Help</span>
+                                        <ul class="mb-0 mt-1 small text-light">
+                                            @foreach (var i in items)
+                                            {
+                                                <li>
+                                                    <code>@i.Kind</code>
+                                                    @if (!string.IsNullOrWhiteSpace(i.Word)) { <span> ‘@i.Word’</span> }
+                                                    @if (!string.IsNullOrWhiteSpace(i.Detail)) { <span class="text-secondary"> — @i.Detail</span> }
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
                     @* AI Inspector Notes *@
                     @if (!string.IsNullOrWhiteSpace(Report.SummaryNote))
                     {

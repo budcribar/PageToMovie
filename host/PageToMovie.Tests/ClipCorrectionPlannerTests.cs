@@ -44,6 +44,51 @@ public class ClipCorrectionPlannerTests
     }
 
     [Fact]
+    public void Cut_off_line_buys_seconds_not_luck()
+    {
+        var plan = ClipCorrectionPlanner.Plan(Ver("I heard all things in the heaven and in the earth.", "I heard all things in the heaven and in the", 0.85, "mismatch",
+            issues: new DialogueVerificationIssue { Kind = "cut_off", Detail = "truncated before 'earth'" }));
+        Assert.Equal(ClipCorrectionPlanner.CutOffExtraSeconds, plan.ExtraDurationSec);
+        Assert.False(plan.IsEmpty);
+        Assert.Contains("+2s", plan.Tag());
+        Assert.Contains(plan.Reasons, r => r.Contains("cut off"));
+    }
+
+    [Fact]
+    public void Missing_or_wrong_words_emphasize_the_whole_line()
+    {
+        var missing = ClipCorrectionPlanner.Plan(Ver("Villains! Dissemble no more!", "", 0.0, "no_speech"));
+        Assert.True(missing.EmphasizeWholeLine);
+        Assert.Contains("emphasis", missing.Tag());
+
+        var wrong = ClipCorrectionPlanner.Plan(Ver("Villains! Dissemble no more!", "Villains, assemble once more!", 0.4, "mismatch",
+            issues: new DialogueVerificationIssue { Kind = "wrong_words" }));
+        Assert.True(wrong.EmphasizeWholeLine);
+        Assert.Null(wrong.DeliveryCue);
+    }
+
+    [Fact]
+    public void Robotic_or_off_timing_delivery_gets_a_delivery_cue_only()
+    {
+        var plan = ClipCorrectionPlanner.Plan(Ver("It is the beating of his hideous heart!", "It is the beating of his hideous heart!", 0.9, "verified",
+            issues: new DialogueVerificationIssue { Kind = "robotic_delivery", Detail = "flat monotone" }));
+        Assert.Equal(ClipCorrectionPlanner.NaturalDeliveryCue, plan.DeliveryCue);
+        Assert.False(plan.EmphasizeWholeLine);
+        Assert.Equal(0, plan.ExtraDurationSec);
+        Assert.Contains("delivery", plan.Tag());
+    }
+
+    [Fact]
+    public void Inflected_heteronyms_resolve_and_carry_the_suffix_onto_the_respelling()
+    {
+        var plan = ClipCorrectionPlanner.Plan(Ver("He tears up the planks and reads the letter.", "He tears up the planks and reads the letter.", 0.9, "verified",
+            issues: new DialogueVerificationIssue { Kind = "wrong_sense", Word = "tears" }));
+        var tears = Assert.Single(plan.Respellings, r => r.Word.Equals("tears", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("TAIRS", tears.Respell);
+        Assert.StartsWith("He TAIRS up the planks", ClipVideoPromptBuilder.ApplyRespellings("He tears up the planks and reads the letter.", plan.Respellings));
+    }
+
+    [Fact]
     public void Verified_line_with_no_issues_plans_nothing()
     {
         var plan = ClipCorrectionPlanner.Plan(Ver("It is the beating of his hideous heart!", "It is the beating of his hideous heart!", 1.0, "verified"));

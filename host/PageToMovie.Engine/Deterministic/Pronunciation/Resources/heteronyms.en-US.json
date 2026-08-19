@@ -1,5 +1,5 @@
 {
-  "version": "2026-08-18.1",
+  "version": "2026-08-18.2",
   "language": "en-US",
   "entries": [
     {
@@ -45,6 +45,10 @@
           "respell": "TEER",
           "rhymes": "ear"
         }
+      ],
+      "forms": [
+        "tears",
+        "tearing"
       ]
     },
     {
@@ -88,6 +92,10 @@
           "respell": "LED",
           "rhymes": "bed"
         }
+      ],
+      "forms": [
+        "leads",
+        "leading"
       ]
     },
     {
@@ -130,6 +138,10 @@
           "respell": "WYND",
           "rhymes": "find"
         }
+      ],
+      "forms": [
+        "winds",
+        "winding"
       ]
     },
     {
@@ -172,6 +184,10 @@
           "respell": "BOH",
           "rhymes": "go"
         }
+      ],
+      "forms": [
+        "bows",
+        "bowing"
       ]
     },
     {
@@ -255,6 +271,10 @@
           "respell": "KLOHZ",
           "rhymes": "doze"
         }
+      ],
+      "forms": [
+        "closes",
+        "closing"
       ]
     },
     {
@@ -294,6 +314,10 @@
           "respell": "dih-ZURT",
           "rhymes": "dessert"
         }
+      ],
+      "forms": [
+        "deserts",
+        "deserting"
       ]
     },
     {
@@ -374,6 +398,10 @@
           "respell": "LYVE",
           "rhymes": "five"
         }
+      ],
+      "forms": [
+        "lives",
+        "living"
       ]
     },
     {
@@ -413,6 +441,9 @@
           "respell": "my-NOOT",
           "rhymes": "my newt"
         }
+      ],
+      "forms": [
+        "minutes"
       ]
     },
     {
@@ -452,6 +483,10 @@
           "respell": "ub-JEKT",
           "rhymes": "reject"
         }
+      ],
+      "forms": [
+        "objects",
+        "objecting"
       ]
     },
     {
@@ -492,6 +527,10 @@
           "respell": "prih-ZENT",
           "rhymes": "resent"
         }
+      ],
+      "forms": [
+        "presents",
+        "presenting"
       ]
     },
     {
@@ -531,6 +570,10 @@
           "respell": "pruh-DOOS",
           "rhymes": "reduce"
         }
+      ],
+      "forms": [
+        "produces",
+        "producing"
       ]
     },
     {
@@ -571,6 +614,10 @@
           "respell": "RED",
           "rhymes": "bed"
         }
+      ],
+      "forms": [
+        "reads",
+        "reading"
       ]
     },
     {
@@ -610,6 +657,10 @@
           "respell": "rih-FYOOZ",
           "rhymes": "peruse"
         }
+      ],
+      "forms": [
+        "refuses",
+        "refusing"
       ]
     },
     {
@@ -649,6 +700,10 @@
           "respell": "SOW",
           "rhymes": "cow"
         }
+      ],
+      "forms": [
+        "sows",
+        "sowing"
       ]
     },
     {
@@ -689,6 +744,10 @@
           "respell": "WOWND",
           "rhymes": "found"
         }
+      ],
+      "forms": [
+        "wounds",
+        "wounding"
       ]
     }
   ]

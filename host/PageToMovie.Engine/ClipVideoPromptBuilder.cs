@@ -1588,12 +1588,18 @@ public static class ClipVideoPromptBuilder
         // QA correction: a heteronym the model read with the wrong sense is respelled INSIDE the quoted
         // line ("TAIR up the planks!") — the one cue speech models reliably follow — with the hint kept
         // for the reader; the verifier still checks against the script text.
+        // {speakerLock} carries every QA-retry sentence (speaker lock, whole-line emphasis, delivery
+        // cue) so the three return branches below stay unchanged.
         var speakerLock = "";
         if (correction is not null)
         {
             quote = ApplyRespellings(quote, correction.Respellings);
             if (correction.SpeakerLockKey is { Length: > 0 })
-                speakerLock = $" ONLY {who} speaks in this clip; every other character is silent with mouth closed and does not mouth the words.";
+                speakerLock += $" ONLY {who} speaks in this clip; every other character is silent with mouth closed and does not mouth the words.";
+            if (correction.EmphasizeWholeLine)
+                speakerLock += " The COMPLETE line above must be spoken aloud, every word in order, clearly audible from the first word to the last — nothing added, nothing dropped.";
+            if (!string.IsNullOrWhiteSpace(correction.DeliveryCue))
+                speakerLock += " " + correction.DeliveryCue.Trim();
         }
         var openCue = BuildOpenCue(quote);
         var bed = BuildAudioBed(score, ambient, sfx);

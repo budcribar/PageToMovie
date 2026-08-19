@@ -5100,9 +5100,51 @@ public sealed class FilmJobService
                 incomingDurationPaddingSec: incomingPadding,
                 takeKindOverride: VideoTakeKinds.QaAuto,
                 correction: correction.IsEmpty ? null : correction);
+            if (qaAttempt == qaMaxRetries)
+            {
+                // Last retry spent: verify the final take once more so the outcome is known and the
+                // user is told what is still wrong (not left to discover it in the review).
+                var (finalOutcome, finalVer) = await TryQaVerifyAsync(dialogueQa, projectId, req.Scene, cn, ct)
+                    .ConfigureAwait(false);
+                if (finalOutcome == QaVerifyOutcome.NeedsRegen && finalVer is not null)
+                    await EscalateQaFailureAsync(projectId, req.Scene, cn, finalVer, qaMaxRetries, ct).ConfigureAwait(false);
+            }
         }
         return carryoverPaddingSec;
     }
+
+    /// <summary>Retries exhausted and the clip still fails: say exactly what is wrong (by tier) in the
+    /// job log and record a learning event so the (issue → corrections → outcome) triple is complete.</summary>
+    private async Task EscalateQaFailureAsync(
+        string projectId, int scene, int cn, ClipDialogueVerificationResult ver, int retries, CancellationToken ct)
+    {
+        var blocking = ver.Issues.Where(i => DialogueIssueKinds.IsBlocking(i.Kind)).Select(DescribeIssue).Distinct().ToList();
+        var degraded = ver.Issues.Where(i => DialogueIssueKinds.IsDegraded(i.Kind)).Select(DescribeIssue).Distinct().ToList();
+        var what = blocking.Count > 0 ? "blocking: " + string.Join(", ", blocking)
+            : degraded.Count > 0 ? "degraded: " + string.Join(", ", degraded)
+            : ver.Status;
+        await AppendLogAsync(
+            $"  [QA] ⚠ S{scene:D2}C{cn} still failing after {retries} auto-retr{(retries == 1 ? "y" : "ies")} ({what}) — needs your review: " +
+            "regenerate with a different take, edit the line, or revoice it.");
+        try
+        {
+            await _learning.AppendAsync(new ReviewLearningEvent
+            {
+                ProjectId = projectId,
+                Type = "qa_escalated",
+                Scene = scene,
+                Clip = cn,
+                Note = ver.Status + (ver.Issues.Count > 0 ? " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word))) : ""),
+                Outcome = $"after_{retries}_retries",
+                JobId = Snapshot.JobId,
+                ActionTaken = "needs_user_review",
+            }, ct).ConfigureAwait(false);
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private static string DescribeIssue(DialogueVerificationIssue i) =>
+        i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : $" '{i.Word}'");
 
     private async Task<(QaVerifyOutcome Outcome, ClipDialogueVerificationResult? Ver)> TryQaVerifyAsync(
         ClipDialogueVerificationService? dialogueQa,
@@ -5917,6 +5959,13 @@ public sealed class FilmJobService
             duration = padded;
         }
         await AppendLogAsync($"  [Duration] estimated {duration}s (dialogue-aware, max {durMax}s, model={ctx.Model})");
+        if (ctx.Correction is { ExtraDurationSec: > 0 } corr)
+        {
+            // QA retry after a cut-off line: the previous take was too short for the words.
+            var longer = Math.Min(durAbsMax, duration + corr.ExtraDurationSec);
+            await AppendLogAsync($"  [Duration] +{corr.ExtraDurationSec}s (QA: line was cut off) -> {duration}s to {longer}s");
+            duration = longer;
+        }
         // Reference-conditioned / continuation generation is bounded by the model's own
         // tighter extension cap (catalog MaxExtensionSeconds), not a bare hardcoded 10 — keeps
         // this correct if a future model's real ref-conditioned max differs from Grok's ~10s.

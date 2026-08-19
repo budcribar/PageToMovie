@@ -52,7 +52,27 @@ public sealed class PronunciationResolver
     public PronunciationResolver(PronunciationLexicon lexicon)
     {
         _lexicon = lexicon;
-        _entries = lexicon.Entries.ToDictionary(entry => entry.Word, StringComparer.OrdinalIgnoreCase);
+        _entries = new Dictionary<string, PronunciationEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in lexicon.Entries)
+        {
+            _entries[entry.Word] = entry;
+            // Inflected forms ("tears", "tearing", "reads") resolve like the base word; the suffix is
+            // carried onto the respelling ("TAIRS", "TAIRING", "REEDS") so ApplyRespellings stays whole-word.
+            foreach (var form in entry.Forms ?? Array.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(form) || _entries.ContainsKey(form)) continue;
+                var suffix = form.Length > entry.Word.Length && form.StartsWith(entry.Word, StringComparison.OrdinalIgnoreCase)
+                    ? form[entry.Word.Length..] : null;
+                _entries[form] = entry with
+                {
+                    Word = form,
+                    Senses = entry.Senses.Select(se => se with
+                    {
+                        Respell = se.Respell is null ? null : suffix is null ? se.Respell : se.Respell + suffix.ToUpperInvariant(),
+                    }).ToList(),
+                };
+            }
+        }
     }
 
     public PronunciationResolution Resolve(string? dialogue, string? sceneContext = null)
@@ -190,7 +210,8 @@ public sealed record PronunciationLexicon(
 
 public sealed record PronunciationEntry(
     string Word,
-    IReadOnlyList<PronunciationSense> Senses);
+    IReadOnlyList<PronunciationSense> Senses,
+    IReadOnlyList<string>? Forms = null);
 
 public sealed record PronunciationSense(
     string Id,
