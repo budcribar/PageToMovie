@@ -163,6 +163,9 @@ public static class MediaEndpoints
             {
                 var src = ClipProviderSource.ReadForMp4(fullPath);
                 var upstream = src?.SourceUrl;
+                // Fakes: the "provider" is a local fixture file — serve it like the proxy does.
+                if (!string.IsNullOrWhiteSpace(upstream) && TryServeFixture(upstream) is { } fixtureServed)
+                    return fixtureServed;
                 if (!string.IsNullOrWhiteSpace(upstream) && Uri.TryCreate(upstream, UriKind.Absolute, out var up)
                     && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
                 {

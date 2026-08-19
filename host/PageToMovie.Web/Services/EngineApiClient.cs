@@ -131,6 +131,14 @@ public sealed class EngineApiClient
     }
 
     /// <summary>Push X-User-Id / Bearer onto the shared HttpClient defaults (scoped client).</summary>
+    /// <summary>
+    /// Restore the signed-in session from browser storage before the first identity-bearing call.
+    /// A page that hydrates the active project on init can run before the session is restored;
+    /// that request then goes out identity-less and the server answers for the wrong (anonymous /
+    /// "local") user — e.g. the previous project instead of the one just created.
+    /// </summary>
+    public Task EnsureSessionHydratedAsync() => _session?.EnsureHydratedAsync() ?? Task.CompletedTask;
+
     public void SyncIdentityHeaders()
     {
         try

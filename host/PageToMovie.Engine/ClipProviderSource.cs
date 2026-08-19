@@ -80,7 +80,14 @@ public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId,
         var raw = Path.Combine(Path.GetTempPath(), $"ptm_clip_{Guid.NewGuid():N}.mp4");
         try
         {
-            if (download is not null)
+            if (src.SourceUrl.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+            {
+                // Fakes: the provider copy is a local fixture file.
+                var fixture = src.SourceUrl["fixture:".Length..];
+                if (!File.Exists(fixture)) return null;
+                File.Copy(fixture, raw, overwrite: true);
+            }
+            else if (download is not null)
                 await download(src.SourceUrl, raw, ct).ConfigureAwait(false);
             else
             {

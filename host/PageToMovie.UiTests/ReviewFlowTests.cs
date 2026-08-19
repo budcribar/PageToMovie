@@ -52,9 +52,29 @@ public class ReviewFlowTests
 
             // Approve the scene — the checklist count must reflect it without a page reload.
             var approveBtn = page.GetByTestId($"review-approve-{sceneNumber}");
-            await approveBtn.ClickAsync();
-            await Assertions.Expect(page.GetByTestId("review-scene-row").First)
-                .ToHaveAttributeAsync("data-approved", "true", new() { Timeout = 15_000 });
+            // Background client saves (register → soft reload) flip the page busy for a beat; a click
+            // that lands on that beat is dropped by Blazor. Click on an enabled button, and re-click
+            // once it is enabled again if the approval has not landed.
+            var approved = false;
+            for (var attempt = 0; attempt < 3 && !approved; attempt++)
+            {
+                await Assertions.Expect(approveBtn).ToBeEnabledAsync(new() { Timeout = 30_000 });
+                await approveBtn.ClickAsync();
+                try
+                {
+                    await Assertions.Expect(page.GetByTestId("review-scene-row").First)
+                        .ToHaveAttributeAsync("data-approved", "true", new() { Timeout = 8_000 });
+                    approved = true;
+                }
+                catch (PlaywrightException) { /* retry */ }
+            }
+            if (!approved)
+            {
+                // Diagnostic: what did the page say (error/message alerts) when the approval did not land?
+                var alerts = await page.EvaluateAsync<string>("() => [...document.querySelectorAll('.alert, [role=alert]')].map(e => e.innerText.trim()).filter(Boolean).join(' | ')");
+                var btnState = await approveBtn.EvaluateAsync<string>("b => b.outerHTML");
+                Assert.Fail($"Scene approval did not land. alerts: {alerts} ; approve button: {btnState}");
+            }
             await Assertions.Expect(checklist).ToHaveAttributeAsync("data-approved-count", "1", new() { Timeout = 15_000 });
 
             // Approval is one-way (EditLogService.MarkSceneApprovedAsync always writes "approved" —

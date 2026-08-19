@@ -121,9 +121,40 @@ public class AppFixture : IAsyncLifetime
     }
 
     /// <summary>A fresh, isolated context+page.</summary>
+    /// <summary>API console log for this fixture (stdout+stderr), or null before launch.</summary>
+    public string? ApiLogPath { get; private set; }
+
+    /// <summary>Last lines of the API log matching <paramref name="contains"/> (or all), for failure messages.</summary>
+    public string TailApiLog(string? contains = null, int lines = 30) => TailApiLog(ApiLogPath, contains, lines);
+
+    /// <summary>Most recently launched fixture's API log (the suite runs serially) — for static flow helpers.</summary>
+    public static string? CurrentApiLogPath { get; private set; }
+
+    public static string TailApiLog(string? logPath, string? contains, int lines = 30)
+    {
+        try
+        {
+            if (logPath is null || !File.Exists(logPath)) return "(no api.log)";
+            var text = new List<string>();
+            using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var r = new StreamReader(fs))
+            {
+                while (r.ReadLine() is { } line) text.Add(line);
+            }
+            IEnumerable<string> all = text;
+            if (!string.IsNullOrEmpty(contains)) all = all.Where(l => l.Contains(contains, StringComparison.OrdinalIgnoreCase));
+            return string.Join(Environment.NewLine, all.TakeLast(lines));
+        }
+        catch (Exception ex) { return "(api.log unreadable: " + ex.Message + ")"; }
+    }
+
     public async Task<(IBrowserContext ctx, IPage page)> NewPageAsync()
     {
         var ctx = await Browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new() { Width = 1280, Height = 900 } });
+        // Headless Chromium has no folder picker. Video generation is gated on a connected media
+        // folder (clips live on the user's machine), so hand the app a real writable directory
+        // handle: the origin-private file system. The app's save/register path then runs for real.
+        await ctx.AddInitScriptAsync("window.showDirectoryPicker = async () => navigator.storage.getDirectory();");
         var page = await ctx.NewPageAsync();
         return (ctx, page);
     }
@@ -165,8 +196,25 @@ public class AppFixture : IAsyncLifetime
         foreach (var kv in ExtraEnv) psi.Environment[kv.Key] = kv.Value;
 
         _api = Process.Start(psi) ?? throw new InvalidOperationException("failed to start Api");
-        _ = Task.Run(async () => { while (!_api.StandardOutput.EndOfStream) await _api.StandardOutput.ReadLineAsync(); });
-        _ = Task.Run(async () => { while (!_api.StandardError.EndOfStream) await _api.StandardError.ReadLineAsync(); });
+        // Keep the API's console in the workspace (api.log) — the one place a server-side skip or
+        // exception (e.g. "[sign-off] … cast extraction skipped") can be read after a failure.
+        ApiLogPath = Path.Combine(WorkspaceRoot, "api.log");
+        CurrentApiLogPath = ApiLogPath;
+        // The pipe readers must never fall behind: a slow consumer of redirected stdout back-pressures
+        // the child, which then blocks on Console.Write and the whole API stalls. Readers only enqueue;
+        // one background writer drains to disk with a buffered stream.
+        var queue = new System.Collections.Concurrent.BlockingCollection<string>(new System.Collections.Concurrent.ConcurrentQueue<string>());
+        _ = Task.Run(async () => { while (!_api.StandardOutput.EndOfStream) { var l = await _api.StandardOutput.ReadLineAsync(); if (l is not null) queue.TryAdd(l); } });
+        _ = Task.Run(async () => { while (!_api.StandardError.EndOfStream) { var l = await _api.StandardError.ReadLineAsync(); if (l is not null) queue.TryAdd(l); } });
+        _ = Task.Run(() =>
+        {
+            using var w = new StreamWriter(new FileStream(ApiLogPath, FileMode.Append, FileAccess.Write, FileShare.Read)) { AutoFlush = false };
+            foreach (var line in queue.GetConsumingEnumerable())
+            {
+                w.WriteLine(line);
+                if (queue.Count == 0) w.Flush();
+            }
+        });
 
         var deadline = DateTime.UtcNow.AddMinutes(3);
         while (DateTime.UtcNow < deadline)

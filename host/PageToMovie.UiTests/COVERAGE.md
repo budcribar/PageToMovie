@@ -125,6 +125,22 @@ and `PipelineFlow` dumps the project's chat/planning model on the no-cast path.
 unit run and passed 2129/2129 on two reruns; suspect `PAGETOMOVIE_USE_FAKES` env toggling by the
 API-factory tests changing the catalog default mid-run. Not yet isolated.
 
+**2026-08-19 full serial run:** 108 passed / 3 failed / 1 skipped (25 min) — the 3 are the parked ones below.
+
+Root cause of the "no cast extracted" / "No screenplay draft" family (2nd project in a fixture): the
+import/screenplay pages hydrated the active project before the browser session was restored, so the
+`/api/projects` call went out identity-less; the server answered for the anonymous ("local") user with
+no pointer → `list[0]` (alphabetically the *previous* project) and the page imported + signed off on
+it while the shot plan ran on the new one. Fixed: `ActiveProjectState.RefreshFromServerAsync` hydrates
+the session first (`EngineApiClient.EnsureSessionHydratedAsync`). Instrumentation kept: `[sign-off]` and
+`[projects]` lines in the API console; the fixture tees the API console to `api.log` in its workspace
+(non-blocking reader — a slow reader back-pressures the child and stalls the whole API) and the flow
+helpers quote it on failure.
+
+Video generation is gated on a connected media folder (clips live on the user's machine). Headless
+Chromium has no folder picker, so `AppFixture.NewPageAsync` stubs `showDirectoryPicker` with the
+origin-private file system — the tests now run the real browser save/register path (OPFS-backed).
+
 Still failing / parked:
 - `FilmLengthFlowTests` — **Skipped**: .txt book import under the fakes leaves the import page
   busy > 2 min (film-length controls disabled). Investigate the fake Stage-1 book job.

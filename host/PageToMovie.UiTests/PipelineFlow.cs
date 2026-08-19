@@ -167,7 +167,8 @@ public static class PipelineFlow
             }
             return JSON.stringify({err:'timeout', last});
         }");
-        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"),
+            "Stage 2 (shot plan) did not finish: " + result + Environment.NewLine + "API log (sign-off/projects lines): " + AppFixture.TailApiLog(AppFixture.CurrentApiLogPath, "[sign-off]") + Environment.NewLine + AppFixture.TailApiLog(AppFixture.CurrentApiLogPath, "[projects]"));
     }
 
     /// <summary>Full flow through to the Scenes page with a built shot plan.</summary>
@@ -233,7 +234,8 @@ public static class PipelineFlow
             }
             return JSON.stringify({ok:true, count:chars.length});
         }");
-        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"), "Stage 2 (shot plan) did not finish: " + result);
+        Assert.True(!result.Contains("\"err\"") && result.Contains("\"ok\":true"),
+            "Stage 2 (shot plan) did not finish: " + result + Environment.NewLine + "API log (sign-off/projects lines): " + AppFixture.TailApiLog(AppFixture.CurrentApiLogPath, "[sign-off]") + Environment.NewLine + AppFixture.TailApiLog(AppFixture.CurrentApiLogPath, "[projects]"));
     }
 
     /// <summary>Generate clips for every scene (fake video copies MP4 fixtures) and wait for the job.

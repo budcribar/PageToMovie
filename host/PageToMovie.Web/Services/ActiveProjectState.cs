@@ -98,6 +98,9 @@ public sealed class ActiveProjectState
             // project, so without this the page shows "No project selected" though one is active.
             if (!HasProject)
             {
+                // Identity first: an identity-less /api/projects answers for the anonymous user and
+                // falls back to the first project in the list — the wrong project, silently.
+                await engine.EnsureSessionHydratedAsync().ConfigureAwait(false);
                 var projs = await engine.GetProjectsAsync(ct).ConfigureAwait(false);
                 var active = projs?.Active;
                 if (active?.Id is { Length: > 0 } id)

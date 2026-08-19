@@ -254,6 +254,7 @@ public partial class Scenes
         internal async Task RegenSelectedClipsAsync()
         {
             if (S.List._detail is null || S.ClipSel._selectedClips.Count == 0) return;
+            if (!await S.Gen.EnsureMediaFolderForVideoAsync()) return;
             var sn = S.List._detail.SceneNumber;
             S._busy = true;
             S._error = null;
@@ -307,6 +308,7 @@ public partial class Scenes
                 S._error = S.List.CastBlockedTitle;
                 return;
             }
+            if (!await S.Gen.EnsureMediaFolderForVideoAsync()) return;
 
             S._busy = true;
             S._error = null;

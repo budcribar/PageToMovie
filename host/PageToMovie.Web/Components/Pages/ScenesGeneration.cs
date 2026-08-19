@@ -641,6 +641,7 @@ public partial class Scenes
             S._error = S.List.CastBlockedTitle;
             return;
         }
+        if (!await EnsureMediaFolderForVideoAsync()) return;
         if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
         {
             S._message = "GeneratingBusy: a video job is already running. Watch the progress card.";
@@ -791,6 +792,20 @@ public partial class Scenes
 
 
 
+    /// <summary>
+    /// Video generation needs the media folder: clips are saved on this computer, not on the server
+    /// (the provider copy of an extended clip is the combined video — only the local save is the
+    /// clean standalone clip). Prompts to connect when needed; false = do not start.
+    /// </summary>
+    internal async Task<bool> EnsureMediaFolderForVideoAsync()
+    {
+        if (S.MediaFolder.IsConnected) return true;
+        var connected = await S.MediaFolder.ConnectFolderAsync();
+        if (connected || S.MediaFolder.IsConnected) return true;
+        S._error = "Connect a folder first — clips are saved on this computer, not on the server.";
+        return false;
+    }
+
     internal async Task OpenGenerateConfirmAsync()
     {
         if (S.IsSimpleFilm)
@@ -800,6 +815,7 @@ public partial class Scenes
         }
         if (S.List._selected.Count == 0) return;
         if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        if (!await EnsureMediaFolderForVideoAsync()) return;
         _showGenerateConfirm = true;
         await S.List.RefreshCostEstimateAsync();
     }
@@ -811,6 +827,7 @@ public partial class Scenes
     internal async Task StartSimpleMovieAsync()
     {
         if (string.IsNullOrEmpty(S._projectId)) return;
+        if (!await EnsureMediaFolderForVideoAsync()) return;
         if (JobRunning)
         {
             S._message = "A job is already running — watch progress instead of starting another.";

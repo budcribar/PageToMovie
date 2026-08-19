@@ -397,6 +397,9 @@ public static class AdaptationEndpoints
             return Results.BadRequest(new { ok = false, error = result.Error });
 
         var cast = await TryExtractCastAsync(id, castService, chat, ct);
+        // One line per sign-off with the project it landed on (the UI suite reads this to tell a
+        // "sign-off went to project A, shot plan ran on project B" race from a real extraction failure).
+        Console.Error.WriteLine($"[sign-off] {id}: ok scenes={result.SceneCount} characters={result.CharacterCount} user={user.UserId} cast={(cast is null ? "n/a" : System.Text.Json.JsonSerializer.Serialize(cast))}");
         return Results.Ok(new
         {
             ok = true,
