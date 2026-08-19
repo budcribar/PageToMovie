@@ -197,8 +197,20 @@ public static class AiRetryPolicy
     /// predicate isn't hand-copied at each call site.
     /// </summary>
     public static bool IsTransientChatFailure(Exception ex) =>
-        (ex is ChatHttpStatusException hse && IsTransientHttpStatus(hse.StatusCode))
+        (ex is ChatHttpStatusException hse && (IsTransientHttpStatus(hse.StatusCode) || IsGeminiTransientPermissionDenied(hse)))
         || IsTransientException(ex);
+
+    /// <summary>
+    /// Gemini sometimes answers an otherwise-working key with HTTP 403
+    /// {"status":"PERMISSION_DENIED","message":"The caller does not have permission"} for one request
+    /// and serves the next identical one (Mary19: two clips verified back to back, one 200, one 403).
+    /// A 403 is normally permanent, so this is scoped to exactly that Google message; a genuinely
+    /// unauthorised key fails every attempt and still surfaces after the retries.
+    /// </summary>
+    public static bool IsGeminiTransientPermissionDenied(ChatHttpStatusException hse) =>
+        hse.StatusCode == 403
+        && hse.Message.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase)
+        && hse.Message.Contains("caller does not have permission", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Extracts a provider's <c>Retry-After</c> value (delta-seconds or HTTP-date form), clamped to

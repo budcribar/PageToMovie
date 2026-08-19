@@ -310,3 +310,17 @@ public sealed class AiRetryPolicyTests
         Assert.NotNull(result.LastError);
     }
 }
+
+public class GeminiTransientPermissionDeniedTests
+{
+    [Fact]
+    public void Gemini_403_permission_denied_is_retried_but_other_403s_are_not()
+    {
+        var gemini = new PageToMovie.Engine.ChatHttpStatusException(403,
+            "Gemini models/gemini-3.7-flash:generateContent HTTP 403: { \"error\": { \"code\": 403, \"message\": \"The caller does not have permission\", \"status\": \"PERMISSION_DENIED\" } }", null);
+        Assert.True(PageToMovie.Engine.AiRetryPolicy.IsTransientChatFailure(gemini));
+
+        var forbidden = new PageToMovie.Engine.ChatHttpStatusException(403, "HTTP 403: API key not valid for this model", null);
+        Assert.False(PageToMovie.Engine.AiRetryPolicy.IsTransientChatFailure(forbidden));
+    }
+}
