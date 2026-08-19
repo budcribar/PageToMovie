@@ -495,12 +495,39 @@ public partial class Scenes
 
 
 
+    /// <summary>
+    /// A job the page still shows as queued/running may no longer exist on the server (the job store
+    /// is in-memory; a redeploy drops it). Left alone, the page shows "Waiting…" forever with a Cancel
+    /// that 404s (Mary19 S04 credits, 2026-08-19). Ask the server; if the job is gone, say so.
+    /// </summary>
+    internal async Task ReconcileJobWithServerAsync()
+    {
+        var j = _job;
+        if (j is null || string.IsNullOrWhiteSpace(j.JobId)) return;
+        if (!(string.Equals(j.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) || string.Equals(j.Status, StatusQueued, StringComparison.OrdinalIgnoreCase)))
+            return;
+        JobSnapshot? live;
+        try { live = await S.Engine.TryGetJobAsync(j.JobId); }
+        catch { return; /* network blip — keep what we have */ }
+        if (live is not null)
+        {
+            _job = live;
+            return;
+        }
+        j.Status = "error";
+        j.FinishedAt = DateTimeOffset.UtcNow;
+        j.Message = "Lost track of this job — the server restarted while it was queued (deploy). Nothing was generated; start it again.";
+        j.Error = j.Message;
+        _showJobModal = false;
+    }
+
     internal async Task SoftReloadAsync()
     {
         try
         {
             var dto = await S.Engine.GetScenesAsync(S._projectId);
             S.List._scenes = dto?.Scenes ?? new List<SceneSummary>();
+            await ReconcileJobWithServerAsync();
             await RefreshMyJobsAsync();
             await S.List.RefreshCastGateAsync();
             await S.List.RefreshResolutionLockAsync();
