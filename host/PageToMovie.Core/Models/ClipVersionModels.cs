@@ -39,6 +39,14 @@ public sealed class ClipVersionItem
     public string? SourceFileId { get; set; }
     /// <summary>Unix-seconds expiry for <see cref="SourceFileId"/>, when known.</summary>
     public long? SourceFileExpiresAtUnixSeconds { get; set; }
+    /// <summary>Provider-hosted copy of this take (sidecar source_url). Takes are recorded by their
+    /// sidecars — the server keeps no media — so a take can exist with no server or client file.</summary>
+    public string? SourceUrl { get; set; }
+    /// <summary>Seconds at the head of the provider copy that belong to the previous clip (extend takes).</summary>
+    public double ProviderLeadInSeconds { get; set; }
+    /// <summary>Short-lived proxy URL the browser can play/slice for a take that has no local file; null when the
+    /// take is on the server (history file) or only on the client.</summary>
+    public string? ProviderPlaybackUrl { get; set; }
 }
 
 /// <summary>

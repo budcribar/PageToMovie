@@ -212,12 +212,23 @@ public static class GitVersionEndpoints
     int scene,
     int clip,
     ProjectStore store,
+    MediaProxyTicketStore tickets,
     CancellationToken ct)
     {
     try
     {
         await store.RequireProjectAsync(id, ct);
         var versions = await store.GetClipVersionsAsync(id, scene, clip);
+        // A take that lives only at the provider gets a short-lived proxy URL the browser can play
+        // (and slice, when the provider copy is a combined extend video).
+        var videoDir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "video");
+        foreach (var v in versions)
+        {
+            if (string.IsNullOrWhiteSpace(v.SourceUrl)) continue;
+            var onServer = File.Exists(Path.Combine(videoDir, v.Mp4FileName)) || File.Exists(Path.Combine(videoDir, "history", v.Mp4FileName));
+            if (onServer || v.ClientOnly) continue;
+            v.ProviderPlaybackUrl = $"/api/media/proxy/{tickets.Issue(v.SourceUrl, TimeSpan.FromMinutes(45))}";
+        }
         return Results.Ok(new { ok = true, versions });
     }
     catch (Exception ex)

@@ -64,11 +64,13 @@ public static class ClipCorrectionPlanner
         var status = (ver.Status ?? "").Trim().ToLowerInvariant();
         var kinds = new HashSet<string>(ver.Issues.Select(i => (i.Kind ?? "").ToLowerInvariant()));
 
-        if ((!ver.SpeakerMatch || status == "speaker_swap" || kinds.Contains("wrong_speaker"))
+        if ((!ver.SpeakerMatch || status == "speaker_swap" || kinds.Contains("wrong_speaker") || kinds.Contains("wrong_voice"))
             && !string.IsNullOrWhiteSpace(ver.ExpectedSpeaker))
         {
             speakerLock = ver.ExpectedSpeaker.Trim();
-            reasons.Add($"wrong speaker (heard {ver.DetectedSpeaker ?? "?"}, expected {ver.ExpectedSpeaker})");
+            reasons.Add(kinds.Contains("wrong_voice") && !kinds.Contains("wrong_speaker")
+                ? $"wrong voice for {ver.ExpectedSpeaker} (re-lock voice identity)"
+                : $"wrong speaker (heard {ver.DetectedSpeaker ?? "?"}, expected {ver.ExpectedSpeaker})");
         }
 
         var respellings = new List<Respelling>();

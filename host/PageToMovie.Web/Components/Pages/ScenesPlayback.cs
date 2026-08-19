@@ -560,6 +560,25 @@ public partial class Scenes
                             ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, S.ClipVer._compareSceneNumber, row)
                             : S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
                     }
+                    else if (!string.IsNullOrEmpty(v.ProviderPlaybackUrl))
+                    {
+                        // Take recorded only by its sidecar: the server issued a proxy URL for the provider
+                        // copy; an extend take's copy is combined — slice the previous clip's head off.
+                        url = v.ProviderPlaybackUrl;
+                        if (v.ProviderLeadInSeconds > 0.1)
+                        {
+                            try
+                            {
+                                var probe = await S.Stitch.ProbeDurationAsync(url);
+                                if (probe is { } total && total > v.ProviderLeadInSeconds + 0.1)
+                                {
+                                    var sliced = await S.Stitch.TrimTailAsync(url, total - v.ProviderLeadInSeconds);
+                                    if (!string.IsNullOrWhiteSpace(sliced)) url = sliced;
+                                }
+                            }
+                            catch { /* play combined rather than nothing */ }
+                        }
+                    }
                     else if (!string.IsNullOrEmpty(v.Mp4FileName))
                         url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
                 }

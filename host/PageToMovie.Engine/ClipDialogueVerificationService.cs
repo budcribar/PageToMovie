@@ -167,7 +167,7 @@ public sealed class ClipDialogueVerificationService
                 "Clip video is neither on the server nor reachable at the provider (no source_url in the sidecar). Generate or re-import the clip first.",
                 ct).ConfigureAwait(false);
 
-        var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides, leadInOffsetSec);
+        var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides, leadInOffsetSec, media.ExpectedVoiceProfile);
 
         try
         {
@@ -280,6 +280,7 @@ public sealed class ClipDialogueVerificationService
         public required List<string> MediaToPass { get; init; }
         public required List<string> CharGuides { get; init; }
         public required string ExpectedSpeakerDisplayName { get; init; }
+        public string? ExpectedVoiceProfile { get; init; }
     }
 
     private async Task<DialogueMediaContext> CollectMediaAndCharGuidesAsync(
@@ -319,6 +320,7 @@ public sealed class ClipDialogueVerificationService
             MediaToPass = mediaToPass,
             CharGuides = charGuides,
             ExpectedSpeakerDisplayName = expectedCharObj?.DisplayName ?? expectedSpeaker,
+            ExpectedVoiceProfile = expectedCharObj?.VoiceProfile,
         };
     }
 
@@ -387,8 +389,14 @@ public sealed class ClipDialogueVerificationService
     private static string BuildVerificationPrompt(
 
         string expectedSpeaker, string expectedSpeakerDisplayName, string expectedDialogue, List<string> charGuides,
-        double leadInOffsetSec = 0)
+        double leadInOffsetSec = 0,
+        string? expectedVoiceProfile = null)
     {
+        // The speaker's voice profile is the cross-clip voice lock; a heard voice that contradicts
+        // its sex/age is a failure even when the words are perfect (Mary19: female narrator on C05).
+        var voiceLine = string.IsNullOrWhiteSpace(expectedVoiceProfile)
+            ? ""
+            : $"- Expected VOICE for that speaker: '{expectedVoiceProfile.Trim()}'\n";
         // Combined extend video that could not be trimmed: the head belongs to the PREVIOUS clip.
         var leadInNote = leadInOffsetSec > 0.1
             ? $"IMPORTANT: the first {leadInOffsetSec:F1} seconds of the attached video are the PREVIOUS clip (a continuation input) — ignore everything before {leadInOffsetSec:F1}s. Only speech AFTER {leadInOffsetSec:F1}s belongs to this clip; a line heard only before that point counts as NOT spoken here.\n"
@@ -432,7 +440,7 @@ You are an automated film quality assurance inspector evaluating a generated mov
 EXPECTED SCRIPT:
 - Expected Speaker: '{expectedSpeakerDisplayName}' (Character Key: '{expectedSpeaker}')
 - Expected Spoken Dialogue: '{expectedDialogue}'
-
+{voiceLine}
 {guideText}
 
 TASKS:
@@ -442,7 +450,7 @@ TASKS:
 4. Compare detected speaker vs expected speaker ('{expectedSpeakerDisplayName}'), and transcribed dialogue vs expected dialogue.
    NOTE: Ignore minor US/UK spelling differences (e.g. 'neighbour' vs 'neighbor', 'colour' vs 'color'). If the spoken words match the script and you found no issues, score dialogue accuracy as 1.0 (100% match).
 5. Explain every deduction. Any score below 1.0 must be accounted for by at least one entry in ""issues"". Use ONLY these kinds:
-   wrong_speaker (another character's voice/mouth delivers the line), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all), unplanned_speech (a whole line or sentence that is NOT in the expected script — e.g. another character talking, extra narration; list the heard words in detail),
+   wrong_speaker (another character's voice/mouth delivers the line), wrong_voice (the expected speaker delivers the line but the VOICE contradicts the expected voice — e.g. profile says adult male and a female or child voice is heard; severity major), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all), unplanned_speech (a whole line or sentence that is NOT in the expected script — e.g. another character talking, extra narration; list the heard words in detail),
    unclear_audio, robotic_delivery, timing (line lands off the shot / after the mouth stops),
    mispronounced (awkward but unambiguous), extra_word, missing_word (filler/article), accent.
 6. WATCH the picture too. Report kind ""visual_defect"" (severity major) for anything a viewer would see as broken: anatomy errors (a head, limb or body part detaching, extra or missing limbs, melting or morphing faces), a character turning into someone else mid-clip, a prop or animal changing species/shape, or a sudden style break (photoreal ↔ cartoon). A clip with a visual_defect is NOT acceptable even when every word is right — the dialogue score stays, the issue fails the clip.
@@ -614,7 +622,7 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
         if (blocking.Count > 0)
         {
             var kinds = string.Join(", ", blocking.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : $" '{i.Word}'")).Distinct());
-            var newStatus = blocking.Any(i => string.Equals(i.Kind, "wrong_speaker", StringComparison.OrdinalIgnoreCase)) ? "speaker_swap"
+            var newStatus = blocking.Any(i => i.Kind is "wrong_speaker" or "wrong_voice") ? "speaker_swap"
                 : blocking.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase)) ? "visual_defect"
                 : "mismatch";
 

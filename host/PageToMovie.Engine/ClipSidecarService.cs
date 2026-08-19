@@ -60,6 +60,29 @@ public sealed class ClipSidecarService
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipSidecarService>.Instance;
     }
 
+    /// <summary>1 + the highest take_NN among the clip's sidecars (1 when none).</summary>
+    public static int NextTakeNumber(string videoDir, int scene, int clip)
+    {
+        var max = 0;
+        if (Directory.Exists(videoDir))
+        {
+            foreach (var f in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_*.clip.json"))
+            {
+                var n = ParseTakeNumber(Path.GetFileName(f));
+                if (n > max) max = n;
+            }
+        }
+        return max + 1;
+    }
+
+    /// <summary>take number from "scene_01_clip_02_take_03[...].clip.json|.mp4", 0 when absent.</summary>
+    public static int ParseTakeNumber(string fileName)
+    {
+        var i = fileName.IndexOf("_take_", StringComparison.OrdinalIgnoreCase);
+        if (i < 0 || i + 8 > fileName.Length) return 0;
+        return int.TryParse(fileName.AsSpan(i + 6, 2), out var n) ? n : 0;
+    }
+
     public static string GetSidecarPathForMp4(string mp4Path) =>
         Path.ChangeExtension(mp4Path, ".clip.json");
 
@@ -88,8 +111,12 @@ public sealed class ClipSidecarService
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);
 
+        // Takes are the sidecars: every generation writes a NEW numbered sidecar and the previous
+        // ones stay (their source_url still points at the earlier provider video). Overwriting
+        // _take_01 each time lost every prior take once the server stopped keeping MP4s.
+        var take = NextTakeNumber(videoDir, scene, clip);
         var fileName = string.IsNullOrWhiteSpace(mp4FileName)
-            ? $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4"
+            ? $"scene_{scene:D2}_clip_{clip:D2}_take_{take:D2}.mp4"
             : mp4FileName.Trim();
 
         var mp4Path = Path.Combine(videoDir, fileName);
@@ -98,7 +125,7 @@ public sealed class ClipSidecarService
         var projectId = Path.GetFileName(projectDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
         var sidecar = BuildSidecar(
-            projectId, scene, clip, take: null,
+            projectId, scene, clip, take: take,
             prompt, scriptText, model, resolution,
             durationSeconds, sha256, sizeBytes, DateTime.UtcNow);
 

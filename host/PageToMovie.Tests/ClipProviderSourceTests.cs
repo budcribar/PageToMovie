@@ -98,3 +98,36 @@ public sealed class ClipProviderSourceTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
 }
+
+/// <summary>Takes are the sidecars: each generation writes a new take_NN sidecar; the list shows
+/// provider-hosted takes with no server or client media (Mary19: "Takes (1)" after every regen).</summary>
+public sealed class ClipTakesFromSidecarsTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "ptm-takes-" + Guid.NewGuid().ToString("N"));
+    public ClipTakesFromSidecarsTests() => Directory.CreateDirectory(_root);
+
+    [Fact]
+    public async Task Each_generation_writes_a_new_numbered_sidecar_and_all_takes_are_listed()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_root, "projects", "P");
+        Directory.CreateDirectory(Path.Combine(projectDir, "source"));
+        File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
+
+        var s1 = await service.WriteSidecarAsync(projectDir, 2, 5, "p1", "", "grok-imagine-video", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/a.mp4", sourceProvider: "grok");
+        var s2 = await service.WriteSidecarAsync(projectDir, 2, 5, "p2", "", "grok-imagine-video", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/b.mp4", sourceProvider: "grok");
+        Assert.EndsWith("_take_01.clip.json", s1);
+        Assert.EndsWith("_take_02.clip.json", s2);
+        Assert.True(File.Exists(s1), "the previous take's sidecar must survive");
+
+        var takes = await projects.GetClipVersionsAsync("P", 2, 5);
+        Assert.Equal(2, takes.Count);
+        var current = Assert.Single(takes, t => t.IsCurrent);
+        Assert.Equal(2, current.Take);
+        Assert.Equal("https://vidgen.example/b.mp4", current.SourceUrl);
+        Assert.Contains(takes, t => t.Take == 1 && t.SourceUrl == "https://vidgen.example/a.mp4");
+    }
+
+    public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
+}

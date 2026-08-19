@@ -460,6 +460,17 @@ public sealed class ClientVideoStitchService
     }
 
     /// <summary>Browser duration probe (ffmpeg.wasm).</summary>
+    /// <summary>Keep the last <paramref name="keepSeconds"/> of a video as a blob URL (ffmpeg.wasm); null on failure.</summary>
+    public async Task<string?> TrimTailAsync(string url, double keepSeconds, CancellationToken ct = default)
+    {
+        try
+        {
+            var r = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", ct, url, keepSeconds, null);
+            return r is { Success: true } && !string.IsNullOrWhiteSpace(r.Url) ? r.Url : null;
+        }
+        catch { return null; }
+    }
+
     public async Task<double?> ProbeDurationAsync(string url, CancellationToken ct = default)
     {
         try

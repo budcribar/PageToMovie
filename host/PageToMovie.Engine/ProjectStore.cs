@@ -443,7 +443,42 @@ public sealed partial class ProjectStore
         AddActiveClipVersion(result, activeMp4, scene, clip);
         AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
         await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
+        AddProviderHostedTakes(result, videoDir, scene, clip, activeMp4);
         return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Takes recorded only by their sidecars (the server keeps no media; the browser may not have
+    /// saved them): one item per scene_XX_clip_YY_take_NN.clip.json not already represented by a
+    /// file or a registry row. The newest is the current take when nothing else claims it.
+    /// </summary>
+    private static void AddProviderHostedTakes(List<ClipVersionItem> result, string videoDir, int scene, int clip, string activeMp4)
+    {
+        if (!Directory.Exists(videoDir)) return;
+        var known = new HashSet<string>(result.Select(r => Path.GetFileNameWithoutExtension(r.Mp4FileName)), StringComparer.OrdinalIgnoreCase);
+        var added = new List<ClipVersionItem>();
+        foreach (var sidecar in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_*.clip.json"))
+        {
+            var stem = Path.GetFileName(sidecar);
+            stem = stem[..^".clip.json".Length];
+            if (known.Contains(stem)) continue;
+            var src = ClipProviderSource.Read(sidecar);
+            if (src is null || !src.HasProviderCopy) continue;
+            var fi = new FileInfo(sidecar);
+            var item = ParseClipSidecarOrMeta(sidecar, Path.Combine(videoDir, stem + ".mp4"), scene, clip,
+                take: ClipSidecarService.ParseTakeNumber(stem), isCurrent: false, fi.LastWriteTimeUtc);
+            item.SourceUrl = src.SourceUrl;
+            item.ProviderLeadInSeconds = src.LeadInSeconds;
+            added.Add(item);
+        }
+        if (added.Count == 0) return;
+        // Take numbers from the file names; fall back to write order when a legacy name has none.
+        var n = 0;
+        foreach (var it in added.OrderBy(x => x.Take).ThenBy(x => x.CreatedAtUtc))
+            if (it.Take <= 0) it.Take = ++n; else n = it.Take;
+        if (!result.Any(r => r.IsCurrent))
+            added.OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc).First().IsCurrent = true;
+        result.AddRange(added);
     }
 
     private static void AddActiveClipVersion(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
@@ -452,7 +487,10 @@ public sealed partial class ProjectStore
             return;
         var fi = new FileInfo(activeMp4);
         var activeSidecar = Path.ChangeExtension(activeMp4, StoreLit.ClipJsonSuffix);
-        result.Add(ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take: 1, isCurrent: true, fi.LastWriteTimeUtc));
+        if (!File.Exists(activeSidecar))
+            activeSidecar = ClipProviderSource.FindLatestSidecarPath(Path.GetDirectoryName(activeMp4) ?? "", scene, clip) ?? activeSidecar;
+        var takeNo = Math.Max(1, ClipSidecarService.ParseTakeNumber(Path.GetFileName(activeSidecar)));
+        result.Add(ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take: takeNo, isCurrent: true, fi.LastWriteTimeUtc));
     }
 
     private static void AddHistoricalClipVersions(
@@ -641,6 +679,12 @@ public sealed partial class ProjectStore
             item.EditedFromTake = eftVal;
         if (root.TryGetProperty("source_file_id", out var sfid))
             item.SourceFileId = sfid.GetString();
+        if (root.TryGetProperty("source_url", out var surl) && surl.ValueKind == JsonValueKind.String)
+            item.SourceUrl = surl.GetString();
+        if (root.TryGetProperty(ClipProviderSource.LeadInProperty, out var lead) && lead.TryGetDouble(out var leadSec))
+            item.ProviderLeadInSeconds = leadSec;
+        if (root.TryGetProperty("take", out var tk) && tk.TryGetInt32(out var tkNo) && tkNo > 0 && item.Take <= 0)
+            item.Take = tkNo;
         if (root.TryGetProperty("source_file_expires_at", out var sfexp) && sfexp.TryGetInt64(out var sfexpVal))
             item.SourceFileExpiresAtUnixSeconds = sfexpVal;
     }
