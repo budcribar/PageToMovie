@@ -409,7 +409,7 @@ This clip is planned SILENT — no spoken dialogue. On-screen cast may appear bu
 
 TASKS:
 {leadInNote}1. Watch the attached MP4 video clip (Attached File #1) and LISTEN to the audio track.
-2. If any spoken words are heard, transcribe them in ""transcribedDialogue"" and report an issue of kind ""extra_word"" (unplanned speech). Music, ambience and Foley are fine.
+2. If ANY spoken words are heard (a voice, a line, someone talking or narrating), transcribe them in ""transcribedDialogue"" and report an issue of kind ""unplanned_speech"" (severity major) — this clip must be silent. Music, ambience, Foley, breaths and wordless sounds are fine.
 3. WATCH the picture. Report kind ""visual_defect"" (severity major) for anything a viewer would see as broken: anatomy errors (a head, limb or body part detaching, extra or missing limbs, melting or morphing faces), a character turning into someone else mid-clip, a prop or animal changing species/shape, or a sudden style break (photoreal ↔ cartoon).
 
 Return ONLY a JSON object:
@@ -422,7 +422,7 @@ Return ONLY a JSON object:
   ""issues"": [ {{ ""kind"": ""visual_defect"", ""word"": null, ""detail"": ""…"", ""severity"": ""major"" }} ],
   ""summaryNote"": ""One sentence on what you saw.""
 }}
-Status options: 'no_speech' (silent as planned, picture intact), 'visual_defect' (picture broken — see 3).
+Status options: 'no_speech' (silent as planned, picture intact), 'mismatch' (speech heard in a silent clip), 'visual_defect' (picture broken — see 3).
 ".Trim();
         }
 
@@ -442,7 +442,7 @@ TASKS:
 4. Compare detected speaker vs expected speaker ('{expectedSpeakerDisplayName}'), and transcribed dialogue vs expected dialogue.
    NOTE: Ignore minor US/UK spelling differences (e.g. 'neighbour' vs 'neighbor', 'colour' vs 'color'). If the spoken words match the script and you found no issues, score dialogue accuracy as 1.0 (100% match).
 5. Explain every deduction. Any score below 1.0 must be accounted for by at least one entry in ""issues"". Use ONLY these kinds:
-   wrong_speaker (another character's voice/mouth delivers the line), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all),
+   wrong_speaker (another character's voice/mouth delivers the line), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all), unplanned_speech (a whole line or sentence that is NOT in the expected script — e.g. another character talking, extra narration; list the heard words in detail),
    unclear_audio, robotic_delivery, timing (line lands off the shot / after the mouth stops),
    mispronounced (awkward but unambiguous), extra_word, missing_word (filler/article), accent.
 6. WATCH the picture too. Report kind ""visual_defect"" (severity major) for anything a viewer would see as broken: anatomy errors (a head, limb or body part detaching, extra or missing limbs, melting or morphing faces), a character turning into someone else mid-clip, a prop or animal changing species/shape, or a sudden style break (photoreal ↔ cartoon). A clip with a visual_defect is NOT acceptable even when every word is right — the dialogue score stays, the issue fails the clip.
@@ -522,11 +522,13 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
         {
             // Silent clip: the only verdicts are "silent as planned" or "picture broken".
             var broken = issues.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase));
-            status = broken ? "visual_defect" : "no_speech";
+            var talked = issues.Any(i => string.Equals(i.Kind, "unplanned_speech", StringComparison.OrdinalIgnoreCase))
+                         || !string.IsNullOrWhiteSpace(transcribed);
+            status = broken ? "visual_defect" : talked ? "mismatch" : "no_speech";
             accuracy = 1.0;
             speakerMatch = true;
             if (string.IsNullOrWhiteSpace(detected)) detected = "None";
-            if (string.IsNullOrWhiteSpace(summary)) summary = broken ? "Picture defect found in a silent clip." : "No spoken dialogue planned; picture checked.";
+            if (string.IsNullOrWhiteSpace(summary)) summary = broken ? "Picture defect found in a silent clip." : talked ? $"Speech heard in a silent clip: '{transcribed}'" : "No spoken dialogue planned; picture checked.";
         }
 
         var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");

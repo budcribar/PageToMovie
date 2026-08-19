@@ -62,7 +62,7 @@ public sealed class ClipDialogueVerificationResult
 /// <see cref="DialogueIssueKinds"/> for the tiers that drive status and correction.</summary>
 public sealed class DialogueVerificationIssue
 {
-    /// <summary>wrong_speaker | wrong_words | wrong_sense | cut_off | missing_line | visual_defect (anatomy / identity / style break seen in the picture) | unclear_audio | robotic_delivery | timing | mispronounced | extra_word | missing_word | accent | other</summary>
+    /// <summary>wrong_speaker | wrong_words | wrong_sense | cut_off | missing_line | visual_defect (anatomy / identity / style break seen in the picture) | unplanned_speech (a line or sentence that is not in the script — silent clip with talking, or an extra character speaking) | unclear_audio | robotic_delivery | timing | mispronounced | extra_word | missing_word | accent | other</summary>
     public string Kind { get; set; } = "other";
     /// <summary>The word concerned, when the issue is about one (mispronounced, wrong_sense, missing_word…).</summary>
     public string? Word { get; set; }
@@ -76,7 +76,7 @@ public sealed class DialogueVerificationIssue
 public static class DialogueIssueKinds
 {
     public static readonly HashSet<string> Blocking = new(StringComparer.OrdinalIgnoreCase)
-        { "wrong_speaker", "wrong_words", "wrong_sense", "cut_off", "missing_line", "visual_defect" };
+        { "wrong_speaker", "wrong_words", "wrong_sense", "cut_off", "missing_line", "visual_defect", "unplanned_speech" };
     public static readonly HashSet<string> Degraded = new(StringComparer.OrdinalIgnoreCase)
         { "unclear_audio", "robotic_delivery", "timing" };
     public static readonly HashSet<string> Cosmetic = new(StringComparer.OrdinalIgnoreCase)
