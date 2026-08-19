@@ -6526,7 +6526,7 @@ public sealed partial class ProjectStore
 
     private static bool CharacterCountsAsReady(CharacterSummary c, bool platesOptional)
     {
-        var hasVoice = VoiceProfileGuard.IsLocked(c.VoiceProfile);
+        var hasVoice = VoiceUsable(c);
         // Voice-only: need voice profile, no portrait.
         // Group/chorus: production extras — not shown on Characters UI; never block readiness.
         if (c.IsGroup)
@@ -6623,14 +6623,24 @@ public sealed partial class ProjectStore
     // "Has a voice" = a profile that pins sex + age (VoiceProfileGuard.IsLocked). A sexless/ageless
     // profile lets each clip re-cast the voice (Mary19 narrator, 2026-08-19) — same as no voice.
     private static string? VoiceProfileMissingReason(CharacterSummary c) =>
-        VoiceProfileGuard.UnlockedReason(c.VoiceProfile) is { } why ? $"{c.Key}: {why}" : null;
+        VoiceUnlockedReason(c) is { } why ? $"{c.Key}: {why}" : null;
+
+    /// <summary>Null when the role's voice is usable for video. A SPEAKING role (or a voice-only role,
+    /// which exists to speak) needs the sex+age
+    /// lock (its profile is the cross-clip voice identity); a role with no lines only needs some
+    /// profile text ("does not speak; soft breath") — there is no voice to keep consistent.</summary>
+    private static string? VoiceUnlockedReason(CharacterSummary c) =>
+        c.Speaks || c.VoiceOnly ? VoiceProfileGuard.UnlockedReason(c.VoiceProfile)
+                 : string.IsNullOrWhiteSpace(c.VoiceProfile) ? "voice profile" : null;
+
+    private static bool VoiceUsable(CharacterSummary c) => VoiceUnlockedReason(c) is null;
 
     private static string? LockedImageMissingReason(CharacterSummary c, bool platesOptional) =>
         c.Locked || platesOptional ? null : $"{c.Key}: locked image";
 
     private static string? FullModeCastNotReadyReason(CharacterSummary c)
     {
-        var voiceWhy = VoiceProfileGuard.UnlockedReason(c.VoiceProfile);
+        var voiceWhy = VoiceUnlockedReason(c);
         var hasVoice = voiceWhy is null;
         if (!hasVoice && !c.Locked)
             return $"{c.Key}: {voiceWhy} + locked image";

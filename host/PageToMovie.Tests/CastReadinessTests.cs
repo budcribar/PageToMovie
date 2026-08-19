@@ -69,6 +69,32 @@ public class CastReadinessTests : IDisposable
         Assert.Contains(missing, m => m.Contains("male/female", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Mary19 after the lock landed: Mary ("Does not speak…") and the Lamb ("No spoken words…")
+    /// have profiles that rightly name no sex — roles with no lines must not be held to the sex+age
+    /// lock, or the whole cast reads "unlocked" while the narrator is fine.</summary>
+    [Fact]
+    public void Non_speaking_role_with_a_silent_profile_is_ready_without_sex_or_age()
+    {
+        WriteSeeds("""
+            {
+              "schema_version": "cast_seeds.v1",
+              "character_seed_tokens": {
+                "Character_Mary": {
+                  "canonical_given_name": "Mary",
+                  "description": "Young girl",
+                  "voice_profile": "Does not speak. Any non-verbal sound is a soft breath."
+                }
+              }
+            }
+            """);
+        var charDir = Path.Combine(_store.GetProjectDir(ProjectId), "assets", "characters");
+        Directory.CreateDirectory(charDir);
+        File.WriteAllBytes(Path.Combine(charDir, "character_mary_ref.png"), new byte[128]);
+
+        Assert.Empty(_store.GetCastNotReadyForVideo(ProjectId));
+        Assert.True(_store.ReadCastStatus(ProjectId).ReadyForShots);
+    }
+
     [Fact]
     public void Voice_only_with_voice_is_ready()
     {
