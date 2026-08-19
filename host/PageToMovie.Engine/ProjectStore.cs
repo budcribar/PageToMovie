@@ -6024,6 +6024,14 @@ public sealed partial class ProjectStore
         var dialogueVer = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false);
         var (isStale, staleReason) = EvaluateClipStale(
             onDisk, clipPath, dialogueVer, FindBlueprintPathSync(projectId));
+        // Plan lint: the plan text contradicts cast facts (e.g. a voice-only role on screen). Surfaced,
+        // not patched — the fix is the planner rule + a rebuild, and the clip says so.
+        var lint = ShotPlanLint.Check(c, ShotPlanLint.VoiceOnlyKeys(LoadCharacterSeeds(projectId)));
+        if (lint.Count > 0 && !isStale)
+        {
+            isStale = onDisk;
+            staleReason = "plan_lint: " + string.Join("; ", lint.Select(f => f.Message));
+        }
 
         return new ClipSummary
         {
@@ -6060,6 +6068,7 @@ public sealed partial class ProjectStore
             Stage1BeatIds = stage1BeatIds,
             IsStale = isStale,
             StaleReason = staleReason,
+            PlanLint = lint.Select(f => f.Message).ToList(),
         };
     }
 

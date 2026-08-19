@@ -5668,6 +5668,12 @@ public sealed class FilmJobService
         var styleHead = await TryGetStyleLockHeadAsync(ctx.ProjectId, ctx.Ct).ConfigureAwait(false);
         var sceneLocationKey = ResolveSceneLocationKey(ctx.BlueprintRoot, ctx.Scene);
 
+        // Plan lint: say it in the job log when this clip's plan text contradicts cast facts. Not
+        // patched here — the planner rule is the fix and the rebuild clears it (no gen-time special cases).
+        var lint = ShotPlanLint.Check(ctx.ClipEl, ctx.Profiles?.Values.Where(p => p.VoiceOnly).Select(p => p.Key).ToList() ?? new List<string>());
+        foreach (var f in lint)
+            await AppendLogAsync($"  [Plan] ⚠ S{ctx.Scene:D2}C{ctx.Clip:D2} {f.Rule}: {f.Message}");
+
         var built = ClipVideoPromptBuilder.Build(
             ctx.ClipEl,
             ctx.ProjectDir,

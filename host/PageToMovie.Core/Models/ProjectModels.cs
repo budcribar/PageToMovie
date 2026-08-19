@@ -989,6 +989,9 @@ public sealed class ClipSummary
 
     /// <summary>Short reason for <see cref="IsStale"/> (plan_newer, dialogue_qa, missing_beat).</summary>
     public string? StaleReason { get; set; }
+    /// <summary>Plan-lint findings for this clip (plan text contradicts cast facts); empty when clean.
+    /// Shown on the clip (also folded into StaleReason when the clip is on disk) — fix = rebuild shot plan.</summary>
+    public List<string> PlanLint { get; set; } = new();
 }
 
 /// <summary>Create or fully edit a clip's shot-plan fields (Scenes clip editor).</summary>

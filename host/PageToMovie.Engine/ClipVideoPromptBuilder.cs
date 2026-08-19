@@ -156,10 +156,7 @@ public static class ClipVideoPromptBuilder
             .ToList();
 
         var rawVisual = ReadVisualPrompt(clipEl);
-        // Voice-only roles are never on screen and own no wardrobe — Stage 2 text still carries
-        // "also on screen: Character_Narrator" / "Character_Narrator still wears …" on older plans.
-        var voiceOnlyKeys = characters is null ? new List<string>() : characters.Values.Where(c => c.VoiceOnly).Select(c => c.Key).ToList();
-        var actionText = StripVoiceOnlyPresence(SanitizeActionText(rawVisual, onScreenKeys), voiceOnlyKeys);
+        var actionText = SanitizeActionText(rawVisual, onScreenKeys);
 
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
@@ -194,7 +191,7 @@ public static class ClipVideoPromptBuilder
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var audioBlock = BuildAudioBlock(clipEl, characters, correction);
         var continuityBlock = BuildContinuityBlock(
-            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, voiceOnlyKeys);
+            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
@@ -328,8 +325,7 @@ public static class ClipVideoPromptBuilder
         string mode,
         IReadOnlyList<string> onScreenKeys,
         bool useReferenceImages,
-        string? previousClipVisualPrompt,
-        IReadOnlyList<string>? voiceOnlyKeys = null)
+        string? previousClipVisualPrompt)
     {
         var continuityBlock = mode switch
         {
@@ -358,7 +354,7 @@ public static class ClipVideoPromptBuilder
             // The previous clip's spoken line must not ride into this clip: quoting it verbatim in the
             // context ("OFF-CAMERA VOICEOVER C3 says \"…\"") is an invitation to speak it again
             // (Mary19 S03C02 repeated S03C01's narration). Keep who spoke, drop the words.
-            var prevClean = StripVoiceOnlyPresence(RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys)), voiceOnlyKeys);
+            var prevClean = RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys));
             var note = mode == ModeVideoExtend
                 ? "already provided as video input — continue from its last frame"
                 : "context — match look and continue motion from its end";
@@ -373,7 +369,7 @@ public static class ClipVideoPromptBuilder
             // Cast-change reseed: no video input, but keep prior clip prose for location/lighting only.
             // Same redaction as the extend path: the previous line is history, not a cue (Mary19 S03C02
             // fresh take re-spoke C01's verse from this block).
-            var prevClean = StripVoiceOnlyPresence(RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys)), voiceOnlyKeys);
+            var prevClean = RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys));
             return PromptTags.WrapWithNote("Context",
                 "prior clip in scene — new cast plate refs attached; match location/lighting if still " +
                 "valid; identity from Characters + locked plates only",
@@ -741,26 +737,6 @@ public static class ClipVideoPromptBuilder
             @"(?<=(?:lip-syncs|says|narrates(?:\s+exactly)?)\s+)""([^""]*)""",
             m => "\"" + SanitizeSpokenDialogue(m.Groups[1].Value) + "\"",
             RegexOptions.IgnoreCase);
-    }
-
-    /// <summary>Remove a voice-only role from "also on screen: …" lists, its "X still wears …" wardrobe clause
-    /// and any "X is on screen." tail — it has no body in the frame.</summary>
-    internal static string StripVoiceOnlyPresence(string text, IReadOnlyList<string>? voiceOnlyKeys)
-    {
-        if (string.IsNullOrWhiteSpace(text) || voiceOnlyKeys is null || voiceOnlyKeys.Count == 0) return text ?? "";
-        var t = text;
-        foreach (var key in voiceOnlyKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
-        {
-            var k = System.Text.RegularExpressions.Regex.Escape(key);
-            // "Key still wears a, b, c" up to the next sentence end / tag
-            t = CommonRegex.Replace(t, $@"\s*{k}\s+still\s+wears\s+[^<.;]*[.;]?", "", RegexOptions.IgnoreCase);
-            // "Key is on screen."
-            t = CommonRegex.Replace(t, $@"\s*{k}\s+is\s+on\s+screen\.", "", RegexOptions.IgnoreCase);
-            // inside "also on screen: A, Key, B" lists
-            t = CommonRegex.Replace(t, $@"(also on screen:[^.<]*?)(,\s*{k}\b|\b{k}\s*,\s*)", "$1", RegexOptions.IgnoreCase);
-            t = CommonRegex.Replace(t, $@"also on screen:\s*{k}\s*\.", "", RegexOptions.IgnoreCase);
-        }
-        return CommonRegex.Replace(t, @"[ \t]{2,}", " ").Trim();
     }
 
     /// <summary>Replace quoted spoken lines after lip-syncs / says / narrates with a marker — used for
