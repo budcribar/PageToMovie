@@ -1,74 +1,695 @@
 {
-  "version": "2026-08-02.1",
+  "version": "2026-08-18.1",
   "language": "en-US",
   "entries": [
-    { "word": "tear", "senses": [
-      { "id": "tear.rip", "ipa": "tɛr", "label": "rip or separate", "partsOfSpeech": ["verb"], "cues": ["rip", "ripped", "apart", "up", "open", "off", "rend", "split"] },
-      { "id": "tear.eye", "ipa": "tɪr", "label": "drop from an eye", "partsOfSpeech": ["noun"], "cues": ["eye", "eyes", "cry", "cried", "cheek", "weep", "salty", "rolled"] }
-    ]},
-    { "word": "lead", "senses": [
-      { "id": "lead.guide", "ipa": "liːd", "label": "guide", "partsOfSpeech": ["verb"], "cues": ["guide", "way", "follow", "team", "us", "them"] },
-      { "id": "lead.metal", "ipa": "lɛd", "label": "metal", "partsOfSpeech": ["noun", "adjective"], "cues": ["metal", "pipe", "bullet", "paint", "poison", "heavy", "ore"] }
-    ]},
-    { "word": "wind", "senses": [
-      { "id": "wind.air", "ipa": "wɪnd", "label": "moving air", "partsOfSpeech": ["noun"], "cues": ["air", "breeze", "storm", "blow", "howl", "cold"] },
-      { "id": "wind.turn", "ipa": "waɪnd", "label": "turn or coil", "partsOfSpeech": ["verb"], "cues": ["coil", "clock", "watch", "up", "around", "road", "path"] }
-    ]},
-    { "word": "bow", "senses": [
-      { "id": "bow.bend", "ipa": "baʊ", "label": "bend or gesture", "partsOfSpeech": ["verb", "noun"], "cues": ["bend", "gesture", "head", "waist", "audience", "curtsy"] },
-      { "id": "bow.weapon", "ipa": "boʊ", "label": "weapon, ribbon, or ship front", "partsOfSpeech": ["noun"], "cues": ["arrow", "ribbon", "tie", "ship", "boat", "violin"] }
-    ]},
-    { "word": "bass", "senses": [
-      { "id": "bass.low", "ipa": "beɪs", "label": "low musical register", "partsOfSpeech": ["noun", "adjective"], "cues": ["music", "voice", "guitar", "drum", "note", "singer"] },
-      { "id": "bass.fish", "ipa": "bæs", "label": "fish", "partsOfSpeech": ["noun"], "cues": ["fish", "lake", "river", "catch", "fishing", "water"] }
-    ]},
-    { "word": "close", "senses": [
-      { "id": "close.near", "ipa": "kloʊs", "label": "near", "partsOfSpeech": ["adjective", "adverb"], "cues": ["near", "nearby", "friend", "enough", "proximity"] },
-      { "id": "close.shut", "ipa": "kloʊz", "label": "shut", "partsOfSpeech": ["verb"], "cues": ["door", "window", "eyes", "shut", "store", "account"] }
-    ]},
-    { "word": "desert", "senses": [
-      { "id": "desert.land", "ipa": "ˈdɛzɚt", "label": "dry land", "partsOfSpeech": ["noun"], "cues": ["sand", "dry", "dune", "heat", "oasis"] },
-      { "id": "desert.abandon", "ipa": "dɪˈzɝt", "label": "abandon", "partsOfSpeech": ["verb"], "cues": ["abandon", "leave", "post", "army", "duty"] }
-    ]},
-    { "word": "does", "senses": [
-      { "id": "does.verb", "ipa": "dʌz", "label": "form of do", "partsOfSpeech": ["verb"], "cues": ["he", "she", "it", "what", "why", "how"] },
-      { "id": "does.deer", "ipa": "doʊz", "label": "female deer", "partsOfSpeech": ["noun"], "cues": ["deer", "bucks", "fawns", "herd", "forest"] }
-    ]},
-    { "word": "live", "senses": [
-      { "id": "live.reside", "ipa": "lɪv", "label": "reside or remain alive", "partsOfSpeech": ["verb"], "cues": ["home", "here", "there", "life", "survive"] },
-      { "id": "live.current", "ipa": "laɪv", "label": "happening now", "partsOfSpeech": ["adjective", "adverb"], "cues": ["broadcast", "show", "audience", "wire", "ammunition"] }
-    ]},
-    { "word": "minute", "senses": [
-      { "id": "minute.time", "ipa": "ˈmɪnɪt", "label": "unit of time", "partsOfSpeech": ["noun"], "cues": ["hour", "second", "wait", "later", "time"] },
-      { "id": "minute.tiny", "ipa": "maɪˈnuːt", "label": "extremely small", "partsOfSpeech": ["adjective"], "cues": ["tiny", "small", "detail", "difference", "trace"] }
-    ]},
-    { "word": "object", "senses": [
-      { "id": "object.thing", "ipa": "ˈɑbdʒɛkt", "label": "thing", "partsOfSpeech": ["noun"], "cues": ["thing", "item", "shape", "found", "physical"] },
-      { "id": "object.oppose", "ipa": "əbˈdʒɛkt", "label": "oppose", "partsOfSpeech": ["verb"], "cues": ["oppose", "protest", "court", "strongly", "proposal"] }
-    ]},
-    { "word": "present", "senses": [
-      { "id": "present.current", "ipa": "ˈprɛzənt", "label": "current, gift, or attendance", "partsOfSpeech": ["noun", "adjective"], "cues": ["gift", "now", "current", "attendance", "moment"] },
-      { "id": "present.show", "ipa": "prɪˈzɛnt", "label": "show or introduce", "partsOfSpeech": ["verb"], "cues": ["show", "introduce", "evidence", "award", "case"] }
-    ]},
-    { "word": "produce", "senses": [
-      { "id": "produce.food", "ipa": "ˈproʊduːs", "label": "fruit and vegetables", "partsOfSpeech": ["noun"], "cues": ["fruit", "vegetable", "market", "fresh", "grocery"] },
-      { "id": "produce.create", "ipa": "prəˈduːs", "label": "create", "partsOfSpeech": ["verb"], "cues": ["create", "make", "generate", "film", "result"] }
-    ]},
-    { "word": "read", "senses": [
-      { "id": "read.present", "ipa": "riːd", "label": "read in present or future tense", "partsOfSpeech": ["verb"], "cues": ["will", "can", "should", "daily", "now", "please"] },
-      { "id": "read.past", "ipa": "rɛd", "label": "read in past tense", "partsOfSpeech": ["verb"], "cues": ["yesterday", "already", "had", "last", "once"] }
-    ]},
-    { "word": "refuse", "senses": [
-      { "id": "refuse.waste", "ipa": "ˈrɛfjuːs", "label": "waste", "partsOfSpeech": ["noun"], "cues": ["trash", "waste", "garbage", "dump", "collection"] },
-      { "id": "refuse.decline", "ipa": "rɪˈfjuːz", "label": "decline", "partsOfSpeech": ["verb"], "cues": ["decline", "deny", "offer", "request", "obey"] }
-    ]},
-    { "word": "sow", "senses": [
-      { "id": "sow.plant", "ipa": "soʊ", "label": "plant seed", "partsOfSpeech": ["verb"], "cues": ["seed", "field", "plant", "crop", "harvest"] },
-      { "id": "sow.pig", "ipa": "saʊ", "label": "female pig", "partsOfSpeech": ["noun"], "cues": ["pig", "piglet", "boar", "farm", "sty"] }
-    ]},
-    { "word": "wound", "senses": [
-      { "id": "wound.injury", "ipa": "wuːnd", "label": "injury", "partsOfSpeech": ["noun", "verb"], "cues": ["injury", "blood", "bandage", "heal", "shot"] },
-      { "id": "wound.turned", "ipa": "waʊnd", "label": "past tense of wind", "partsOfSpeech": ["verb"], "cues": ["clock", "coil", "around", "thread", "path"] }
-    ]}
+    {
+      "word": "tear",
+      "senses": [
+        {
+          "id": "tear.rip",
+          "ipa": "tɛr",
+          "label": "rip or separate",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "rip",
+            "ripped",
+            "apart",
+            "up",
+            "open",
+            "off",
+            "rend",
+            "split"
+          ],
+          "respell": "TAIR",
+          "rhymes": "air"
+        },
+        {
+          "id": "tear.eye",
+          "ipa": "tɪr",
+          "label": "drop from an eye",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "eye",
+            "eyes",
+            "cry",
+            "cried",
+            "cheek",
+            "weep",
+            "salty",
+            "rolled"
+          ],
+          "respell": "TEER",
+          "rhymes": "ear"
+        }
+      ]
+    },
+    {
+      "word": "lead",
+      "senses": [
+        {
+          "id": "lead.guide",
+          "ipa": "liːd",
+          "label": "guide",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "guide",
+            "way",
+            "follow",
+            "team",
+            "us",
+            "them"
+          ],
+          "respell": "LEED",
+          "rhymes": "need"
+        },
+        {
+          "id": "lead.metal",
+          "ipa": "lɛd",
+          "label": "metal",
+          "partsOfSpeech": [
+            "noun",
+            "adjective"
+          ],
+          "cues": [
+            "metal",
+            "pipe",
+            "bullet",
+            "paint",
+            "poison",
+            "heavy",
+            "ore"
+          ],
+          "respell": "LED",
+          "rhymes": "bed"
+        }
+      ]
+    },
+    {
+      "word": "wind",
+      "senses": [
+        {
+          "id": "wind.air",
+          "ipa": "wɪnd",
+          "label": "moving air",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "air",
+            "breeze",
+            "storm",
+            "blow",
+            "howl",
+            "cold"
+          ],
+          "respell": "WIND",
+          "rhymes": "pinned"
+        },
+        {
+          "id": "wind.turn",
+          "ipa": "waɪnd",
+          "label": "turn or coil",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "coil",
+            "clock",
+            "watch",
+            "up",
+            "around",
+            "road",
+            "path"
+          ],
+          "respell": "WYND",
+          "rhymes": "find"
+        }
+      ]
+    },
+    {
+      "word": "bow",
+      "senses": [
+        {
+          "id": "bow.bend",
+          "ipa": "baʊ",
+          "label": "bend or gesture",
+          "partsOfSpeech": [
+            "verb",
+            "noun"
+          ],
+          "cues": [
+            "bend",
+            "gesture",
+            "head",
+            "waist",
+            "audience",
+            "curtsy"
+          ],
+          "respell": "BOW",
+          "rhymes": "cow"
+        },
+        {
+          "id": "bow.weapon",
+          "ipa": "boʊ",
+          "label": "weapon, ribbon, or ship front",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "arrow",
+            "ribbon",
+            "tie",
+            "ship",
+            "boat",
+            "violin"
+          ],
+          "respell": "BOH",
+          "rhymes": "go"
+        }
+      ]
+    },
+    {
+      "word": "bass",
+      "senses": [
+        {
+          "id": "bass.low",
+          "ipa": "beɪs",
+          "label": "low musical register",
+          "partsOfSpeech": [
+            "noun",
+            "adjective"
+          ],
+          "cues": [
+            "music",
+            "voice",
+            "guitar",
+            "drum",
+            "note",
+            "singer"
+          ],
+          "respell": "BASE",
+          "rhymes": "face"
+        },
+        {
+          "id": "bass.fish",
+          "ipa": "bæs",
+          "label": "fish",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "fish",
+            "lake",
+            "river",
+            "catch",
+            "fishing",
+            "water"
+          ],
+          "respell": "BASS",
+          "rhymes": "gas"
+        }
+      ]
+    },
+    {
+      "word": "close",
+      "senses": [
+        {
+          "id": "close.near",
+          "ipa": "kloʊs",
+          "label": "near",
+          "partsOfSpeech": [
+            "adjective",
+            "adverb"
+          ],
+          "cues": [
+            "near",
+            "nearby",
+            "friend",
+            "enough",
+            "proximity"
+          ],
+          "respell": "KLOHS",
+          "rhymes": "dose"
+        },
+        {
+          "id": "close.shut",
+          "ipa": "kloʊz",
+          "label": "shut",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "door",
+            "window",
+            "eyes",
+            "shut",
+            "store",
+            "account"
+          ],
+          "respell": "KLOHZ",
+          "rhymes": "doze"
+        }
+      ]
+    },
+    {
+      "word": "desert",
+      "senses": [
+        {
+          "id": "desert.land",
+          "ipa": "ˈdɛzɚt",
+          "label": "dry land",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "sand",
+            "dry",
+            "dune",
+            "heat",
+            "oasis"
+          ],
+          "respell": "DEZ-ert",
+          "rhymes": "desert (the Sahara)"
+        },
+        {
+          "id": "desert.abandon",
+          "ipa": "dɪˈzɝt",
+          "label": "abandon",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "abandon",
+            "leave",
+            "post",
+            "army",
+            "duty"
+          ],
+          "respell": "dih-ZURT",
+          "rhymes": "dessert"
+        }
+      ]
+    },
+    {
+      "word": "does",
+      "senses": [
+        {
+          "id": "does.verb",
+          "ipa": "dʌz",
+          "label": "form of do",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "he",
+            "she",
+            "it",
+            "what",
+            "why",
+            "how"
+          ],
+          "respell": "DUZ",
+          "rhymes": "buzz"
+        },
+        {
+          "id": "does.deer",
+          "ipa": "doʊz",
+          "label": "female deer",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "deer",
+            "bucks",
+            "fawns",
+            "herd",
+            "forest"
+          ],
+          "respell": "DOHZ",
+          "rhymes": "goes"
+        }
+      ]
+    },
+    {
+      "word": "live",
+      "senses": [
+        {
+          "id": "live.reside",
+          "ipa": "lɪv",
+          "label": "reside or remain alive",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "home",
+            "here",
+            "there",
+            "life",
+            "survive"
+          ],
+          "respell": "LIV",
+          "rhymes": "give"
+        },
+        {
+          "id": "live.current",
+          "ipa": "laɪv",
+          "label": "happening now",
+          "partsOfSpeech": [
+            "adjective",
+            "adverb"
+          ],
+          "cues": [
+            "broadcast",
+            "show",
+            "audience",
+            "wire",
+            "ammunition"
+          ],
+          "respell": "LYVE",
+          "rhymes": "five"
+        }
+      ]
+    },
+    {
+      "word": "minute",
+      "senses": [
+        {
+          "id": "minute.time",
+          "ipa": "ˈmɪnɪt",
+          "label": "unit of time",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "hour",
+            "second",
+            "wait",
+            "later",
+            "time"
+          ],
+          "respell": "MIN-it",
+          "rhymes": "minute (60 seconds)"
+        },
+        {
+          "id": "minute.tiny",
+          "ipa": "maɪˈnuːt",
+          "label": "extremely small",
+          "partsOfSpeech": [
+            "adjective"
+          ],
+          "cues": [
+            "tiny",
+            "small",
+            "detail",
+            "difference",
+            "trace"
+          ],
+          "respell": "my-NOOT",
+          "rhymes": "my newt"
+        }
+      ]
+    },
+    {
+      "word": "object",
+      "senses": [
+        {
+          "id": "object.thing",
+          "ipa": "ˈɑbdʒɛkt",
+          "label": "thing",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "thing",
+            "item",
+            "shape",
+            "found",
+            "physical"
+          ],
+          "respell": "OB-jekt",
+          "rhymes": "object (a thing)"
+        },
+        {
+          "id": "object.oppose",
+          "ipa": "əbˈdʒɛkt",
+          "label": "oppose",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "oppose",
+            "protest",
+            "court",
+            "strongly",
+            "proposal"
+          ],
+          "respell": "ub-JEKT",
+          "rhymes": "reject"
+        }
+      ]
+    },
+    {
+      "word": "present",
+      "senses": [
+        {
+          "id": "present.current",
+          "ipa": "ˈprɛzənt",
+          "label": "current, gift, or attendance",
+          "partsOfSpeech": [
+            "noun",
+            "adjective"
+          ],
+          "cues": [
+            "gift",
+            "now",
+            "current",
+            "attendance",
+            "moment"
+          ],
+          "respell": "PREZ-ent",
+          "rhymes": "present (a gift)"
+        },
+        {
+          "id": "present.show",
+          "ipa": "prɪˈzɛnt",
+          "label": "show or introduce",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "show",
+            "introduce",
+            "evidence",
+            "award",
+            "case"
+          ],
+          "respell": "prih-ZENT",
+          "rhymes": "resent"
+        }
+      ]
+    },
+    {
+      "word": "produce",
+      "senses": [
+        {
+          "id": "produce.food",
+          "ipa": "ˈproʊduːs",
+          "label": "fruit and vegetables",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "fruit",
+            "vegetable",
+            "market",
+            "fresh",
+            "grocery"
+          ],
+          "respell": "PROH-doos",
+          "rhymes": "produce (vegetables)"
+        },
+        {
+          "id": "produce.create",
+          "ipa": "prəˈduːs",
+          "label": "create",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "create",
+            "make",
+            "generate",
+            "film",
+            "result"
+          ],
+          "respell": "pruh-DOOS",
+          "rhymes": "reduce"
+        }
+      ]
+    },
+    {
+      "word": "read",
+      "senses": [
+        {
+          "id": "read.present",
+          "ipa": "riːd",
+          "label": "read in present or future tense",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "will",
+            "can",
+            "should",
+            "daily",
+            "now",
+            "please"
+          ],
+          "respell": "REED",
+          "rhymes": "need"
+        },
+        {
+          "id": "read.past",
+          "ipa": "rɛd",
+          "label": "read in past tense",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "yesterday",
+            "already",
+            "had",
+            "last",
+            "once"
+          ],
+          "respell": "RED",
+          "rhymes": "bed"
+        }
+      ]
+    },
+    {
+      "word": "refuse",
+      "senses": [
+        {
+          "id": "refuse.waste",
+          "ipa": "ˈrɛfjuːs",
+          "label": "waste",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "trash",
+            "waste",
+            "garbage",
+            "dump",
+            "collection"
+          ],
+          "respell": "REF-yoos",
+          "rhymes": "refuse (garbage)"
+        },
+        {
+          "id": "refuse.decline",
+          "ipa": "rɪˈfjuːz",
+          "label": "decline",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "decline",
+            "deny",
+            "offer",
+            "request",
+            "obey"
+          ],
+          "respell": "rih-FYOOZ",
+          "rhymes": "peruse"
+        }
+      ]
+    },
+    {
+      "word": "sow",
+      "senses": [
+        {
+          "id": "sow.plant",
+          "ipa": "soʊ",
+          "label": "plant seed",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "seed",
+            "field",
+            "plant",
+            "crop",
+            "harvest"
+          ],
+          "respell": "SOH",
+          "rhymes": "go"
+        },
+        {
+          "id": "sow.pig",
+          "ipa": "saʊ",
+          "label": "female pig",
+          "partsOfSpeech": [
+            "noun"
+          ],
+          "cues": [
+            "pig",
+            "piglet",
+            "boar",
+            "farm",
+            "sty"
+          ],
+          "respell": "SOW",
+          "rhymes": "cow"
+        }
+      ]
+    },
+    {
+      "word": "wound",
+      "senses": [
+        {
+          "id": "wound.injury",
+          "ipa": "wuːnd",
+          "label": "injury",
+          "partsOfSpeech": [
+            "noun",
+            "verb"
+          ],
+          "cues": [
+            "injury",
+            "blood",
+            "bandage",
+            "heal",
+            "shot"
+          ],
+          "respell": "WOOND",
+          "rhymes": "tuned"
+        },
+        {
+          "id": "wound.turned",
+          "ipa": "waʊnd",
+          "label": "past tense of wind",
+          "partsOfSpeech": [
+            "verb"
+          ],
+          "cues": [
+            "clock",
+            "coil",
+            "around",
+            "thread",
+            "path"
+          ],
+          "respell": "WOWND",
+          "rhymes": "found"
+        }
+      ]
+    }
   ]
 }

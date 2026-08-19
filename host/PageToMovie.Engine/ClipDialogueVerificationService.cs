@@ -339,12 +339,30 @@ public sealed class ClipDialogueVerificationService
         charGuides.Add($"- Attached Image #{mediaIndex}: Character '{nameLabel}' (Key: '{charObj.Key}'){desc}");
     }
 
+    /// <summary>
+    /// Heteronyms in the expected line, resolved deterministically, become explicit checks for the
+    /// verifier: "tear" said as /tɪər/ still transcribes as "tear", so only a listener that knows the
+    /// intended sense can catch it — this is the wrong_sense kind.
+    /// </summary>
+    internal static string BuildSenseChecks(string expectedDialogue)
+    {
+        var res = Deterministic.Pronunciation.PronunciationResolver.Default.Resolve(expectedDialogue);
+        if (res.Annotations.Count == 0) return "";
+        var lines = res.Annotations.Select(a =>
+            $"   - '{a.Token}' must be pronounced /{a.Ipa}/" +
+            (string.IsNullOrWhiteSpace(a.Respell) ? "" : $" (\"{a.Respell}\"" + (string.IsNullOrWhiteSpace(a.Rhymes) ? "" : $", rhymes with '{a.Rhymes}'") + ")") +
+            $" — meaning: {a.Meaning}. If it was said with the other meaning, report kind \"wrong_sense\" with word '{a.Token}'.");
+        return "   PRONUNCIATION CHECKS (words with two pronunciations — listen for the intended one):\n" + string.Join("\n", lines) + "\n";
+    }
+
     private static string BuildVerificationPrompt(
+
         string expectedSpeaker, string expectedSpeakerDisplayName, string expectedDialogue, List<string> charGuides)
     {
         var guideText = charGuides.Count > 0
             ? "CHARACTER REFERENCE PORTRAITS (MATCH FACES IN VIDEO TO THESE ATTACHED IMAGES):\n" + string.Join("\n", charGuides)
             : "No character reference portraits attached.";
+        var senseChecks = BuildSenseChecks(expectedDialogue);
 
         return $@"
 You are an automated film quality assurance inspector evaluating a generated movie clip.
@@ -360,8 +378,12 @@ TASKS:
 2. Observe on-screen character faces and lip movements. Compare the face of the character who is speaking against the attached character reference portraits listed above to determine who is speaking.
 3. Transcribe the EXACT spoken dialogue you hear in the video clip.
 4. Compare detected speaker vs expected speaker ('{expectedSpeakerDisplayName}'), and transcribed dialogue vs expected dialogue.
-   NOTE: Ignore minor US/UK spelling differences (e.g. 'neighbour' vs 'neighbor', 'colour' vs 'color'). If the spoken words match the script, score dialogue accuracy as 1.0 (100% match).
-
+   NOTE: Ignore minor US/UK spelling differences (e.g. 'neighbour' vs 'neighbor', 'colour' vs 'color'). If the spoken words match the script and you found no issues, score dialogue accuracy as 1.0 (100% match).
+5. Explain every deduction. Any score below 1.0 must be accounted for by at least one entry in ""issues"". Use ONLY these kinds:
+   wrong_speaker (another character's voice/mouth delivers the line), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all),
+   unclear_audio, robotic_delivery, timing (line lands off the shot / after the mouth stops),
+   mispronounced (awkward but unambiguous), extra_word, missing_word (filler/article), accent.
+{senseChecks}
 Return ONLY a JSON object:
 {{
   ""detectedSpeaker"": ""Character Name or Key"",
@@ -369,6 +391,7 @@ Return ONLY a JSON object:
   ""dialogueAccuracyScore"": 0.95,
   ""speakerMatch"": true,
   ""status"": ""verified"",
+  ""issues"": [ {{ ""kind"": ""mispronounced"", ""word"": ""Officer"", ""detail"": ""said off-ee-sir"", ""severity"": ""minor"" }} ],
   ""summaryNote"": ""Expected: '{expectedDialogue}' | Heard: '...' (Match 95%)""
 }}
 Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue incorrect), 'speaker_swap' (wrong character speaking), 'no_speech' (no spoken dialogue heard).
@@ -428,9 +451,10 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         if (string.IsNullOrWhiteSpace(status)) status = "verified";
         var summary = GetJsonString(root, "summaryNote", "summary_note", "summary", "notes");
 
+        var issues = ParseIssues(root);
         (speakerMatch, status) = NormalizeSpeakerMatch(
             detected, expectedSpeaker, expectedSpeakerDisplayName, speakerMatch, status, accuracy);
-        (accuracy, status, summary) = ApplyAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary);
+        (accuracy, status, summary) = ApplyAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary, issues);
 
         var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");
         var (speechSec, actionSec) = ClipDurationEstimator.EstimateBreakdown(expectedDialogue, clip?.VisualPrompt ?? "", "", clip?.Delivery ?? "none");
@@ -449,6 +473,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             SpeakerMatch = speakerMatch,
             Status = status,
             SummaryNote = summary,
+            Issues = issues,
             EstimatedDurationSeconds = Math.Round(estSec, 1),
             WordCount = ClipDurationEstimator.CountWords(expectedDialogue),
             SyllableCount = ClipDurationEstimator.CountSyllables(expectedDialogue),
@@ -490,9 +515,19 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         return (speakerMatch, status);
     }
 
-    private static (double Accuracy, string Status, string Summary) ApplyAccuracyGuards(
-        string expectedDialogue, string transcribed, double accuracy, string status, string summary)
+    /// <summary>
+    /// Score/status from two signals — the model's verdict and our own text similarity — plus the
+    /// model's itemized issues. Rules: a blocking issue (wrong speaker / words / sense, cut off,
+    /// missing line) fails the clip regardless of how well the transcript matches (a heteronym read
+    /// with the wrong sense transcribes perfectly); cosmetic-only issues are a 100% line (rounding
+    /// "off-ee-sir" up is right); otherwise the lower of the two signals stands — text similarity
+    /// never overrides a lower model verdict, because that hid exactly the wrong-sense case.
+    /// </summary>
+    internal static (double Accuracy, string Status, string Summary) ApplyAccuracyGuards(
+        string expectedDialogue, string transcribed, double accuracy, string status, string summary,
+        IReadOnlyList<DialogueVerificationIssue>? issues = null)
     {
+        issues ??= Array.Empty<DialogueVerificationIssue>();
         if (!string.IsNullOrWhiteSpace(expectedDialogue) && string.IsNullOrWhiteSpace(transcribed))
         {
             return (0.0, "mismatch", $"Expected: '{expectedDialogue}' | Heard: (no audio/speech detected) (0% match)");
@@ -500,8 +535,17 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         if (string.IsNullOrWhiteSpace(expectedDialogue))
             return (accuracy, status, summary);
 
+        var blocking = issues.Where(i => DialogueIssueKinds.IsBlocking(i.Kind)).ToList();
+        if (blocking.Count > 0)
+        {
+            var kinds = string.Join(", ", blocking.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : $" '{i.Word}'")).Distinct());
+            var newStatus = blocking.Any(i => string.Equals(i.Kind, "wrong_speaker", StringComparison.OrdinalIgnoreCase)) ? "speaker_swap" : "mismatch";
+            return (Math.Min(accuracy, 0.49), newStatus, $"{summary} | Blocking: {kinds}".Trim(' ', '|'));
+        }
+
         var computedAcc = CalculateAccuracyScore(expectedDialogue, transcribed);
-        if (computedAcc >= 0.99)
+        var onlyCosmetic = issues.Count > 0 && issues.All(i => DialogueIssueKinds.IsCosmetic(i.Kind));
+        if (computedAcc >= 0.99 && (issues.Count == 0 || onlyCosmetic))
             accuracy = 1.0;
         else if (computedAcc < accuracy)
             accuracy = computedAcc;
@@ -509,6 +553,28 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         if (accuracy < 0.5 && string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase))
             status = "mismatch";
         return (accuracy, status, summary);
+    }
+
+    internal static List<DialogueVerificationIssue> ParseIssues(JsonElement root)
+    {
+        var list = new List<DialogueVerificationIssue>();
+        if (!root.TryGetProperty("issues", out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            var kind = (el.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null)?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(kind)) continue;
+            if (!DialogueIssueKinds.IsBlocking(kind) && !DialogueIssueKinds.IsDegraded(kind) && !DialogueIssueKinds.IsCosmetic(kind))
+                kind = "other";
+            list.Add(new DialogueVerificationIssue
+            {
+                Kind = kind,
+                Word = el.TryGetProperty("word", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString()?.Trim() : null,
+                Detail = el.TryGetProperty("detail", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? "" : "",
+                Severity = el.TryGetProperty("severity", out var sv) && sv.ValueKind == JsonValueKind.String ? sv.GetString() ?? "minor" : "minor",
+            });
+        }
+        return list;
     }
 
     /// <summary>

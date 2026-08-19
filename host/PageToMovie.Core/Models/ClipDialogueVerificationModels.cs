@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace PageToMovie.Core.Models;
 
@@ -26,6 +27,13 @@ public sealed class ClipDialogueVerificationResult
     /// <summary>Summary notes from multimodal AI evaluation.</summary>
     public string SummaryNote { get; set; } = "";
 
+    /// <summary>
+    /// What the verifier actually found — the reasons behind the score. A single number cannot
+    /// separate "said off-ee-sir" from "the wrong character spoke", and both are needed to pick a
+    /// correction. Empty when the model reported none.
+    /// </summary>
+    public List<DialogueVerificationIssue> Issues { get; set; } = new();
+
     /// <summary>Estimated / planned clip duration (seconds).</summary>
     public double EstimatedDurationSeconds { get; set; }
 
@@ -48,4 +56,33 @@ public sealed class ClipDialogueVerificationResult
     public bool SpeechTruncated { get; set; }
 
     public DateTime VerifiedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>One finding from dialogue/speaker verification. Kinds are a closed vocabulary; see
+/// <see cref="DialogueIssueKinds"/> for the tiers that drive status and correction.</summary>
+public sealed class DialogueVerificationIssue
+{
+    /// <summary>wrong_speaker | wrong_words | wrong_sense | cut_off | missing_line | unclear_audio | robotic_delivery | timing | mispronounced | extra_word | missing_word | accent | other</summary>
+    public string Kind { get; set; } = "other";
+    /// <summary>The word concerned, when the issue is about one (mispronounced, wrong_sense, missing_word…).</summary>
+    public string? Word { get; set; }
+    public string Detail { get; set; } = "";
+    /// <summary>minor | major (the model's own view; the tier below is what the app acts on).</summary>
+    public string Severity { get; set; } = "minor";
+}
+
+/// <summary>Tiering of issue kinds. Blocking: the clip is wrong (regenerate). Degraded: usable but
+/// flagged. Cosmetic: notes only — a line with only cosmetic issues is a 100% line.</summary>
+public static class DialogueIssueKinds
+{
+    public static readonly HashSet<string> Blocking = new(StringComparer.OrdinalIgnoreCase)
+        { "wrong_speaker", "wrong_words", "wrong_sense", "cut_off", "missing_line" };
+    public static readonly HashSet<string> Degraded = new(StringComparer.OrdinalIgnoreCase)
+        { "unclear_audio", "robotic_delivery", "timing" };
+    public static readonly HashSet<string> Cosmetic = new(StringComparer.OrdinalIgnoreCase)
+        { "mispronounced", "extra_word", "missing_word", "accent" };
+
+    public static bool IsBlocking(string? kind) => kind is not null && Blocking.Contains(kind);
+    public static bool IsDegraded(string? kind) => kind is not null && Degraded.Contains(kind);
+    public static bool IsCosmetic(string? kind) => kind is not null && Cosmetic.Contains(kind);
 }

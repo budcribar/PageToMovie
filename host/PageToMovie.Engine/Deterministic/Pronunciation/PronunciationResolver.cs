@@ -13,7 +13,9 @@ public sealed record PronunciationAnnotation(
     string Ipa,
     string Meaning,
     double Confidence,
-    string Source);
+    string Source,
+    string? Respell = null,
+    string? Rhymes = null);
 
 public sealed record UnresolvedPronunciation(
     int Start,
@@ -98,7 +100,9 @@ public sealed class PronunciationResolver
                 best.Sense.Ipa,
                 best.Sense.Label,
                 Math.Round(confidence, 2),
-                "deterministic"));
+                "deterministic",
+                best.Sense.Respell,
+                best.Sense.Rhymes));
         }
 
         return new(annotations, unresolved, LexiconVersion);
@@ -107,8 +111,21 @@ public sealed class PronunciationResolver
     public static string RenderPromptHints(PronunciationResolution resolution)
     {
         if (resolution.Annotations.Count == 0) return "";
-        return string.Join("; ", resolution.Annotations.Select(annotation =>
-            $"Pronounce '{annotation.Token}' as /{annotation.Ipa}/ ({annotation.Meaning})"));
+        return string.Join("; ", resolution.Annotations.Select(RenderHint));
+    }
+
+    /// <summary>
+    /// One hint. IPA alone is a weak cue for speech models; a respelling + rhyme + gloss
+    /// ("say TAIR, rhymes with air — rip") is what they follow. IPA is kept for readers who use it.
+    /// </summary>
+    public static string RenderHint(PronunciationAnnotation a)
+    {
+        if (!string.IsNullOrWhiteSpace(a.Respell))
+        {
+            var rhyme = string.IsNullOrWhiteSpace(a.Rhymes) ? "" : $", rhymes with '{a.Rhymes}'";
+            return $"Pronounce '{a.Token}' as \"{a.Respell}\"{rhyme} — {a.Meaning} (/{a.Ipa}/)";
+        }
+        return $"Pronounce '{a.Token}' as /{a.Ipa}/ ({a.Meaning})";
     }
 
     private static readonly Regex HintTargetRegex = new(@"'([\p{L}][\p{L}']*)'", RegexOptions.Compiled, CommonRegex.Timeout);
@@ -180,4 +197,6 @@ public sealed record PronunciationSense(
     string Ipa,
     string Label,
     IReadOnlyList<string> PartsOfSpeech,
-    IReadOnlyList<string> Cues);
+    IReadOnlyList<string> Cues,
+    string? Respell = null,
+    string? Rhymes = null);

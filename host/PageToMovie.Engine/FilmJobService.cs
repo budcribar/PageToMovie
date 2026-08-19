@@ -5083,16 +5083,23 @@ public sealed class FilmJobService
             if (outcome != QaVerifyOutcome.NeedsRegen)
                 break;
 
+            // Targeted retry: change what the verifier said was wrong, not just re-roll the dice.
+            var correction = ClipCorrectionPlanner.Plan(ver!);
+            var issueText = ver!.Issues.Count > 0
+                ? " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word)))
+                : "";
             await AppendLogAsync(
-                $"  [QA] S{req.Scene:D2}C{cn} {ver!.Status} — auto-regen {qaAttempt}/{qaMaxRetries} (admin)…");
-            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct)
+                $"  [QA] S{req.Scene:D2}C{cn} {ver.Status}{issueText} — auto-regen {qaAttempt}/{qaMaxRetries}" +
+                (correction.IsEmpty ? " (plain re-roll)" : $" with correction: {string.Join("; ", correction.Reasons)}") + "…");
+            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct, correction)
                 .ConfigureAwait(false);
             carryoverPaddingSec = await GenerateOneClipAsync(
                 projectId, projectDir, req.Scene, cn, clip, resolution, ct,
                 previousClipEl: prevClipEl,
                 blueprintRoot: blueprintRoot,
                 incomingDurationPaddingSec: incomingPadding,
-                takeKindOverride: VideoTakeKinds.QaAuto);
+                takeKindOverride: VideoTakeKinds.QaAuto,
+                correction: correction.IsEmpty ? null : correction);
         }
         return carryoverPaddingSec;
     }
@@ -5135,7 +5142,8 @@ public sealed class FilmJobService
         int cn,
         ClipDialogueVerificationResult ver,
         int qaAttempt,
-        CancellationToken ct)
+        CancellationToken ct,
+        ClipCorrection? correction = null)
     {
         try
         {
@@ -5145,7 +5153,11 @@ public sealed class FilmJobService
                 Type = "qa_auto_retry",
                 Scene = scene,
                 Clip = cn,
-                Note = ver.Status,
+                // What the retry will change — the (issue → correction → outcome) triple is the
+                // learning signal; a plain "qa_auto_retry" without it cannot be evaluated later.
+                Note = ver.Status
+                       + (ver.Issues.Count > 0 ? " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word))) : "")
+                       + (correction is { IsEmpty: false } ? " " + correction.Tag() : " plain_reroll"),
                 Outcome = $"attempt_{qaAttempt}",
                 JobId = Snapshot.JobId,
                 ActionTaken = "admin_dialogue_qa_regen",
@@ -5275,12 +5287,13 @@ public sealed class FilmJobService
         JsonElement? blueprintRoot = null,
         double incomingDurationPaddingSec = 0.0,
         string? modelOverride = null,
-        string? takeKindOverride = null)
+        string? takeKindOverride = null,
+        ClipCorrection? correction = null)
     {
         var ctx = await CreateClipGenContextAsync(
             projectId, projectDir, scene, clip, clipEl, resolution, ct,
             previousClipEl, blueprintRoot, incomingDurationPaddingSec,
-            modelOverride, takeKindOverride).ConfigureAwait(false);
+            modelOverride, takeKindOverride, correction).ConfigureAwait(false);
         try
         {
             return await ExecuteClipGenerationAsync(ctx).ConfigureAwait(false);
@@ -5304,6 +5317,9 @@ public sealed class FilmJobService
         public CancellationToken Ct { get; init; }
         public JsonElement? PreviousClipEl { get; init; }
         public JsonElement? BlueprintRoot { get; init; }
+        /// <summary>Targeted change for a QA retry (speaker lock / respellings); null on a normal take.</summary>
+        public ClipCorrection? Correction { get; init; }
+
         public double IncomingDurationPaddingSec { get; init; }
         public string? TakeKindOverride { get; init; }
         public required Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> Profiles { get; init; }
@@ -5332,7 +5348,8 @@ public sealed class FilmJobService
         JsonElement? blueprintRoot,
         double incomingDurationPaddingSec,
         string? modelOverride,
-        string? takeKindOverride)
+        string? takeKindOverride,
+        ClipCorrection? correction = null)
     {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
         var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
@@ -5365,6 +5382,8 @@ public sealed class FilmJobService
             Ct = ct,
             PreviousClipEl = previousClipEl,
             BlueprintRoot = blueprintRoot,
+            Correction = correction,
+
             IncomingDurationPaddingSec = incomingDurationPaddingSec,
             TakeKindOverride = takeKindOverride,
             Profiles = profiles,
@@ -5609,7 +5628,8 @@ public sealed class FilmJobService
             styleHead: styleHead,
             videoModel: ctx.Model,
             fallbackLocationKey: sceneLocationKey,
-            previousClipExtendFileId: ctx.ExtendSourceFileId);
+            previousClipExtendFileId: ctx.ExtendSourceFileId,
+            correction: ctx.Correction);
 
         if (string.IsNullOrWhiteSpace(built.Prompt))
             throw new InvalidOperationException("clip missing visual_prompt");

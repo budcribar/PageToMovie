@@ -130,7 +130,8 @@ public static class ClipVideoPromptBuilder
         string? styleHead = null,
         string? videoModel = null,
         string? fallbackLocationKey = null,
-        string? previousClipExtendFileId = null)
+        string? previousClipExtendFileId = null,
+        ClipCorrection? correction = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
         var promptMaxLen = ResolvePromptMaxLen(videoModel);
@@ -163,7 +164,12 @@ public static class ClipVideoPromptBuilder
         // Reserve one IMAGE slot for a locked set plate so multi-cast scenes still keep place identity.
         var charRefBudget = ResolveCharRefBudget(hasLocationPlate, maxRefs);
 
+        // QA correction: when the wrong character spoke last time, the locked speaker's portrait goes
+        // first in the reference set (IMAGE_1) so the model binds the mouth to the right face.
+        if (correction?.SpeakerLockKey is { Length: > 0 } lockKey && onScreenKeys.Any(k => string.Equals(k, lockKey, StringComparison.OrdinalIgnoreCase)))
+            onScreenKeys = onScreenKeys.OrderBy(k => string.Equals(k, lockKey, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ToList();
         var refPaths = FindCharacterRefPathsForKeys(onScreenKeys, projectDir, charRefBudget);
+
         // Fresh gen attaches locked plates when available. Location-only establishing shots
         // (no on-screen cast) still get a set plate if locked — don't require character refs first.
         var useReferenceImages = ShouldAttachReferenceImages(
@@ -183,7 +189,7 @@ public static class ClipVideoPromptBuilder
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
-        var audioBlock = BuildAudioBlock(clipEl, characters);
+        var audioBlock = BuildAudioBlock(clipEl, characters, correction);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
         var castCountLine = FormatCastCountLine(onScreenKeys);
@@ -1447,7 +1453,8 @@ public static class ClipVideoPromptBuilder
 
     private static string BuildAudioBlock(
         JsonElement clipEl,
-        IReadOnlyDictionary<string, CharacterProfile>? characters)
+        IReadOnlyDictionary<string, CharacterProfile>? characters,
+        ClipCorrection? correction = null)
     {
         if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var audio) ||
             audio.ValueKind != JsonValueKind.Object)
@@ -1466,7 +1473,7 @@ public static class ClipVideoPromptBuilder
 
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
-                audio, spoken, sfx, ambient, score, voiceLock);
+                audio, spoken, sfx, ambient, score, voiceLock, correction);
 
         if (HasAmbientLayers(ambient, sfx, score))
             return BuildAmbientOnlyAudio(ambient, sfx, score);
@@ -1570,13 +1577,24 @@ public static class ClipVideoPromptBuilder
         string sfx,
         string ambient,
         string score,
-        string voiceLock)
+        string voiceLock,
+        ClipCorrection? correction = null)
     {
         var who = string.IsNullOrWhiteSpace(spoken.Speaker) ? "SPEAKER" : spoken.Speaker.Trim();
         var isVoiceover = IsVoiceoverDelivery(spoken.Delivery, who);
         // Full line, speech-safe punctuation (em-dash normalize, !- glue) — same words. Story
         // dialogue text, sanitized like every other leaf value before it can reach a tag.
         var quote = PromptTags.SanitizeValue(SanitizeSpokenDialogue(spoken.Dialogue));
+        // QA correction: a heteronym the model read with the wrong sense is respelled INSIDE the quoted
+        // line ("TAIR up the planks!") — the one cue speech models reliably follow — with the hint kept
+        // for the reader; the verifier still checks against the script text.
+        var speakerLock = "";
+        if (correction is not null)
+        {
+            quote = ApplyRespellings(quote, correction.Respellings);
+            if (correction.SpeakerLockKey is { Length: > 0 })
+                speakerLock = $" ONLY {who} speaks in this clip; every other character is silent with mouth closed and does not mouth the words.";
+        }
         var openCue = BuildOpenCue(quote);
         var bed = BuildAudioBed(score, ambient, sfx);
 
@@ -1588,7 +1606,7 @@ public static class ClipVideoPromptBuilder
         {
             return PromptTags.Wrap(AudioTag,
                 $"REQUIRED native Grok off-camera voiceover. {who} narrates " +
-                $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
+                $"exactly: \"{quote}\".{openCue}{endPause}{pronHint}{speakerLock} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
         }
 
         // Two-hander: camera pans from {who} to {who2} mid-clip instead of cutting. Only
@@ -1602,16 +1620,33 @@ public static class ClipVideoPromptBuilder
             return PromptTags.Wrap(AudioTag,
                 $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
                 $"exactly: \"{quote}\".{openCue} Then {who2} ON CAMERA lip-syncs " +
-                $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2} Speech intelligible; never silent.{bed}{voiceLock}");
+                $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2}{speakerLock} Speech intelligible; never silent.{bed}{voiceLock}");
         }
 
         // spoken_on_camera / on_camera (normalized)
         return PromptTags.Wrap(AudioTag,
             $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
-            $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
+            $"exactly: \"{quote}\".{openCue}{endPause}{pronHint}{speakerLock} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
+    }
+
+    /// <summary>Replace each respelled word in the line (whole word, case-insensitive) with its
+    /// respelling in caps, so the speech model says the intended sense: "Tear up" → "TAIR up".</summary>
+    internal static string ApplyRespellings(string quote, IReadOnlyList<Respelling> respellings)
+    {
+        if (respellings is null || respellings.Count == 0 || string.IsNullOrEmpty(quote)) return quote;
+        var q = quote;
+        foreach (var r in respellings)
+        {
+            if (string.IsNullOrWhiteSpace(r.Word) || string.IsNullOrWhiteSpace(r.Respell)) continue;
+            q = System.Text.RegularExpressions.Regex.Replace(
+                q, $@"\b{System.Text.RegularExpressions.Regex.Escape(r.Word)}\b", r.Respell.ToUpperInvariant(),
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+        }
+        return q;
     }
 
     private static bool IsVoiceoverDelivery(string delivery, string who) =>
+
         delivery is "voiceover_internal" or "internal" or "narration" or "vo" or "thought" ||
         (delivery is not "spoken_on_camera" and not "on_camera" &&
          who.Contains("narrator", StringComparison.OrdinalIgnoreCase));
