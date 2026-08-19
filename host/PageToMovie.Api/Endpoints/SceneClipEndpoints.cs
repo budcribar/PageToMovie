@@ -49,6 +49,9 @@ public static class SceneClipEndpoints
         app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/verify-dialogue", PostProjectsIdScenesSceneClipsClipVerifyDialogue);
         // <summary>Upload local client clip MP4 file to server assets/video directory.</summary>
         app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/upload", PostProjectsIdScenesSceneClipsClipUpload);
+        // Browser pushes a clip sidecar (.clip.json) the server no longer has — self-heal for a project
+        // whose provider pointers went missing; the local media folder keeps a synced copy.
+        app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/sidecar", PostProjectsIdScenesSceneClipsClipSidecar);
         // <summary>Write accepted suggestion fields (cast / clip prompt). Does not regen — client starts gen after.</summary>
         app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/auto-review/apply", PostProjectsIdScenesSceneClipsClipAutoReviewApply);
         app.MapGet("/api/projects/{id}/scenes", GetProjectsIdScenes);
@@ -421,6 +424,43 @@ public static class SceneClipEndpoints
         }
     }
 }
+
+    private static async Task<IResult> PostProjectsIdScenesSceneClipsClipSidecar(
+        string id, int scene, int clip, HttpContext httpContext, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
+    {
+        if (AuthGate.RequireLogin(user, opts) is { } denied)
+            return denied;
+        string body;
+        using (var reader = new StreamReader(httpContext.Request.Body))
+            body = await reader.ReadToEndAsync(ct);
+        if (body.Length > 256 * 1024)
+            return Results.BadRequest(new { ok = false, error = "sidecar too large" });
+        System.Text.Json.JsonDocument doc;
+        try { doc = System.Text.Json.JsonDocument.Parse(body); }
+        catch { return Results.BadRequest(new { ok = false, error = "sidecar must be JSON" }); }
+        using (doc)
+        {
+            var r = doc.RootElement;
+            if (r.ValueKind != System.Text.Json.JsonValueKind.Object
+                || !((r.TryGetProperty("source_url", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(u.GetString()))
+                     || (r.TryGetProperty("source_file_id", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(f.GetString()))))
+                return Results.BadRequest(new { ok = false, error = "sidecar carries no provider pointer (source_url / source_file_id)" });
+            if (r.TryGetProperty("scene", out var sc) && sc.TryGetInt32(out var scN) && scN != scene
+                || r.TryGetProperty("clip", out var cl) && cl.TryGetInt32(out var clN) && clN != clip)
+                return Results.BadRequest(new { ok = false, error = "sidecar scene/clip does not match the route" });
+        }
+        var projectDir = await store.GetProjectDirAsync(id, ct);
+        var videoDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+        Directory.CreateDirectory(videoDir);
+        // Never overwrite a sidecar that still has a provider pointer — the server copy is newer-or-equal.
+        if (ClipProviderSource.ReadForClip(videoDir, scene, clip) is { HasProviderCopy: true })
+            return Results.Ok(new { ok = true, restored = false, reason = "server already has a sidecar" });
+        var dest = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_01.clip.json");
+        await File.WriteAllTextAsync(dest, body, ct);
+        store.InvalidateSceneListCache(id);
+        Console.Error.WriteLine($"[sidecar] restored {id} S{scene:D2}C{clip:D2} from the browser's media folder");
+        return Results.Ok(new { ok = true, restored = true });
+    }
 
     private static async Task<IResult> PostProjectsIdScenesSceneClipsClipUpload(string id, int scene, int clip, string? kind, double? seconds, HttpContext httpContext, ProjectStore store, IServiceProvider services, CancellationToken ct)
     {

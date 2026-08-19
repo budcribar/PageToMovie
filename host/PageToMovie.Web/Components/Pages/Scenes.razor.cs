@@ -218,6 +218,13 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
                 await Gen.RefreshMyJobsAsync();
 
             await List.ReloadListAsync();
+            // Folder connected and the server is missing clips it once had: push the sidecars back.
+            try
+            {
+                if (MediaFolder.IsConnected && await MediaFolder.RestoreMissingClipSidecarsAsync(_projectId, List._scenes) > 0)
+                    await List.ReloadListAsync();
+            }
+            catch { /* self-heal is best effort */ }
 
             // If the shot plan hasn't been built yet on this project, automatically kick off building the shot plan.
             if (!IsSimpleFilm && (List._scenes is null || List._scenes.Count == 0) && !Gen.JobRunning)

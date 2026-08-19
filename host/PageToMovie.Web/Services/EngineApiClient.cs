@@ -1585,6 +1585,20 @@ public sealed class EngineApiClient
         return await _http.GetFromJsonAsync<ProjectsDto>("/api/projects", JsonOpts, ct);
     }
 
+    /// <summary>Push a clip sidecar from the media folder to a server that lost it. True when restored.</summary>
+    public async Task<bool> RestoreClipSidecarAsync(string projectId, int scene, int clip, string sidecarJson, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/sidecar")
+        {
+            Content = new StringContent(sidecarJson, System.Text.Encoding.UTF8, "application/json"),
+        };
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) return false;
+        using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+        return doc.RootElement.TryGetProperty("restored", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
+    }
+
     public async Task ActivateProjectAsync(string projectId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();

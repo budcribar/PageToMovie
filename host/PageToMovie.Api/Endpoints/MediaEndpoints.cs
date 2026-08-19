@@ -268,7 +268,13 @@ public static class MediaEndpoints
             // homes; the server copy is released once the browser has it. (The former
             // "keep_media_on_server" opt-out for curated sources is retired — forks and shares
             // reference clips by source_url / file_id, and the demo gallery keeps its own movie.mp4.)
-            if (!isCharacterImage)
+            // Only the media bytes themselves are offloaded. Sidecars (.clip.json), markers and any
+            // other metadata the sync also mirrors must stay: the sidecar is the project's only
+            // pointer to the provider-hosted video — deleting it after a sync made the clips vanish
+            // server-side (Mary19, 2026-08-19).
+            var ext = Path.GetExtension(full);
+            var isMediaBytes = MediaSyncExtensions.Contains(ext);
+            if (!isCharacterImage && isMediaBytes)
                 await WriteClientStorageMarkerAndDeleteServerCopyAsync(full, dto, userId, ct);
 
             store.InvalidateSceneListCache(id);

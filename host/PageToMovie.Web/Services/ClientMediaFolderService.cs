@@ -1294,6 +1294,41 @@ public sealed class ClientMediaFolderService
         }
     }
 
+    /// <summary>
+    /// Self-heal: for clips the server reports as not present, push the sidecar (.clip.json) the media
+    /// folder holds for them. The server once deleted synced sidecars (register offload), leaving
+    /// projects without their provider pointers; the local copy is the record. Returns how many
+    /// clips were restored (caller reloads the scene list when > 0).
+    /// </summary>
+    public async Task<int> RestoreMissingClipSidecarsAsync(string projectId, IReadOnlyList<SceneSummary>? scenes, CancellationToken ct = default)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId) || scenes is null) return 0;
+        var restored = 0;
+        foreach (var sc in scenes.Where(x => x.ClipCount > 0 && x.ClipsOnDisk < x.ClipCount))
+        {
+            SceneDetail? detail;
+            try { detail = (await _api.GetSceneDetailAsync(projectId, sc.SceneNumber, ct))?.Scene; }
+            catch { continue; }
+            if (detail?.Clips is null) continue;
+            foreach (var clip in detail.Clips.Where(c => !c.OnDisk))
+            {
+                var rel = $"assets/video/scene_{sc.SceneNumber:D2}_clip_{clip.ClipNumber:D2}_take_01.clip.json";
+                var bytes = await ReadLocalBytesAsync($"{projectId}/{rel}", minBytes: 16);
+                if (bytes is null) continue;
+                string json;
+                try { json = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF'); } catch { continue; }
+                try { if (await _api.RestoreClipSidecarAsync(projectId, sc.SceneNumber, clip.ClipNumber, json, ct)) restored++; }
+                catch { /* best effort */ }
+            }
+        }
+        if (restored > 0)
+        {
+            LastStatus = $"Restored {restored} clip pointer(s) to the server from this folder.";
+            Changed?.Invoke();
+        }
+        return restored;
+    }
+
     /// <summary>Read a file already in the media folder as bytes.</summary>
     public async Task<byte[]?> ReadLocalBytesAsync(string relativePath, int minBytes = 0)
     {
