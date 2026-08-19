@@ -18,17 +18,15 @@ public static class ShotPlanLint
     {
         var findings = new List<Finding>();
         var visual = clipEl.TryGetProperty("visual_prompt", out var vp) && vp.ValueKind == JsonValueKind.String ? vp.GetString() ?? "" : "";
-        var onScreen = clipEl.TryGetProperty("characters_on_screen", out var cos) && cos.ValueKind == JsonValueKind.Array
-            ? cos.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString() ?? "").ToList()
-            : new List<string>();
-
         // Rule 1: a voice-only role (never_on_screen) placed on screen or dressed.
         foreach (var key in voiceOnlyKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
         {
             var k = Regex.Escape(key);
             var dressed = Regex.IsMatch(visual, $@"\b{k}\s+still\s+wears\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
-            var listedOnScreen = onScreen.Contains(key, StringComparer.OrdinalIgnoreCase)
-                || Regex.IsMatch(visual, $@"also on screen:[^.<]*\b{k}\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
+            // characters_on_screen legitimately carries the VO speaker (how the line's speaker is attached;
+            // gen-time cast filtering drops voice-only keys) — only the PROSE is the fault.
+            var listedOnScreen =
+                Regex.IsMatch(visual, $@"also on screen:[^.<]*\b{k}\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
                 || Regex.IsMatch(visual, $@"\b{k}\s+is\s+on\s+screen\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
             if (dressed || listedOnScreen)
                 findings.Add(new Finding("voice_only_on_screen",

@@ -22,6 +22,16 @@ public class ShotPlanLintTests
     }
 
     [Fact]
+    public void Voice_only_speaker_in_characters_on_screen_alone_is_not_a_finding()
+    {
+        using var doc = JsonDocument.Parse("""
+            {"clip_number":1,"characters_on_screen":["Character_Mary","Character_Narrator"],
+             "visual_prompt":"MARY walks. OFF-CAMERA VOICEOVER Character_Narrator says \"x\" Character_Mary is on screen."}
+            """);
+        Assert.Empty(ShotPlanLint.Check(doc.RootElement, new[] { "Character_Narrator" }));
+    }
+
+    [Fact]
     public void Clean_plan_has_no_findings()
     {
         using var doc = JsonDocument.Parse("""

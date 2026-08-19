@@ -485,7 +485,7 @@
     "SelectMissing": "Select missing",
     "PlaySelected": "Play selected",
     "VerifySceneDialogue": "Verify Scene Dialogue",
-    "RebuildShotPlan": "Regenerate Selected Scenes",
+    "RebuildShotPlan": "Regen shot plan for selected scenes",
     "AddScene": "Add scene",
     "AddCredits": "Add credits",
     "Filters": "Filters",
