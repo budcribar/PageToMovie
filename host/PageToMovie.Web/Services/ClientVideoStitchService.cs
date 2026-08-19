@@ -600,8 +600,15 @@ public sealed class ClientVideoStitchService
         try
         {
             var content = await _engine.GetCreditsContentAsync(projectId, ct).ConfigureAwait(false);
-            var res = await _js.InvokeAsync<JsCreditsResult>(
-                "PageToMovieFfmpeg.renderCreditsClipAsync", ct, new
+            // ffmpeg.wasm can wedge (worker never answers). Bound the render so the page says so instead
+            // of sitting on "Waiting…" forever; 3 minutes is generous for a few seconds of canvas video.
+            using var renderCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            renderCts.CancelAfter(TimeSpan.FromMinutes(3));
+            JsCreditsResult? res;
+            try
+            {
+                res = await _js.InvokeAsync<JsCreditsResult>(
+                "PageToMovieFfmpeg.renderCreditsClipAsync", renderCts.Token, new
                 {
                     title = content?.Title ?? "The End",
                     author = content?.Author ?? "",
@@ -612,6 +619,11 @@ public sealed class ClientVideoStitchService
                     fps,
                     durationSec = durationSeconds <= 0 ? 5 : durationSeconds,
                 }).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return (false, "Credits card render timed out in the browser (ffmpeg.wasm did not answer within 3 minutes). Reload the page and try again.");
+            }
             if (res is not { Success: true } || string.IsNullOrEmpty(res.Mp4Base64))
                 return (false, res?.Error ?? "Credits card render failed");
 
