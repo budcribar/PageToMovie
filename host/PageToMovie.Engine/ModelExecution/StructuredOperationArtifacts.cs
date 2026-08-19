@@ -24,7 +24,16 @@ public static class StructuredOperationArtifacts
         var issues = new List<ModelValidationIssue>();
         foreach (var name in propertyNames)
         {
-            if (!doc.RootElement.TryGetProperty(name, out var item) || IsEmpty(item))
+            // Case-insensitive: POCOs serialize PascalCase ("ProjectId") while callers name the wire
+            // convention ("projectId") — the case-sensitive lookup made every POCO save fail its own
+            // validation ("Required model data 'projectId' is missing" on the Review page).
+            JsonElement item = default;
+            var found = false;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase)) { item = prop.Value; found = true; break; }
+            }
+            if (!found || IsEmpty(item))
                 issues.Add(new("missing_required_data", $"Required model data '{name}' is missing.", $"$.{name}"));
         }
         return issues;

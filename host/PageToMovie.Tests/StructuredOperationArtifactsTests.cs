@@ -57,3 +57,18 @@ public sealed class StructuredOperationArtifactsTests
         }
     }
 }
+
+public class RequireJsonPropertiesCaseTests
+{
+    /// <summary>POCOs serialize PascalCase; callers name the wire convention (camelCase). The
+    /// case-sensitive lookup failed every POCO save ("Required model data 'projectId' is missing"
+    /// on the Review page when the AI review report was written).</summary>
+    [Fact]
+    public void Pascal_case_poco_satisfies_camel_case_requirement()
+    {
+        var report = new PageToMovie.Core.Models.MovieAutoReviewReport { ProjectId = "budcribar/Mary19" };
+        Assert.Empty(PageToMovie.Engine.ModelExecution.StructuredOperationArtifacts.RequireJsonProperties(report, "projectId"));
+        Assert.NotEmpty(PageToMovie.Engine.ModelExecution.StructuredOperationArtifacts.RequireJsonProperties(
+            new PageToMovie.Core.Models.MovieAutoReviewReport(), "projectId"));
+    }
+}

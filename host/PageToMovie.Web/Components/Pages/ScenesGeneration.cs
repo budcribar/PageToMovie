@@ -1005,22 +1005,30 @@ public partial class Scenes
             S._message = "A generate job is already running — watch progress instead of starting another.";
             return;
         }
+        if (!await EnsureMediaFolderForVideoAsync()) return;
         S._busy = true;
         S._error = null;
         S._message = null;
         _showAdminJobLog = false;
         try
         {
+            // Same split as the fill-holes batch: credits render in the browser, the rest is one server job.
+            var creditsScenes = S.List._selected.Where(IsCreditsSceneNum).OrderBy(x => x).ToList();
             var list = S.List._selected.Where(sn => !IsCreditsSceneNum(sn)).OrderBy(x => x).ToList();
             await EnsureHubAsync();
             foreach (var sn in list)
                 await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             if (list.Count > 0)
             {
+                OpenJobModal();
                 await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, takeTrigger: VideoTakeKinds.StaleRegen);
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
             }
+            foreach (var sn in creditsScenes)
+                await RenderCreditsSceneClientSideAsync(sn);
+            if (creditsScenes.Count > 0)
+                await SoftReloadAsync();
         }
         catch (Exception ex) { S._error = ex.Message; }
         finally { S._busy = false; }
