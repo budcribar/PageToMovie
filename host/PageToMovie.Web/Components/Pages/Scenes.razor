@@ -514,6 +514,15 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                          OnDelete="@(id => Music.SoftDeleteMusicVersionAsync(Music._compareMusicSceneNumber, id))" />
 }
 
+@if (Gen._showJobModal)
+{
+    <Scenes_JobProgress Visible="true"
+                        Job="Gen._job"
+                        Percent="@(Gen._job is null ? 0 : Gen.LiveGenProgressPercent(Gen._job))"
+                        OnCancel="Gen.CancelAsync"
+                        OnHide="Gen.HideJobModal" />
+}
+
 @if (Dialogue._showVerificationModal && Dialogue._verifModalResult is not null)
 {
     <Scenes_VerificationReport Visible="true"

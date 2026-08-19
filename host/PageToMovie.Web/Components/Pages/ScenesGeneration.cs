@@ -77,6 +77,11 @@ public partial class Scenes
 
     // Batch-generate confirm modal: resolution + cost decided at the moment of spend.
     internal bool _showGenerateConfirm;
+    /// <summary>Live progress modal — opened the moment a clip/scene/batch job is requested so the
+    /// user sees something immediately (the card at the top of the page is easy to miss).</summary>
+    internal bool _showJobModal;
+    internal void OpenJobModal() => _showJobModal = true;
+    internal void HideJobModal() => _showJobModal = false;
 
     // Batch-regenerate confirm modal: single confirmation prompt for all selected scenes.
     internal bool _showRegenerateConfirm;
@@ -312,6 +317,10 @@ public partial class Scenes
         _lastListRefreshScene = null;
         _lastListRefreshMessage = null;
         S._message = null;
+        // Progress modal: a clean finish closes itself (the clips are right there in the table);
+        // error / partial / cancelled stay up so the outcome is read, not missed.
+        if (snap.Status == "done")
+            _showJobModal = false;
         await SoftReloadAsync();
         // A5: final remaining numbers after job ends
         try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }
@@ -653,6 +662,7 @@ public partial class Scenes
         S._message = null;
         _showAdminJobLog = false;
         ResetLiveProgressFloor();
+        OpenJobModal();
         try
         {
             await RunSelectedBatchAsync().ConfigureAwait(false);

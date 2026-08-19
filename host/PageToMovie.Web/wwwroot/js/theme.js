@@ -27,3 +27,9 @@
         document.documentElement.dataset.bsTheme = 'dark';
     }
 })();
+
+// Small UI helpers (no framework): keep a scrolling log pinned to its newest line.
+window.PageToMovieUi = window.PageToMovieUi || {};
+window.PageToMovieUi.scrollToBottom = function (el) {
+    try { if (el) el.scrollTop = el.scrollHeight; } catch (e) { /* ignore */ }
+};

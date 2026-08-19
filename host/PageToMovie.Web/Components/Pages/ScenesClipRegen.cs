@@ -265,6 +265,7 @@ public partial class Scenes
                 var targets = S.ClipSel._selectedClips.OrderBy(c => c).Select(c => (Scene: sn, Clip: c)).ToList();
                 await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(targets);
+                S.Gen.OpenJobModal();
                 S.Gen._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution);
                 S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S.Gen._genResolution}…";
                 S.ClipSel._selectedClips.Clear();
@@ -314,6 +315,7 @@ public partial class Scenes
             S._error = null;
             S._message = null;
             S.Gen._pendingRegenScene = sn;
+            S.Gen.OpenJobModal();
             try
             {
                 await S.Gen.EnsureHubAsync();

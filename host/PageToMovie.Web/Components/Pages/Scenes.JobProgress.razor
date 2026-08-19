@@ -1,0 +1,74 @@
+@* Page-local to Scenes — live generation progress as a modal: opens the moment a clip / scene /
+   batch job is requested (no hunting for a card that appears seconds later at the top of the
+   page), shows the bar + the job log with its own scrollbar, Cancel, and Hide (job keeps running;
+   the compact card at the top of the page stays). *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    var job = Job;
+    var running = job is null || job.Status is "running" or "queued";
+    var title = job is null ? "Starting…" : Scenes.ScenesGeneration.LiveGenStatusLabel(job);
+    var percent = job is null ? 0 : Percent;
+    var log = job?.Log ?? new List<string>();
+
+    <DarkModalShell Visible="true" OnClose="OnHide" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <Title>🎬 @(running ? "Generating" : "Generation finished")</Title>
+        <ChildContent>
+            <div class="d-flex align-items-center gap-2 mb-2" data-testid="job-modal-status">
+                @if (running)
+                {
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                }
+                <span class="fw-semibold text-light">@title</span>
+                @if (job is { Total: > 0 })
+                {
+                    <span class="small text-secondary ms-auto">@job.Index / @job.Total</span>
+                }
+            </div>
+            <div class="progress mb-2" style="height:8px;">
+                <div class="progress-bar @(running ? "progress-bar-striped progress-bar-animated" : job?.Status is "done" ? "bg-success" : "bg-warning")"
+                     role="progressbar" style="width:@(Math.Clamp(percent, 2, 100))%"></div>
+            </div>
+            @if (!running && job is not null && !string.IsNullOrWhiteSpace(job.Message))
+            {
+                <div class="alert @(job.Status is "done" ? "alert-success" : "alert-warning") py-1 px-2 small mb-2">@job.Message</div>
+            }
+            <div class="small text-secondary mb-1">Log</div>
+            <pre class="p-2 mb-0 rounded bg-black border border-secondary text-light small font-monospace"
+                 style="max-height:40vh; overflow-y:auto; white-space:pre-wrap;"
+                 data-testid="job-modal-log" @ref="_logEl">@(log.Count == 0 ? (running ? "Waiting for the first status…" : "(no log)") : string.Join("\n", log.TakeLast(200)))</pre>
+        </ChildContent>
+        <Footer>
+            @if (running)
+            {
+                <button type="button" class="btn btn-outline-danger btn-sm" data-testid="job-modal-cancel" @onclick="OnCancel">Cancel job</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-testid="job-modal-hide" title="Keep generating in the background — the progress card at the top of the page stays" @onclick="OnHide">Hide</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-primary btn-sm" data-testid="job-modal-close" @onclick="OnHide">Close</button>
+            }
+        </Footer>
+    </DarkModalShell>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public JobSnapshot? Job { get; set; }
+    [Parameter] public int Percent { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnHide { get; set; }
+
+    private ElementReference _logEl;
+    [Inject] private Microsoft.JSInterop.IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Keep the newest log line in view while the job runs.
+        if (Visible && Job is { Status: "running" or "queued" })
+        {
+            try { await JS.InvokeVoidAsync("PageToMovieUi.scrollToBottom", _logEl); } catch { /* optional */ }
+        }
+    }
+}
