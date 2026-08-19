@@ -108,6 +108,50 @@ public sealed class LocalizationTests
         }
     }
 
+    /// <summary>
+    /// Every key the Web project asks the localizer for must exist in en-US.json — otherwise the
+    /// UI shows the raw key ("Auth.EnterUsernamePlaceholder" in the login box, 2026-08-18). Scans
+    /// the razor/cs sources for L["Section.Key"] and diffs against the embedded resource.
+    /// </summary>
+    [Fact]
+    public void Every_localizer_key_referenced_by_the_Web_project_exists_in_en_US()
+    {
+        var webDir = FindRepoDir("PageToMovie.Web");
+        Assert.True(webDir is not null, "PageToMovie.Web source directory not found from test base directory.");
+
+        var referenced = new SortedSet<string>(StringComparer.Ordinal);
+        var rx = new System.Text.RegularExpressions.Regex(@"L\[""([A-Za-z0-9_.]+)""", System.Text.RegularExpressions.RegexOptions.Compiled);
+        foreach (var file in Directory.EnumerateFiles(webDir!, "*.*", SearchOption.AllDirectories))
+        {
+            if (!(file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) ||
+                file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
+                continue;
+            foreach (System.Text.RegularExpressions.Match m in rx.Matches(File.ReadAllText(file)))
+                referenced.Add(m.Groups[1].Value);
+        }
+        Assert.NotEmpty(referenced);
+
+        var en = GetResourceDictionary("en-US");
+        var missing = referenced.Where(k => !en.ContainsKey(k)).ToList();
+        Assert.True(missing.Count == 0,
+            $"{missing.Count} localizer key(s) referenced in PageToMovie.Web are missing from en-US.json (the UI would show the raw key):\n{string.Join("\n", missing)}");
+    }
+
+    private static string? FindRepoDir(string projectFolder)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, projectFolder);
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, projectFolder + ".csproj")))
+                return candidate;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
     private static Dictionary<string, string> GetResourceDictionary(string cultureCode)
     {
         var assembly = typeof(JsonAppLocalizer).Assembly;

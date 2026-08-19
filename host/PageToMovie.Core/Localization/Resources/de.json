@@ -71,7 +71,8 @@
     "FractionOf": "{0} von {1}",
     "Remove": "Entfernen",
     "Hide": "Ausblenden",
-    "BackToEdit": "← Bearbeiten"
+    "BackToEdit": "← Bearbeiten",
+    "Unlock": "Entsperren"
   },
   "Home": {
     "Title": "Filmstudio-Projekte",
@@ -114,7 +115,11 @@
     "DeleteProject": "Projekt löschen",
     "NoAiProviderConnected": "Noch kein KI-Anbieter verbunden — schließen Sie zuerst die Einrichtung (Schritt 0) ab.",
     "OpenSetupLink": "Einrichtung öffnen →",
-    "EnterProjectNamePlaceholder": "Projektnamen eingeben…"
+    "EnterProjectNamePlaceholder": "Projektnamen eingeben…",
+    "CreateButton": "Erstellen",
+    "CreateNewProjectModalTitle": "Neues Projekt erstellen",
+    "NewProjectNameAriaLabel": "Name des neuen Projekts",
+    "ProjectNameLabel": "Projektname"
   },
   "Adaptation": {
     "Title": "Anpassungsworkflow",
@@ -172,7 +177,12 @@
     "ScreenplayNoShotPlan": "Das Drehbuch enthält {0} Szene(n), aber noch keinen Aufnahmeplan.",
     "EditScreenplayBeats": "✏️ Drehbuch-Beats bearbeiten",
     "BuildShotPlan": "Aufnahmeplan erstellen",
-    "UpdateShotPlan": "Aufnahmeplan aktualisieren"
+    "UpdateShotPlan": "Aufnahmeplan aktualisieren",
+    "AutoGenNotice": "Von Schätzung → Generieren: Shot-Plan wird erstellt, danach startet das Auffüllen der Lücken im Film.",
+    "ManualGenNotice": "Von Schätzung → Generieren: Shot-Plan hier erstellen, dann Film öffnen, um Clips zu generieren.",
+    "OpenScenesLink": "Szenen öffnen →",
+    "ScreenplayChangedUpdateShots": "Drehbuch geändert — Shot-Plan aktualisieren, bevor Video erstellt wird.",
+    "ShotPlan": "Shot-Plan"
   },
   "Characters": {
     "Title": "Besetzung & Charakterporträts",
@@ -209,14 +219,19 @@
     "GenPartialMessage": "Einige Clips wurden fertiggestellt; andere sind fehlgeschlagen. Aktualisieren und fehlende wiederholen.",
     "GenerateConfirmTitle": "▶ Video generieren",
     "GenerateConfirmSummary": "Erstelle ~{0} Clip(s) in {1} Szene(n).",
-    "ResolutionLockedHelp": "\uD83D\uDD12 Fixiert — für diesen Film existieren bereits Clips",
+    "ResolutionLockedHelp": "🔒 Fixiert — für diesen Film existieren bereits Clips",
     "ProjectDefault": "Projektstandard",
     "ModelBatchOverrideHelp": "Einmalig für diesen Durchlauf — Generatoren vergleichen ohne Projekteinstellungen zu ändern.",
     "EstimatedCost": "Geschätzte Kosten",
     "Calculating": "berechnen…",
     "EndCreditsNoCostHelp": "Der Abspann wird sofort im Browser gerendert — kein Videomodell, keine Kosten.",
     "GenerateScenesButton": "▶ {0} Szene(n) generieren",
-    "SceneCount": "{0} Szenen"
+    "SceneCount": "{0} Szenen",
+    "Clips": "Clips",
+    "GenerationFailed": "Generierung fehlgeschlagen",
+    "GenerationFailedTryAgain": "Generierung fehlgeschlagen. Bitte erneut versuchen.",
+    "GenerationPartialOutcome": "Einige Clips sind fertig, andere fehlgeschlagen. Aktualisieren und die fehlenden erneut versuchen.",
+    "Scenes": "Szenen"
   },
   "Review": {
     "Title": "Filmprüfung & Master-Export",
@@ -313,7 +328,12 @@
     "SignUpFailed": "Registrierung fehlgeschlagen.",
     "SignInFailed": "Anmeldung fehlgeschlagen.",
     "CreatingAccount": "Konto wird erstellt…",
-    "SigningIn": "Anmeldung läuft…"
+    "SigningIn": "Anmeldung läuft…",
+    "ConfirmationLinkEmailNotice": "Wir senden einen Bestätigungslink, bevor Sie sich anmelden können.",
+    "CreateAccount": "Konto erstellen",
+    "EnterPasswordPlaceholder": "Passwort eingeben",
+    "EnterUsernamePlaceholder": "Benutzernamen eingeben",
+    "UsernameOrEmailPlaceholder": "Benutzername oder du@beispiel.de"
   },
   "Errors": {
     "ProjectNotFound": "Projekt nicht gefunden.",
@@ -444,14 +464,21 @@
     "IncompleteMovieWarningDesc": "Beim Hochladen wird ein Teilschnitt nur mit den verfügbaren Clips erstellt. Klicken Sie auf Fortfahren & Teilschnitt hochladen, um trotzdem zu veröffentlichen, oder brechen Sie ab, um vorher alle Clips zu generieren.",
     "ProceedUploadPartialCut": "Fortfahren & Teilschnitt hochladen",
     "PublishToGalleryButton": "In der Page to Movie-Galerie veröffentlichen",
-    "AiReviewInProgress": "\uD83E\uDD16 Leitende KI-Filmüberprüfung läuft",
+    "AiReviewInProgress": "🤖 Leitende KI-Filmüberprüfung läuft",
     "AiReviewInProgressHelp": "Überprüfung läuft: Vision-KI bewertet Video-Keyframes in 6 Kategorien (Kontinuität, Charakter, Beleuchtung, Tempo, Dialog, Musik). Bitte lassen Sie diese Seite geöffnet.",
     "NoScenesFinishAdaptation": "Keine Szenen — schließen Sie zuerst die Adaption ab.",
     "ApprovedButton": "✓ Genehmigt",
     "ApproveButton": "☐ Genehmigen",
     "SceneClipReviewTitle": "S{0}-Clipüberprüfung",
     "NoteRequiredToPass": "Notiz (erforderlich zum Bestehen nach fehlgeschlagener Auto-Prüfung)",
-    "OverrideReasonPlaceholder": "Grund für Überschreibung bei fehlgeschlagener Auto-Prüfung…"
+    "OverrideReasonPlaceholder": "Grund für Überschreibung bei fehlgeschlagener Auto-Prüfung…",
+    "AppropriateAudienceConfirmation": "Ich bestätige, dass dieser Film für ein allgemeines Publikum geeignet ist.",
+    "ConnectFolder": "Ordner verbinden",
+    "ExecutiveAiReviewInProgress": "🤖 KI-Filmprüfung läuft",
+    "OpenMp4NewTab": "MP4 in neuem Tab öffnen",
+    "PublishToGallery": "In der Page-to-Movie-Galerie veröffentlichen",
+    "ShareExportFilm": "Film teilen & exportieren",
+    "ShareFilm": "Film teilen →"
   },
   "ScenesPage": {
     "Subtitle": "Clips generieren, bearbeiten und überprüfen.",
@@ -480,13 +507,13 @@
     "AllScenes": "← Alle Szenen",
     "PrevScene": "‹ Zurück",
     "NextScene": "Weiter ›",
-    "History": "\uD83D\uDCDC Verlauf",
+    "History": "📜 Verlauf",
     "PlayScene": "▶ Szene abspielen",
-    "AudioTakes": "\uD83C\uDFA7 Audio-Takes",
-    "OpenInVideoEditor": "\uD83C\uDFAC In {0} öffnen",
+    "AudioTakes": "🎧 Audio-Takes",
+    "OpenInVideoEditor": "🎬 In {0} öffnen",
     "EditInScreenplay": "✏️ Im Drehbuch bearbeiten",
-    "ShowFountainScript": "\uD83D\uDCDC Fountain-Drehbuch anzeigen",
-    "HideFountainScript": "\uD83D\uDCDC Fountain-Drehbuch ausblenden",
+    "ShowFountainScript": "📜 Fountain-Drehbuch anzeigen",
+    "HideFountainScript": "📜 Fountain-Drehbuch ausblenden",
     "RegenMissing": "Fehlend",
     "RegenStale": "Veraltet",
     "RegenFullScene": "Ganze Szene",
@@ -626,7 +653,8 @@
     "LookingUpBookText": "Buchtext wird gesucht…",
     "NoBookContextYet": "Noch kein Buchkontext vorhanden.",
     "NoPreparedBookText": "Kein vorbereiteter Buchtext für dieses Projekt.",
-    "NoMatchingBookPassage": "Keine passende Buchpassage für diese Szene. Versuchen Sie, die Szene so zu bearbeiten, dass Dialoge oder Handlungen den Buchtext widerspiegeln."
+    "NoMatchingBookPassage": "Keine passende Buchpassage für diese Szene. Versuchen Sie, die Szene so zu bearbeiten, dass Dialoge oder Handlungen den Buchtext widerspiegeln.",
+    "SaveDraft": "Entwurf speichern"
   },
   "LocationsPage": {
     "Title": "Drehorte — PageToMovie",
@@ -648,11 +676,14 @@
     "CountNeedPlate": "{0} brauchen Bild",
     "NoLocationsYet": "Noch keine Schauplätze. Genehmigen Sie ein Drehbuch / erstellen Sie die Besetzung neu, um Schauplätze anzulegen.",
     "SelectPlaceFromIndex": "Wählen Sie einen Ort aus dem Index, um dessen Look zu bearbeiten.",
-    "Locked": "\uD83D\uDD12 Fixiert",
-    "Unlocked": "\uD83D\uDD13 Nicht fixiert",
+    "Locked": "🔒 Fixiert",
+    "Unlocked": "🔓 Nicht fixiert",
     "PreferredPlate": "Bevorzugtes Bild",
     "NoSetPlateHelp": "Noch kein Kulissenbild vorhanden. Verwenden Sie Looks für Plan generieren (alle Orte + Besetzung) oder 3 Looks generieren für diesen Ort — KI fixiert das beste; Sie können es jederzeit ändern.",
-    "PickSetLookHelp": "Klicken Sie auf das Schloss beim gewünschten Look. Eine Anpassung fügt eine neue Kachel hinzu — behalten Sie die aktuelle Fixierung oder wechseln Sie."
+    "PickSetLookHelp": "Klicken Sie auf das Schloss beim gewünschten Look. Eine Anpassung fügt eine neue Kachel hinzu — behalten Sie die aktuelle Fixierung oder wechseln Sie.",
+    "EditingFromFilm": "Bearbeitung aus Film — kehren Sie zurück, wenn Sie fertig sind (Szene neu generieren, falls sich die Set-Vorlage geändert hat).",
+    "NoSetPlateYetAlert": "Noch keine Set-Vorlage. Verwenden Sie „Looks für Plan generieren“ (alle Orte + Besetzung) oder „3 Looks für diesen Ort generieren“ — die KI sperrt automatisch den besten; Sie können jederzeit neu sperren.",
+    "Subtitle": "Set-Vorlagen für jeden Ort im Plan — gleicher Ablauf wie bei der Besetzung: 3 Looks, KI wählt den besten, jederzeit überschreibbar."
   },
   "DemoPage": {
     "Title": "Demo-Galerie — PageToMovie",
@@ -723,10 +754,10 @@
     "BeatsCount": "{0} Beats",
     "NoBeatsYet": "Noch keine Beats in dieser Szene. Verwenden Sie das Dropdown-Menü unten links, um einen hinzuzufügen.",
     "AddBeat": "➕ Beat hinzufügen…",
-    "BeatVisual": "\uD83C\uDFAC Visuell",
-    "BeatSound": "\uD83D\uDD0A Ton",
-    "BeatDialogue": "\uD83D\uDDE3️ Dialog",
-    "BeatTransition": "\uD83C\uDF9E️ Übergang",
+    "BeatVisual": "🎬 Visuell",
+    "BeatSound": "🔊 Ton",
+    "BeatDialogue": "🗣️ Dialog",
+    "BeatTransition": "🎞️ Übergang",
     "BeatsTotal": "{0} Beats insgesamt",
     "FinalCreditsTitle": "Abspann & Urheberrechtshinweis",
     "EndCreditsBadge": "Filmstudio-Abspann",
@@ -758,7 +789,10 @@
     "Title": "Nutzungsbedingungen",
     "Subtitle": "Lesen und akzeptieren Sie diese Bedingungen, bevor Sie das Studio nutzen.",
     "AgreeCheckbox": "Ich habe die Nutzungsbedingungen gelesen und stimme ihnen zu.",
-    "AgreeAndContinue": "Zustimmen & Weiter"
+    "AgreeAndContinue": "Zustimmen & Weiter",
+    "AgreementCheckbox": "Ich habe die Nutzungsbedingungen gelesen und stimme ihnen zu.",
+    "ModalTitle": "Nutzungsbedingungen",
+    "ReviewNotice": "Bitte lesen und akzeptieren Sie diese Bedingungen, bevor Sie das Studio nutzen."
   },
   "Collaborators": {
     "InviteTitle": "Mitarbeiter einladen",
@@ -773,7 +807,13 @@
     "SendInvite": "Einladung senden",
     "InviteSent": "Einladung gesendet — läuft in 48 Stunden ab.",
     "InviteCreatedShareLink": "Einladung erstellt. Diesen Link teilen: ",
-    "CouldNotSendInvite": "Einladung konnte nicht gesendet werden."
+    "CouldNotSendInvite": "Einladung konnte nicht gesendet werden.",
+    "Email": "E-Mail",
+    "InviteCollaboratorTitle": "Mitarbeiter einladen",
+    "InviteSentExpires48h": "Einladung gesendet — läuft in 48 Stunden ab.",
+    "NoMatchingHandlesHelp": "Keine passenden Handles. Unten per E-Mail einladen oder einen anderen Buchstaben versuchen.",
+    "TypeToFilterHandlesHelp": "Tippen, um alle mit öffentlichem Handle zu filtern (z. B. b zeigt alle B…-Namen).",
+    "UseEmailOnlyNoHandle": "E-Mail nur verwenden, wenn noch kein Handle vorhanden ist."
   },
   "Invite": {
     "Title": "Projekteinladung",
@@ -783,15 +823,23 @@
     "Role": "Rolle:",
     "AcceptInvite": "Einladung annehmen",
     "SignInFirstHelp": "Zuerst anmelden; der Zugriff wird Ihrer aktuellen Benutzer-ID gewährt.",
-    "OpenProject": "Projekt öffnen"
+    "OpenProject": "Projekt öffnen",
+    "AcceptInviteButton": "Einladung annehmen",
+    "InviteNotFoundOrUsed": "Einladung nicht gefunden oder bereits verwendet.",
+    "LoadingInvite": "Einladung wird geladen…",
+    "OpenProjectButton": "Projekt öffnen",
+    "ProjectInviteTitle": "Projekteinladung"
   },
   "Join": {
     "Title": "Einladung annehmen — PageToMovie",
-    "Heading": "\uD83E\uDD1D Projekteinladung",
+    "Heading": "🤝 Projekteinladung",
     "MissingToken": "Diesem Einladungslink fehlt das Token.",
     "SignInToAcceptHelp": "Melden Sie sich an oder erstellen Sie ein Konto, und öffnen Sie denselben Link erneut aus Ihrer E-Mail, um die Einladung anzunehmen.",
     "ForkingProject": "Projekt wird geforkt…",
     "ForkedReady": "Geforkt als {0} — bereit in Ihrer Projektliste.",
-    "GoToProjects": "Zu Ihren Projekten gehen"
+    "GoToProjects": "Zu Ihren Projekten gehen",
+    "GoToYourProjects": "Zu Ihren Projekten",
+    "PageTitle": "Einladung annehmen",
+    "SignInRequiredHelp": "Melden Sie sich an oder erstellen Sie ein Konto und öffnen Sie dann denselben Link aus Ihrer E-Mail erneut, um die Einladung anzunehmen."
   }
 }

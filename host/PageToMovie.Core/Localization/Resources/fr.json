@@ -71,7 +71,8 @@
     "FractionOf": "{0} sur {1}",
     "Remove": "Supprimer",
     "Hide": "Masquer",
-    "BackToEdit": "← Modifier"
+    "BackToEdit": "← Modifier",
+    "Unlock": "Déverrouiller"
   },
   "Home": {
     "Title": "Projets de studio de cinéma",
@@ -114,7 +115,11 @@
     "DeleteProject": "Supprimer le projet",
     "NoAiProviderConnected": "Aucun fournisseur d'IA connecté — terminez d'abord la Configuration (étape 0).",
     "OpenSetupLink": "Ouvrir Configuration →",
-    "EnterProjectNamePlaceholder": "Entrez le nom du projet…"
+    "EnterProjectNamePlaceholder": "Entrez le nom du projet…",
+    "CreateButton": "Créer",
+    "CreateNewProjectModalTitle": "Créer un nouveau projet",
+    "NewProjectNameAriaLabel": "Nom du nouveau projet",
+    "ProjectNameLabel": "Nom du projet"
   },
   "Adaptation": {
     "Title": "Flux d'adaptation",
@@ -172,7 +177,12 @@
     "ScreenplayNoShotPlan": "Le scénario contient {0} scène(s) mais aucun plan de prises de vue pour le moment.",
     "EditScreenplayBeats": "✏️ Modifier les temps du scénario",
     "BuildShotPlan": "Créer le plan de prises",
-    "UpdateShotPlan": "Mettre à jour le plan"
+    "UpdateShotPlan": "Mettre à jour le plan",
+    "AutoGenNotice": "Depuis Estimation → Générer : création du plan de plans, puis remplissage des trous dans Film.",
+    "ManualGenNotice": "Depuis Estimation → Générer : créez le plan de plans ici, puis ouvrez Film pour générer les clips.",
+    "OpenScenesLink": "Ouvrir les scènes →",
+    "ScreenplayChangedUpdateShots": "Le scénario a changé — mettez à jour le plan de plans avant de créer la vidéo.",
+    "ShotPlan": "Plan de plans"
   },
   "Characters": {
     "Title": "Distribution et Portraits des Personnages",
@@ -209,14 +219,19 @@
     "GenPartialMessage": "Certains clips sont terminés ; d'autres ont échoué. Actualisez et réessayez les manquants.",
     "GenerateConfirmTitle": "▶ Générer la vidéo",
     "GenerateConfirmSummary": "Création de ~{0} clip(s) sur {1} scène(s).",
-    "ResolutionLockedHelp": "\uD83D\uDD12 Verrouillé — des clips existent déjà pour ce film",
+    "ResolutionLockedHelp": "🔒 Verrouillé — des clips existent déjà pour ce film",
     "ProjectDefault": "Valeur par défaut du projet",
     "ModelBatchOverrideHelp": "Ponctuel pour ce lot — comparez les générateurs sans modifier les paramètres du projet.",
     "EstimatedCost": "Coût estimé",
     "Calculating": "calcul en cours…",
     "EndCreditsNoCostHelp": "Le générique de fin est rendu instantanément dans votre navigateur — aucun modèle vidéo, sans frais.",
     "GenerateScenesButton": "▶ Générer {0} scène(s)",
-    "SceneCount": "{0} scènes"
+    "SceneCount": "{0} scènes",
+    "Clips": "clips",
+    "GenerationFailed": "Échec de la génération",
+    "GenerationFailedTryAgain": "Échec de la génération. Réessayez.",
+    "GenerationPartialOutcome": "Certains clips sont terminés, d’autres ont échoué. Actualisez et relancez les manquants.",
+    "Scenes": "scènes"
   },
   "Review": {
     "Title": "Révision du Film et Exportation",
@@ -313,7 +328,12 @@
     "SignUpFailed": "Échec de l'inscription.",
     "SignInFailed": "Échec de la connexion.",
     "CreatingAccount": "Création du compte en cours…",
-    "SigningIn": "Connexion en cours…"
+    "SigningIn": "Connexion en cours…",
+    "ConfirmationLinkEmailNotice": "Nous vous enverrons un lien de confirmation avant que vous puissiez vous connecter.",
+    "CreateAccount": "Créer un compte",
+    "EnterPasswordPlaceholder": "Saisir le mot de passe",
+    "EnterUsernamePlaceholder": "Saisir le nom d’utilisateur",
+    "UsernameOrEmailPlaceholder": "identifiant ou vous@exemple.com"
   },
   "Errors": {
     "ProjectNotFound": "Projet introuvable.",
@@ -444,14 +464,21 @@
     "IncompleteMovieWarningDesc": "Téléverser maintenant créera un montage partiel avec les seuls clips disponibles. Vous pouvez cliquer sur Continuer et téléverser le montage partiel pour publier quand même, ou annuler pour générer d'abord les clips.",
     "ProceedUploadPartialCut": "Continuer et téléverser le montage partiel",
     "PublishToGalleryButton": "Publier dans la galerie Page to Movie",
-    "AiReviewInProgress": "\uD83E\uDD16 Révision exécutive du film par IA en cours",
+    "AiReviewInProgress": "🤖 Révision exécutive du film par IA en cours",
     "AiReviewInProgressHelp": "Révision en cours : L'IA visuelle évalue les images clés dans 6 catégories (Continuité, Personnage, Éclairage, Rythme, Dialogue, Musique). Veuillez laisser cette page ouverte.",
     "NoScenesFinishAdaptation": "Aucune scène — terminez d'abord l'Adaptation.",
     "ApprovedButton": "✓ Approuvé",
     "ApproveButton": "☐ Approuver",
     "SceneClipReviewTitle": "Révision des clips de S{0}",
     "NoteRequiredToPass": "Note (requise pour Valider après échec de l'auto-révision)",
-    "OverrideReasonPlaceholder": "Motif de dérogation si l'auto-révision a échoué…"
+    "OverrideReasonPlaceholder": "Motif de dérogation si l'auto-révision a échoué…",
+    "AppropriateAudienceConfirmation": "Je confirme que ce film convient à un public général.",
+    "ConnectFolder": "Connecter un dossier",
+    "ExecutiveAiReviewInProgress": "🤖 Revue exécutive du film par l’IA en cours",
+    "OpenMp4NewTab": "Ouvrir le MP4 dans un nouvel onglet",
+    "PublishToGallery": "Publier dans la galerie Page to Movie",
+    "ShareExportFilm": "Partager et exporter le film",
+    "ShareFilm": "Partager le film →"
   },
   "ScenesPage": {
     "Subtitle": "Générez, éditez et vérifiez les clips.",
@@ -480,13 +507,13 @@
     "AllScenes": "← Toutes les scènes",
     "PrevScene": "‹ Préc",
     "NextScene": "Suiv ›",
-    "History": "\uD83D\uDCDC Historique",
+    "History": "📜 Historique",
     "PlayScene": "▶ Lire la scène",
-    "AudioTakes": "\uD83C\uDFA7 Prises audio",
-    "OpenInVideoEditor": "\uD83C\uDFAC Ouvrir dans {0}",
+    "AudioTakes": "🎧 Prises audio",
+    "OpenInVideoEditor": "🎬 Ouvrir dans {0}",
     "EditInScreenplay": "✏️ Éditer dans le scénario",
-    "ShowFountainScript": "\uD83D\uDCDC Afficher le scénario Fountain",
-    "HideFountainScript": "\uD83D\uDCDC Masquer le scénario Fountain",
+    "ShowFountainScript": "📜 Afficher le scénario Fountain",
+    "HideFountainScript": "📜 Masquer le scénario Fountain",
     "RegenMissing": "Manquants",
     "RegenStale": "Périmés",
     "RegenFullScene": "Scène complète",
@@ -626,7 +653,8 @@
     "LookingUpBookText": "Recherche du texte du livre…",
     "NoBookContextYet": "Aucun contexte de livre pour le moment.",
     "NoPreparedBookText": "Aucun texte de livre préparé pour ce projet.",
-    "NoMatchingBookPassage": "Aucun passage correspondant dans le livre pour cette scène. Modifiez la scène pour que les dialogues ou l'action reflètent le texte du livre."
+    "NoMatchingBookPassage": "Aucun passage correspondant dans le livre pour cette scène. Modifiez la scène pour que les dialogues ou l'action reflètent le texte du livre.",
+    "SaveDraft": "Enregistrer le brouillon"
   },
   "LocationsPage": {
     "Title": "Lieux — PageToMovie",
@@ -648,11 +676,14 @@
     "CountNeedPlate": "{0} sans image",
     "NoLocationsYet": "Aucun lieu pour le moment. Approuvez un scénario / reconstituez la distribution pour amorcer les lieux.",
     "SelectPlaceFromIndex": "Sélectionnez un lieu dans l'index pour modifier son apparence.",
-    "Locked": "\uD83D\uDD12 Verrouillé",
-    "Unlocked": "\uD83D\uDD13 Déverrouillé",
+    "Locked": "🔒 Verrouillé",
+    "Unlocked": "🔓 Déverrouillé",
     "PreferredPlate": "Image préférée",
     "NoSetPlateHelp": "Aucune image de décor pour le moment. Utilisez Générer les visuels pour le plan (tous lieux + distribution) ou Générer 3 visuels pour ce lieu — l'IA verrouille le meilleur ; vous pouvez le changer à tout moment.",
-    "PickSetLookHelp": "Cliquez sur le cadenas du visuel souhaité. Un ajustement ajoute une nouvelle vignette — conservez le verrouillage actuel ou passez au nouveau."
+    "PickSetLookHelp": "Cliquez sur le cadenas du visuel souhaité. Un ajustement ajoute une nouvelle vignette — conservez le verrouillage actuel ou passez au nouveau.",
+    "EditingFromFilm": "Édition depuis Film — revenez une fois terminé (régénérez la scène si la plaque de décor a changé).",
+    "NoSetPlateYetAlert": "Pas encore de plaque de décor. Utilisez Générer les looks du plan (tous les lieux + distribution) ou Générer 3 looks pour ce lieu — l’IA verrouille le meilleur ; vous pouvez le changer à tout moment.",
+    "Subtitle": "Plaques de décor pour chaque lieu du plan — même flux que la Distribution : 3 looks, l’IA choisit le meilleur, modifiable à tout moment."
   },
   "DemoPage": {
     "Title": "Galerie de démo — PageToMovie",
@@ -723,10 +754,10 @@
     "BeatsCount": "{0} temps",
     "NoBeatsYet": "Aucun temps dans cette scène pour le moment. Utilisez le menu déroulant en bas à gauche pour en ajouter un.",
     "AddBeat": "➕ Ajouter un temps…",
-    "BeatVisual": "\uD83C\uDFAC Visuel",
-    "BeatSound": "\uD83D\uDD0A Son",
-    "BeatDialogue": "\uD83D\uDDE3️ Dialogue",
-    "BeatTransition": "\uD83C\uDF9E️ Transition",
+    "BeatVisual": "🎬 Visuel",
+    "BeatSound": "🔊 Son",
+    "BeatDialogue": "🗣️ Dialogue",
+    "BeatTransition": "🎞️ Transition",
     "BeatsTotal": "{0} temps au total",
     "FinalCreditsTitle": "Générique de fin et droits d'auteur",
     "EndCreditsBadge": "Générique de fin du studio",
@@ -758,7 +789,10 @@
     "Title": "Conditions d'utilisation",
     "Subtitle": "Veuillez lire et accepter ces conditions avant d'utiliser le studio.",
     "AgreeCheckbox": "J'ai lu et j'accepte les conditions d'utilisation.",
-    "AgreeAndContinue": "Accepter et continuer"
+    "AgreeAndContinue": "Accepter et continuer",
+    "AgreementCheckbox": "J’ai lu et j’accepte les Conditions d’utilisation.",
+    "ModalTitle": "Conditions d’utilisation",
+    "ReviewNotice": "Lisez et acceptez ces conditions avant d’utiliser le studio."
   },
   "Collaborators": {
     "InviteTitle": "Inviter un collaborateur",
@@ -773,7 +807,13 @@
     "SendInvite": "Envoyer l'invitation",
     "InviteSent": "Invitation envoyée — expire dans 48 heures.",
     "InviteCreatedShareLink": "Invitation créée. Partagez ce lien : ",
-    "CouldNotSendInvite": "Impossible d'envoyer l'invitation."
+    "CouldNotSendInvite": "Impossible d'envoyer l'invitation.",
+    "Email": "E-mail",
+    "InviteCollaboratorTitle": "Inviter un collaborateur",
+    "InviteSentExpires48h": "Invitation envoyée — expire dans 48 heures.",
+    "NoMatchingHandlesHelp": "Aucun identifiant correspondant. Invitez par e-mail ci-dessous ou essayez une autre lettre.",
+    "TypeToFilterHandlesHelp": "Tapez pour filtrer les identifiants publics (ex. b affiche tous les noms en B…).",
+    "UseEmailOnlyNoHandle": "Utilisez l’e-mail uniquement s’ils n’ont pas encore d’identifiant."
   },
   "Invite": {
     "Title": "Invitation au projet",
@@ -783,15 +823,23 @@
     "Role": "Rôle :",
     "AcceptInvite": "Accepter l'invitation",
     "SignInFirstHelp": "Connectez-vous d'abord ; l'accès est accordé à votre identifiant d'utilisateur actuel.",
-    "OpenProject": "Ouvrir le projet"
+    "OpenProject": "Ouvrir le projet",
+    "AcceptInviteButton": "Accepter l’invitation",
+    "InviteNotFoundOrUsed": "Invitation introuvable ou déjà utilisée.",
+    "LoadingInvite": "Chargement de l’invitation…",
+    "OpenProjectButton": "Ouvrir le projet",
+    "ProjectInviteTitle": "Invitation au projet"
   },
   "Join": {
     "Title": "Accepter l'invitation — PageToMovie",
-    "Heading": "\uD83E\uDD1D Invitation au projet",
+    "Heading": "🤝 Invitation au projet",
     "MissingToken": "Ce lien d'invitation ne contient pas de jeton.",
     "SignInToAcceptHelp": "Connectez-vous ou créez un compte, puis rouvrez ce même lien depuis votre e-mail pour accepter l'invitation.",
     "ForkingProject": "Bifurcation du projet en cours…",
     "ForkedReady": "Bifurqué sous le nom {0} — prêt dans votre liste de projets.",
-    "GoToProjects": "Aller à vos projets"
+    "GoToProjects": "Aller à vos projets",
+    "GoToYourProjects": "Aller à vos projets",
+    "PageTitle": "Accepter l’invitation",
+    "SignInRequiredHelp": "Connectez-vous ou créez un compte, puis rouvrez ce même lien depuis votre e-mail pour accepter l’invitation."
   }
 }

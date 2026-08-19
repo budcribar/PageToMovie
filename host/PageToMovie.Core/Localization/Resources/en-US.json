@@ -71,7 +71,8 @@
     "FractionOf": "{0} of {1}",
     "Remove": "Remove",
     "Hide": "Hide",
-    "BackToEdit": "← Edit"
+    "BackToEdit": "← Edit",
+    "Unlock": "Unlock"
   },
   "Home": {
     "Title": "Film Studio Projects",
@@ -114,7 +115,11 @@
     "DeleteProject": "Delete project",
     "NoAiProviderConnected": "No AI provider connected yet — finish Setup (step 0) first.",
     "OpenSetupLink": "Open Setup →",
-    "EnterProjectNamePlaceholder": "Enter project name…"
+    "EnterProjectNamePlaceholder": "Enter project name…",
+    "CreateButton": "Create",
+    "CreateNewProjectModalTitle": "Create new project",
+    "NewProjectNameAriaLabel": "New project name",
+    "ProjectNameLabel": "Project name"
   },
   "Adaptation": {
     "Title": "Adaptation Workflow",
@@ -172,7 +177,12 @@
     "ScreenplayNoShotPlan": "Screenplay has {0} scene(s) but no shot plan yet.",
     "EditScreenplayBeats": "✏️ Edit Screenplay Beats",
     "BuildShotPlan": "Build shot plan",
-    "UpdateShotPlan": "Update shot plan"
+    "UpdateShotPlan": "Update shot plan",
+    "AutoGenNotice": "From Estimate → Generate: building the shot plan, then starting fill-holes on Film.",
+    "ManualGenNotice": "From Estimate → Generate: build the shot plan here, then open Film to generate clips.",
+    "OpenScenesLink": "Open Scenes →",
+    "ScreenplayChangedUpdateShots": "Screenplay changed — update the shot plan before making video.",
+    "ShotPlan": "Shot plan"
   },
   "Characters": {
     "Title": "Character Cast & Portraits",
@@ -209,14 +219,19 @@
     "GenPartialMessage": "Some clips finished; others failed. Refresh and retry the missing ones.",
     "GenerateConfirmTitle": "▶ Generate video",
     "GenerateConfirmSummary": "Making ~{0} clip(s) across {1} scene(s).",
-    "ResolutionLockedHelp": "\uD83D\uDD12 Locked — clips already exist for this movie",
+    "ResolutionLockedHelp": "🔒 Locked — clips already exist for this movie",
     "ProjectDefault": "Project default",
     "ModelBatchOverrideHelp": "One-off for this batch — compare generators without changing project settings.",
     "EstimatedCost": "Estimated cost",
     "Calculating": "calculating…",
     "EndCreditsNoCostHelp": "End credits render instantly in your browser — no video model, no cost.",
     "GenerateScenesButton": "▶ Generate {0} scene(s)",
-    "SceneCount": "{0} scenes"
+    "SceneCount": "{0} scenes",
+    "Clips": "clips",
+    "GenerationFailed": "Generation failed",
+    "GenerationFailedTryAgain": "Generation failed. Try again.",
+    "GenerationPartialOutcome": "Some clips finished; others failed. Refresh and retry the missing ones.",
+    "Scenes": "scenes"
   },
   "Review": {
     "Title": "Film Review & Master Export",
@@ -313,7 +328,12 @@
     "SignUpFailed": "Sign up failed.",
     "SignInFailed": "Sign in failed.",
     "CreatingAccount": "Creating account…",
-    "SigningIn": "Signing in…"
+    "SigningIn": "Signing in…",
+    "ConfirmationLinkEmailNotice": "We’ll send a confirmation link before you can sign in.",
+    "CreateAccount": "Create Account",
+    "EnterPasswordPlaceholder": "Enter password",
+    "EnterUsernamePlaceholder": "Enter username",
+    "UsernameOrEmailPlaceholder": "username or you@example.com"
   },
   "Errors": {
     "ProjectNotFound": "Project not found.",
@@ -444,14 +464,21 @@
     "IncompleteMovieWarningDesc": "Uploading now will build a partial cut using only the available clips. You can click Proceed & Upload Partial Cut to publish anyway, or cancel to finish generating clips first.",
     "ProceedUploadPartialCut": "Proceed & Upload Partial Cut",
     "PublishToGalleryButton": "Publish to Page to Movie gallery",
-    "AiReviewInProgress": "\uD83E\uDD16 Executive AI Movie Review in Progress",
+    "AiReviewInProgress": "🤖 Executive AI Movie Review in Progress",
     "AiReviewInProgressHelp": "Review in progress: Vision AI is evaluating video keyframes across 6 categories (Continuity, Character, Lighting, Pacing, Dialogue, Music). Please keep this page open.",
     "NoScenesFinishAdaptation": "No scenes — finish Adaptation first.",
     "ApprovedButton": "✓ Approved",
     "ApproveButton": "☐ Approve",
     "SceneClipReviewTitle": "S{0} clip review",
     "NoteRequiredToPass": "Note (required to Pass after auto-review fail)",
-    "OverrideReasonPlaceholder": "Override reason if auto-review failed…"
+    "OverrideReasonPlaceholder": "Override reason if auto-review failed…",
+    "AppropriateAudienceConfirmation": "I confirm this film is appropriate for a general audience.",
+    "ConnectFolder": "Connect folder",
+    "ExecutiveAiReviewInProgress": "🤖 Executive AI Movie Review in Progress",
+    "OpenMp4NewTab": "Open MP4 in new tab",
+    "PublishToGallery": "Publish to Page to Movie gallery",
+    "ShareExportFilm": "Share & Export Film",
+    "ShareFilm": "Share film →"
   },
   "ScenesPage": {
     "Subtitle": "Generate, edit, and verify clips.",
@@ -480,13 +507,13 @@
     "AllScenes": "← All scenes",
     "PrevScene": "‹ Prev",
     "NextScene": "Next ›",
-    "History": "\uD83D\uDCDC History",
+    "History": "📜 History",
     "PlayScene": "▶ Play scene",
-    "AudioTakes": "\uD83C\uDFA7 Audio Takes",
-    "OpenInVideoEditor": "\uD83C\uDFAC Open in {0}",
+    "AudioTakes": "🎧 Audio Takes",
+    "OpenInVideoEditor": "🎬 Open in {0}",
     "EditInScreenplay": "✏️ Edit in Screenplay",
-    "ShowFountainScript": "\uD83D\uDCDC Show Fountain Script",
-    "HideFountainScript": "\uD83D\uDCDC Hide Fountain Script",
+    "ShowFountainScript": "📜 Show Fountain Script",
+    "HideFountainScript": "📜 Hide Fountain Script",
     "RegenMissing": "Missing",
     "RegenStale": "Stale",
     "RegenFullScene": "Full scene",
@@ -626,7 +653,8 @@
     "LookingUpBookText": "Looking up book text…",
     "NoBookContextYet": "No book context yet.",
     "NoPreparedBookText": "No prepared book text for this project.",
-    "NoMatchingBookPassage": "No matching book passage for this scene. Try editing the scene so dialogue or action echoes the book wording."
+    "NoMatchingBookPassage": "No matching book passage for this scene. Try editing the scene so dialogue or action echoes the book wording.",
+    "SaveDraft": "Save draft"
   },
   "LocationsPage": {
     "Title": "Locations — PageToMovie",
@@ -648,11 +676,14 @@
     "CountNeedPlate": "{0} need plate",
     "NoLocationsYet": "No locations yet. Approve a screenplay / rebuild cast so places are seeded.",
     "SelectPlaceFromIndex": "Select a place from the index to edit its look.",
-    "Locked": "\uD83D\uDD12 Locked",
-    "Unlocked": "\uD83D\uDD13 Unlocked",
+    "Locked": "🔒 Locked",
+    "Unlocked": "🔓 Unlocked",
     "PreferredPlate": "Preferred plate",
     "NoSetPlateHelp": "No set plate yet. Use Generate looks for plan (all places + cast) or Generate 3 looks for this place — AI auto-locks the best; you can re-lock anytime.",
-    "PickSetLookHelp": "Click the lock on the look you want. A tweak adds a new tile — keep the current lock or switch to the new one."
+    "PickSetLookHelp": "Click the lock on the look you want. A tweak adds a new tile — keep the current lock or switch to the new one.",
+    "EditingFromFilm": "Editing from Film — return when you are done (regen the scene if the set plate changed).",
+    "NoSetPlateYetAlert": "No set plate yet. Use Generate looks for plan (all places + cast) or Generate 3 looks for this place — AI auto-locks the best; you can re-lock anytime.",
+    "Subtitle": "Set plates for every place in the plan — same flow as Cast: 3 looks, AI picks best, override anytime."
   },
   "DemoPage": {
     "Title": "Demo gallery — PageToMovie",
@@ -723,10 +754,10 @@
     "BeatsCount": "{0} Beats",
     "NoBeatsYet": "No beats in this scene yet. Use the dropdown at the bottom left to add one.",
     "AddBeat": "➕ Add Beat…",
-    "BeatVisual": "\uD83C\uDFAC Visual",
-    "BeatSound": "\uD83D\uDD0A Sound",
-    "BeatDialogue": "\uD83D\uDDE3️ Dialogue",
-    "BeatTransition": "\uD83C\uDF9E️ Transition",
+    "BeatVisual": "🎬 Visual",
+    "BeatSound": "🔊 Sound",
+    "BeatDialogue": "🗣️ Dialogue",
+    "BeatTransition": "🎞️ Transition",
     "BeatsTotal": "{0} Beats Total",
     "FinalCreditsTitle": "Final Credits & Closing Copyright",
     "EndCreditsBadge": "Film Studio End Credits",
@@ -758,7 +789,10 @@
     "Title": "Terms of Service",
     "Subtitle": "Review and accept these terms before using the studio.",
     "AgreeCheckbox": "I have read and agree to the Terms of Service.",
-    "AgreeAndContinue": "Agree & continue"
+    "AgreeAndContinue": "Agree & continue",
+    "AgreementCheckbox": "I have read and agree to the Terms of Service.",
+    "ModalTitle": "Terms of Service",
+    "ReviewNotice": "Review and accept these terms before using the studio."
   },
   "Collaborators": {
     "InviteTitle": "Invite collaborator",
@@ -773,7 +807,13 @@
     "SendInvite": "Send invite",
     "InviteSent": "Invite sent — expires in 48 hours.",
     "InviteCreatedShareLink": "Invite created. Share this link: ",
-    "CouldNotSendInvite": "Could not send the invite."
+    "CouldNotSendInvite": "Could not send the invite.",
+    "Email": "Email",
+    "InviteCollaboratorTitle": "Invite collaborator",
+    "InviteSentExpires48h": "Invite sent — expires in 48 hours.",
+    "NoMatchingHandlesHelp": "No matching handles. Invite by email below, or try another letter.",
+    "TypeToFilterHandlesHelp": "Type to filter everyone with a public handle (e.g. b shows all B… names).",
+    "UseEmailOnlyNoHandle": "Use email only when they have no handle yet."
   },
   "Invite": {
     "Title": "Project invite",
@@ -783,15 +823,23 @@
     "Role": "Role:",
     "AcceptInvite": "Accept invite",
     "SignInFirstHelp": "Sign in first; access is granted to your current user id.",
-    "OpenProject": "Open project"
+    "OpenProject": "Open project",
+    "AcceptInviteButton": "Accept invite",
+    "InviteNotFoundOrUsed": "Invite not found or already used.",
+    "LoadingInvite": "Loading invite…",
+    "OpenProjectButton": "Open project",
+    "ProjectInviteTitle": "Project invite"
   },
   "Join": {
     "Title": "Accept invite — PageToMovie",
-    "Heading": "\uD83E\uDD1D Project invite",
+    "Heading": "🤝 Project invite",
     "MissingToken": "This invite link is missing its token.",
     "SignInToAcceptHelp": "Sign in or create an account, then open this same link again from your email to accept the invite.",
     "ForkingProject": "Forking project…",
     "ForkedReady": "Forked as {0} — it's ready in your project list.",
-    "GoToProjects": "Go to your projects"
+    "GoToProjects": "Go to your projects",
+    "GoToYourProjects": "Go to your projects",
+    "PageTitle": "Accept invite",
+    "SignInRequiredHelp": "Sign in or create an account, then open this same link again from your email to accept the invite."
   }
 }
