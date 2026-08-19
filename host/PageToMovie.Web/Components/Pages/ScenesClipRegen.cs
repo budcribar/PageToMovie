@@ -251,6 +251,41 @@ public partial class Scenes
                 ?? new List<(int Scene, int Clip)>();
         }
 
+        internal bool _showRegenClipsConfirm;
+        internal void CloseRegenClipsConfirm() => _showRegenClipsConfirm = false;
+
+        /// <summary>"Regen selected clips" button: confirm (which clips, estimate) then regenerate — same
+        /// shape as Generate; replaces the per-row Regen buttons.</summary>
+        internal void OpenRegenClipsConfirm()
+        {
+            if (S.List._detail is null) return;
+            if (S.ClipSel._selectedClips.Count == 0)
+            {
+                S._error = "No clips selected — check the clip(s) to regenerate in the first column.";
+                return;
+            }
+            S._error = null;
+            _showRegenClipsConfirm = true;
+        }
+
+        internal async Task ConfirmRegenClipsAsync()
+        {
+            _showRegenClipsConfirm = false;
+            await RegenSelectedClipsAsync();
+        }
+
+        /// <summary>List-rate estimate for the selected clips: the scene's all-draft cost / its clip count × selected.</summary>
+        internal double EstimateSelectedClipsCostUsd()
+        {
+            var sn = S.List._detail?.SceneNumber;
+            var row = S.List._costReport?.Scenes.FirstOrDefault(r => r.Scene == sn);
+            if (row is null || row.ClipsTotal <= 0) return 0;
+            return row.AllDraftUsd / row.ClipsTotal * S.ClipSel._selectedClips.Count;
+        }
+
+        internal int SelectedClipsWithPlanLint() =>
+            S.List._detail?.Clips.Count(c => S.ClipSel._selectedClips.Contains(c.ClipNumber) && c.PlanLint.Count > 0) ?? 0;
+
         internal async Task RegenSelectedClipsAsync()
         {
             if (S.List._detail is null || S.ClipSel._selectedClips.Count == 0) return;

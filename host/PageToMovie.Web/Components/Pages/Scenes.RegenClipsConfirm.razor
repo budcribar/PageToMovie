@@ -1,0 +1,45 @@
+@* Page-local to Scenes — confirm before regenerating the selected clips of a scene (same shape as Generate) *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose">
+        <Title>↻ Regenerate @ClipNumbers.Count selected clip@(ClipNumbers.Count == 1 ? "" : "s") — S@(SceneNumber.ToString("D2"))</Title>
+        <ChildContent>
+            <p class="mb-2 small" data-testid="regen-clips-summary">
+                New takes for <strong>@string.Join(", ", ClipNumbers.OrderBy(c => c).Select(c => $"C{c:D2}"))</strong> at <span class="badge bg-secondary">@Resolution</span>.
+                The current takes stay in Takes; the new one becomes active.
+            </p>
+            <div class="small mb-2">
+                <span class="text-secondary">Estimated cost</span>
+                <strong class="text-light ms-1">@(CostReady ? $"${EstimatedCostUsd:0.00}" : "…")</strong>
+                <span class="text-secondary ms-1">(list rate · @ClipNumbers.Count clip@(ClipNumbers.Count == 1 ? "" : "s"))</span>
+            </div>
+            @if (PlanLintCount > 0)
+            {
+                <div class="alert alert-warning py-1 px-2 small mb-2">
+                    @PlanLintCount of these clips carry a <strong>plan</strong> fault (stale · plan) — regenerating will not clear that; rebuild the shot plan for this scene.
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="OnClose">Cancel</button>
+            <button type="button" class="btn btn-warning btn-sm fw-semibold" data-testid="regen-clips-go" disabled="@(Busy || ClipNumbers.Count == 0)" @onclick="OnConfirm">
+                ↻ Regenerate @ClipNumbers.Count clip@(ClipNumbers.Count == 1 ? "" : "s")
+            </button>
+        </Footer>
+    </DarkModalShell>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public int SceneNumber { get; set; }
+    [Parameter] public IReadOnlyCollection<int> ClipNumbers { get; set; } = Array.Empty<int>();
+    [Parameter] public string Resolution { get; set; } = "";
+    [Parameter] public bool CostReady { get; set; }
+    [Parameter] public double EstimatedCostUsd { get; set; }
+    [Parameter] public int PlanLintCount { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

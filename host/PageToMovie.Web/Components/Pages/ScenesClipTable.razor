@@ -71,8 +71,14 @@
                         }
                         @if (c.IsStale)
                         {
-                            <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")"
-                                  title="@(c.StaleReason ?? "stale") — re-generate recommended">stale</span>
+                                var sr = c.StaleReason ?? "";
+                                var staleKind = sr.StartsWith("plan_lint", StringComparison.OrdinalIgnoreCase) ? "plan"
+                                    : sr.StartsWith("dialogue_qa", StringComparison.OrdinalIgnoreCase) ? "QA"
+                                    : sr == "plan_newer" ? "plan newer" : "";
+                                var staleHelp = staleKind == "plan"
+                                    ? sr + " — regenerating the clip will not clear this; rebuild the shot plan for this scene"
+                                    : (sr.Length > 0 ? sr : "stale") + " — re-generate recommended";
+                            <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")" title="@staleHelp">stale@(staleKind.Length > 0 ? $" · {staleKind}" : "")</span>
                         }
                         @if (c.DialogueVerification is { } ver)
                         {
@@ -103,16 +109,6 @@
                                 @onclick:stopPropagation="true"
                                 @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
                             🎬 Takes
-                        </button>
-                        @{ var needsPrev = ClipSel.PreviousClipMissing(cn); }
-                        <button type="button"
-                                class="btn btn-sm btn-outline-warning py-0 px-1 ms-2 text-decoration-none small"
-                                data-testid="@($"clip-regen-{cn}")"
-                                disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || needsPrev)"
-                                title="@(needsPrev ? "Generate the previous clip first (this one continues from it)" : !ListState.CastReady ? ListState.CastBlockedTitle : $"Regenerate just clip C{cn:D2}")"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => ClipRegen.RegenClipAsync(ListState._detail.SceneNumber, cn)">
-                            ↻ Regen
                         </button>
                         <button type="button"
                                 class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"

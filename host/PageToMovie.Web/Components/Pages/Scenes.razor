@@ -514,6 +514,20 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                          OnDelete="@(id => Music.SoftDeleteMusicVersionAsync(Music._compareMusicSceneNumber, id))" />
 }
 
+@if (ClipRegen._showRegenClipsConfirm && List._detail is not null)
+{
+    <Scenes_RegenClipsConfirm Visible="true"
+                              SceneNumber="List._detail.SceneNumber"
+                              ClipNumbers="ClipSel._selectedClips"
+                              Resolution="@Gen._genResolution"
+                              CostReady="@(List._costReport is not null)"
+                              EstimatedCostUsd="ClipRegen.EstimateSelectedClipsCostUsd()"
+                              PlanLintCount="ClipRegen.SelectedClipsWithPlanLint()"
+                              Busy="_busy"
+                              OnConfirm="ClipRegen.ConfirmRegenClipsAsync"
+                              OnClose="ClipRegen.CloseRegenClipsConfirm" />
+}
+
 @if (List._showReplanConfirm)
 {
     <Scenes_ReplanConfirm Visible="true"
