@@ -41,9 +41,22 @@ public static class PromptTags
     public static string OpenWithNote(string name, string? note) =>
         $"<{name} note=\"{SanitizeAttr(note)}\">";
 
+    /// <summary>Shorten a tag's content to at most <paramref name="maxChars"/> characters (word boundary)
+    /// instead of dropping the tag — for content that must survive compression.</summary>
+    public static string Shorten(string text, string name, int maxChars) =>
+        System.Text.RegularExpressions.Regex.Replace(text, $@"<{name}>(.*?)</{name}>", m =>
+        {
+            var c = m.Groups[1].Value.Trim();
+            if (c.Length <= maxChars) return m.Value;
+            var cut = c[..maxChars];
+            var sp = cut.LastIndexOf(' ');
+            if (sp > maxChars / 2) cut = cut[..sp];
+            return $"<{name}>{cut.TrimEnd(',', ';', ' ', '-')}</{name}>";
+        }, System.Text.RegularExpressions.RegexOptions.Singleline, CommonRegex.Timeout);
+
     /// <summary>Remove every &lt;Name&gt;...&lt;/Name&gt; span (and any leading whitespace) from
-    /// text — used to fully drop non-essential tagged content during compression (e.g. Voice,
-    /// VoiceLock: visual video models don't use voice-tuning text).</summary>
+    /// text — used to fully drop non-essential tagged content during compression (e.g. per-character
+    /// &lt;Voice&gt; descriptions; the speaker's &lt;VoiceLock&gt; is shortened, never dropped).</summary>
     public static string Strip(string text, string name) =>
         CommonRegex.Replace(text, $@"\s*<{name}>.*?</{name}>", "", RegexOptions.Singleline);
 

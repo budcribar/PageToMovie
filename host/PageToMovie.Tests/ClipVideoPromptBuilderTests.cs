@@ -395,10 +395,10 @@ public class ClipVideoPromptBuilderTests
         // Regression: this instruction used to be deleted outright rather than shortened, leaving
         // the focus character's reference image attached (I1) with no instruction to match it.
         Assert.Contains("Match I1 exactly.", compressed);
-        // Voice descriptions/locks are dropped (visual video models don't use voice tuning text).
+        // Per-character <Voice> descriptions are dropped; the SPEAKER's <VoiceLock> survives (shortened):
+        // Grok Imagine generates the speech and this is the only cross-clip voice identity.
         Assert.DoesNotContain("<Voice>", compressed);
-        Assert.DoesNotContain("<VoiceLock>", compressed);
-        Assert.DoesNotContain("medium-high tense pitch", compressed);
+        Assert.Contains("<VoiceLock>C1: Male, middle years", compressed);
     }
 
     [Fact]
@@ -1336,3 +1336,23 @@ public class ClipVideoPromptBuilderTests
     }
 }
 
+
+public class PromptCompressionKeepsVoiceLockTests
+{
+    /// <summary>Mary19 S02C05: every prompt over the cap was compressed and compression deleted the
+    /// speaker's VoiceLock, so the narrator profile ("adult male…") never reached the model.</summary>
+    [Fact]
+    public void Compression_keeps_the_speakers_VoiceLock_shortened_not_dropped()
+    {
+        var longProfile = "Adult male, 50s, warm baritone storyteller, even mid register, measured couplet cadence, never rushed, " +
+                          "exactly this one voice (same sex, age and timbre) as in every other clip of this film.";
+        var input = "<Audio>REQUIRED native Grok off-camera voiceover. Character_Narrator narrates exactly: \"And so the teacher turned him out.\". " +
+                    "<VoiceLock>Character_Narrator: " + longProfile + "</VoiceLock></Audio> <Voice>Character_Teacher: calm</Voice>";
+        var compressed = PageToMovie.Engine.ClipVideoPromptBuilder.CompressPromptText(input);
+        Assert.Contains("<VoiceLock>", compressed);
+        Assert.Contains("Adult male, 50s", compressed);
+        Assert.DoesNotContain("<Voice>", compressed);
+        var lockText = System.Text.RegularExpressions.Regex.Match(compressed, "<VoiceLock>(.*?)</VoiceLock>").Groups[1].Value;
+        Assert.True(lockText.Length <= 140, lockText);
+    }
+}

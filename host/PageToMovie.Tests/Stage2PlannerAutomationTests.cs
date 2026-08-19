@@ -556,3 +556,47 @@ public sealed class Stage2PlannerAutomationTests
         Assert.Single(coalesced);
     }
 }
+
+/// <summary>Mary19 S02: Stage 1 emits [silent action beat] + [narration beat carrying the SAME visual] pairs
+/// mid-scene (C02/C03 children laugh; C04/C05 teacher steers the lamb out). The prelude rule only covered
+/// beat 1, so the rest became back-to-back clips replaying one action.</summary>
+public class Stage2DuplicateActionVoTests
+{
+    private static Dictionary<string, object?> Beat(string id, string visual, string dialogue = "", string speaker = "", string loc = "Loc_Schoolroom") => new()
+    {
+        ["beat_id"] = id, ["location_id"] = loc, ["visual_event"] = visual, ["dialogue"] = dialogue, ["speaker"] = speaker,
+    };
+
+    [Fact]
+    public void Silent_action_then_narration_over_the_same_action_becomes_one_beat_anywhere_in_the_scene()
+    {
+        const string steer = "TEACHER closes the book, takes THE LAMB gently by a handful of wool, and steers him toward the open door.";
+        var beats = new List<Dictionary<string, object?>>
+        {
+            Beat("b1", "THE CHILDREN twist in their seats and point.", "He followed her to school one day.", "Character_Narrator"),
+            Beat("b2", "THE CHILDREN laugh and clap at the lamb."),
+            Beat("b3", "THE CHILDREN laugh and clap at the lamb.", "It made the children laugh and play.", "Character_Narrator"),
+            Beat("b4", steer),
+            Beat("b5", steer, "And so the teacher turned him out.", "Character_Narrator"),
+            Beat("b6", "The white shape of THE LAMB crosses the threshold into daylight."),
+        };
+
+        var merged = PageToMovie.Engine.Stage2PlannerService.CoalesceDuplicateActionVoBeats(beats);
+
+        Assert.Equal(new[] { "b1", "b3", "b5", "b6" }, merged.Select(b => b["beat_id"]!.ToString()).ToArray());
+        Assert.Equal("And so the teacher turned him out.", merged[2]["dialogue"]);
+        Assert.Contains("steers him toward the open door", merged[2]["visual_event"]!.ToString());
+    }
+
+    [Fact]
+    public void Silent_action_followed_by_a_DIFFERENT_action_with_dialogue_is_not_merged()
+    {
+        var beats = new List<Dictionary<string, object?>>
+        {
+            Beat("b1", "Mary opens the gate."),
+            Beat("b2", "The lamb trots after her down the lane.", "And everywhere that Mary went…", "Character_Narrator"),
+        };
+        var merged = PageToMovie.Engine.Stage2PlannerService.CoalesceDuplicateActionVoBeats(beats);
+        Assert.Equal(2, merged.Count);
+    }
+}

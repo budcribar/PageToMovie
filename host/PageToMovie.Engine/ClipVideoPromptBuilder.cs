@@ -932,8 +932,12 @@ public static class ClipVideoPromptBuilder
         // label — a plain-text label match risked eating part of a dialogue line if it ever
         // happened to contain that literal substring (e.g. spoken text like "a voice: faint and
         // pleading"); an explicit tag can't collide with prose.
+        // Per-character <Voice> descriptions go; the SPEAKER's <VoiceLock> stays, shortened. The old
+        // "visual video models do not use voice tuning text" held for silent-video models - Grok
+        // Imagine generates the speech, and this lock is the only cross-clip voice identity. Dropping
+        // it on every compressed prompt is how the Mary19 narrator was re-cast female (S02C05).
         p = PromptTags.Strip(p, "Voice");
-        p = PromptTags.Strip(p, "VoiceLock");
+        p = PromptTags.Shorten(p, "VoiceLock", 140);
         // Shorten, don't delete — this is the only explicit instruction to lock the focus
         // character's face to its attached reference image; dropping it entirely (as opposed to
         // just shortening the wording) left only the bare "I1" tag with no instruction attached,

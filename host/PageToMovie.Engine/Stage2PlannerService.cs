@@ -955,6 +955,7 @@ public sealed class Stage2PlannerService
     {
         beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
         beats = CoalesceSilentPreludeBeats(beats);
+        beats = CoalesceDuplicateActionVoBeats(beats);
         beats = CoalesceShortMonologueBeats(
             beats, maxSeconds, effectiveExtensionMax, PrecomputeExtendsFromPrevious(beats, primary, lids));
         return ApplyCrossSpeakerCoalescing(
@@ -1326,7 +1327,7 @@ public sealed class Stage2PlannerService
             .Where(b => !IsNoopTransitionBeat(b))
             .ToList();
         beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
-        return CoalesceSilentPreludeBeats(beats);
+        return CoalesceDuplicateActionVoBeats(CoalesceSilentPreludeBeats(beats));
     }
 
     /// <summary>
@@ -1350,6 +1351,43 @@ public sealed class Stage2PlannerService
         result.RemoveAt(0);
         return result;
     }
+
+    /// <summary>
+    /// Anywhere in a scene: a silent action beat immediately followed by a dialogue/VO beat that shows
+    /// the SAME action (its visual_event is empty, or equal to / contained in the silent beat's) is one
+    /// shot — the line is spoken over the action. Left as two beats, the shot plan replays the action
+    /// in back-to-back clips (Mary19 S02: C04 teacher steers the lamb out, C05 the same steer with the
+    /// narration). Beats whose visuals differ are NOT merged: that would drop an action.
+    /// </summary>
+    public static List<Dictionary<string, object?>> CoalesceDuplicateActionVoBeats(List<Dictionary<string, object?>> beats)
+    {
+        if (beats.Count < 2) return beats;
+        var result = new List<Dictionary<string, object?>>(beats);
+        for (var i = 0; i < result.Count - 1; i++)
+        {
+            var b1 = result[i];
+            var b2 = result[i + 1];
+            if (!IsSilentPreludePair(b1, b2) || !SameOrEmptyBeatLocation(b1, b2) || !VoRepeatsAction(b1, b2))
+                continue;
+            MergeSilentPreludeVisual(b1, b2);
+            PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
+            result.RemoveAt(i);
+            i--; // re-check the merged beat against what follows
+        }
+        return result;
+    }
+
+    private static bool VoRepeatsAction(Dictionary<string, object?> silent, Dictionary<string, object?> vo)
+    {
+        var ve1 = NormalizeVisual(CoerceString(silent.TryGetValue(Keys.VisualEvent, out var v1) ? v1 : null));
+        var ve2 = NormalizeVisual(CoerceString(vo.TryGetValue(Keys.VisualEvent, out var v2) ? v2 : null));
+        if (ve1.Length == 0) return false;
+        if (ve2.Length == 0) return true;
+        return ve1 == ve2 || ve2.Contains(ve1, StringComparison.Ordinal) || ve1.Contains(ve2, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeVisual(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(s.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
 
     private static bool IsSilentPreludePair(Dictionary<string, object?> b1, Dictionary<string, object?> b2)
     {
