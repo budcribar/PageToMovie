@@ -28,6 +28,7 @@ public partial class ScenesClipTable : PageSliceComponent
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipVersions? ClipVer { get; set; }
+    [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
 
     private static string ClipRowClass(bool active, bool isChecked)
     {

@@ -102,6 +102,16 @@
                                 @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
                             🎬 Takes
                         </button>
+                        @{ var needsPrev = ClipSel.PreviousClipMissing(cn); }
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning py-0 px-1 ms-2 text-decoration-none small"
+                                data-testid="@($"clip-regen-{cn}")"
+                                disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady || needsPrev)"
+                                title="@(needsPrev ? "Generate the previous clip first (this one continues from it)" : !ListState.CastReady ? ListState.CastBlockedTitle : $"Regenerate just clip C{cn:D2}")"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ClipRegen.RegenClipAsync(ListState._detail.SceneNumber, cn)">
+                            ↻ Regen
+                        </button>
                         <button type="button"
                                 class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
                                 data-testid="@($"clip-delete-{cn}")"

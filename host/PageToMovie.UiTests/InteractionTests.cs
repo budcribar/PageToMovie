@@ -80,7 +80,8 @@ public class InteractionTests
             // is always present once a scene's detail is loaded, unlike clip-select-bar which only
             // renders when a clip is missing on disk or checked).
             await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
-            await Assertions.Expect(page.GetByTestId("scene-edit-hub")).ToBeVisibleAsync();
+            // The detail header carries the per-scene Screenplay drawer toggle (the old edit-hub row is gone).
+            await Assertions.Expect(page.GetByTestId("toggle-fountain-drawer")).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }
     }

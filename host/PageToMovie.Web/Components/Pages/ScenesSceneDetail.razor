@@ -112,6 +112,13 @@
                         @L.Format("ScenesPage.OpenInVideoEditor", ClipRegen._preferredVideoEditor)
                     </button>
                 }
+                @* Scene text lives in the Screenplay step; here it is a read-only drawer. *@
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-testid="toggle-fountain-drawer"
+                        title="@(ListState._showFountainDrawer ? "Hide this scene's screenplay text" : "Show this scene's screenplay text")"
+                        @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
+                    📜 @L["Nav.Screenplay"]
+                </button>
                 @* Per-scene actions that used to live only on the retired all-scenes table. *@
                 <button type="button"
                         class="btn btn-sm btn-warning text-black fw-bold"
@@ -135,17 +142,6 @@
             </div>
         </div>
         <div class="card-body">
-            <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
-                <a class="btn btn-sm btn-outline-secondary"
-                   href="@StudioDeepLinks.Screenplay(ListState._detail.SceneNumber, returnScene: ListState._detail.SceneNumber)"
-                   title="Edit dialogue and action for this scene in the full screenplay editor">@L["ScenesPage.EditInScreenplay"]</a>
-                <button type="button" class="btn btn-sm btn-outline-info"
-                        data-testid="toggle-fountain-drawer"
-                        @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
-                    @(ListState._showFountainDrawer ? L["ScenesPage.HideFountainScript"] : L["ScenesPage.ShowFountainScript"])
-                </button>
-            </div>
-
             @* Inline Fountain screenplay text drawer *@
             @if (ListState._showFountainDrawer)
             {
