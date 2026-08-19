@@ -552,7 +552,14 @@ public partial class Scenes
                 if (string.IsNullOrEmpty(url))
                 {
                     if (v.IsCurrent)
-                        url = S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+                    {
+                        // No local copy: the server/provider copy of a video-extend clip is the combined
+                        // video — slice the previous clip's head off, same as playback does.
+                        var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == S.ClipVer._compareClipNumber);
+                        url = row is { ProviderLeadInSeconds: > 0.1 }
+                            ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, S.ClipVer._compareSceneNumber, row)
+                            : S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+                    }
                     else if (!string.IsNullOrEmpty(v.Mp4FileName))
                         url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
                 }
