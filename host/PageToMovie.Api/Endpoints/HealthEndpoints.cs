@@ -40,8 +40,23 @@ public static class HealthEndpoints
         xaiKeyPresent = hasKey || (opts.Value.AllowServerApiKeyFallback && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))),
         userId = user.UserId,
         isAdmin = user.IsAdmin,
+        // Which build is live: git sha when the host passes it (Railway: RAILWAY_GIT_COMMIT_SHA),
+        // plus the API assembly write time — enough to tell "deployed yet?" from outside.
+        build = new
+        {
+            commit = Environment.GetEnvironmentVariable("RAILWAY_GIT_COMMIT_SHA") ?? Environment.GetEnvironmentVariable("GIT_SHA") ?? Environment.GetEnvironmentVariable("SOURCE_COMMIT"),
+            version = typeof(HealthEndpoints).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion,
+            builtUtc = TryGetAssemblyWriteTimeUtc(),
+        },
     });
 }
+
+    private static DateTime? TryGetAssemblyWriteTimeUtc()
+    {
+        try { var loc = typeof(HealthEndpoints).Assembly.Location; return string.IsNullOrEmpty(loc) ? null : File.GetLastWriteTimeUtc(loc); }
+        catch { return null; }
+    }
 
     private static IResult GetCapacity(FilmJobService jobService, IOptions<PageToMovieOptions> opts)
     {
