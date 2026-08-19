@@ -1224,6 +1224,9 @@ public sealed class CastFromScreenplayService
             ["display_name_policy"] = off ? "never_on_screen" : "ok_anytime",
             ["species_kind"] = CoerceString(seed, "species_kind"),
             ["voice_label"] = CoerceString(seed, "voice_label") ?? (name ?? "").Replace(' ', '_'),
+            // The profile is the only cross-clip voice identity; the prompt asks for sex + age first.
+            // Whatever comes back is kept verbatim — readiness (VoiceProfileGuard.IsLocked) decides
+            // whether it can go to video, and the Cast card offers the one-click fix.
             ["voice_profile"] = CoerceString(seed, "voice_profile")
                 ?? "Consistent character voice every scene.",
             [KeyReferenceImagePlaceholder] = CoerceString(seed, KeyReferenceImagePlaceholder)

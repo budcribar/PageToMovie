@@ -6526,7 +6526,7 @@ public sealed partial class ProjectStore
 
     private static bool CharacterCountsAsReady(CharacterSummary c, bool platesOptional)
     {
-        var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
+        var hasVoice = VoiceProfileGuard.IsLocked(c.VoiceProfile);
         // Voice-only: need voice profile, no portrait.
         // Group/chorus: production extras — not shown on Characters UI; never block readiness.
         if (c.IsGroup)
@@ -6620,19 +6620,22 @@ public sealed partial class ProjectStore
         return FullModeCastNotReadyReason(c);
     }
 
+    // "Has a voice" = a profile that pins sex + age (VoiceProfileGuard.IsLocked). A sexless/ageless
+    // profile lets each clip re-cast the voice (Mary19 narrator, 2026-08-19) — same as no voice.
     private static string? VoiceProfileMissingReason(CharacterSummary c) =>
-        string.IsNullOrWhiteSpace(c.VoiceProfile) ? $"{c.Key}: voice profile" : null;
+        VoiceProfileGuard.UnlockedReason(c.VoiceProfile) is { } why ? $"{c.Key}: {why}" : null;
 
     private static string? LockedImageMissingReason(CharacterSummary c, bool platesOptional) =>
         c.Locked || platesOptional ? null : $"{c.Key}: locked image";
 
     private static string? FullModeCastNotReadyReason(CharacterSummary c)
     {
-        var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
+        var voiceWhy = VoiceProfileGuard.UnlockedReason(c.VoiceProfile);
+        var hasVoice = voiceWhy is null;
         if (!hasVoice && !c.Locked)
-            return $"{c.Key}: voice + locked image";
+            return $"{c.Key}: {voiceWhy} + locked image";
         if (!hasVoice)
-            return $"{c.Key}: voice profile";
+            return $"{c.Key}: {voiceWhy}";
         if (!c.Locked)
             return $"{c.Key}: locked image";
         return null;

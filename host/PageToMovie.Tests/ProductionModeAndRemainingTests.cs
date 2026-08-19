@@ -108,7 +108,7 @@ public sealed class ProductionModeAndRemainingTests
                   "character_seed_tokens": {
                     "Character_Hero": {
                       "display_name": "Hero",
-                      "voice_profile": "warm baritone"
+                      "voice_profile": "Adult male, 40s, warm baritone"
                     }
                   }
                 }

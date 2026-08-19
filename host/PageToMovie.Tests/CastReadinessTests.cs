@@ -45,6 +45,30 @@ public class CastReadinessTests : IDisposable
         Assert.Contains(missing, m => m.Contains("no cast seeds", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Mary19 S02C05: a profile that names no sex/age ("Warm adult storytelling voice, even mid
+    /// register") let the model re-cast the narrator per clip. Such a profile is not a voice lock — the
+    /// cast is not ready, and the reason says what to add.</summary>
+    [Fact]
+    public void Voice_profile_without_sex_and_age_is_not_ready()
+    {
+        WriteSeeds("""
+            {
+              "schema_version": "cast_seeds.v1",
+              "character_seed_tokens": {
+                "Character_Narrator": {
+                  "display_name_policy": "never_on_screen",
+                  "voice_profile": "Warm adult storytelling voice, even mid register, measured couplet cadence."
+                }
+              }
+            }
+            """);
+
+        var status = _store.ReadCastStatus(ProjectId);
+        Assert.False(status.ReadyForShots);
+        var missing = _store.GetCastNotReadyForVideo(ProjectId);
+        Assert.Contains(missing, m => m.Contains("male/female", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void Voice_only_with_voice_is_ready()
     {
@@ -54,7 +78,7 @@ public class CastReadinessTests : IDisposable
               "character_seed_tokens": {
                 "Character_Narrator": {
                   "display_name_policy": "never_on_screen",
-                  "voice_profile": "calm storyteller, mid pitch"
+                  "voice_profile": "Adult male, 50s, calm storyteller, mid pitch"
                 }
               }
             }
@@ -99,7 +123,7 @@ public class CastReadinessTests : IDisposable
               "schema_version": "cast_seeds.v1",
               "character_seed_tokens": {
                 "Character_Hero": {
-                  "voice_profile": "warm mid pitch",
+                  "voice_profile": "Adult female, 30s, warm mid pitch",
                   "description": "a hero"
                 }
               }
@@ -132,12 +156,12 @@ public class CastReadinessTests : IDisposable
               "schema_version": "cast_seeds.v1",
               "character_seed_tokens": {
                 "Character_Hero": {
-                  "voice_profile": "warm mid pitch",
+                  "voice_profile": "Adult female, 30s, warm mid pitch",
                   "description": "a hero"
                 },
                 "Character_Narrator": {
                   "display_name_policy": "never_on_screen",
-                  "voice_profile": "calm storyteller"
+                  "voice_profile": "Adult male, 60s, calm storyteller"
                 }
               }
             }
@@ -248,7 +272,7 @@ public class CastReadinessTests : IDisposable
               "schema_version": "cast_seeds.v1",
               "character_seed_tokens": {
                 "Character_Children": { "cast_kind": "group", "description": "Several schoolchildren", "voice_profile": "" },
-                "Character_Mary": { "canonical_given_name": "Mary", "description": "Young girl", "voice_profile": "gentle young girl" }
+                "Character_Mary": { "canonical_given_name": "Mary", "description": "Young girl", "voice_profile": "Girl, about 8, gentle" }
               }
             }
             """);
@@ -353,7 +377,7 @@ public class CastReadinessTests : IDisposable
                 "Character_Lamb": {
                   "canonical_given_name": "Lamb",
                   "species_kind": "animal",
-                  "voice_profile": "gentle young lamb voice",
+                  "voice_profile": "Young lamb, male, gentle voice",
                   "description": "A small talking lamb"
                 }
               }
@@ -385,7 +409,7 @@ public class CastReadinessTests : IDisposable
                 "Character_Mary": {
                   "canonical_given_name": "Mary",
                   "description": "Young girl with brown braids",
-                  "voice_profile": "gentle young girl"
+                  "voice_profile": "Girl, about 8, gentle"
                 }
               }
             }

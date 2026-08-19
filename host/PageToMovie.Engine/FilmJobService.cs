@@ -6743,7 +6743,7 @@ public sealed class FilmJobService
     private static bool DialogueQaNeedsRegen(ClipDialogueVerificationResult ver)
     {
         var status = (ver.Status ?? "").Trim().ToLowerInvariant();
-        if (status is "mismatch" or "speaker_swap")
+        if (status is "mismatch" or "speaker_swap" or "visual_defect")
             return true;
         if (ClipDialogueVerificationService.LooksTruncated(ver))
             return true;

@@ -431,10 +431,10 @@
                     <p class="small text-muted mb-2">
                         Describe the voice style, or record a clone sample below.
                     </p>
-                    @if (selected.Speaks && !selected.IsGroup && !string.IsNullOrWhiteSpace(Voice._editVoiceProfile) && !VoiceProfileGuard.StatesSex(Voice._editVoiceProfile))
+                    @if (selected.Speaks && !selected.IsGroup && !string.IsNullOrWhiteSpace(Voice._editVoiceProfile) && !VoiceProfileGuard.IsLocked(Voice._editVoiceProfile))
                     {
                         <div class="alert alert-warning py-1 px-2 small d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="char-voice-sex-warning">
-                            <span>⚠ @VoiceProfileGuard.MissingSexWarning</span>
+                            <span>⚠ @(VoiceProfileGuard.UnlockedReason(Voice._editVoiceProfile) is { } why ? char.ToUpperInvariant(why[0]) + why[1..] : VoiceProfileGuard.MissingSexWarning) — otherwise each clip may pick a different voice.</span>
                             <span class="ms-auto d-flex gap-1">
                                 <button type="button" class="btn btn-sm btn-outline-dark py-0" disabled="@Host._busy" @onclick='() => Voice.SetVoiceSexAsync("male")'>Male</button>
                                 <button type="button" class="btn btn-sm btn-outline-dark py-0" disabled="@Host._busy" @onclick='() => Voice.SetVoiceSexAsync("female")'>Female</button>

@@ -231,6 +231,15 @@
                                 </div>
                             </button>
                         }
+                        else if (string.Equals(ver.Status, "visual_defect", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
+                                    @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber, ver)">
+                                <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
+                                    ⚠ Visual defect (@(ver.Issues.FirstOrDefault(i => i.Kind == "visual_defect")?.Detail ?? "see report")) 📋
+                                </div>
+                            </button>
+                        }
                         else if (string.Equals(ver.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
                         {
                             <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"

@@ -81,6 +81,8 @@
                             {
                                 "verified" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
                                 "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Speaker Swap"),
+                                "visual_defect" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Visual defect"),
+
                                 "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
                                 "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
                                 "no_speech" => ("bg-secondary-subtle text-secondary border border-secondary-subtle", "✓ No speech"),

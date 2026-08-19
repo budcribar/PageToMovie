@@ -229,7 +229,7 @@ public static class PipelineFlow
                     body: JSON.stringify({index:1})}).then(r=>r.json());
                 if (!lk.ok) return JSON.stringify({err:'lock failed', key, detail:(lk.error||'').slice(0,120)});
                 const vo = await fetch('/api/projects/'+E+'/characters/'+K+'/voice', {method:'POST', headers:h,
-                    body: JSON.stringify({voiceProfile:'Test voice', voiceLabel:key})}).then(r=>r.json());
+                    body: JSON.stringify({voiceProfile:'Adult male, 40s, test voice', voiceLabel:key})}).then(r=>r.json());
                 if (!vo.ok) return JSON.stringify({err:'voice failed', key});
             }
             return JSON.stringify({ok:true, count:chars.length});

@@ -546,7 +546,7 @@ public sealed class FakeGrokChatClient : IChatClient
               "display_name_policy": "ok_anytime",
               "description": "Adult human with clear face and period-appropriate clothing suitable for portrait lock",
               "visual_lock": "Same face, hair, and primary wardrobe in every scene",
-              "voice_profile": "Adult clear voice, consistent every scene",
+              "voice_profile": "Adult female, 30s, clear voice, consistent every scene",
               "voice_label": "Narrator",
               "wardrobe_always": [],
               "reference_image_placeholder": "character_narrator_ref.png"
@@ -732,7 +732,7 @@ public sealed class FakeGrokChatClient : IChatClient
         sb.AppendLine("      \"description\": \"" + display + " — " + species
             + (isGroup ? " ensemble" : "") + ", photoreal test character\",");
         sb.AppendLine("      \"visual_lock\": \"Consistent " + display + " across scenes\",");
-        sb.AppendLine("      \"voice_profile\": \"" + (species == "human" ? "Clear test voice" : "Non-human test voice") + "\",");
+        sb.AppendLine("      \"voice_profile\": \"" + (species == "human" ? "Adult male, 40s, clear test voice" : "Adult male, 40s, non-human test voice") + "\",");
         sb.AppendLine("      \"voice_label\": \"" + display + "\",");
         sb.AppendLine("      \"wardrobe_always\": [],");
         sb.AppendLine("      \"reference_image_placeholder\": \"" + key.ToLowerInvariant() + "_ref.png\"");

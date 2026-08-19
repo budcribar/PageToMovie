@@ -1,191 +1,111 @@
-@* Page-local to Scenes — dialogue verification report *@
+@* Page-local to Scenes — dialogue verification report (compact: one screen, all collected data) *@
 @using PageToMovie.Core.Models
 
 @if (Visible && Report is not null)
 {
+    var status = (Report.Status ?? "").ToLowerInvariant();
+    var (statusClass, statusText) = status switch
+    {
+        "verified" => ("bg-success", $"✓ Verified ({Report.DialogueAccuracyScore:P0})"),
+        "speaker_swap" => ("bg-danger", "⚠ Speaker swap"),
+        "visual_defect" => ("bg-danger", "⚠ Visual defect"),
+        "mismatch" => ("bg-warning text-dark", $"⚠ Dialogue mismatch ({Report.DialogueAccuracyScore:P0})"),
+        "no_speech" => ("bg-secondary", "No speech planned"),
+        _ => ("bg-secondary", Report.Status ?? "unverified"),
+    };
+    var diff = Report.ActualDurationSeconds - Report.EstimatedDurationSeconds;
+    var hasTiming = Report.EstimatedDurationSeconds > 0 || Report.ActualDurationSeconds > 0;
 
-    <DarkModalShell Visible="true" OnClose="OnClose" HeaderClass="" TitleClass="" DialogClass="modal-xl modal-dialog-scrollable modal-dialog-centered">
-        <Title>📋 Verification Report — Scene S@(SceneNumber.ToString("D2")) Clip C@(ClipNumber.ToString("D2"))</Title>
+    <DarkModalShell Visible="true" OnClose="OnClose" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <Title>📋 Verification — S@(SceneNumber.ToString("D2")) C@(ClipNumber.ToString("D2"))</Title>
         <ChildContent>
-                    @* Header Status Badge *@
-                    <div class="d-flex justify-content-between align-items-center mb-3 p-3 rounded border border-secondary bg-black bg-opacity-40">
-                        <div>
-                            <div class="text-secondary small">Verification Status</div>
-                            @if (string.Equals(Report.Status, "verified", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-success fs-6 px-3 py-1">✓ Verified Match (@($"{Report.DialogueAccuracyScore:P0}"))</span>
-                            }
-                            else if (string.Equals(Report.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-danger fs-6 px-3 py-1">⚠ Speaker Swap Detected</span>
-                            }
-                            else if (string.Equals(Report.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-warning text-dark fs-6 px-3 py-1">⚠ Spoken Dialogue Mismatch (@($"{Report.DialogueAccuracyScore:P0}"))</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary fs-6 px-3 py-1">@Report.Status</span>
-                            }
-                        </div>
-                        <div class="text-end small text-secondary">
-                            <div>Verified: @Report.VerifiedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</div>
-                            <div>Engine: Multimodal Video &amp; Audio QA</div>
-                        </div>
-                    </div>
+            @* Row 1: verdict + who spoke + when *@
+            <div class="d-flex flex-wrap align-items-center gap-3 mb-2" data-testid="verify-summary">
+                <span class="badge @statusClass fs-6 px-3 py-1">@statusText</span>
+                <span class="small text-light">
+                    <span class="text-secondary">Speaker</span>
+                    <strong>@(string.IsNullOrWhiteSpace(Report.ExpectedSpeaker) ? "—" : Report.ExpectedSpeaker)</strong>
+                    <span class="text-secondary">→ heard</span>
+                    <strong class="@(Report.SpeakerMatch ? "text-success" : "text-danger")">@(string.IsNullOrWhiteSpace(Report.DetectedSpeaker) ? "unknown" : Report.DetectedSpeaker)</strong>
+                </span>
+                <span class="small text-secondary ms-auto" title="Multimodal video + audio QA">@Report.VerifiedAt.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+            </div>
 
-                    @* Clip Duration & Pacing Telemetry *@
-                    @if (Report.EstimatedDurationSeconds > 0 || Report.ActualDurationSeconds > 0)
+            @* Row 2: the numbers, one line each *@
+            @if (hasTiming)
+            {
+                <div class="d-flex flex-wrap gap-3 small mb-2 p-2 rounded border border-secondary bg-black bg-opacity-40" data-testid="verify-facts">
+                    <span><span class="text-secondary">Planned</span> <strong class="text-light">@($"{Report.EstimatedDurationSeconds:F1}s")</strong></span>
+                    <span><span class="text-secondary">Actual</span> <strong class="text-light">@($"{Report.ActualDurationSeconds:F1}s")</strong></span>
+                    <span><span class="text-secondary">Δ</span> <strong class="@(Math.Abs(diff) <= 1.0 ? "text-success" : "text-warning")">@(diff >= 0 ? $"+{diff:F1}s" : $"{diff:F1}s")</strong></span>
+                    @if (Report.SpeechDurationSeconds > 0 || Report.ActionDurationSeconds > 0)
                     {
-                        <div class="card bg-dark border-secondary mb-3">
-                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light d-flex justify-content-between align-items-center">
-                                <span>⏱️ Clip Duration &amp; Pacing Analysis</span>
-                                @if (Report.SpeechTruncated)
+                        <span><span class="text-secondary">Speech</span> <strong class="text-info">@($"{Report.SpeechDurationSeconds:F1}s")</strong></span>
+                        <span><span class="text-secondary">Action</span> <strong class="text-light">@($"{Report.ActionDurationSeconds:F1}s")</strong></span>
+                    }
+                    @if (Report.WordCount > 0)
+                    {
+                        <span><span class="text-secondary">Words</span> <strong class="text-light">@Report.WordCount</strong>@(Report.SyllableCount > 0 ? $" · {Report.SyllableCount} syl" : "")</span>
+                    }
+                    @if (Report.SpeechTruncated)
+                    {
+                        <span class="badge bg-danger">⚠ speech cut off</span>
+                    }
+                </div>
+            }
+
+            @* Row 3: script vs heard (diff when both exist) *@
+            @if (!string.IsNullOrWhiteSpace(Report.ExpectedDialogue) || !string.IsNullOrWhiteSpace(Report.TranscribedDialogue))
+            {
+                <div class="mb-2 small" data-testid="verify-dialogue">
+                    <div class="d-flex justify-content-between"><span class="text-secondary">Script</span><span class="badge bg-info text-dark">@($"{Report.DialogueAccuracyScore:P0}")</span></div>
+                    <div class="p-2 rounded bg-black border border-secondary text-light font-monospace">@(string.IsNullOrWhiteSpace(Report.ExpectedDialogue) ? "(no dialogue planned)" : Report.ExpectedDialogue)</div>
+                    <div class="text-secondary mt-1">Heard</div>
+                    @if (!string.IsNullOrWhiteSpace(Report.ExpectedDialogue) && !string.IsNullOrWhiteSpace(Report.TranscribedDialogue))
+                    {
+                        <div class="p-2 rounded bg-black border border-secondary font-monospace">@DialogueDiffHtml.Render(Report.ExpectedDialogue, Report.TranscribedDialogue)</div>
+                    }
+                    else
+                    {
+                        <div class="p-2 rounded bg-black border border-secondary text-light font-monospace">@(string.IsNullOrWhiteSpace(Report.TranscribedDialogue) ? "(no speech detected)" : Report.TranscribedDialogue)</div>
+                    }
+                </div>
+            }
+
+            @* Row 4: what the verifier found, by tier — the reasons behind the score *@
+            @if (Report.Issues is { Count: > 0 })
+            {
+                <div class="mb-2 small" data-testid="verify-issues">
+                    <div class="text-secondary">Issues (@Report.Issues.Count)</div>
+                    @foreach (var tier in IssueTiers)
+                    {
+                        var items = Report.Issues.Where(i => tier.Match(i.Kind)).ToList();
+                        if (items.Count == 0) continue;
+                        <div class="d-flex flex-wrap align-items-start gap-2 mt-1">
+                            <span class="badge @tier.BadgeClass" title="@tier.Help">@tier.Label</span>
+                            <ul class="mb-0 ps-3 text-light">
+                                @foreach (var i in items)
                                 {
-                                    <span class="badge bg-danger text-white">⚠ Speech Truncated</span>
+                                    <li><code>@i.Kind</code>@(string.IsNullOrWhiteSpace(i.Word) ? "" : $" ‘{i.Word}’")@(string.IsNullOrWhiteSpace(i.Detail) ? "" : $" — {i.Detail}")</li>
                                 }
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3 mb-2">
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Planned Total Duration</div>
-                                        <div class="fw-bold fs-6 text-light">@($"{Report.EstimatedDurationSeconds:F1}s")</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Actual Measured MP4</div>
-                                        <div class="fw-bold fs-6 text-light">@($"{Report.ActualDurationSeconds:F1}s")</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Pacing Variance</div>
-                                        @{
-                                            var diff = Report.ActualDurationSeconds - Report.EstimatedDurationSeconds;
-                                            var diffText = diff >= 0 ? $"+{diff:F1}s" : $"{diff:F1}s";
-                                            var diffClass = Math.Abs(diff) <= 1.0 ? "text-success" : "text-warning";
-                                        }
-                                        <div class="fw-bold fs-6 @diffClass">@diffText</div>
-                                    </div>
-                                </div>
-                                @if (Report.SpeechDurationSeconds > 0 || Report.ActionDurationSeconds > 0)
-                                {
-                                    <div class="row g-3 pt-2 border-top border-secondary-subtle">
-                                        <div class="col-6">
-                                            <div class="small text-secondary">🗣️ Dialogue Speech Length</div>
-                                            <div class="fw-semibold text-info">@($"{Report.SpeechDurationSeconds:F1}s")</div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="small text-secondary">🎬 Action &amp; Camera Movement</div>
-                                            <div class="fw-semibold text-light">@($"{Report.ActionDurationSeconds:F1}s")</div>
-                                        </div>
-                                    </div>
-                                }
-                                @if (Report.SpeechTruncated)
-                                {
-                                    <div class="alert alert-danger py-2 mt-3 mb-0 small d-flex align-items-center gap-2">
-                                        <span>⚠ <strong>Speech Truncation Warning:</strong> Transcribed speech was cut off mid-line because the video rendered shorter than required for the dialogue.</span>
-                                    </div>
-                                }
-                            </div>
+                            </ul>
                         </div>
                     }
+                </div>
+            }
+            else if (status is "verified")
+            {
+                <div class="small text-secondary mb-2">No issues reported — words, speaker and picture as planned.</div>
+            }
 
-                    @* Speaker Match Breakdown *@
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
-                            🗣️ Character &amp; Speaker Verification
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-6">
-                                    <div class="small text-secondary">Expected Speaker (Script)</div>
-                                    <div class="fw-bold fs-6 text-light">@(string.IsNullOrWhiteSpace(Report.ExpectedSpeaker) ? "None" : Report.ExpectedSpeaker)</div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="small text-secondary">Heard / Observed Speaker</div>
-                                    <div class="fw-bold fs-6 @(Report.SpeakerMatch ? "text-success" : "text-danger")">
-                                        @(string.IsNullOrWhiteSpace(Report.DetectedSpeaker) ? "Unknown" : Report.DetectedSpeaker)
-                                        @(Report.SpeakerMatch ? " ✓" : " ⚠ (Swap)")
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    @* Spoken Dialogue Breakdown *@
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold d-flex justify-content-between align-items-center text-light">
-                            <span>🎙️ Spoken Dialogue &amp; Audio Track Transcription</span>
-                            <span class="badge bg-info text-dark">Accuracy: @($"{Report.DialogueAccuracyScore:P0}")</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <div class="small text-secondary mb-1">Expected Script Dialogue</div>
-                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
-                                    @(string.IsNullOrWhiteSpace(Report.ExpectedDialogue) ? "(No dialogue planned)" : Report.ExpectedDialogue)
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <div class="small text-secondary mb-1">Transcribed Audio Dialogue (Heard on MP4 Track)</div>
-                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
-                                    @(string.IsNullOrWhiteSpace(Report.TranscribedDialogue) ? "(No speech detected in audio)" : Report.TranscribedDialogue)
-                                </div>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(Report.ExpectedDialogue) && !string.IsNullOrWhiteSpace(Report.TranscribedDialogue))
-                            {
-                                <div class="mb-1">
-                                    <div class="small text-secondary mb-1">Visual Script Diff</div>
-                                    @DialogueDiffHtml.Render(Report.ExpectedDialogue, Report.TranscribedDialogue)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* What the verifier found, by tier — the reasons behind the score *@
-                    @if (Report.Issues is { Count: > 0 })
-                    {
-                        <div class="card bg-dark border-secondary mb-3" data-testid="verify-issues">
-                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
-                                🔎 Issues found (@Report.Issues.Count)
-                            </div>
-                            <div class="card-body py-2">
-                                @foreach (var tier in IssueTiers)
-                                {
-                                    var items = Report.Issues.Where(i => tier.Match(i.Kind)).ToList();
-                                    if (items.Count == 0) continue;
-                                    <div class="mb-2">
-                                        <span class="badge @tier.BadgeClass me-1">@tier.Label</span>
-                                        <span class="small text-secondary">@tier.Help</span>
-                                        <ul class="mb-0 mt-1 small text-light">
-                                            @foreach (var i in items)
-                                            {
-                                                <li>
-                                                    <code>@i.Kind</code>
-                                                    @if (!string.IsNullOrWhiteSpace(i.Word)) { <span> ‘@i.Word’</span> }
-                                                    @if (!string.IsNullOrWhiteSpace(i.Detail)) { <span class="text-secondary"> — @i.Detail</span> }
-                                                </li>
-                                            }
-                                        </ul>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-
-                    @* AI Inspector Notes *@
-                    @if (!string.IsNullOrWhiteSpace(Report.SummaryNote))
-                    {
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
-                                📝 QA Inspector Summary Notes
-                            </div>
-                            <div class="card-body">
-                                <div class="small text-light" style="white-space:pre-wrap;">@Report.SummaryNote</div>
-                            </div>
-                        </div>
-                    }
+            @* Row 5: the model's own note (short) *@
+            @if (!string.IsNullOrWhiteSpace(Report.SummaryNote))
+            {
+                <div class="small text-secondary" style="white-space:pre-wrap;" data-testid="verify-note">📝 @Report.SummaryNote</div>
+            }
         </ChildContent>
         <Footer>
-            <button type="button" class="btn btn-secondary" @onclick="OnClose">Close Report</button>
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="OnClose">Close</button>
         </Footer>
     </DarkModalShell>
-
 }

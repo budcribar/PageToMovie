@@ -414,6 +414,7 @@ TASKS:
    wrong_speaker (another character's voice/mouth delivers the line), wrong_words (different words / different meaning), wrong_sense (a word with two pronunciations was said with the wrong meaning — see the checks below), cut_off (line truncated before its last word), missing_line (line not spoken at all),
    unclear_audio, robotic_delivery, timing (line lands off the shot / after the mouth stops),
    mispronounced (awkward but unambiguous), extra_word, missing_word (filler/article), accent.
+6. WATCH the picture too. Report kind ""visual_defect"" (severity major) for anything a viewer would see as broken: anatomy errors (a head, limb or body part detaching, extra or missing limbs, melting or morphing faces), a character turning into someone else mid-clip, a prop or animal changing species/shape, or a sudden style break (photoreal ↔ cartoon). A clip with a visual_defect is NOT acceptable even when every word is right — the dialogue score stays, the issue fails the clip.
 {senseChecks}
 Return ONLY a JSON object:
 {{
@@ -425,7 +426,7 @@ Return ONLY a JSON object:
   ""issues"": [ {{ ""kind"": ""mispronounced"", ""word"": ""Officer"", ""detail"": ""said off-ee-sir"", ""severity"": ""minor"" }} ],
   ""summaryNote"": ""Expected: '{expectedDialogue}' | Heard: '...' (Match 95%)""
 }}
-Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue incorrect), 'speaker_swap' (wrong character speaking), 'no_speech' (no spoken dialogue heard).
+Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch' (dialogue incorrect), 'speaker_swap' (wrong character speaking), 'no_speech' (no spoken dialogue heard), 'visual_defect' (picture broken — see 6).
 ".Trim();
     }
 
@@ -570,7 +571,10 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         if (blocking.Count > 0)
         {
             var kinds = string.Join(", ", blocking.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : $" '{i.Word}'")).Distinct());
-            var newStatus = blocking.Any(i => string.Equals(i.Kind, "wrong_speaker", StringComparison.OrdinalIgnoreCase)) ? "speaker_swap" : "mismatch";
+            var newStatus = blocking.Any(i => string.Equals(i.Kind, "wrong_speaker", StringComparison.OrdinalIgnoreCase)) ? "speaker_swap"
+                : blocking.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase)) ? "visual_defect"
+                : "mismatch";
+
             return (Math.Min(accuracy, 0.49), newStatus, $"{summary} | Blocking: {kinds}".Trim(' ', '|'));
         }
 

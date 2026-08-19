@@ -56,7 +56,7 @@ public partial class Scenes
     {
         if (S.List._detail is null) return;
         S.ClipSel._selectedClips.Clear();
-        foreach (var c in S.List._detail.Clips.Where(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+        foreach (var c in S.List._detail.Clips.Where(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" } or { Status: "visual_defect" }))
             S.ClipSel._selectedClips.Add(c.ClipNumber);
     }
 
