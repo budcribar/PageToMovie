@@ -968,6 +968,10 @@ public sealed class ClipSummary
     public bool OnDisk { get; set; }
     public long SizeBytes { get; set; }
     public string? VideoUrl { get; set; }
+    /// <summary>Video-extend clip whose provider copy is the combined video: seconds at the head that
+    /// belong to the previous clip. When the browser plays/saves the server/provider copy (no local
+    /// file), it must slice this off first. 0/null for a standalone clip.</summary>
+    public double? ProviderLeadInSeconds { get; set; }
     public string? FileName { get; set; }
     public ClipDialogueVerificationResult? DialogueVerification { get; set; }
 

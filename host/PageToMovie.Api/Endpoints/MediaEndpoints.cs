@@ -161,10 +161,28 @@ public static class MediaEndpoints
             // source_url) until the browser saves it locally. Stream it through, never store it.
             if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
             {
-                var upstream = TryReadSidecarSourceUrl(fullPath);
+                var src = ClipProviderSource.ReadForMp4(fullPath);
+                var upstream = src?.SourceUrl;
                 if (!string.IsNullOrWhiteSpace(upstream) && Uri.TryCreate(upstream, UriKind.Absolute, out var up)
                     && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
+                {
+                    // Video-extend clip: the provider copy is the combined video (previous clip + this
+                    // one). Never stream that as-is — drop the recorded lead-in on a temp copy first.
+                    if (src!.IsCombined)
+                    {
+                        var mat = await ClipProviderSource.TryMaterializeAsync(src, ct);
+                        if (mat is { IsStandalone: true })
+                        {
+                            var fs = new FileStream(mat.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+                            return Results.Stream(fs, contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
+                        }
+                        ClipProviderSource.TryDelete(mat?.Path);
+                        // No native ffmpeg on this host (production): stream the combined copy and say
+                        // so — the browser (ClipSummary.ProviderLeadInSeconds) slices the head off.
+                        httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                    }
                     return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
+                }
             }
             return Results.NotFound(new { ok = false, error = "File not found" });
         }
@@ -343,9 +361,12 @@ public static class MediaEndpoints
     {
         // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
         // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
-        if (!url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+        // "local:" — a server-side file the job wants the browser to save (a lead-in-trimmed extend clip
+        // whose provider copy is the combined video). Same serving path as a fakes fixture.
+        var isLocal = url.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
+        if (!isLocal && !url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
             return null;
-        var fixturePath = url["fixture:".Length..];
+        var fixturePath = isLocal ? url["local:".Length..] : url["fixture:".Length..];
         if (!File.Exists(fixturePath))
             return Results.NotFound(new { ok = false, error = "Fixture file not found" });
         var fixtureCtype = Path.GetExtension(fixturePath).ToLowerInvariant() switch
@@ -359,19 +380,8 @@ public static class MediaEndpoints
         return Results.Stream(fixtureStream, contentType: fixtureCtype, fileDownloadName: Path.GetFileName(fixturePath));
     }
 
-    /// <summary>source_url from the clip's .clip.json sidecar (provider-hosted video), or null.</summary>
-    private static string? TryReadSidecarSourceUrl(string mp4FullPath)
-    {
-        try
-        {
-            var sidecar = Path.ChangeExtension(mp4FullPath, null) + ".clip.json";
-            if (!File.Exists(sidecar)) return null;
-            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(sidecar));
-            return doc.RootElement.TryGetProperty("source_url", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String
-                ? u.GetString() : null;
-        }
-        catch { return null; }
-    }
+    /// <summary>Set on a streamed provider copy that still carries the previous clip at its head (seconds).</summary>
+    public const string LeadInHeader = "X-PTM-Lead-In-Seconds";
 
     private static async Task<IResult> ProxyUpstreamMediaAsync(
         string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)

@@ -82,6 +82,7 @@ public sealed class ClipSidecarService
         string? sourceProvider = null,
         string? sourceFileId = null,
         long? sourceFileExpiresAtUnixSeconds = null,
+        double? providerLeadInSeconds = null,
         CancellationToken ct = default)
     {
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -119,6 +120,12 @@ public sealed class ClipSidecarService
             if (sourceFileExpiresAtUnixSeconds is { } exp)
                 sidecar["source_file_expires_at"] = exp;
         }
+
+        // Video-extend: the provider copy is the COMBINED video (continuation input + new footage).
+        // Record how much of its head is the previous clip so every consumer of source_url /
+        // source_file_id (playback, verification, re-upload as extend input, forks) drops it.
+        if (providerLeadInSeconds is > 0.1)
+            sidecar[ClipProviderSource.LeadInProperty] = Math.Round(providerLeadInSeconds.Value, 3);
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
         _log.LogInformation("Written clip sidecar manifest → {Path}", sidecarPath);

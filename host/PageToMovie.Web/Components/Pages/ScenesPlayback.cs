@@ -299,7 +299,12 @@ public partial class Scenes
 
         if (string.IsNullOrEmpty(_clientSceneUrl))
         {
-            _clientSceneUrl = Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, sn, cn));
+            // No local file: the server/provider copy of a video-extend clip is the combined video —
+            // ResolveServerClipUrlAsync slices the previous clip's head off before it plays.
+            var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == cn);
+            _clientSceneUrl = row is { ProviderLeadInSeconds: > 0.1 }
+                ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, sn, row)
+                : Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, sn, cn));
         }
 
         _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

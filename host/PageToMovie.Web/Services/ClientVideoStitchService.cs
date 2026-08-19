@@ -137,6 +137,31 @@ public sealed class ClientVideoStitchService
         return infos.Select(s => s.Url).ToList();
     }
 
+    /// <summary>
+    /// The URL to play/save for a clip that has no local file. A video-extend clip's provider copy is
+    /// the COMBINED video (previous clip + this one) — the server says how long that head is
+    /// (ClipSummary.ProviderLeadInSeconds); slice it off here with ffmpeg.wasm so the previous clip's
+    /// footage and lines never play twice. Returns a blob URL (caller may revoke) or the plain URL.
+    /// </summary>
+    public async Task<string> ResolveServerClipUrlAsync(string projectId, int sceneNumber, ClipSummary clip, CancellationToken ct = default)
+    {
+        var url = _engine.ClipVideoUrl(projectId, sceneNumber, clip.ClipNumber);
+        if (clip.ProviderLeadInSeconds is not { } leadIn || leadIn <= 0.1)
+            return url;
+        try
+        {
+            var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", ct, url);
+            if (probe is { Success: true, Seconds: > 0 } && probe.Seconds > leadIn + 0.1)
+            {
+                var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", ct, url, probe.Seconds - leadIn, null);
+                if (slice is { Success: true } && !string.IsNullOrWhiteSpace(slice.Url))
+                    return slice.Url;
+            }
+        }
+        catch { /* fall through: playing the combined copy is wrong but not worse than nothing */ }
+        return url;
+    }
+
     /// <summary>On-disk clip URLs for one scene (ordered).</summary>
     public async Task<IReadOnlyList<string>> CollectClipUrlsAsync(
         string projectId,
@@ -159,8 +184,9 @@ public sealed class ClientVideoStitchService
         if (clipSet is not null && clipSet.Count > 0)
             query = query.Where(c => clipSet.Contains(c.ClipNumber));
 
-        foreach (var clipNumber in query.OrderBy(c => c.ClipNumber).Select(c => c.ClipNumber))
+        foreach (var clipRow in query.OrderBy(c => c.ClipNumber))
         {
+            var clipNumber = clipRow.ClipNumber;
             var local = _media is null
                 ? null
                 : await _media.GetLocalBlobUrlAsync(
@@ -168,7 +194,7 @@ public sealed class ClientVideoStitchService
             if (!string.IsNullOrEmpty(local))
                 list.Add(local);
             else if (includeServerFallback)
-                list.Add(_engine.ClipVideoUrl(projectId, sceneNumber, clipNumber));
+                list.Add(await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct));
         }
         return list;
     }
@@ -639,6 +665,15 @@ public sealed class ClientVideoStitchService
     {
         public bool Success { get; set; } = false;
         public double Seconds { get; set; } = 0;
+        public string? Error { get; set; } = null;
+    }
+
+    private sealed class JsTrimTailResult
+    {
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public double SourceDurationSec { get; set; } = 0;
+        public double KeptSec { get; set; } = 0;
         public string? Error { get; set; } = null;
     }
 

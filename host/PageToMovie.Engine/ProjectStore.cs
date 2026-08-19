@@ -6005,6 +6005,9 @@ public sealed partial class ProjectStore
             OnDisk = onDisk,
             SizeBytes = size,
             FileName = onDisk ? resolvedFileName : null,
+            ProviderLeadInSeconds = onDisk && clipPath is null
+                ? ClipProviderSource.ReadForClip(Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video), sceneNumber, cn) is { IsCombined: true } ps ? ps.LeadInSeconds : null
+                : null,
             VideoUrl = onDisk
                 ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                 : null,

@@ -419,7 +419,14 @@ public sealed class ClientMediaFolderService
         var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
         var newDurationSec = combinedSec is { } c && c > srcSec + 0.1 ? c - srcSec : (double?)null;
         if (newDurationSec is null)
-            return (url, null, false);
+        {
+            // Could not probe, or the file is no longer than its lead-in: saving it unsliced would
+            // put the previous clip (footage AND lines) into this one. Fail loudly instead.
+            LastStatus = $"Video-extend slice failed for {rel} " +
+                         $"(duration probe {(probe is { Success: true } ? $"{probe.Seconds:F1}s vs {srcSec:F1}s lead-in" : "failed")}) — retry the clip.";
+            Changed?.Invoke();
+            return (url, null, true);
+        }
 
         var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))

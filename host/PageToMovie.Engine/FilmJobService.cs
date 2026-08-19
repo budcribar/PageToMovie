@@ -5413,7 +5413,8 @@ public sealed class FilmJobService
         string? LocalMp4Path,
         string? SourceFileId,
         string? SourceUrl,
-        double? DurationSeconds);
+        double? DurationSeconds,
+        bool ProviderCopyIsCombined = false);
 
     private static PredecessorClipDetails? TryReadPredecessorClipDetails(string projectDir, int scene, int clip)
     {
@@ -5431,6 +5432,7 @@ public sealed class FilmJobService
             string? sourceFileId = null;
             string? sourceUrl = null;
             double? durationSeconds = null;
+            var providerCombined = false;
 
             if (sidecarFile is not null && File.Exists(sidecarFile.FullName))
             {
@@ -5442,6 +5444,8 @@ public sealed class FilmJobService
                     sourceUrl = surl.GetString();
                 if (root.TryGetProperty("duration_seconds", out var ds) && ds.TryGetDouble(out var dur))
                     durationSeconds = dur;
+                if (root.TryGetProperty(ClipProviderSource.LeadInProperty, out var li) && li.TryGetDouble(out var lead) && lead > 0.1)
+                    providerCombined = true;
             }
 
             var mp4Pattern = $"scene_{scene:D2}_clip_{clip:D2}*.mp4";
@@ -5455,7 +5459,8 @@ public sealed class FilmJobService
                 LocalMp4Path: mp4File?.FullName,
                 SourceFileId: sourceFileId,
                 SourceUrl: sourceUrl,
-                DurationSeconds: durationSeconds);
+                DurationSeconds: durationSeconds,
+                ProviderCopyIsCombined: providerCombined);
         }
         catch
         {
@@ -5527,8 +5532,10 @@ public sealed class FilmJobService
             return (prevClipInfo.Value.LocalMp4Path, null, null, prevDur);
         }
 
-        // Case 2: Predecessor has valid source_file_id and duration <= maxInputSeconds (e.g. Clip 1 fresh anchor)
-        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1)
+        // Case 2: Predecessor has valid source_file_id and duration <= maxInputSeconds (e.g. Clip 1 fresh anchor).
+        // Not when the predecessor was itself an extend: its provider copy is the COMBINED video
+        // (lead-in recorded in the sidecar) — extending from it would carry the clip before it along.
+        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1 && !prevClipInfo.Value.ProviderCopyIsCombined)
         {
             return (null, prevClipInfo.Value.SourceFileId, null, prevDur);
         }
@@ -5674,11 +5681,15 @@ public sealed class FilmJobService
             ctx.Ct);
 
         var mp4Path = Path.Combine(ctx.VideoDir, $"scene_{ctx.Scene:D2}_clip_{ctx.Clip:D2}.mp4");
-        var overrunSec = await DownloadClipAndRecordTelemetryAsync(
+        var (overrunSec, serverTrimmed) = await DownloadClipAndRecordTelemetryAsync(
             ctx, built, url, mp4Path, duration, supportsContinue).ConfigureAwait(false);
 
-        await PublishClipClientMediaAsync(ctx, url).ConfigureAwait(false);
-        await WriteClipSidecarIfConfiguredAsync(ctx, built, url, requestId, duration).ConfigureAwait(false);
+        // Video-extend: the provider URL is the combined video. Hand the browser the server-trimmed
+        // standalone copy when we have it (no client-side slice needed); otherwise the provider URL
+        // plus the lead-in length so the browser slices it. The sidecar records the lead-in either way.
+        var leadIn = ctx.ExtendInputDurationSec is { } pd && pd > 0.1 && (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null) ? pd : (double?)null;
+        await PublishClipClientMediaAsync(ctx, url, serverTrimmed ? mp4Path : null).ConfigureAwait(false);
+        await WriteClipSidecarIfConfiguredAsync(ctx, built, url, requestId, duration, leadIn).ConfigureAwait(false);
         await RecordClipCostAsync(ctx, built, requestId, duration).ConfigureAwait(false);
         return overrunSec;
     }
@@ -5914,10 +5925,12 @@ public sealed class FilmJobService
         return duration;
     }
 
-    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url)
+    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url, string? serverTrimmedPath)
     {
         var relPath = MediaRegistryService.ClipRelativePath(ctx.Scene, ctx.Clip);
-        var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
+        // Trimmed extend clip: serve the standalone server file (local: ticket) and tell the browser
+        // there is nothing left to slice. Otherwise: provider URL + lead-in for the browser slice.
+        var ticket = _mediaProxy.Issue(serverTrimmedPath is not null ? "local:" + serverTrimmedPath : url, TimeSpan.FromMinutes(45));
         var clientUrl = $"/api/media/proxy/{ticket}";
         await UpdateAsync(s =>
         {
@@ -5925,13 +5938,16 @@ public sealed class FilmJobService
             s.ClientRelativePath = relPath;
             s.Scene = ctx.Scene;
             s.Clip = ctx.Clip;
-            s.PredecessorDurationSec = ctx.ExtendInputDurationSec;
+            s.PredecessorDurationSec = serverTrimmedPath is not null ? null : ctx.ExtendInputDurationSec;
         });
         await AppendLogAsync(
             $"  [Grok] video ready for client save → {relPath} (server copy is transient; provider-hosted)");
     }
 
-    private async Task<double> DownloadClipAndRecordTelemetryAsync(
+    /// <returns>Overrun seconds and whether the server copy was lead-in-trimmed. A trimmed copy is the
+    /// only standalone version of a video-extend clip (the provider holds the combined video), so it
+    /// stays until the browser has saved it (register deletes it) — that is the "while necessary".</returns>
+    private async Task<(double OverrunSec, bool ServerTrimmed)> DownloadClipAndRecordTelemetryAsync(
         ClipGenContext ctx,
         ClipVideoPromptBuilder.PromptBuildResult built,
         string url,
@@ -5940,6 +5956,7 @@ public sealed class FilmJobService
         bool supportsContinue)
     {
         var overrunSec = 0.0;
+        var serverTrimmed = false;
         // Save MP4 file to server project directory so client media sync delivers MP4 files to client folder.
         // Via IVideoClient.DownloadToFileAsync, not a raw HttpClient GET. Fake providers may return a
         // non-http URL (a local fixture scheme) that DownloadToFileAsync resolves on disk. A bare
@@ -5954,7 +5971,7 @@ public sealed class FilmJobService
 
                 if (ctx.ExtendInputDurationSec is { } predDur && predDur > 0.1 && (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null))
                 {
-                    await TryTrimPredecessorFromDownloadedClipAsync(ctx, mp4Path, predDur).ConfigureAwait(false);
+                    serverTrimmed = await TryTrimPredecessorFromDownloadedClipAsync(ctx, mp4Path, predDur).ConfigureAwait(false);
                 }
 
                 overrunSec = await RecordDownloadedClipTelemetryAsync(
@@ -5970,10 +5987,15 @@ public sealed class FilmJobService
             // Media does not live on the server: the copy above existed only for the duration probe,
             // telemetry, lead-in trim and dialogue verification. The user's folder (client save via the
             // proxy URL) and the provider (source_url / file_id in the sidecar) are the durable homes.
-            // Kept only under fakes, whose provider "URLs" are local fixture paths with no durable host.
-            await DeleteTransientServerClipAsync(ctx, mp4Path).ConfigureAwait(false);
+            // Kept only under fakes, whose provider "URLs" are local fixture paths with no durable host,
+            // and for a lead-in-trimmed extend clip: the provider copy is the combined video, so this
+            // trimmed file is the only correct copy until the browser saves it (register deletes it).
+            if (serverTrimmed)
+                await AppendLogAsync($"  [Media] keeping trimmed {Path.GetFileName(mp4Path)} on the server until your browser saves it (provider copy is the combined extend video)");
+            else
+                await DeleteTransientServerClipAsync(ctx, mp4Path).ConfigureAwait(false);
         }
-        return overrunSec;
+        return (overrunSec, serverTrimmed);
     }
 
     private async Task DeleteTransientServerClipAsync(ClipGenContext ctx, string mp4Path)
@@ -5991,13 +6013,14 @@ public sealed class FilmJobService
         }
     }
 
-    private async Task TryTrimPredecessorFromDownloadedClipAsync(ClipGenContext ctx, string mp4Path, double predDur)
+    /// <summary>True when the lead-in was cut off the server copy (it is then the only standalone copy of this clip).</summary>
+    private async Task<bool> TryTrimPredecessorFromDownloadedClipAsync(ClipGenContext ctx, string mp4Path, double predDur)
     {
         try
         {
             var totalDur = await Mp4DurationReader.TryReadSecondsAsync(mp4Path, ctx.Ct).ConfigureAwait(false);
             if (totalDur is not { } td || td <= predDur + 0.2)
-                return;
+                return false;
 
             var dir = Path.GetDirectoryName(mp4Path) ?? "";
             var tempOut = Path.Combine(dir, $"_trim_{Path.GetFileName(mp4Path)}");
@@ -6006,6 +6029,7 @@ public sealed class FilmJobService
                 File.Move(tempOut, mp4Path, overwrite: true);
                 var newBytes = new FileInfo(mp4Path).Length;
                 await AppendLogAsync($"  [Extend] Trimmed {predDur:F2}s predecessor lead-in → {td - predDur:F2}s standalone delta ({newBytes} bytes)");
+                return true;
             }
             else
             {
@@ -6019,6 +6043,7 @@ public sealed class FilmJobService
         {
             _log.LogWarning(ex, "Could not trim predecessor lead-in from extended clip S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
         }
+        return false;
     }
 
     private async Task<double> RecordDownloadedClipTelemetryAsync(
@@ -6209,7 +6234,8 @@ public sealed class FilmJobService
         ClipVideoPromptBuilder.PromptBuildResult built,
         string url,
         string requestId,
-        int duration)
+        int duration,
+        double? providerLeadInSeconds = null)
     {
         if (_sidecars is null)
             return;
@@ -6240,6 +6266,7 @@ public sealed class FilmJobService
                 sourceProvider: SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).ProviderId,
                 sourceFileId: sourceFileId,
                 sourceFileExpiresAtUnixSeconds: sourceFileExpiresAt,
+                providerLeadInSeconds: providerLeadInSeconds,
                 ct: ctx.Ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -7328,19 +7355,8 @@ public sealed class FilmJobService
         File.Exists(mp4Path + ".client.json") ||
         SidecarHasProviderSource(mp4Path);
 
-    internal static bool SidecarHasProviderSource(string mp4Path)
-    {
-        var sidecar = Path.ChangeExtension(mp4Path, null) + ".clip.json";
-        if (!File.Exists(sidecar)) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(sidecar));
-            var r = doc.RootElement;
-            return (r.TryGetProperty("source_url", out var u) && u.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(u.GetString()))
-                || (r.TryGetProperty("source_file_id", out var f) && f.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(f.GetString()));
-        }
-        catch { return false; }
-    }
+    internal static bool SidecarHasProviderSource(string mp4Path) =>
+        ClipProviderSource.ReadForMp4(mp4Path)?.HasProviderCopy == true;
 
     private static bool ShouldRefreshArtifactIndex(string? kind)
     {

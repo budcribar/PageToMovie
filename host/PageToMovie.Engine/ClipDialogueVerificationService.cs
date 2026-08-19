@@ -136,14 +136,35 @@ public sealed class ClipDialogueVerificationService
                 ct).ConfigureAwait(false);
         }
 
+        // The server keeps no clip bytes: when the clip is not on disk (saved to the user's folder, or
+        // still only at the provider) bring a temp copy from the provider URL — lead-in trimmed for a
+        // video-extend clip, otherwise the previous clip's line would be "heard" in this one.
+        string? materialized = null;
+        var leadInOffsetSec = 0.0;
+        if (string.IsNullOrWhiteSpace(clipPath) || !File.Exists(clipPath))
+        {
+            var videoDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", "video");
+            var mat = await ClipProviderSource.TryMaterializeAsync(
+                ClipProviderSource.ReadForClip(videoDir, sceneNumber, clipNumber), ct).ConfigureAwait(false);
+            if (mat is not null)
+            {
+                materialized = mat.Path;
+                clipPath = mat.Path;
+                // No native ffmpeg here (production): the copy is still the combined extend video —
+                // tell the verifier where this clip starts instead of trimming.
+                leadInOffsetSec = mat.LeadInSecondsRemaining;
+            }
+        }
+        try
+        {
         var media = await CollectMediaAndCharGuidesAsync(
             projectId, clipPath, clip, spokenLines, expectedSpeaker, keyframePaths, ct).ConfigureAwait(false);
         if (media.MediaToPass.Count == 0)
             return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
-                "Clip video file (.mp4) not found on server disk. Please generate video clips for this scene first.",
+                "Clip video is neither on the server nor reachable at the provider (no source_url in the sidecar). Generate or re-import the clip first.",
                 ct).ConfigureAwait(false);
 
-        var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides);
+        var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides, leadInOffsetSec);
 
         try
         {
@@ -160,6 +181,11 @@ public sealed class ClipDialogueVerificationService
             _log.LogWarning(ex, "Dialogue verification failed for {Project} S{Scene} C{Clip}", projectId, sceneNumber, clipNumber);
             return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
                 $"Verification error: {ex.Message}", ct).ConfigureAwait(false);
+        }
+        }
+        finally
+        {
+            ClipProviderSource.TryDelete(materialized);
         }
     }
 
@@ -357,8 +383,13 @@ public sealed class ClipDialogueVerificationService
 
     private static string BuildVerificationPrompt(
 
-        string expectedSpeaker, string expectedSpeakerDisplayName, string expectedDialogue, List<string> charGuides)
+        string expectedSpeaker, string expectedSpeakerDisplayName, string expectedDialogue, List<string> charGuides,
+        double leadInOffsetSec = 0)
     {
+        // Combined extend video that could not be trimmed: the head belongs to the PREVIOUS clip.
+        var leadInNote = leadInOffsetSec > 0.1
+            ? $"IMPORTANT: the first {leadInOffsetSec:F1} seconds of the attached video are the PREVIOUS clip (a continuation input) — ignore everything before {leadInOffsetSec:F1}s. Only speech AFTER {leadInOffsetSec:F1}s belongs to this clip; a line heard only before that point counts as NOT spoken here.\n"
+            : "";
         var guideText = charGuides.Count > 0
             ? "CHARACTER REFERENCE PORTRAITS (MATCH FACES IN VIDEO TO THESE ATTACHED IMAGES):\n" + string.Join("\n", charGuides)
             : "No character reference portraits attached.";
@@ -374,7 +405,7 @@ EXPECTED SCRIPT:
 {guideText}
 
 TASKS:
-1. Watch the attached MP4 video clip (Attached File #1) and LISTEN carefully to the audio track / spoken dialogue.
+{leadInNote}1. Watch the attached MP4 video clip (Attached File #1) and LISTEN carefully to the audio track / spoken dialogue.
 2. Observe on-screen character faces and lip movements. Compare the face of the character who is speaking against the attached character reference portraits listed above to determine who is speaking.
 3. Transcribe the EXACT spoken dialogue you hear in the video clip.
 4. Compare detected speaker vs expected speaker ('{expectedSpeakerDisplayName}'), and transcribed dialogue vs expected dialogue.
