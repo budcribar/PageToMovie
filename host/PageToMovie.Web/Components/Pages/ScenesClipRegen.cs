@@ -256,9 +256,15 @@ public partial class Scenes
 
         /// <summary>"Regen selected clips" button: confirm (which clips, estimate) then regenerate — same
         /// shape as Generate; replaces the per-row Regen buttons.</summary>
-        internal void OpenRegenClipsConfirm()
+        internal async Task OpenRegenClipsConfirmAsync()
         {
             if (S.List._detail is null) return;
+            // Credits are rendered in the browser — no server job, no estimate, no confirm: just re-render.
+            if (S.Gen.IsCreditsSceneNum(S.List._detail.SceneNumber))
+            {
+                await S.Gen.GenerateCreditsEntryAsync(S.List._detail.SceneNumber);
+                return;
+            }
             if (S.ClipSel._selectedClips.Count == 0)
             {
                 S._error = "No clips selected — check the clip(s) to regenerate in the first column.";
@@ -289,6 +295,11 @@ public partial class Scenes
         internal async Task RegenSelectedClipsAsync()
         {
             if (S.List._detail is null || S.ClipSel._selectedClips.Count == 0) return;
+            if (S.Gen.IsCreditsSceneNum(S.List._detail.SceneNumber))
+            {
+                await S.Gen.GenerateCreditsEntryAsync(S.List._detail.SceneNumber);
+                return;
+            }
             if (!await S.Gen.EnsureMediaFolderForVideoAsync()) return;
             var sn = S.List._detail.SceneNumber;
             S._busy = true;

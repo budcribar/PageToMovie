@@ -85,7 +85,7 @@
                         data-testid="scene-regen-selected-clips"
                         disabled="@(Host._busy || Gen.JobRunning || !ListState.CastReady)"
                         title="@(ClipSel._selectedClips.Count > 0 ? $"Regenerate the {ClipSel._selectedClips.Count} checked clip(s) — confirms first" : "Check clip(s) in the first column, then regenerate them")"
-                        @onclick="ClipRegen.OpenRegenClipsConfirm">
+                        @onclick="ClipRegen.OpenRegenClipsConfirmAsync">
                     ↻ Regen@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "") selected clips
                 </button>
                 @if (ListState._detail.ClipsOnDisk > 0)

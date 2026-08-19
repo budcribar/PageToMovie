@@ -689,7 +689,6 @@ public partial class Scenes
         S._message = null;
         _showAdminJobLog = false;
         ResetLiveProgressFloor();
-        OpenJobModal();
         try
         {
             await RunSelectedBatchAsync().ConfigureAwait(false);
@@ -722,6 +721,9 @@ public partial class Scenes
             var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
                 ? _selectedVideoModel
                 : null;
+            // The progress modal follows a SERVER job; a credits-only selection has none (the card is
+            // rendered in the browser) — opening the modal there showed a stale "Waiting…" snapshot.
+            OpenJobModal();
             await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
             var jobs = await S.Engine.GetJobAsync();
             _job = jobs?.Job;
