@@ -219,12 +219,7 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
 
             await List.ReloadListAsync();
             // Folder connected and the server is missing clips it once had: push the sidecars back.
-            try
-            {
-                if (MediaFolder.IsConnected && await MediaFolder.RestoreMissingClipSidecarsAsync(_projectId, List._scenes) > 0)
-                    await List.ReloadListAsync();
-            }
-            catch { /* self-heal is best effort */ }
+            await TryRestoreSidecarsOnceAsync();
 
             // If the shot plan hasn't been built yet on this project, automatically kick off building the shot plan.
             if (!IsSimpleFilm && (List._scenes is null || List._scenes.Count == 0) && !Gen.JobRunning)
@@ -268,8 +263,25 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         }
     }
 
+    private bool _sidecarRestoreRan;
+
+    /// <summary>Folder connected (or re-granted) after the page loaded: push any clip sidecars the
+    /// server is missing — the init-time pass could not run without the folder. Once per page.</summary>
+    private async Task TryRestoreSidecarsOnceAsync()
+    {
+        if (_sidecarRestoreRan || !MediaFolder.IsConnected || string.IsNullOrEmpty(_projectId)) return;
+        _sidecarRestoreRan = true;
+        try
+        {
+            if (await MediaFolder.RestoreMissingClipSidecarsAsync(_projectId, List._scenes) > 0)
+                await List.ReloadListAsync();
+        }
+        catch { /* best effort */ }
+    }
+
     internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {
+        await TryRestoreSidecarsOnceAsync();
         if (Playback._showScenePlayer && Playback._playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
         {
             await Playback.PlaySceneCompositeAsync(sn);
