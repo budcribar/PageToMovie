@@ -600,3 +600,32 @@ public class Stage2DuplicateActionVoTests
         Assert.Equal(2, merged.Count);
     }
 }
+
+public class Stage2DuplicateActionVoKeepsItsOwnClipTests
+{
+    private static Dictionary<string, object?> Beat(string id, string visual, string dialogue = "", string speaker = "") => new()
+    {
+        ["beat_id"] = id, ["location_id"] = "Loc_Country_Lane", ["visual_event"] = visual, ["dialogue"] = dialogue, ["speaker"] = speaker,
+    };
+
+    /// <summary>Mary19 S01 after the duplicate-action merge: [VO1, silent, VO2(same action), silent] → the merged
+    /// action+VO2 beat sat next to VO1 and the monologue coalescer absorbed it — one clip, the second verse
+    /// concatenated and then lost. The merged beat must keep its own clip.</summary>
+    [Fact]
+    public void Merged_action_plus_line_is_not_absorbed_into_the_previous_narration()
+    {
+        var beats = new List<Dictionary<string, object?>>
+        {
+            Beat("b1", "A painted country lane; MARY walks with THE LAMB.", "Mary had a little lamb, Its fleece was white as snow.", "Character_Narrator"),
+            Beat("b2", "MARY turns along the lane, one hand swinging free."),
+            Beat("b3", "MARY turns along the lane, one hand swinging free.", "And everywhere that Mary went, The lamb was sure to go.", "Character_Narrator"),
+            Beat("b4", "Mary passes a painted rail fence and a wash of meadow flowers."),
+        };
+        var afterDup = PageToMovie.Engine.Stage2PlannerService.CoalesceDuplicateActionVoBeats(beats);
+        Assert.Equal(3, afterDup.Count);
+        var afterMono = PageToMovie.Engine.Stage2PlannerService.CoalesceShortMonologueBeats(afterDup, maxSeconds: 15);
+        Assert.Equal(3, afterMono.Count);
+        Assert.Equal("Mary had a little lamb, Its fleece was white as snow.", afterMono[0]["dialogue"]);
+        Assert.Equal("And everywhere that Mary went, The lamb was sure to go.", afterMono[1]["dialogue"]);
+    }
+}

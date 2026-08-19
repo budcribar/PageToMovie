@@ -51,6 +51,10 @@ public sealed class Stage2PlannerService
         public const string LocationId = "location_id";
         public const string ActionClass = "action_class";
         public const string BigAction = "big_action";
+        /// <summary>Marker set by beat coalescing: this beat is an action with a line spoken over it and must
+        /// start its own clip — later dialogue coalescing must not absorb it into the previous speech beat
+        /// (that concatenates the line onto the previous one and the action-with-its-line is lost).</summary>
+        public const string OwnClip = "own_clip";
         public const string SecondarySpeaker = "secondary_speaker";
         public const string SpokenOnCamera = "spoken_on_camera";
         public const string PrimarySubject = "primary_subject";
@@ -1371,11 +1375,15 @@ public sealed class Stage2PlannerService
                 continue;
             MergeSilentPreludeVisual(b1, b2);
             PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
+            b2[Keys.OwnClip] = true; // the action keeps its own shot; the line rides on it
             result.RemoveAt(i);
             i--; // re-check the merged beat against what follows
         }
         return result;
     }
+
+    private static bool IsOwnClip(Dictionary<string, object?> beat) =>
+        beat.TryGetValue(Keys.OwnClip, out var v) && v is true;
 
     private static bool VoRepeatsAction(Dictionary<string, object?> silent, Dictionary<string, object?> vo)
     {
@@ -1564,7 +1572,7 @@ public sealed class Stage2PlannerService
         var loc2 = ReadBeatString(next, Keys.LocationId);
         var ac2 = ReadBeatString(next, Keys.ActionClass);
 
-        if (!CanMergeMonologueNext(d2, sp1, sp2, del1, del2, loc1, loc2, ac2))
+        if (IsOwnClip(next) || !CanMergeMonologueNext(d2, sp1, sp2, del1, del2, loc1, loc2, ac2))
             return false;
 
         var combinedDlg = $"{d1!.Trim()} {d2!.Trim()}";
@@ -1728,6 +1736,7 @@ public sealed class Stage2PlannerService
                !string.IsNullOrWhiteSpace(sp2) &&
                !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) &&
                sameLocationOrEmpty &&
+               !IsOwnClip(next) &&
                !string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase);
     }
 
