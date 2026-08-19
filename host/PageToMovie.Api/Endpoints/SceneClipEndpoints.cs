@@ -457,6 +457,11 @@ public static class SceneClipEndpoints
             return Results.Ok(new { ok = true, restored = false, reason = "server already has a sidecar" });
         var dest = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_01.clip.json");
         await File.WriteAllTextAsync(dest, body, ct);
+        // Stray markers the old register left for synced sidecars (…clip.json.client.json) — drop them.
+        foreach (var stray in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}*.clip.json.client.json"))
+        {
+            try { File.Delete(stray); } catch { /* best effort */ }
+        }
         store.InvalidateSceneListCache(id);
         Console.Error.WriteLine($"[sidecar] restored {id} S{scene:D2}C{clip:D2} from the browser's media folder");
         return Results.Ok(new { ok = true, restored = true });

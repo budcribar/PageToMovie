@@ -7811,7 +7811,7 @@ public sealed partial class ProjectStore
     /// MediaSyncLocator's doc comment and FilmJobService.ClipPresentOnServerOrClient for the
     /// single-clip sibling of this same "why not just unify them" call.
     /// </summary>
-    private static bool ClipOnDisk(Dictionary<string, long> videoIndex, int scene, int clip)
+    internal static bool ClipOnDisk(Dictionary<string, long> videoIndex, int scene, int clip)
     {
         var basePrefix = $"scene_{scene:D2}_clip_{clip:D2}";
         var mp4Name = basePrefix + ".mp4";
@@ -7823,11 +7823,14 @@ public sealed partial class ProjectStore
         if (videoIndex.ContainsKey(basePrefix + StoreLit.ClipJsonSuffix))
             return true;
 
+        // A client marker counts only when it marks the clip VIDEO (scene_XX_clip_YY*.mp4.client.json).
+        // The register endpoint once wrote markers for synced sidecars too (…clip.json.client.json) —
+        // those must not make a clip look present after its sidecar and video are both gone.
         return videoIndex.Keys.Any(k =>
             k.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase) &&
             (k.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
              k.EndsWith(StoreLit.ClipJsonSuffix, StringComparison.OrdinalIgnoreCase) ||
-             k.EndsWith(ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)));
+             k.EndsWith(".mp4" + ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)));
     }
 
     private Dictionary<string, JsonElement> LoadCharacterSeeds(string projectId) =>
