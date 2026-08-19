@@ -476,7 +476,9 @@ public partial class Scenes
                 S._projectId, _previewScenes, S.List._scenes, stale);
             if (urls.Count == 0)
             {
-                S._error = "No composites or on-disk clips for the selected scenes";
+                S._error = S.Stitch.LastCollectError is { Length: > 0 } why
+                    ? $"Could not play the selected scenes — {why}"
+                    : "No composites or on-disk clips for the selected scenes";
                 _showPreviewPlayer = false;
                 return;
             }

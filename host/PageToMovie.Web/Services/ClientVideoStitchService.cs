@@ -112,7 +112,9 @@ public sealed class ClientVideoStitchService
             var local = _media is null
                 ? null
                 : await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}");
-            urls.Add(local ?? c.VideoUrl ?? _engine.ClipVideoUrl(projectId, sn, c.ClipNumber));
+            // No local file: the server/provider copy of a video-extend clip is the combined video —
+            // ResolveServerClipUrlAsync slices the previous clip's head off first.
+            urls.Add(local ?? await ResolveServerClipUrlAsync(projectId, sn, c));
         }
         return true;
     }
@@ -161,6 +163,9 @@ public sealed class ClientVideoStitchService
         catch { /* fall through: playing the combined copy is wrong but not worse than nothing */ }
         return url;
     }
+
+    /// <summary>Why the last segment collection dropped a scene (stitch/fetch failure), or null.</summary>
+    public string? LastCollectError { get; private set; }
 
     /// <summary>On-disk clip URLs for one scene (ordered).</summary>
     public async Task<IReadOnlyList<string>> CollectClipUrlsAsync(
@@ -270,6 +275,7 @@ public sealed class ClientVideoStitchService
         CancellationToken ct = default)
     {
         var segments = new List<ClientWipSegment>();
+        LastCollectError = null;
         foreach (var sn in sceneNumbers.Distinct().OrderBy(x => x))
         {
             ct.ThrowIfCancellationRequested();
@@ -284,7 +290,11 @@ public sealed class ClientVideoStitchService
             {
                 var concat = await ConcatAsync(sceneUrls, ct);
                 if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
+                {
+                    // Remember why: "no clips" and "could not stitch the clips" are different problems.
+                    LastCollectError = $"S{sn:D2}: {concat?.Error ?? "browser stitch failed"}";
                     continue;
+                }
                 sceneUrl = concatUrl;
             }
 

@@ -592,6 +592,7 @@ public static class SceneClipEndpoints
         string id, int sceneNumber, int clipNumber,
         HttpRequest req,
         ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
+        IHttpClientFactory httpFactory,
         XaiResponsesClient? xai,
         CancellationToken ct)
     {
@@ -609,6 +610,22 @@ public static class SceneClipEndpoints
 
         if (path is not null)
             return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
+
+        // No server file: stream the provider copy (sidecar source_url) the same way /media/file does.
+        // A video-extend clip's provider copy is the combined video — say how much head is the
+        // previous clip so the browser slices it (the fakes' fixture: copies are served from disk).
+        var providerSrc = ClipProviderSource.ReadForClip(Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "video"), sceneNumber, clipNumber);
+        if (providerSrc?.SourceUrl is { Length: > 0 } srcUrl)
+        {
+            if (MediaEndpoints.TryServeFixtureUrl(srcUrl) is { } fixtureResult)
+                return fixtureResult;
+            if (Uri.TryCreate(srcUrl, UriKind.Absolute, out var up) && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
+            {
+                if (providerSrc.IsCombined)
+                    req.HttpContext.Response.Headers[MediaEndpoints.LeadInHeader] = providerSrc.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                return await MediaEndpoints.ProxyUpstreamMediaAsync(srcUrl, httpFactory, req.HttpContext, ct);
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(fileId) || xai is null)
         {

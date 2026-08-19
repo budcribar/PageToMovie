@@ -778,7 +778,8 @@ public partial class Scenes
         }
         S._busy = false;
         S._error = null;
-        S._message = "Cancelled. You can try again when ready.";
+        // Admins already see "Cancelled" on the finished-job card; one message is enough.
+        S._message = S.Session.IsAdmin ? null : "Cancelled. You can try again when ready.";
         S.StateHasChanged();
     }
 

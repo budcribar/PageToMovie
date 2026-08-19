@@ -360,7 +360,11 @@ public static class MediaEndpoints
         return Results.Bytes(dataBytes, contentType: dataCtype, fileDownloadName: "track" + ext);
     }
 
+    /// <summary>Serve a fixture:/local: URL from disk (fakes / server-trimmed extend clip); null for other URLs.</summary>
+    internal static IResult? TryServeFixtureUrl(string url) => TryServeFixture(url);
+
     private static IResult? TryServeFixture(string url)
+
     {
         // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
         // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
@@ -386,7 +390,7 @@ public static class MediaEndpoints
     /// <summary>Set on a streamed provider copy that still carries the previous clip at its head (seconds).</summary>
     public const string LeadInHeader = "X-PTM-Lead-In-Seconds";
 
-    private static async Task<IResult> ProxyUpstreamMediaAsync(
+    internal static async Task<IResult> ProxyUpstreamMediaAsync(
         string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
     {
         var http = httpFactory.CreateClient("media-proxy");

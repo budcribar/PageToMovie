@@ -45,9 +45,9 @@
         @* Admin: finished-job summary only — no live log dump (that belonged under generating). *@
         <div class="card mb-3 border-@FinishedJobBorder">
             <div class="card-body py-2">
+                @* The scene list soft-reloads itself when a job ends (HandleTerminalJobAsync) — no manual refresh. *@
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span class="small">@(Gen._job.Message ?? Gen._job.Status)</span>
-                    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="ListState.ReloadListAsync">Refresh list</button>
                 </div>
                 @if (Gen._job.Log.Count > 0)
                 {
