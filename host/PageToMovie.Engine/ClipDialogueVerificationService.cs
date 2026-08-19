@@ -119,7 +119,10 @@ public sealed class ClipDialogueVerificationService
         var expectedSpeaker = clip?.Speaker ?? "Unknown";
         var expectedDialogue = BuildExpectedDialogue(clip);
 
-        if (string.IsNullOrWhiteSpace(expectedDialogue))
+        // A silent clip still gets its picture checked (S02C04: the lamb's head came off in a clip
+        // that "verified" without a single model call). Only skip the call when no verifier exists.
+        var visualOnly = string.IsNullOrWhiteSpace(expectedDialogue);
+        if (visualOnly && !IsConfigured)
             return await BuildNoSpeechResultAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, ct).ConfigureAwait(false);
 
         var cached = await TryLoadCachedVerificationAsync(
@@ -395,6 +398,34 @@ public sealed class ClipDialogueVerificationService
             : "No character reference portraits attached.";
         var senseChecks = BuildSenseChecks(expectedDialogue);
 
+        if (string.IsNullOrWhiteSpace(expectedDialogue))
+        {
+            return $@"
+You are an automated film quality assurance inspector evaluating a generated movie clip.
+
+This clip is planned SILENT — no spoken dialogue. On-screen cast may appear but nobody speaks.
+
+{guideText}
+
+TASKS:
+{leadInNote}1. Watch the attached MP4 video clip (Attached File #1) and LISTEN to the audio track.
+2. If any spoken words are heard, transcribe them in ""transcribedDialogue"" and report an issue of kind ""extra_word"" (unplanned speech). Music, ambience and Foley are fine.
+3. WATCH the picture. Report kind ""visual_defect"" (severity major) for anything a viewer would see as broken: anatomy errors (a head, limb or body part detaching, extra or missing limbs, melting or morphing faces), a character turning into someone else mid-clip, a prop or animal changing species/shape, or a sudden style break (photoreal ↔ cartoon).
+
+Return ONLY a JSON object:
+{{
+  ""detectedSpeaker"": ""None"",
+  ""transcribedDialogue"": """",
+  ""dialogueAccuracyScore"": 1.0,
+  ""speakerMatch"": true,
+  ""status"": ""no_speech"",
+  ""issues"": [ {{ ""kind"": ""visual_defect"", ""word"": null, ""detail"": ""…"", ""severity"": ""major"" }} ],
+  ""summaryNote"": ""One sentence on what you saw.""
+}}
+Status options: 'no_speech' (silent as planned, picture intact), 'visual_defect' (picture broken — see 3).
+".Trim();
+        }
+
         return $@"
 You are an automated film quality assurance inspector evaluating a generated movie clip.
 
@@ -487,6 +518,16 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
         (speakerMatch, status) = NormalizeSpeakerMatch(
             detected, expectedSpeaker, expectedSpeakerDisplayName, speakerMatch, status, accuracy);
         (accuracy, status, summary) = ApplyAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary, issues);
+        if (string.IsNullOrWhiteSpace(expectedDialogue))
+        {
+            // Silent clip: the only verdicts are "silent as planned" or "picture broken".
+            var broken = issues.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase));
+            status = broken ? "visual_defect" : "no_speech";
+            accuracy = 1.0;
+            speakerMatch = true;
+            if (string.IsNullOrWhiteSpace(detected)) detected = "None";
+            if (string.IsNullOrWhiteSpace(summary)) summary = broken ? "Picture defect found in a silent clip." : "No spoken dialogue planned; picture checked.";
+        }
 
         var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");
         var (speechSec, actionSec) = ClipDurationEstimator.EstimateBreakdown(expectedDialogue, clip?.VisualPrompt ?? "", "", clip?.Delivery ?? "none");
