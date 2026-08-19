@@ -92,7 +92,7 @@ public class ScenesRegenerateSelectedTests
     }
 
     [Fact]
-    public async Task Nothing_checked_still_does_a_full_rebuild()
+    public async Task Nothing_checked_is_an_error_and_select_all_does_the_full_rebuild()
     {
         var (ctx, page) = await _fx.NewPageAsync();
         try
@@ -109,19 +109,20 @@ public class ScenesRegenerateSelectedTests
             Assert.False(string.IsNullOrWhiteSpace(activeId));
             var beforeJobIds = await GetJobIdsAsync(page, activeId!);
 
-            // Nothing checked (fresh page, no prior selection) — button falls back to "all".
-            var regenBtn = page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" });
+            // Nothing checked: the user forgot to tick a scene — say so, do NOT re-plan everything.
+            var regenBtn = page.GetByTestId("scenes-regenerate-selected-scenes");
             await Assertions.Expect(regenBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
-            await Assertions.Expect(regenBtn).ToHaveAttributeAsync(
-                "title", new Regex("nothing checked, this rebuilds every scene", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 10_000 });
             await regenBtn.ClickAsync();
+            await Assertions.Expect(page.GetByText("No scenes selected")).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            Assert.Equal(beforeJobIds.Count, (await GetJobIdsAsync(page, activeId!)).Count);
 
+            // Select all + Regenerate = the explicit full rebuild (scene_filter "all").
+            await page.GetByTestId("scenes-select-all").ClickAsync();
+            await regenBtn.ClickAsync();
             await WaitForNewStage2JobDoneAsync(page, activeId!, beforeJobIds);
 
             var afterRoot = JsonNode.Parse(await File.ReadAllTextAsync(BlueprintPath(activeId!)))!.AsObject();
             Assert.Equal("all", (string?)afterRoot["stage2_meta"]?["scene_filter"]);
-
-            // Existing "restore missing scenes" behavior: full rebuild, scene count unchanged/correct.
             await status.WaitForAsync(new() { Timeout = 30_000 });
             var sceneCountAfter = int.Parse(await status.GetAttributeAsync("data-scene-count") ?? "0");
             Assert.Equal(sceneCountBefore, sceneCountAfter);

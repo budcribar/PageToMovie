@@ -413,6 +413,22 @@ public partial class Scenes
     /// blueprint instead of rebuilding it from scratch). Falls back to every scene — the original
     /// "restore missing scenes" behavior — when nothing is checked.
     /// </summary>
+    /// <summary>The "Regenerate Selected Scenes" button: re-plans exactly the checked scenes. Nothing
+    /// checked is an error, not a silent full rebuild (that re-planned every scene when the user
+    /// forgot to tick one). Select all + Regenerate is the explicit full rebuild.</summary>
+    internal async Task RegenerateSelectedScenesAsync()
+    {
+        if (_selected.Count == 0)
+        {
+            S._message = null;
+            S._error = "No scenes selected — check the scene(s) to re-plan, or Select all to rebuild the whole shot plan.";
+            return;
+        }
+        await RebuildShotPlanAsync();
+    }
+
+    /// <summary>Build / rebuild the shot plan: the checked scenes when any are checked (all checked =
+    /// full rebuild), else every scene (first build, auto-build on an empty plan).</summary>
     internal async Task RebuildShotPlanAsync()
     {
         S._busy = true;
@@ -420,7 +436,7 @@ public partial class Scenes
         S._message = null;
         try
         {
-            var scoped = _selected.Count > 0;
+            var scoped = _selected.Count > 0 && _selected.Count < (_scenes?.Count ?? 0);
             await S.Engine.StartStage2Async(new StartStage2Request
             {
                 ProjectId = S._projectId,

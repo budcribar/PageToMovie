@@ -259,8 +259,9 @@ else
                     disabled="@(Host._busy || Host.Gen.JobRunning)"
                     title="@(selCount > 0
                         ? $"Regenerate the shot plan for only the {selCount} checked scene{(selCount == 1 ? "" : "s")} from the screenplay (others untouched)"
-                        : "Regenerate the shot plan — nothing checked, this rebuilds every scene from the screenplay")"
-                    @onclick="list.RebuildShotPlanAsync">
+                        : "Check the scene(s) to re-plan first — Select all rebuilds the whole shot plan")"
+                    data-testid="scenes-regenerate-selected-scenes"
+                    @onclick="list.RegenerateSelectedScenesAsync">
                 📝 @L["ScenesPage.RebuildShotPlan"]
             </button>
             <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
