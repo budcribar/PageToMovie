@@ -424,6 +424,15 @@ public partial class Scenes
             S._error = "No scenes selected — check the scene(s) to re-plan, or Select all to rebuild the whole shot plan.";
             return;
         }
+        // Confirm first (same shape as Generate): what is re-planned, what it costs in clips.
+        _showReplanConfirm = true;
+    }
+
+    internal bool _showReplanConfirm;
+    internal void CloseReplanConfirm() => _showReplanConfirm = false;
+    internal async Task ConfirmReplanAsync()
+    {
+        _showReplanConfirm = false;
         await RebuildShotPlanAsync();
     }
 

@@ -72,6 +72,8 @@ public class ScenesRegenerateSelectedTests
             await Assertions.Expect(regenBtn).ToHaveAttributeAsync(
                 "title", new Regex("only the 1 checked scene", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 10_000 });
             await regenBtn.ClickAsync();
+            // Confirm modal (same shape as Generate): confirm the re-plan.
+            await page.GetByTestId("replan-confirm-go").ClickAsync();
 
             await WaitForNewStage2JobDoneAsync(page, activeId!, beforeJobIds);
 
@@ -119,6 +121,8 @@ public class ScenesRegenerateSelectedTests
             // Select all + Regenerate = the explicit full rebuild (scene_filter "all").
             await page.GetByTestId("scenes-select-all").ClickAsync();
             await regenBtn.ClickAsync();
+            // Confirm modal (same shape as Generate): confirm the re-plan.
+            await page.GetByTestId("replan-confirm-go").ClickAsync();
             await WaitForNewStage2JobDoneAsync(page, activeId!, beforeJobIds);
 
             var afterRoot = JsonNode.Parse(await File.ReadAllTextAsync(BlueprintPath(activeId!)))!.AsObject();

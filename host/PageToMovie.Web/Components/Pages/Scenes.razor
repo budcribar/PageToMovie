@@ -514,6 +514,17 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                          OnDelete="@(id => Music.SoftDeleteMusicVersionAsync(Music._compareMusicSceneNumber, id))" />
 }
 
+@if (List._showReplanConfirm)
+{
+    <Scenes_ReplanConfirm Visible="true"
+                          Scenes="@(List._scenes ?? new List<SceneSummary>())"
+                          Selected="List._selected"
+                          TotalScenes="@(List._scenes?.Count ?? 0)"
+                          Busy="_busy"
+                          OnConfirm="List.ConfirmReplanAsync"
+                          OnClose="List.CloseReplanConfirm" />
+}
+
 @if (Gen._showJobModal)
 {
     <Scenes_JobProgress Visible="true"

@@ -1,0 +1,57 @@
+@* Page-local to Scenes — confirm before re-planning scenes (same shape as the generate confirm) *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    var all = Selected.Count > 0 && Selected.Count >= TotalScenes;
+    <DarkModalShell Visible="true" OnClose="OnClose">
+        <Title>📝 Regenerate @(all ? "the whole shot plan" : $"{Selected.Count} selected scene{(Selected.Count == 1 ? "" : "s")}")</Title>
+        <ChildContent>
+            <p class="mb-2 small" data-testid="replan-confirm-summary">
+                @if (all)
+                {
+                    <text>Every scene is re-planned from the approved screenplay (<strong>@TotalScenes</strong> scenes).</text>
+                }
+                else
+                {
+                    <text>Only these scenes are re-planned from the approved screenplay; the others are untouched:</text>
+                }
+            </p>
+            @if (!all)
+            {
+                <ul class="small mb-2">
+                    @foreach (var s in Scenes.Where(x => Selected.Contains(x.SceneNumber)).OrderBy(x => x.SceneNumber))
+                    {
+                        <li><code>S@(s.SceneNumber.ToString("D2"))</code> @s.Setting <span class="text-secondary">· @s.ClipsOnDisk/@s.ClipCount clips</span></li>
+                    }
+                </ul>
+            }
+            <div class="alert alert-warning py-2 px-2 small mb-2">
+                Existing clips stay only where their beat comes out the same; clips whose beat changed show as <strong>stale</strong> or <strong>missing</strong> and need generating again.
+                @if (GeneratedClipsAtRisk > 0)
+                {
+                    <div class="mt-1"><strong>@GeneratedClipsAtRisk</strong> generated clip(s) in the selected scenes may be affected.</div>
+                }
+            </div>
+            <div class="small text-secondary">Planning uses the chat model only — no video spend until you generate.</div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="OnClose">Cancel</button>
+            <button type="button" class="btn btn-warning btn-sm fw-semibold" data-testid="replan-confirm-go" disabled="@Busy" @onclick="OnConfirm">
+                @(all ? "Rebuild shot plan" : "Regenerate selected scenes")
+            </button>
+        </Footer>
+    </DarkModalShell>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public IReadOnlyList<SceneSummary> Scenes { get; set; } = Array.Empty<SceneSummary>();
+    [Parameter] public IReadOnlySet<int> Selected { get; set; } = new HashSet<int>();
+    [Parameter] public int TotalScenes { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private int GeneratedClipsAtRisk => Scenes.Where(s => Selected.Contains(s.SceneNumber)).Sum(s => s.ClipsOnDisk);
+}
