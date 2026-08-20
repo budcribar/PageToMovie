@@ -31,6 +31,9 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 
 | 16 | ScreenplayBeatDepthTests.Add_beat_pick_speaker_type_line_delete_beat_and_persist | Structured editor: add Dialogue beat, cast dropdown speaker pick, line entry, beat delete, autosave persistence across full reload | ✅ |
 
+| 17 | ScreenplayBeatReorderAndLocationTests.Beat_drag_reorder_swaps_rows_and_persists | Beat ⋮⋮ drag-reorder inside a scene card | ✅ |
+| 18 | ScreenplayBeatReorderAndLocationTests.Scene_card_locations_gear_deep_links_to_locations_page_focused | ⚙ Locations gear → /locations deep-link focus; heading location select change persists to the draft | ✅ |
+
 ## Bugs found (and status)
 
 | # | Bug | Found by | Status |
@@ -42,6 +45,7 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | B5 | `media-renames` (new manifest endpoint) was missing from `ProjectIdRouting.ResourceSegments` — 404 for every real `owner/Name` project id, so client folders would silently never replay renames in production. | Code review during #7 | ✅ fixed |
 | B6 | (Not a bug — noted) `SanitizeSpokenDialogue` expands unknown hyphen compounds ("SNOW-DRIFT" → "SNOW — DRIFT") on clip-script save; deliberate speech-safety behavior, kept. | Test #7 | ℹ by design |
 | B7 | Locations page froze on "Loading locations…" forever: `OnProjectChanged` ran `LoadAsync` fire-and-forget with no re-render on completion, so whenever `ActiveProject.Changed` fired around navigation (readiness refresh does, repeatedly) the last render stuck at the loading state despite loaded data. | Test #12 | ✅ fixed (StateHasChanged after reload) |
+| B9 | Scene-heading dropdown edits (INT/EXT, location, time-of-day) were SILENTLY DISCARDED on save: `FormatSceneHeading` serializes the raw imported `SceneTitle` verbatim whenever present, so structured edits showed in the UI, never reached the Fountain draft, and reverted on reload. Fixed: changing a structured heading field invalidates `SceneTitle` (parser/Clone assign it last, so imported headings still survive untouched until a real user edit). | Test #18 | ✅ fixed |
 | B8 | (Observation) Screenplay-page scene drag-reorder rewrites the fountain draft only — it does NOT renumber clip files/blueprint like the Film page's reorder does. Harmless pre-shot-plan; after a plan exists it desyncs plan and files until a replan. Consider routing it through ProjectStore.ReorderScenes once a plan exists. | Test #13 | ⚠ documented |
 
 ## Still to cover (planned)

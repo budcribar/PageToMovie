@@ -317,14 +317,34 @@ public class ScreenplayScene
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int SceneNumber { get; set; } = 1;
     public bool HasExplicitSceneNumber { get; set; } = false;
-    public string Environment { get; set; } = "INT.";
+    // Changing any structured heading field invalidates the RAW imported heading (SceneTitle):
+    // FountainFormatter serializes SceneTitle verbatim when present, so without this the heading
+    // dropdowns (INT/EXT, location, time) looked applied in the UI but were silently dropped from
+    // the saved draft and reverted on reload. The parser and Clone() assign SceneTitle AFTER these
+    // fields, so parsed/cloned scenes keep their raw heading until the first real user edit.
+    private string _environment = "INT.";
+    public string Environment
+    {
+        get => _environment;
+        set { if (!string.Equals(_environment, value, StringComparison.Ordinal)) SceneTitle = ""; _environment = value; }
+    }
     public SceneEnvironment Env
     {
         get => EnumExtensions.ParseEnvironment(Environment);
         set => Environment = value.ToHeadingPrefix();
     }
-    public string Location { get; set; } = "NEW LOCATION";
-    public string TimeOfDay { get; set; } = "DAY";
+    private string _location = "NEW LOCATION";
+    public string Location
+    {
+        get => _location;
+        set { if (!string.Equals(_location, value, StringComparison.Ordinal)) SceneTitle = ""; _location = value; }
+    }
+    private string _timeOfDay = "DAY";
+    public string TimeOfDay
+    {
+        get => _timeOfDay;
+        set { if (!string.Equals(_timeOfDay, value, StringComparison.Ordinal)) SceneTitle = ""; _timeOfDay = value; }
+    }
     public TimeOfDay TimeOfDayEnum
     {
         get => EnumExtensions.ParseTimeOfDay(TimeOfDay);
