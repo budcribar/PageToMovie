@@ -25,21 +25,25 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         try { Directory.Delete(_videoDir, recursive: true); } catch { /* best effort */ }
     }
 
-    private void WriteSidecar(int scene, int clip, int take, string? sourceUrl, double? leadIn = null)
+    private void WriteSidecar(int scene, int clip, int take, string? sourceUrl, double? leadIn = null, string? sourceFileId = null)
     {
         var lead = leadIn is { } l ? $",\"provider_lead_in_seconds\":{l:0.0##}" : "";
         var src = sourceUrl is null ? "" : $",\"source_url\":\"{sourceUrl}\"";
+        var fid = sourceFileId is null ? "" : $",\"source_file_id\":\"{sourceFileId}\"";
         File.WriteAllText(
             Path.Combine(_videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_{take:D2}.clip.json"),
-            $"{{\"scene\":{scene},\"clip\":{clip}{src}{lead}}}");
+            $"{{\"scene\":{scene},\"clip\":{clip}{src}{fid}{lead}}}");
     }
+
+    private static List<MediaEndpoints.ProviderRecoverySyncEntry> Collect(string videoDir) =>
+        MediaEndpoints.CollectProviderRecoveryEntries(videoDir, (_, _) => "tok");
 
     [Fact]
     public void Sidecar_only_clip_with_provider_url_yields_a_recovery_entry()
     {
         WriteSidecar(1, 2, 1, "https://vidgen.example/clip2.mp4");
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, url => "tok-" + url.Length);
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, (url, _) => "tok-" + (url?.Length ?? 0));
 
         var e = Assert.Single(entries);
         Assert.Equal("assets/video/scene_01_clip_02.mp4", e.RelativePath);
@@ -60,7 +64,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
             Path.Combine(_videoDir, "scene_01_clip_01_take_01_20260820_120000.mp4"),
             new byte[2048]);
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+        var entries = Collect(_videoDir);
 
         Assert.Empty(entries);
     }
@@ -73,7 +77,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         // never trims).
         WriteSidecar(2, 1, 1, "https://vidgen.example/combined.mp4", leadIn: 4.9);
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+        var entries = Collect(_videoDir);
 
         var e = Assert.Single(entries);
         Assert.Equal(4.9, e.ProviderLeadInSeconds, 3);
@@ -87,7 +91,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         WriteSidecar(2, 2, 1, sourceUrl: null);
         WriteSidecar(2, 3, 1, "https://vidgen.example/plain.mp4");
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+        var entries = Collect(_videoDir);
 
         var e = Assert.Single(entries);
         Assert.Equal("assets/video/scene_02_clip_03.mp4", e.RelativePath);
@@ -100,7 +104,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         WriteSidecar(3, 1, 1, "https://vidgen.example/take1.mp4");
         WriteSidecar(3, 1, 2, "https://vidgen.example/take2.mp4");
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, url => "tok");
+        var entries = Collect(_videoDir);
 
         Assert.Single(entries);
     }
@@ -109,7 +113,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     public void Missing_video_dir_yields_no_entries()
     {
         var entries = MediaEndpoints.CollectProviderRecoveryEntries(
-            Path.Combine(_videoDir, "does-not-exist"), _ => "tok");
+            Path.Combine(_videoDir, "does-not-exist"), (_, _) => "tok");
 
         Assert.Empty(entries);
     }
@@ -120,11 +124,85 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         WriteSidecar(1, 2, 1, "https://vidgen.example/c2.mp4", leadIn: 4.9);
         WriteSidecar(1, 3, 1, "https://vidgen.example/c3.mp4", leadIn: 9.8);
 
-        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+        var entries = Collect(_videoDir);
 
         var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
         Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
         // Nearest previous first: C2's hop (C1). Client hop-walk peels C1 from the C1+C2 head.
         Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
+    }
+
+    [Fact]
+    public void File_id_only_sidecar_with_empty_url_still_yields_a_recovery_entry()
+    {
+        WriteSidecar(1, 2, 1, sourceUrl: null, sourceFileId: "file_live_handle");
+
+        var seen = new List<(string? Url, string? FileId)>();
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, (url, fileId) =>
+        {
+            seen.Add((url, fileId));
+            return "tok-fid";
+        });
+
+        var e = Assert.Single(entries);
+        Assert.Equal("assets/video/scene_01_clip_02.mp4", e.RelativePath);
+        Assert.True(e.ProviderRecovery);
+        Assert.Equal("/api/media/proxy/tok-fid", e.StreamUrl);
+        var issued = Assert.Single(seen);
+        Assert.True(string.IsNullOrWhiteSpace(issued.Url));
+        Assert.Equal("file_live_handle", issued.FileId);
+    }
+
+    [Fact]
+    public void Expired_url_plus_file_id_still_yields_a_recovery_entry_and_tickets_both()
+    {
+        WriteSidecar(4, 1, 1, "https://vidgen.example/expired.mp4", sourceFileId: "file_still_there");
+
+        var seen = new List<(string? Url, string? FileId)>();
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, (url, fileId) =>
+        {
+            seen.Add((url, fileId));
+            return "tok-both";
+        });
+
+        Assert.Single(entries);
+        var issued = Assert.Single(seen);
+        Assert.Equal("https://vidgen.example/expired.mp4", issued.Url);
+        Assert.Equal("file_still_there", issued.FileId);
+    }
+
+    [Fact]
+    public void File_id_only_combined_C3_still_carries_lead_in_and_predecessor_hops()
+    {
+        WriteSidecar(1, 2, 1, sourceUrl: null, leadIn: 4.9, sourceFileId: "file_c2");
+        WriteSidecar(1, 3, 1, sourceUrl: "", leadIn: 9.8, sourceFileId: "file_c3");
+
+        var entries = Collect(_videoDir);
+
+        var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+        Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
+        Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
+        Assert.StartsWith("/api/media/proxy/", c3.StreamUrl);
+    }
+
+    [Fact]
+    public void Ticket_store_keeps_file_id_when_url_is_empty()
+    {
+        var store = new PageToMovie.Engine.MediaProxyTicketStore();
+        var token = store.Issue("", TimeSpan.FromMinutes(5), "file_abc");
+        Assert.True(store.TryTake(token, out var url, out var fileId));
+        Assert.True(string.IsNullOrEmpty(url));
+        Assert.Equal("file_abc", fileId);
+    }
+
+    [Fact]
+    public void Ticket_store_url_only_leaves_file_id_null()
+    {
+        var store = new PageToMovie.Engine.MediaProxyTicketStore();
+        var token = store.Issue("https://vidgen.example/ok.mp4", TimeSpan.FromMinutes(5));
+        Assert.True(store.TryTake(token, out var url, out var fileId));
+        Assert.Equal("https://vidgen.example/ok.mp4", url);
+        Assert.Null(fileId);
+        Assert.Equal(url, store.TryTakeUrl(token));
     }
 }

@@ -94,6 +94,123 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task Materialize_file_id_only_downloads_via_file_id_and_keeps_combined_lead_in()
+    {
+        var src = new ClipProviderSource(null, "file_combined", 5.0, 10);
+        var mat = await ClipProviderSource.TryMaterializeAsync(
+            src,
+            CancellationToken.None,
+            downloadFileId: (id, dest, ct) =>
+            {
+                Assert.Equal("file_combined", id);
+                return File.WriteAllBytesAsync(dest, new byte[4096], ct);
+            });
+        try
+        {
+            Assert.NotNull(mat);
+            Assert.False(mat!.IsStandalone);
+            Assert.Equal(5.0, mat.LeadInSecondsRemaining);
+            Assert.True(File.Exists(mat.Path));
+            Assert.True(new FileInfo(mat.Path).Length >= 1024);
+        }
+        finally { ClipProviderSource.TryDelete(mat?.Path); }
+    }
+
+    [Fact]
+    public async Task Materialize_url_404_falls_back_to_file_id()
+    {
+        var src = new ClipProviderSource("https://vidgen.example/expired.mp4", "file_live", 0, 8);
+        var urlHits = 0;
+        var fileHits = 0;
+        var mat = await ClipProviderSource.TryMaterializeAsync(
+            src,
+            CancellationToken.None,
+            download: (_, _, _) =>
+            {
+                urlHits++;
+                throw new HttpRequestException("404");
+            },
+            downloadFileId: (id, dest, ct) =>
+            {
+                fileHits++;
+                Assert.Equal("file_live", id);
+                return File.WriteAllBytesAsync(dest, new byte[4096], ct);
+            });
+        try
+        {
+            Assert.NotNull(mat);
+            Assert.True(mat!.IsStandalone);
+            Assert.Equal(1, urlHits);
+            Assert.Equal(1, fileHits);
+        }
+        finally { ClipProviderSource.TryDelete(mat?.Path); }
+    }
+
+    [Fact]
+    public async Task Materialize_url_success_does_not_call_file_id()
+    {
+        var src = new ClipProviderSource("https://vidgen.example/fresh.mp4", "file_unused", 0, 8);
+        var fileHits = 0;
+        var mat = await ClipProviderSource.TryMaterializeAsync(
+            src,
+            CancellationToken.None,
+            download: (_, dest, ct) => File.WriteAllBytesAsync(dest, new byte[4096], ct),
+            downloadFileId: (_, _, _) =>
+            {
+                fileHits++;
+                return Task.CompletedTask;
+            });
+        try
+        {
+            Assert.NotNull(mat);
+            Assert.Equal(0, fileHits);
+        }
+        finally { ClipProviderSource.TryDelete(mat?.Path); }
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_empty_url_uses_file_id_only()
+    {
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "",
+            "file_only",
+            (_, _) => Task.FromResult<string?>("from-url"),
+            (id, _) => Task.FromResult<string?>(id),
+            CancellationToken.None);
+        Assert.Equal("file_only", opened);
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_url_null_result_falls_back_to_file_id()
+    {
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "https://vidgen.example/dead.mp4",
+            "file_fallback",
+            (_, _) => Task.FromResult<string?>(null),
+            (id, _) => Task.FromResult<string?>(id),
+            CancellationToken.None);
+        Assert.Equal("file_fallback", opened);
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_url_success_skips_file_id()
+    {
+        var fileHits = 0;
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "https://vidgen.example/ok.mp4",
+            "file_unused",
+            (url, _) => Task.FromResult<string?>(url),
+            (_, _) =>
+            {
+                fileHits++;
+                return Task.FromResult<string?>("nope");
+            },
+            CancellationToken.None);
+        Assert.Equal("https://vidgen.example/ok.mp4", opened);
+        Assert.Equal(0, fileHits);
+    }
+
+    [Fact]
     public void Engine_does_not_expose_NativeFfmpeg()
     {
         Assert.Null(typeof(ClipProviderSource).Assembly.GetType("PageToMovie.Engine.NativeFfmpeg"));

@@ -378,6 +378,14 @@ public sealed class XaiResponsesClient
         return new ResponseOwnedStream(resp, inner);
     }
 
+    /// <summary>Download <c>GET /v1/files/{id}/content</c> to a local path (temp materialize).</summary>
+    public async Task DownloadFileContentToPathAsync(string fileId, string destPath, CancellationToken ct = default)
+    {
+        await using var stream = await OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+        await using var fs = File.Create(destPath);
+        await stream.CopyToAsync(fs, ct).ConfigureAwait(false);
+    }
+
     private sealed class ResponseOwnedStream : Stream
     {
         private readonly HttpResponseMessage _resp;

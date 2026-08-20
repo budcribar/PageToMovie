@@ -408,16 +408,18 @@ public sealed class MediaObjectDto
     public string? CreatedAt { get; set; }
 }
 
-/// <summary>Short-lived map of opaque tokens → provider video URLs for client download (CORS-safe proxy).</summary>
+/// <summary>Short-lived map of opaque tokens → provider video URL and/or Files API
+/// <c>file_id</c> for client download (CORS-safe proxy). Vidgen public links expire;
+/// the file handle is the durable fallback.</summary>
 public sealed class MediaProxyTicketStore
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Url, DateTimeOffset Exp)> _map = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Url, string? FileId, DateTimeOffset Exp)> _map = new();
 
-    public string Issue(string videoUrl, TimeSpan? ttl = null)
+    public string Issue(string videoUrl, TimeSpan? ttl = null, string? fileId = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var exp = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(45));
-        _map[token] = (videoUrl, exp);
+        _map[token] = (videoUrl, string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(), exp);
         // opportunistic purge
         if (_map.Count > 500)
         {
@@ -430,14 +432,23 @@ public sealed class MediaProxyTicketStore
         return token;
     }
 
-    public string? TryTakeUrl(string token)
+    public string? TryTakeUrl(string token) =>
+        TryTake(token, out var url, out _) ? url : null;
+
+    /// <summary>Look up a live ticket. <paramref name="url"/> may be empty when the
+    /// sidecar only has <c>source_file_id</c>.</summary>
+    public bool TryTake(string token, out string? url, out string? fileId)
     {
-        if (!_map.TryGetValue(token, out var e)) return null;
+        url = null;
+        fileId = null;
+        if (!_map.TryGetValue(token, out var e)) return false;
         if (e.Exp < DateTimeOffset.UtcNow)
         {
             _map.TryRemove(token, out _);
-            return null;
+            return false;
         }
-        return e.Url;
+        url = e.Url;
+        fileId = e.FileId;
+        return true;
     }
 }

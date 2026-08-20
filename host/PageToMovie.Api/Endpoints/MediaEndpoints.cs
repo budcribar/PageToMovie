@@ -76,7 +76,7 @@ public static class MediaEndpoints
         }
         foreach (var entry in CollectProviderRecoveryEntries(
                      Path.Combine(assetsRoot, ApiText.VideoFolder),
-                     url => tickets.Issue(url, TimeSpan.FromHours(2))))
+                     (url, fileId) => tickets.Issue(url ?? "", TimeSpan.FromHours(2), fileId)))
         {
             list.Add(entry);
         }
@@ -102,14 +102,15 @@ public static class MediaEndpoints
 
     /// <summary>
     /// Clips whose bytes exist on neither server disk nor (necessarily) the client, but whose
-    /// newest sidecar still points at the provider copy (<c>source_url</c>): offered through the
-    /// same proxy-ticket stream so a client sync can self-heal a missed live save. Combined
-    /// video-extend copies carry their sidecar's lead-in so the client can slice the new tail
-    /// out as this clip and recover a missing previous clip from the head.
-    /// <paramref name="issueTicket"/> maps a provider URL to a proxy token.
+    /// newest sidecar still points at the provider copy (<c>source_url</c> and/or
+    /// <c>source_file_id</c>): offered through the same proxy-ticket stream so a client sync
+    /// can self-heal a missed live save. Vidgen public links expire; the Files API handle is
+    /// the durable fallback. Combined video-extend copies carry their sidecar's lead-in so
+    /// the client can slice the new tail out as this clip and recover a missing previous clip
+    /// from the head. <paramref name="issueTicket"/> maps (url, file_id) to a proxy token.
     /// </summary>
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
-        string videoDir, Func<string, string> issueTicket)
+        string videoDir, Func<string?, string?, string> issueTicket)
     {
         var entries = new List<ProviderRecoverySyncEntry>();
         if (!Directory.Exists(videoDir))
@@ -132,7 +133,7 @@ public static class MediaEndpoints
                 continue;
 
             var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
-            if (src is null || string.IsNullOrWhiteSpace(src.SourceUrl))
+            if (src is null || !src.HasProviderCopy)
                 continue;
 
             var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
@@ -142,7 +143,7 @@ public static class MediaEndpoints
                 SizeBytes: 0,
                 Sha256: null,
                 IsMp4: true,
-                StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl)}",
+                StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl, src.SourceFileId)}",
                 ProviderRecovery: true,
                 ProviderLeadInSeconds: src.IsCombined ? src.LeadInSeconds : 0,
                 PredecessorLeadInSeconds: CollectPredecessorLeadIns(videoDir, scene, clip)));
@@ -219,6 +220,7 @@ public static class MediaEndpoints
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
     IHttpClientFactory httpFactory,
+    XaiResponsesClient? xai,
     HttpContext httpContext,
     CancellationToken ct)
     {
@@ -236,7 +238,7 @@ public static class MediaEndpoints
             return Results.BadRequest(new { ok = false, error = "Invalid media path" });
 
         if (!File.Exists(fullPath))
-            return await ServeMissingMediaAsync(fullPath, httpFactory, httpContext, ct);
+            return await ServeMissingMediaAsync(fullPath, httpFactory, xai, httpContext, ct);
 
         return Results.File(fullPath, ContentTypeForMediaExtension(fullPath), Path.GetFileName(fullPath), enableRangeProcessing: true);
     }
@@ -263,13 +265,13 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult> ServeMissingMediaAsync(
-        string fullPath, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient? xai, HttpContext httpContext, CancellationToken ct)
     {
         // Clips do not live on the server: a generated clip is provider-hosted (sidecar
-        // source_url) until the browser saves it locally. Stream it through, never store it.
+        // source_url / source_file_id) until the browser saves it locally. Stream it through, never store it.
         if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
         {
-            var served = await TryServeMissingMp4Async(fullPath, httpFactory, httpContext, ct);
+            var served = await TryServeMissingMp4Async(fullPath, httpFactory, xai, httpContext, ct);
             if (served is not null)
                 return served;
         }
@@ -277,27 +279,21 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult?> TryServeMissingMp4Async(
-        string fullPath, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient? xai, HttpContext httpContext, CancellationToken ct)
     {
         var src = ClipProviderSource.ReadForMp4(fullPath);
-        var upstream = src?.SourceUrl;
-        // Fakes: the "provider" is a local fixture file — serve it like the proxy does.
-        if (!string.IsNullOrWhiteSpace(upstream) && TryServeFixture(upstream) is { } fixtureServed)
-            return fixtureServed;
-        if (string.IsNullOrWhiteSpace(upstream)
-            || !Uri.TryCreate(upstream, UriKind.Absolute, out var up)
-            || (up.Scheme != Uri.UriSchemeHttps && up.Scheme != Uri.UriSchemeHttp))
+        if (src is null || !src.HasProviderCopy)
             return null;
 
         // Video-extend clip: the provider copy is the combined video. Stream it and advertise
         // the lead-in so the browser (ClipSummary.ProviderLeadInSeconds / ffmpeg.wasm) slices
         // the head. The API host never downloads to trim with native ffmpeg.
-        if (src!.IsCombined)
+        if (src.IsCombined)
         {
             httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString(
                 "0.###", System.Globalization.CultureInfo.InvariantCulture);
         }
-        return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
+        return await StreamProviderCopyAsync(src.SourceUrl, src.SourceFileId, httpFactory, xai, httpContext, ct);
     }
 
     private static string ContentTypeForMediaExtension(string fullPath)
@@ -432,19 +428,92 @@ public static class MediaEndpoints
     private static async Task<IResult> GetMediaProxyToken(string token,
     MediaProxyTicketStore tickets,
     IHttpClientFactory httpFactory,
+    XaiResponsesClient? xai,
     HttpContext httpContext,
     CancellationToken ct)
     {
-    var url = tickets.TryTakeUrl(token);
-    if (string.IsNullOrWhiteSpace(url))
+    if (!tickets.TryTake(token, out var url, out var fileId)
+        || (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(fileId)))
         return Results.NotFound(new { ok = false, error = "Media ticket expired or invalid" });
 
-    if (TryServeDataUrl(url) is { } dataResult)
+    if (!string.IsNullOrWhiteSpace(url) && TryServeDataUrl(url) is { } dataResult)
         return dataResult;
-    if (TryServeFixture(url) is { } fixtureResult)
-        return fixtureResult;
-    return await ProxyUpstreamMediaAsync(url, httpFactory, httpContext, ct);
+    return await StreamProviderCopyAsync(url, fileId, httpFactory, xai, httpContext, ct);
 }
+
+    /// <summary>
+    /// Stream the provider copy: public URL first, then xAI Files <c>file_id</c> when the
+    /// URL is empty or 404s. Combined-extend slicing/hop-walk is unchanged — the same bytes
+    /// (combined file) are streamed either way.
+    /// </summary>
+    internal static async Task<IResult> StreamProviderCopyAsync(
+        string? url,
+        string? fileId,
+        IHttpClientFactory httpFactory,
+        XaiResponsesClient? xai,
+        HttpContext httpContext,
+        CancellationToken ct)
+    {
+        var streamed = await ClipProviderSource.TryOpenAsync(
+            url,
+            fileId,
+            (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
+            (id, token) => TryOpenXaiFileAsync(xai, id, httpContext, token),
+            ct).ConfigureAwait(false);
+        return streamed ?? Results.NotFound(new { ok = false, error = "File not found" });
+    }
+
+    private static Task<IResult?> TryOpenHttpOrFixtureAsync(
+        string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+    {
+        // Missing fixture → null so source_file_id can still recover the clip.
+        if (TryParseFixturePath(url, out var fixturePath) && File.Exists(fixturePath)
+            && TryServeFixture(url) is { } fixture)
+            return Task.FromResult<IResult?>(fixture);
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var up)
+            || (up.Scheme != Uri.UriSchemeHttps && up.Scheme != Uri.UriSchemeHttp))
+            return Task.FromResult<IResult?>(null);
+        return TryProxyUpstreamMediaAsync(url, httpFactory, httpContext, ct);
+    }
+
+    private const string LocalUrlPrefix = "local:";
+    private const string FixtureUrlPrefix = "fixture:";
+
+    private static bool TryParseFixturePath(string url, out string path)
+    {
+        path = "";
+        if (url.StartsWith(LocalUrlPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = url[LocalUrlPrefix.Length..];
+            return path.Length > 0;
+        }
+        if (url.StartsWith(FixtureUrlPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = url[FixtureUrlPrefix.Length..];
+            return path.Length > 0;
+        }
+        return false;
+    }
+
+    private static async Task<IResult?> TryOpenXaiFileAsync(
+        XaiResponsesClient? xai, string fileId, HttpContext httpContext, CancellationToken ct)
+    {
+        if (xai is null || string.IsNullOrWhiteSpace(fileId))
+            return null;
+        try
+        {
+            var stream = await xai.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+            httpContext.Response.RegisterForDispose(stream);
+            return Results.Stream(
+                stream,
+                contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(),
+                fileDownloadName: "clip.mp4");
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static IResult? TryServeDataUrl(string url)
     {
@@ -479,11 +548,9 @@ public static class MediaEndpoints
     {
         // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
         // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
-        // "local:" is the same serving path (legacy tickets); jobs no longer issue trimmed copies.
-        var isLocal = url.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
-        if (!isLocal && !url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+        // local: is the same serving path (legacy tickets); jobs no longer issue trimmed copies.
+        if (!TryParseFixturePath(url, out var fixturePath))
             return null;
-        var fixturePath = isLocal ? url["local:".Length..] : url["fixture:".Length..];
         if (!File.Exists(fixturePath))
             return Results.NotFound(new { ok = false, error = "Fixture file not found" });
         var fixtureCtype = Path.GetExtension(fixturePath).ToLowerInvariant() switch
@@ -503,16 +570,22 @@ public static class MediaEndpoints
     internal static async Task<IResult> ProxyUpstreamMediaAsync(
         string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
     {
+        var ok = await TryProxyUpstreamMediaAsync(url, httpFactory, httpContext, ct).ConfigureAwait(false);
+        return ok ?? Results.Json(new { ok = false, error = "Upstream HTTP 404" }, statusCode: 404);
+    }
+
+    /// <summary>Proxy the public provider URL. Returns null on 404 / non-success so callers
+    /// can fall back to <c>source_file_id</c>.</summary>
+    internal static async Task<IResult?> TryProxyUpstreamMediaAsync(
+        string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+    {
         var http = httpFactory.CreateClient("media-proxy");
         HttpResponseMessage? resp = null;
         try
         {
             resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!resp.IsSuccessStatusCode)
-            {
-                var code = (int)resp.StatusCode;
-                return Results.Json(new { ok = false, error = $"Upstream HTTP {code}" }, statusCode: code);
-            }
+                return null;
 
             var stream = await resp.Content.ReadAsStreamAsync(ct);
             var ctype = resp.Content.Headers.ContentType?.ToString() ?? SpecializedMimeType.VideoMp4.ToMimeTypeString();
@@ -522,9 +595,9 @@ public static class MediaEndpoints
             resp = null;
             return Results.Stream(stream, contentType: ctype, fileDownloadName: "clip.mp4");
         }
-        catch (Exception ex)
+        catch
         {
-            return Results.BadRequest(new { ok = false, error = ex.Message });
+            return null;
         }
         finally
         {

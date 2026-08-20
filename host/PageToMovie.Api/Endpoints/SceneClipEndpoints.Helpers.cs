@@ -109,22 +109,19 @@ public static partial class SceneClipEndpoints
     private static async Task<IResult?> TryServeProviderClipAsync(
         string id, int sceneNumber, int clipNumber, HttpRequest req, ClipVideoServices svc, CancellationToken ct)
     {
-        // No server file: stream the provider copy (sidecar source_url) the same way /media/file does.
+        // No server file: stream the provider copy (sidecar source_url, then source_file_id
+        // when the public link 404s) the same way /media/file and /media/proxy do.
         // A video-extend clip's provider copy is the combined video — say how much head is the
         // previous clip so the browser slices it (the fakes' fixture: copies are served from disk).
         var providerSrc = ClipProviderSource.ReadForClip(
             Path.Combine(await svc.Store.GetProjectDirAsync(id, ct), "assets", "video"), sceneNumber, clipNumber);
-        if (providerSrc?.SourceUrl is not { Length: > 0 } srcUrl)
-            return null;
-        if (MediaEndpoints.TryServeFixtureUrl(srcUrl) is { } fixtureResult)
-            return fixtureResult;
-        if (!Uri.TryCreate(srcUrl, UriKind.Absolute, out var up) ||
-            (up.Scheme != Uri.UriSchemeHttps && up.Scheme != Uri.UriSchemeHttp))
+        if (providerSrc is null || !providerSrc.HasProviderCopy)
             return null;
         if (providerSrc.IsCombined)
             req.HttpContext.Response.Headers[MediaEndpoints.LeadInHeader] =
                 providerSrc.LeadInSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        return await MediaEndpoints.ProxyUpstreamMediaAsync(srcUrl, svc.HttpFactory, req.HttpContext, ct);
+        return await MediaEndpoints.StreamProviderCopyAsync(
+            providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Xai, req.HttpContext, ct);
     }
 
     private static async Task<IResult> ServeXaiClipOrNotFoundAsync(

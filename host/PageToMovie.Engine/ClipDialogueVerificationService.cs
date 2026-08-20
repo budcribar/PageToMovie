@@ -28,6 +28,7 @@ public sealed partial class ClipDialogueVerificationService
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
     private readonly IGeminiVideoAnalysisClient? _gemini;
+    private readonly XaiResponsesClient? _xai;
     private readonly ILogger<ClipDialogueVerificationService> _log;
 
     public ClipDialogueVerificationService(
@@ -35,11 +36,13 @@ public sealed partial class ClipDialogueVerificationService
         IVisionClient vision,
         ProjectTelemetryService telemetry,
         IGeminiVideoAnalysisClient? gemini = null,
+        XaiResponsesClient? xai = null,
         ILogger<ClipDialogueVerificationService>? log = null)
     {
         _projects = projects;
         _vision = vision;
         _gemini = gemini;
+        _xai = xai;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipDialogueVerificationService>.Instance;
     }
 
@@ -157,7 +160,9 @@ public sealed partial class ClipDialogueVerificationService
         {
             var videoDir = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "video");
             var mat = await ClipProviderSource.TryMaterializeAsync(
-                ClipProviderSource.ReadForClip(videoDir, sceneNumber, clipNumber), ct).ConfigureAwait(false);
+                ClipProviderSource.ReadForClip(videoDir, sceneNumber, clipNumber),
+                ct,
+                downloadFileId: _xai is null ? null : _xai.DownloadFileContentToPathAsync).ConfigureAwait(false);
             if (mat is not null)
             {
                 materialized = mat.Path;
@@ -173,7 +178,7 @@ public sealed partial class ClipDialogueVerificationService
             projectId, clipPath, clip, spokenLines, expectedSpeaker, keyframePaths, ct).ConfigureAwait(false);
         if (media.MediaToPass.Count == 0)
             return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
-                "Clip video is neither on the server nor reachable at the provider (no source_url in the sidecar). Generate or re-import the clip first.",
+                "Clip video is neither on the server nor reachable at the provider (no source_url / source_file_id in the sidecar). Generate or re-import the clip first.",
                 ct).ConfigureAwait(false);
 
         var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides, leadInOffsetSec, media.ExpectedVoiceProfile);
