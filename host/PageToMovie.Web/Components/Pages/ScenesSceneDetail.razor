@@ -96,7 +96,7 @@
                             class="btn btn-sm btn-outline-primary"
                             data-testid="scene-verify-selected"
                             disabled="@(Host._busy || Gen.JobRunning || Dialogue._verifyingClip)"
-                            title="@(ClipSel._selectedClips.Count > 0 ? $"Run dialogue & speaker verification on {ClipSel._selectedClips.Count} selected clip(s)" : "Run dialogue & speaker verification on selected clips in the first column")"
+                            title="@(ClipSel._selectedClips.Count > 0 ? $"Verify {ClipSel._selectedClips.Count} selected clip(s)" : "Verify selected clips")"
                             @onclick="Dialogue.VerifySelectedScenesDialogueAsync">
                         🔍 Verify@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "")
                     </button>

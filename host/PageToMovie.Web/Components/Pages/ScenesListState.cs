@@ -577,16 +577,16 @@ public partial class Scenes
 
 
 
-    internal double EstimateSelectedCostUsd()
+    internal double EstimateSelectedCostUsd(bool forceAllTakes = false)
     {
-        if (_costReport is null || S.ClipSel.EstimateSelectedClips() == 0) return 0;
+        if (_costReport is null || S.ClipSel.EstimateSelectedClips(forceAllTakes) == 0) return 0;
         var sum = 0.0;
         // The end-credits card renders client-side (canvas → ffmpeg.wasm) for free — see
         // StartBatchAsync, which already splits it out of the paid video-model batch. The cost
         // report itself doesn't know that, so exclude it here too or the confirm modal quotes a
         // price for a scene that will never actually be sent to a video model.
         foreach (var row in _costReport.Scenes.Where(r => _selected.Contains(r.Scene) && !S.Gen.IsCreditsSceneNum(r.Scene)))
-            sum += row.RemainingDraftUsd;
+            sum += forceAllTakes ? row.AllDraftUsd : row.RemainingDraftUsd;
         return sum;
     }
 

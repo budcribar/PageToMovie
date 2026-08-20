@@ -4,19 +4,45 @@
 
 @if (Visible)
 {
-    <DarkModalShell Visible="true" OnClose="OnClose">
+    <DarkModalShell Visible="true" OnClose="OnClose" data-testid="generate-confirm-modal">
         <Title>@L["Scenes.GenerateConfirmTitle"]</Title>
         <ChildContent>
-            @if (EstimatedClips == 0)
-            {
-                <div class="alert alert-info py-2 small mb-3">
-                    All clips in the selected scene(s) are already generated. To re-generate existing clips, use Regenerate on the individual clip or scene.
+            <fieldset class="mb-3" data-testid="generate-confirm-scope">
+                <legend class="form-label small text-muted mb-2">@L["Scenes.GenerateScopeLegend"]</legend>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="genScope" id="genScopeMissing"
+                           data-testid="generate-confirm-scope-missing"
+                           value="missing"
+                           checked="@(!ForceAllTakes)"
+                           disabled="@(Busy || MissingClipCount == 0)"
+                           @onclick="() => SetScopeAsync(false)" />
+                    <label class="form-check-label" for="genScopeMissing">@L["Scenes.GenerateScopeMissing"]</label>
                 </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="genScope" id="genScopeAll"
+                           data-testid="generate-confirm-scope-all"
+                           value="all"
+                           checked="@ForceAllTakes"
+                           disabled="@Busy"
+                           @onclick="() => SetScopeAsync(true)" />
+                    <label class="form-check-label" for="genScopeAll">@L["Scenes.GenerateScopeAllTakes"]</label>
+                </div>
+            </fieldset>
+
+            @if (AllClipCount == 0)
+            {
+                <div class="alert alert-info py-2 small mb-3">@L["Scenes.GenerateNothingToDo"]</div>
             }
             else
             {
+                @if (MissingClipCount == 0)
+                {
+                    <div class="alert alert-info py-2 small mb-3">@L["Scenes.GenerateAlreadyDoneHint"]</div>
+                }
                 <p class="mb-3">
-                    @L.Format("Scenes.GenerateConfirmSummary", EstimatedClips, SelectedCount)
+                    @(ForceAllTakes
+                        ? L.Format("Scenes.GenerateConfirmSummaryAll", EstimatedClips, SelectedCount)
+                        : L.Format("Scenes.GenerateConfirmSummary", EstimatedClips, SelectedCount))
                 </p>
             }
 
@@ -24,7 +50,7 @@
                 <label class="form-label small text-muted" for="genResConfirm">@L["Common.Resolution"]</label>
                 @if (ResolutionLocked)
                 {
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2" data-testid="generate-confirm-resolution-locked">
                         <span class="badge bg-secondary">@(ResolutionLock ?? Resolution)</span>
                         <span class="small text-muted">@L["Scenes.ResolutionLockedHelp"]</span>
                     </div>

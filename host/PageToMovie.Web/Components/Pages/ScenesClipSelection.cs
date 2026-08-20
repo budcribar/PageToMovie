@@ -139,13 +139,12 @@ public partial class Scenes
             return row.AllDraftUsd / row.ClipsTotal * _selectedClips.Count;
         }
 
-        internal int EstimateSelectedClips()
+        internal int EstimateSelectedClips(bool forceAllTakes = false)
         {
             if (S.List._scenes is null) return 0;
-            // Generate always fills missing only — estimate remaining work on selected scenes.
             return S.List._scenes
                 .Where(x => S.List._selected.Contains(x.SceneNumber))
-                .Sum(s => Math.Max(0, s.ClipCount - s.ClipsOnDisk));
+                .Sum(s => forceAllTakes ? s.ClipCount : Math.Max(0, s.ClipCount - s.ClipsOnDisk));
         }
     }
 }

@@ -121,7 +121,7 @@ public partial class Scenes
     /// <summary>
     /// From the all-scenes view: at least one selected scene has a finished clip on disk to check.
     /// Dialogue verification reads the clip's video, so scenes with nothing on disk have nothing to check.
-    /// Gates the list-view "Verify Scene Dialogue" button so it never reads as a dead click.
+    /// Gates the list-view "Verify Scene" button so it never reads as a dead click.
     /// </summary>
     internal bool SelectedScenesHaveClipsToVerify =>
         S.List._scenes is not null &&

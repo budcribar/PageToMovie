@@ -195,7 +195,7 @@ else
                     data-testid="scenes-generate-batch"
                     class="btn batch-go w-100 mb-1 @(canGenerate ? "batch-go--ready" : "")"
                     disabled="@genDisabled"
-                    title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : "Generate only missing clips in selected scenes")"
+                    title="@(Host.IsSimpleFilm ? "Put your voice on the existing pictures" : "Generate clips for selected scenes")"
                     @onclick="Host.Gen.OpenGenerateConfirmAsync">
                 @* Progress lives in the generation modal (and the card above the scene); the button just disables. *@
                 <span class="batch-go__play" aria-hidden="true">▶</span>
@@ -203,7 +203,10 @@ else
                     Generate @list.GenerateBatchNoun
                     @if (selCount > 0)
                     {
-                        <span class="batch-go__meta">· ~@(ClipSel?.EstimateSelectedClips() ?? 0) clips</span>
+                        var clipHint = ClipSel?.EstimateSelectedClips() ?? 0;
+                        if (clipHint == 0)
+                            clipHint = ClipSel?.EstimateSelectedClips(forceAllTakes: true) ?? 0;
+                        <span class="batch-go__meta">· ~@clipHint clips</span>
                     }
                 </span>
             </button>
@@ -217,13 +220,6 @@ else
                         title="@PlaySelectedTitle"
                         @onclick="() => Playback?.PlaySelectedAsync() ?? Task.CompletedTask">
                     ▶ @L["ScenesPage.PlaySelected"]@(selCount > 0 ? $" ({selCount})" : "")
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 flex-grow-1 text-nowrap" style="font-size:0.75rem;"
-                        data-testid="scenes-regenerate-selected"
-                        disabled="@genDisabled"
-                        title="Re-render all clips in selected scenes (prompts for confirmation)"
-                        @onclick="Host.Gen.OpenRegenerateConfirmAsync">
-                    🔄 Regenerate@(selCount > 0 ? $" ({selCount})" : "")
                 </button>
                 <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
                                          BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"

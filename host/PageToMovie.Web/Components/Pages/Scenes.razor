@@ -441,7 +441,11 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
 @if (Gen._showGenerateConfirm)
 {
     <Scenes_GenerateConfirm Visible="true"
-                            EstimatedClips="ClipSel.EstimateSelectedClips()"
+                            EstimatedClips="ClipSel.EstimateSelectedClips(Gen._generateForceAllTakes)"
+                            MissingClipCount="ClipSel.EstimateSelectedClips()"
+                            AllClipCount="ClipSel.EstimateSelectedClips(forceAllTakes: true)"
+                            ForceAllTakes="Gen._generateForceAllTakes"
+                            ForceAllTakesChanged="@(v => Gen._generateForceAllTakes = v)"
                             SelectedCount="List._selected.Count"
                             ResolutionLocked="List.ResolutionLocked"
                             ResolutionLock="@List._resolutionLock"
@@ -453,32 +457,12 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
                             SelectedVideoModel="@Gen._selectedVideoModel"
                             SelectedVideoModelChanged="@(v => Gen._selectedVideoModel = v)"
                             CostReady="@(List._costReport is not null)"
-                            EstimatedCostUsd="List.EstimateSelectedCostUsd()"
+                            EstimatedCostUsd="List.EstimateSelectedCostUsd(Gen._generateForceAllTakes)"
                             AllCredits="@(List._selected.All(Gen.IsCreditsSceneNum))"
                             Busy="_busy"
-                            GenerateDisabled="@(_busy || List._selected.Count == 0 || ClipSel.EstimateSelectedClips() == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
+                            GenerateDisabled="@(_busy || List._selected.Count == 0 || ClipSel.EstimateSelectedClips(Gen._generateForceAllTakes) == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
                             OnClose="Gen.CloseGenerateConfirm"
                             OnConfirm="Gen.ConfirmGenerateAsync" />
-}
-
-@if (Gen._showRegenerateConfirm)
-{
-    var selCount = List._selected.Count;
-    <ConfirmModal Visible="true"
-                  Title="@($"Regenerate {selCount} Selected Scene{(selCount == 1 ? "" : "s")}?")"
-                  ConfirmLabel="Regenerate All Selected"
-                  ConfirmClass="btn-danger"
-                  Busy="_busy"
-                  OnConfirm="Gen.ConfirmRegenerateBatchAsync"
-                  OnCancel="Gen.CloseRegenerateConfirm">
-        <p>
-            Are you sure you want to re-render all clips for <strong>@selCount selected scene@(selCount == 1 ? "" : "s")</strong>
-            (<code>@string.Join(", ", List._selected.OrderBy(x => x).Select(x => $"S{x:D2}"))</code>)?
-        </p>
-        <div class="alert alert-warning py-2 small mb-0">
-            ⚠️ This will re-generate video clips for all selected scenes.
-        </div>
-    </ConfirmModal>
 }
 
 @* AI clip edit — point-of-use prompt for a text-based edit of the currently open clip (xAI
