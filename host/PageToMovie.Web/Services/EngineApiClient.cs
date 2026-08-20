@@ -5437,6 +5437,9 @@ public sealed class ProjectMediaSyncFile
     public string? Sha256 { get; set; }
     public bool IsMp4 { get; set; }
     public string? StreamUrl { get; set; }
+    /// <summary>The server has no bytes for this clip — StreamUrl proxies the provider copy named
+    /// by its sidecar. Download only when the file is missing locally (size/hash are unknown).</summary>
+    public bool ProviderRecovery { get; set; }
 }
 
 public sealed class ModelsCatalogResponse

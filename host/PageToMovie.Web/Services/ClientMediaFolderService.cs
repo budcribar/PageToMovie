@@ -959,6 +959,10 @@ public sealed class ClientMediaFolderService
     private async Task<string?> ClassifyLocalMediaStalenessAsync(string projectId, ProjectMediaSyncFile file)
     {
         var (found, localSize) = await StatLocalFileAsync(projectId, file.RelativePath);
+        // Provider-recovery entries carry no size/hash (the server has no bytes to compare) —
+        // fetch only when the clip is missing locally, never to "refresh" an existing local copy.
+        if (file.ProviderRecovery)
+            return found ? null : "missing locally — recovering the provider copy";
         if (!found) return "missing locally";
         if (file.SizeBytes <= 0) return "server size unknown";
         if (localSize != file.SizeBytes) return $"size {localSize} != server {file.SizeBytes}";

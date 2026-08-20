@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
@@ -73,7 +74,71 @@ public static class MediaEndpoints
             if (item is not null)
                 list.Add(item);
         }
+        foreach (var entry in CollectProviderRecoveryEntries(
+                     Path.Combine(assetsRoot, ApiText.VideoFolder),
+                     url => tickets.Issue(url, TimeSpan.FromHours(2))))
+        {
+            list.Add(entry);
+        }
         return list;
+    }
+
+    /// <summary>One provider-recovery row in the media sync list (serialized camelCase alongside
+    /// the regular anonymous entries). <c>ProviderRecovery</c> tells the client to download only
+    /// when the clip is missing locally — size/hash are unknown until the provider copy lands.</summary>
+    public sealed record ProviderRecoverySyncEntry(
+        string RelativePath, string FileName, long SizeBytes, string? Sha256,
+        bool IsMp4, string StreamUrl, bool ProviderRecovery);
+
+    private static readonly Regex ClipSidecarNameRx = new(
+        @"^scene_(\d{2})_clip_(\d{2}).*\.clip\.json$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// Clips whose bytes exist on neither server disk nor (necessarily) the client, but whose
+    /// newest sidecar still points at the provider copy (<c>source_url</c>): offered through the
+    /// same proxy-ticket stream so a client sync can self-heal a missed live save. Combined
+    /// video-extend copies are skipped — their head repeats the previous clip and the API host
+    /// never trims. <paramref name="issueTicket"/> maps a provider URL to a proxy token.
+    /// </summary>
+    public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
+        string videoDir, Func<string, string> issueTicket)
+    {
+        var entries = new List<ProviderRecoverySyncEntry>();
+        if (!Directory.Exists(videoDir))
+            return entries;
+
+        var seen = new HashSet<(int Scene, int Clip)>();
+        foreach (var sidecar in Directory.EnumerateFiles(videoDir, "*.clip.json"))
+        {
+            var m = ClipSidecarNameRx.Match(Path.GetFileName(sidecar));
+            if (!m.Success)
+                continue;
+            var scene = int.Parse(m.Groups[1].Value);
+            var clip = int.Parse(m.Groups[2].Value);
+            if (!seen.Add((scene, clip)))
+                continue;
+
+            // Any real MP4 for this clip on server disk (take-suffixed included) → the regular
+            // listing already covers it; recovery is only for byte-less sidecar-only clips.
+            if (Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}*.mp4").Any())
+                continue;
+
+            var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
+            if (src is null || string.IsNullOrWhiteSpace(src.SourceUrl) || src.IsCombined)
+                continue;
+
+            var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
+            entries.Add(new ProviderRecoverySyncEntry(
+                RelativePath: $"{ApiText.AssetsFolder}/{ApiText.VideoFolder}/{fileName}",
+                FileName: fileName,
+                SizeBytes: 0,
+                Sha256: null,
+                IsMp4: true,
+                StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl)}",
+                ProviderRecovery: true));
+        }
+        return entries;
     }
 
     private static async Task<object?> TryDescribeMediaFileAsync(

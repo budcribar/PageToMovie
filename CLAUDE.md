@@ -127,3 +127,7 @@ These apply to *product code* under `host/` (Engine/Api/Web), not to one-off scr
 - `host/evals/` + `host/tools/{ClassifierBenchmarks,BeatLabelEval,HeuristicAiEval,AmbientBlind}` hold AI-vs-baseline
   classifier benchmark history for product classifiers — separate from story-project test fixtures.
 - Prefer Release build + fakes + a single Api/LoadSim process pair for perf soaks (see `docs/loadsim-soak.md`).
+
+## Response style
+
+Keep responses short: lead with the result, skip background unless asked.
