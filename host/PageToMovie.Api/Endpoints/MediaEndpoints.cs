@@ -234,7 +234,7 @@ public static class MediaEndpoints
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
     IHttpClientFactory httpFactory,
-    XaiResponsesClient? xai,
+    XaiResponsesClient xai,
     IUserApiKeyProvider keys,
     ILoggerFactory logFactory,
     HttpContext httpContext,
@@ -289,7 +289,7 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult> ServeMissingMediaAsync(
-        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient? xai, HttpContext httpContext,
+        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient xai, HttpContext httpContext,
         ILoggerFactory logFactory, CancellationToken ct)
     {
         // Clips do not live on the server: a generated clip is provider-hosted (sidecar
@@ -304,7 +304,7 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult?> TryServeMissingMp4Async(
-        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient? xai, HttpContext httpContext,
+        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient xai, HttpContext httpContext,
         ILoggerFactory logFactory, CancellationToken ct)
     {
         var src = ClipProviderSource.ReadForMp4(fullPath);
@@ -459,7 +459,7 @@ public static class MediaEndpoints
     private static async Task<IResult> GetMediaProxyToken(string token,
     MediaProxyTicketStore tickets,
     IHttpClientFactory httpFactory,
-    XaiResponsesClient? xai,
+    XaiResponsesClient xai,
     IUserApiKeyProvider keys,
     ILoggerFactory logFactory,
     HttpContext httpContext,
@@ -498,15 +498,16 @@ public static class MediaEndpoints
     }
 
     /// <summary>
-    /// Stream the provider copy: durable public URL first, then xAI Files <c>file_id</c>
-    /// (best-effort — Imagine ids are generate-only). Combined-extend slicing/hop-walk is
-    /// unchanged — the same bytes (combined file) are streamed either way.
+    /// Stream the provider copy: public URL first, then
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> for <c>file_id</c>
+    /// (the only Files content GET — do not add another). Combined-extend slicing/hop-walk
+    /// is unchanged — the same bytes (combined file) are streamed either way.
     /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
         IHttpClientFactory httpFactory,
-        XaiResponsesClient? xai,
+        XaiResponsesClient xai,
         HttpContext httpContext,
         CancellationToken ct,
         ILoggerFactory? logFactory = null,
@@ -602,13 +603,13 @@ public static class MediaEndpoints
         return false;
     }
 
-    private static async Task<IResult?> TryOpenXaiFileAsync(
-        XaiResponsesClient? xai, string fileId, HttpContext httpContext, CancellationToken ct)
+    /// <summary>The only Files content GET: <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/>.
+    /// Failures throw so the proxy can log the real xAI status instead of <c>File not found</c>.</summary>
+    internal static async Task<IResult?> TryOpenXaiFileAsync(
+        XaiResponsesClient xai, string fileId, HttpContext httpContext, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(fileId))
             return null;
-        if (xai is null)
-            throw new InvalidOperationException("xAI Files client is not configured.");
         var stream = await xai.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
         httpContext.Response.RegisterForDispose(stream);
         return Results.Stream(

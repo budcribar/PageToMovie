@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Http;
+using PageToMovie.Api;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -7,8 +9,9 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Files content GET is best-effort (Imagine file_ids are generate-only). When we do call it,
-/// use the same Bearer key that owns the file — do not fall back to a null-user env key.
+/// The only Files content GET is <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/>
+/// (<c>GET /v1/files/{id}/content</c>). Media proxy must reuse it — no second download.
+/// Use the Bearer key that owns the file; never <c>GetKeyAsync(null)</c>.
 /// </summary>
 [Collection("env-serial")]
 public sealed class XaiFileContentDownloadTests
@@ -99,6 +102,82 @@ public sealed class XaiFileContentDownloadTests
         }
     }
 
+    [Fact]
+    public async Task MediaProxy_reuses_OpenFileContentStreamAsync_on_typed_HttpClient()
+    {
+        var files = new StubFilesHandler { Body = new byte[] { 0x00, 0x01, 0x02, 0x03 } };
+        using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
+        var xai = new XaiResponsesClient(xaiHttp);
+        var urls = new Url404Factory();
+        var ctx = new DefaultHttpContext();
+
+        using (ApiKeyScope.Push("xai-from-ticket"))
+        {
+            var result = await MediaEndpoints.StreamProviderCopyAsync(
+                "https://vidgen.example/expired.mp4",
+                "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
+                urls,
+                xai,
+                ctx,
+                CancellationToken.None);
+            Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
+        }
+
+        Assert.Equal("media-proxy", urls.LastName);
+        Assert.Equal(HttpMethod.Get, files.Method);
+        Assert.Equal("/v1/files/file_1ed4c54f-2edd-485b-8d35-5f31c854132a/content", files.Path);
+        Assert.Equal("xai-from-ticket", files.Auth?.Parameter);
+        Assert.Equal(1, files.SendCount);
+    }
+
+    [Fact]
+    public async Task MediaProxy_OpenFileContent_failure_is_502_not_file_not_found()
+    {
+        var files = new StubFilesHandler
+        {
+            Status = HttpStatusCode.NotFound,
+            ErrorBody = "{\"error\":\"file not readable\"}",
+        };
+        using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
+        var xai = new XaiResponsesClient(xaiHttp);
+        var ctx = new DefaultHttpContext();
+
+        using (ApiKeyScope.Push("xai-from-ticket"))
+        {
+            var result = await MediaEndpoints.StreamProviderCopyAsync(
+                url: null,
+                "file_dead",
+                new Url404Factory(),
+                xai,
+                ctx,
+                CancellationToken.None);
+            Assert.Equal(StatusCodes.Status502BadGateway, result is IStatusCodeHttpResult s ? s.StatusCode : 0);
+            var err = result is IValueHttpResult { Value: { } v }
+                ? System.Text.Json.JsonSerializer.Serialize(v)
+                : result.GetType().Name;
+            Assert.Contains("Provider file download failed", err, StringComparison.Ordinal);
+            Assert.Contains("file not readable", err, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"File not found\"", err, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("/v1/files/file_dead/content", files.Path);
+        Assert.Equal(1, files.SendCount);
+    }
+
+    private sealed class Url404Factory : IHttpClientFactory
+    {
+        public string? LastName { get; private set; }
+
+        public HttpClient CreateClient(string name)
+        {
+            LastName = name;
+            return new HttpClient(new StubFilesHandler { Status = HttpStatusCode.NotFound })
+            {
+                BaseAddress = new Uri("https://example.invalid/"),
+            };
+        }
+    }
+
     private sealed class StubFilesHandler : HttpMessageHandler
     {
         public byte[] Body { get; set; } = [];
@@ -107,9 +186,11 @@ public sealed class XaiFileContentDownloadTests
         public HttpMethod? Method { get; private set; }
         public string? Path { get; private set; }
         public AuthenticationHeaderValue? Auth { get; private set; }
+        public int SendCount { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            SendCount++;
             Method = request.Method;
             Path = request.RequestUri?.AbsolutePath;
             Auth = request.Headers.Authorization;
