@@ -27,16 +27,11 @@ public static class StructuredOperationArtifacts
             // Case-insensitive: POCOs serialize PascalCase ("ProjectId") while callers name the wire
             // convention ("projectId") — the case-sensitive lookup made every POCO save fail its own
             // validation ("Required model data 'projectId' is missing" on the Review page).
-            JsonElement item = default;
-            var found = false;
-            foreach (var prop in doc.RootElement.EnumerateObject()
-                .Where(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
-            {
-                item = prop.Value;
-                found = true;
-                break;
-            }
-            if (!found || IsEmpty(item))
+            var match = doc.RootElement.EnumerateObject()
+                .Where(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                .Select(p => (JsonElement?)p.Value)
+                .FirstOrDefault();
+            if (match is null || IsEmpty(match.Value))
                 issues.Add(new("missing_required_data", $"Required model data '{name}' is missing.", $"$.{name}"));
         }
         return issues;
