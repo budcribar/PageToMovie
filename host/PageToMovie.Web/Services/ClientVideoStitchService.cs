@@ -81,7 +81,9 @@ public sealed class ClientVideoStitchService
             NoteSkippedClips(skipped);
             return;
         }
-        if (skipped.Count == 0 && (detail?.Clips?.Count ?? 0) > 0)
+        // skipped is empty here: either every planned clip resolved (already appended) or
+        // the scene has no clip rows. Only the latter should fall through to composite.
+        if ((detail?.Clips?.Count ?? 0) > 0)
             return;
 
         // Fallback: if no atomic clips on disk for this scene, use composite if available
@@ -193,11 +195,11 @@ public sealed class ClientVideoStitchService
 
     private void NoteSkippedClips(IEnumerable<string> labels)
     {
-        foreach (var label in labels)
-        {
-            if (!string.IsNullOrWhiteSpace(label) && !_skippedClipLabels.Contains(label, StringComparer.Ordinal))
-                _skippedClipLabels.Add(label);
-        }
+        _skippedClipLabels.AddRange(
+            labels
+                .Where(label => !string.IsNullOrWhiteSpace(label))
+                .Distinct(StringComparer.Ordinal)
+                .Where(label => !_skippedClipLabels.Contains(label, StringComparer.Ordinal)));
         LastSkippedClipLabels = _skippedClipLabels.ToList();
     }
 
