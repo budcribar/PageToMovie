@@ -12,9 +12,9 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Combined video-extend recovery: each sidecar hop is one previous clip. Sync writes the
-/// tail as the current clip and walks backward when a leftover unsliced head still contains
-/// earlier clips — never the raw combined file as a clip.
+/// Combined video-extend recovery: each sidecar hop is one previous clip. When extend is
+/// chained from the combined provider file, C3 is C1+C2+C3 and hop-walk splits that head.
+/// Sync writes the tail as the current clip — never the raw combined file as a clip.
 /// </summary>
 [Collection("catalog-serial")]
 public class CombinedExtendRecoveryTests
@@ -46,8 +46,19 @@ public class CombinedExtendRecoveryTests
     [Fact]
     public void PlanPredecessorHops_unsliced_C2_walks_C1_plus_C2()
     {
+        // Chained extend from the combined C2 file: C3 lead-in is the full previous chain
+        // (C1+C2 = 9.8). C2's sidecar hop is C1 (4.9). Hop-walk must peel that hop.
         var hops = CombinedExtendRecovery.PlanPredecessorHops(9.8, new[] { 4.9 });
         Assert.Equal(new[] { 4.9 }, hops);
+        Assert.Equal(hops, CombinedExtendRecovery.PlanPredecessorHops(9.8, new[] { 4.9, 0 }));
+    }
+
+    [Fact]
+    public void PlanPredecessorHops_full_chain_walks_either_predecessor_order()
+    {
+        var expected = new[] { 9.8, 4.9 };
+        Assert.Equal(expected, CombinedExtendRecovery.PlanPredecessorHops(14.8, new[] { 4.9, 9.8 }));
+        Assert.Equal(expected, CombinedExtendRecovery.PlanPredecessorHops(14.8, new[] { 9.8, 4.9 }));
     }
 
     [Fact]
@@ -163,6 +174,7 @@ public class CombinedExtendRecoveryTests
     [Fact]
     public async Task C3_after_unsliced_C2_splits_head_using_C2_sidecar()
     {
+        // C3 provider file is C1+C2+C3 (chained extend from the combined C2 copy).
         var (svc, js) = await ConnectAsync(providerDuration: 14.8);
 
         var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C3, leadIn: 9.8, predecessors: [4.9]));
