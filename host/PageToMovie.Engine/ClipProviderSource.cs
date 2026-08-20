@@ -59,19 +59,19 @@ public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId,
     public static ClipProviderSource? ReadForClip(string videoDir, int scene, int clip) => Read(FindLatestSidecarPath(videoDir, scene, clip));
 
     /// <summary>A temp copy of the clip. <see cref="LeadInSecondsRemaining"/> is > 0 when the copy is
-    /// still the combined video (no native ffmpeg to trim it): consumers must skip that head.</summary>
+    /// the combined extend video: consumers must skip that head (the API host never trims).</summary>
     public sealed record Materialized(string Path, double LeadInSecondsRemaining)
     {
         public bool IsStandalone => LeadInSecondsRemaining <= 0.1;
     }
 
     /// <summary>
-    /// Bring the clip's bytes to a temp file from the provider copy: download source_url and, when
-    /// the copy is combined, drop the lead-in with native ffmpeg. Where ffmpeg is not available
-    /// (production image has none — the browser is the trimmer) the combined file is returned with
-    /// <see cref="Materialized.LeadInSecondsRemaining"/> set so the consumer can offset instead.
-    /// Returns null when there is no usable provider copy. Caller deletes the temp file. Nothing is
-    /// written into the project — media does not live on the server.
+    /// Bring the clip's bytes to a temp file from the provider copy (download <c>source_url</c>).
+    /// Combined extend files stay combined — the API host never spawns native ffmpeg. The copy is
+    /// returned with <see cref="Materialized.LeadInSecondsRemaining"/> set so the consumer can
+    /// offset (dialogue verify / duration probe) instead of trimming. The browser slices playback
+    /// via <c>ProviderLeadInSeconds</c>. Returns null when there is no usable provider copy. Caller
+    /// deletes the temp file. Nothing is written into the project — media does not live on the server.
     /// </summary>
     public static async Task<Materialized?> TryMaterializeAsync(
         ClipProviderSource? src, CancellationToken ct, Func<string, string, CancellationToken, Task>? download = null)
@@ -97,16 +97,8 @@ public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId,
                 await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
             }
             if (!File.Exists(raw) || new FileInfo(raw).Length < 1024) { TryDelete(raw); return null; }
-            if (!src.IsCombined) return new Materialized(raw, 0);
-
-            var trimmed = Path.Combine(Path.GetTempPath(), $"ptm_clip_{Guid.NewGuid():N}.mp4");
-            if (NativeFfmpeg.TryTrimHead(raw, trimmed, src.LeadInSeconds))
-            {
-                TryDelete(raw);
-                return new Materialized(trimmed, 0);
-            }
-            TryDelete(trimmed);
-            return new Materialized(raw, src.LeadInSeconds);
+            // Combined extend files stay combined; consumers skip the head via LeadInSecondsRemaining.
+            return new Materialized(raw, src.IsCombined ? src.LeadInSeconds : 0);
         }
         catch
         {

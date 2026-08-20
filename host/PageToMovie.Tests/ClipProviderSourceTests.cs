@@ -64,10 +64,10 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task Materialize_marks_a_combined_copy_it_could_not_trim_instead_of_passing_it_off_as_standalone()
+    public async Task Materialize_combined_copy_keeps_lead_in_instead_of_trimming()
     {
-        // The downloader writes fake bytes (not a real mp4), so ffmpeg — if even present — cannot
-        // trim: the result must still say how much head belongs to the previous clip.
+        // Combined provider copies stay combined. The API host does not spawn ffmpeg;
+        // consumers offset by LeadInSecondsRemaining (browser slices via ProviderLeadInSeconds).
         var combined = new ClipProviderSource("https://vidgen.example/combined.mp4", null, 5.0, 4);
         var mat = await ClipProviderSource.TryMaterializeAsync(combined, CancellationToken.None,
             (url, dest, ct) => File.WriteAllBytesAsync(dest, new byte[4096], ct));
@@ -91,6 +91,12 @@ public sealed class ClipProviderSourceTests : IDisposable
         finally { ClipProviderSource.TryDelete(mat2?.Path); }
 
         Assert.Null(await ClipProviderSource.TryMaterializeAsync(new ClipProviderSource(null, "file_x", 0, 5), CancellationToken.None));
+    }
+
+    [Fact]
+    public void Engine_does_not_expose_NativeFfmpeg()
+    {
+        Assert.Null(typeof(ClipProviderSource).Assembly.GetType("PageToMovie.Engine.NativeFfmpeg"));
     }
 
     public void Dispose()

@@ -149,8 +149,8 @@ public sealed partial class ClipDialogueVerificationService
         }
 
         // The server keeps no clip bytes: when the clip is not on disk (saved to the user's folder, or
-        // still only at the provider) bring a temp copy from the provider URL — lead-in trimmed for a
-        // video-extend clip, otherwise the previous clip's line would be "heard" in this one.
+        // still only at the provider) bring a temp copy from the provider URL. Combined extend files
+        // stay combined — offset by lead-in so the previous clip's line is not "heard" in this one.
         string? materialized = null;
         var leadInOffsetSec = 0.0;
         if (string.IsNullOrWhiteSpace(clipPath) || !File.Exists(clipPath))
