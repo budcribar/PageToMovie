@@ -111,7 +111,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             var requestId = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
                 async _ =>
                 {
-                    using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/edits", payload, ct);
+                    using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/edits", payload, ct, model);
                     return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                         resp, ct, "request_id",
                         "Grok video edit submit",

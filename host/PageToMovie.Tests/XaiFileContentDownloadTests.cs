@@ -25,7 +25,7 @@ public sealed class XaiFileContentDownloadTests
         using var http = new HttpClient(handler);
         var client = new XaiResponsesClient(http);
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         await using (var stream = await client.OpenFileContentStreamAsync("file_1ed4c54f-2edd-485b-8d35-5f31c854132a"))
         {
             using var ms = new MemoryStream();
@@ -58,7 +58,7 @@ public sealed class XaiFileContentDownloadTests
             }
 
             Assert.Equal("budcribar", keys.LastUserId);
-            Assert.Equal("grok", keys.LastProvider);
+            Assert.Equal(AdapterProviderId(), keys.LastProvider);
             Assert.Equal("xai-personal", handler.Auth?.Parameter);
         }
         finally
@@ -75,7 +75,7 @@ public sealed class XaiFileContentDownloadTests
         var keys = new StubKeys { UserId = null, Key = "should-not-be-used" };
         var client = new XaiResponsesClient(http, keys);
 
-        using (ApiKeyScope.Push("scoped-key"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "scoped-key"))
         {
             await using var _ = await client.OpenFileContentStreamAsync("file_abc");
         }
@@ -95,7 +95,7 @@ public sealed class XaiFileContentDownloadTests
         using var http = new HttpClient(handler);
         var client = new XaiResponsesClient(http);
 
-        using (ApiKeyScope.Push("wrong-key"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "wrong-key"))
         {
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => client.OpenFileContentStreamAsync("file_abc"));
@@ -113,7 +113,7 @@ public sealed class XaiFileContentDownloadTests
         var urls = new Url404Factory();
         var ctx = new DefaultHttpContext();
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         {
             var result = await MediaEndpoints.StreamProviderCopyAsync(
                 "https://vidgen.example/expired.mp4",
@@ -145,7 +145,7 @@ public sealed class XaiFileContentDownloadTests
         IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
         var ctx = new DefaultHttpContext();
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         {
             var result = await MediaEndpoints.StreamProviderCopyAsync(
                 url: null,
@@ -170,9 +170,15 @@ public sealed class XaiFileContentDownloadTests
 
     private static string RequireVideoModel()
     {
-        var id = SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video);
-        Assert.False(string.IsNullOrWhiteSpace(id));
-        return id!;
+        var provider = AdapterProviderId();
+        var entry = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .FirstOrDefault(m =>
+                string.Equals(
+                    SupportedModelCatalog.NormalizeProviderId(m.ProviderId),
+                    provider,
+                    StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(entry);
+        return entry.Id;
     }
 
     /// <summary>
@@ -184,12 +190,10 @@ public sealed class XaiFileContentDownloadTests
         private readonly XaiResponsesClient _files;
         public CatalogRoutedFilesClient(XaiResponsesClient files) => _files = files;
         public bool IsConfigured => true;
+        public string CatalogProviderId => AdapterProviderId();
 
-        public Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct) =>
-            OpenAsync(fileId, ct);
-
-        private async Task<Stream?> OpenAsync(string fileId, CancellationToken ct) =>
-            await _files.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+        public async Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct) =>
+            await _files.OpenFileContentStreamAsync(fileId, model, ct).ConfigureAwait(false);
 
         public Task<string> SubmitGenerationAsync(
             string prompt, int durationSeconds, string resolution, string model, CancellationToken ct,
@@ -218,6 +222,13 @@ public sealed class XaiFileContentDownloadTests
                 BaseAddress = new Uri("https://example.invalid/"),
             };
         }
+    }
+
+    private static string AdapterProviderId()
+    {
+        var id = SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase);
+        Assert.False(string.IsNullOrWhiteSpace(id));
+        return id;
     }
 
     private sealed class StubFilesHandler : HttpMessageHandler

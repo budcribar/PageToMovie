@@ -357,7 +357,7 @@ public sealed class GrokVideoClient : IVideoClient
             return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
                 async _ =>
                 {
-                    using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+                    using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct, setup.Model);
                     return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                         extResp, ct, "request_id",
                         "Grok video extend",
@@ -376,7 +376,7 @@ public sealed class GrokVideoClient : IVideoClient
                 setup.ExtendSourceFileId, setup.ContinueFromVideoPath);
             var freshId = await UploadVideoFileAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
             extPayload["video"] = new Dictionary<string, object?> { ["file_id"] = freshId };
-            using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+            using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct, setup.Model);
             return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                 extResp, ct, "request_id",
                 "Grok video extend fallback",
@@ -428,7 +428,7 @@ public sealed class GrokVideoClient : IVideoClient
         return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
             async _ =>
             {
-                using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/generations", payload, ct);
+                using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/generations", payload, ct, setup.Model);
                 return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                     resp, ct, "request_id",
                     "Grok submit",
@@ -469,17 +469,17 @@ public sealed class GrokVideoClient : IVideoClient
     }
 
     public async Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct) =>
-        await UploadVideoStreamAsync(mp4, fileName, ct).ConfigureAwait(false);
+        await UploadVideoStreamAsync(mp4, fileName, ct, model).ConfigureAwait(false);
 
     /// <summary>Stream form of <see cref="UploadVideoFileAsync"/> (browser → server relay, no disk).</summary>
-    public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct)
+    public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct, string? model = null)
     {
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent("assistants"), "purpose");
         var part = new StreamContent(mp4);
         part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
         form.Add(part, "file", string.IsNullOrWhiteSpace(fileName) ? "clip.mp4" : fileName);
-        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Post, "files", form, ct).ConfigureAwait(false);
+        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Post, "files", form, ct, model).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"xAI video upload HTTP {(int)resp.StatusCode}: {(body.Length > 600 ? body[..600] : body)}");
@@ -678,6 +678,6 @@ public sealed class GrokVideoClient : IVideoClient
             return null;
         if (_files is null)
             throw new InvalidOperationException("xAI Files client is not configured.");
-        return await _files.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+        return await _files.OpenFileContentStreamAsync(fileId, model, ct).ConfigureAwait(false);
     }
 }
