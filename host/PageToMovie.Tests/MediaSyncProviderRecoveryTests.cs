@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -309,6 +310,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     {
         var urlHits = 0;
         var fileHits = 0;
+        var ctx = new DefaultHttpContext();
         var result = await MediaEndpoints.StreamProviderCopyAsync(
             "https://files.x.ai/p/public.mp4",
             "file_dead",
@@ -323,13 +325,20 @@ public class MediaSyncProviderRecoveryTests : IDisposable
                 throw new InvalidOperationException(
                     "xAI file content HTTP 500: Failed to retrieve file");
             },
-            CancellationToken.None);
+            CancellationToken.None,
+            httpContext: ctx);
 
         Assert.Equal(1, fileHits);
         Assert.Equal(1, urlHits);
         Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
         Assert.DoesNotContain("502", ErrorOf(result), StringComparison.Ordinal);
         Assert.DoesNotContain("Provider file download failed", ErrorOf(result), StringComparison.Ordinal);
+        var warning = ctx.Response.Headers[MediaProxyHeaders.FileIdError].ToString();
+        Assert.Contains("500", warning, StringComparison.Ordinal);
+        Assert.Contains("Failed to retrieve file", warning, StringComparison.Ordinal);
+        Assert.Equal(
+            MediaProxyHeaders.RecoveredViaSourceUrlStatus(warning),
+            "recovered via source_url after file content HTTP 500");
     }
 
     [Fact]

@@ -54,7 +54,10 @@ window.PageToMovieFfmpeg = {
         return "S" + scene + " C" + clip;
     },
 
+    _lastFileIdError: "",
+
     _safeFetchFile: async function (url) {
+        this._lastFileIdError = "";
         if (typeof url === "string" && !url.startsWith("blob:") && !url.startsWith("data:")) {
             const res = await fetch(url);
             if (!res.ok) {
@@ -65,6 +68,9 @@ window.PageToMovieFfmpeg = {
                     : ("HTTP " + res.status + " " + (res.statusText || ""));
                 throw new Error(named + "clip video missing (" + detail + "). Generate those clips first or connect the media folder.");
             }
+            this._lastFileIdError = (window.PageToMovieMedia && typeof window.PageToMovieMedia.fileIdErrorFrom === "function")
+                ? window.PageToMovieMedia.fileIdErrorFrom(res)
+                : "";
             const buf = await res.arrayBuffer();
             return new Uint8Array(buf);
         }
@@ -512,10 +518,11 @@ window.PageToMovieFfmpeg = {
         if (!url) return { success: false, error: "No URL" };
         if (typeof url === "string" && (url.startsWith("blob:") || url.startsWith("data:")))
             return { success: true, url: url };
+        this._lastFileIdError = "";
         try {
             const data = await this._safeFetchFile(url);
             const blob = new Blob([data], { type: "video/mp4" });
-            return { success: true, url: URL.createObjectURL(blob) };
+            return { success: true, url: URL.createObjectURL(blob), fileIdError: this._lastFileIdError || "" };
         } catch (err) {
             return { success: false, error: err.message || String(err) };
         }

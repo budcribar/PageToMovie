@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -157,6 +158,9 @@ public sealed class XaiFileContentDownloadTests
                 ctx,
                 CancellationToken.None);
             Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
+            var warning = ctx.Response.Headers[MediaProxyHeaders.FileIdError].ToString();
+            Assert.Contains("500", warning, StringComparison.Ordinal);
+            Assert.Contains("Failed to retrieve file", warning, StringComparison.Ordinal);
         }
 
         Assert.Equal("media-proxy", urls.LastName);

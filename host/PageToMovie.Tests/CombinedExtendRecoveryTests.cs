@@ -300,6 +300,43 @@ public class CombinedExtendRecoveryTests
     }
 
     [Fact]
+    public async Task Plain_recovery_url_fallback_sets_LastStatus_for_file_content_500()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+        js.FileIdErrorOnSuccess = "xAI file content HTTP 500: {\"error\":\"Failed to retrieve file\"}";
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, new ProjectMediaSyncFile
+        {
+            RelativePath = C1,
+            FileName = Path.GetFileName(C1),
+            IsMp4 = true,
+            StreamUrl = ProviderUrl,
+            ProviderRecovery = true,
+        });
+
+        Assert.True(n);
+        Assert.True(js.SavedRelative(C1));
+        Assert.Equal(
+            "recovered via source_url after file content HTTP 500",
+            svc.LastStatus);
+    }
+
+    [Fact]
+    public async Task Combined_recovery_url_fallback_sets_LastStatus_for_file_content_500()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+        js.FileIdErrorOnSuccess = "xAI file content HTTP 500: Failed to retrieve file";
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
+
+        Assert.True(n);
+        Assert.True(js.SavedFromTail(C2));
+        Assert.Equal(
+            "recovered via source_url after file content HTTP 500",
+            svc.LastStatus);
+    }
+
+    [Fact]
     public async Task Plain_recovery_502_body_reaches_LastStatus()
     {
         var (svc, js) = await ConnectAsync(providerDuration: 10);
@@ -385,6 +422,7 @@ public class CombinedExtendRecoveryTests
         public List<string> TrimSources { get; } = new();
         public List<(string Identifier, double Keep)> TrimKeeps { get; } = new();
         public bool ProviderUnavailable { get; set; }
+        public string? FileIdErrorOnSuccess { get; set; }
         public double ProviderDurationSeconds { get; set; } = 10;
         private readonly Dictionary<string, double> _durations = new(StringComparer.Ordinal);
         private int _trimSeq;
@@ -450,7 +488,7 @@ public class CombinedExtendRecoveryTests
                     return """{"success":false,"error":"clip video missing (HTTP 502 Bad Gateway {\"ok\":false,\"error\":\"Provider file download failed: xAI file content HTTP 401\"})."}""";
                 var blob = $"blob:prefetch:{++_trimSeq}";
                 _durations[blob] = ProviderDurationSeconds;
-                return $"{{\"success\":true,\"url\":\"{blob}\"}}";
+                return SuccessJson(blob, FileIdErrorOnSuccess);
             }
 
             if (identifier == "PageToMovieFfmpeg.probeDurationAsync")
@@ -486,7 +524,7 @@ public class CombinedExtendRecoveryTests
                 var rel = StripProject(path);
                 LocalFiles.Add(rel);
                 CombinedLocalFiles.Remove(rel);
-                return """{"success":true,"sha256":"abc","sizeBytes":40000,"relativePath":"x"}""";
+                return SuccessSaveJson(FileIdErrorOnSuccess);
             }
 
             if (identifier == "PageToMovieMedia.getFullPath")
@@ -510,6 +548,22 @@ public class CombinedExtendRecoveryTests
                     : $"{{\"success\":true,\"seconds\":{ProviderDurationSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}";
             }
             return """{"success":false}""";
+        }
+
+        private static string SuccessJson(string blob, string? fileIdError)
+        {
+            if (string.IsNullOrWhiteSpace(fileIdError))
+                return $"{{\"success\":true,\"url\":\"{blob}\"}}";
+            var escaped = fileIdError.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return $"{{\"success\":true,\"url\":\"{blob}\",\"fileIdError\":\"{escaped}\"}}";
+        }
+
+        private static string SuccessSaveJson(string? fileIdError)
+        {
+            if (string.IsNullOrWhiteSpace(fileIdError))
+                return """{"success":true,"sha256":"abc","sizeBytes":40000,"relativePath":"x"}""";
+            var escaped = fileIdError.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return $"{{\"success\":true,\"sha256\":\"abc\",\"sizeBytes\":40000,\"relativePath\":\"x\",\"fileIdError\":\"{escaped}\"}}";
         }
 
         private bool IsUnavailable(string url) => IsProvider(url) && ProviderUnavailable;

@@ -34,6 +34,18 @@ window.PageToMovieMedia = {
      * Status + a short body snippet so a 502 JSON error is visible in LastStatus
      * without Railway logs. Consumes the response body.
      */
+    /**
+     * Must match PageToMovie.Core.Utils.MediaProxyHeaders.FileIdError.
+     * Same-origin proxy sets this when Files content GET failed but source_url streamed.
+     */
+    fileIdErrorHeader: "X-PTM-File-Id-Error",
+
+    fileIdErrorFrom: function (res) {
+        try {
+            return (res && res.headers && res.headers.get(this.fileIdErrorHeader)) || "";
+        } catch (_) { return ""; }
+    },
+
     httpErrorText: async function (res) {
         let body = "";
         try {
@@ -276,6 +288,7 @@ window.PageToMovieMedia = {
             report(5, "Downloading clip…");
             const res = await fetch(url, { credentials: "same-origin" });
             if (!res.ok) return { success: false, error: "Download failed " + await this.httpErrorText(res) };
+            const fileIdError = this.fileIdErrorFrom(res);
             const buf = await res.arrayBuffer();
 
             report(60, "Hashing…");
@@ -289,6 +302,7 @@ window.PageToMovieMedia = {
                 sizeBytes: buf.byteLength,
                 relativePath: key,
                 folderName: this._root.name,
+                fileIdError: fileIdError,
             };
         } catch (err) {
             console.error("saveFromUrlAsync", err);
