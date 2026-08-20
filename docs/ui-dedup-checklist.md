@@ -31,11 +31,14 @@ Status: ☐ open · ☑ resolved (with decision).
 | 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" (`Demo.FilmCard.razor:113`) | Home easy-start story list fork (same action, different surface — may be intentional) |
 
 ## Feature decisions from the mockup review (2026-08-19)
-- Insert scene / insert clip at ANY position (not just append). Design decided: decouple ORDER from
-  NUMBER — blueprint carries scene order + per-scene clip order; an inserted clip takes the next free
-  number but sits where placed; stitch/Film/Review/extend-resolution iterate in order; no file renames.
-  The clip after an insertion point goes stale (new predecessor) — expected. NOT BUILT YET (needs go-ahead;
-  touches every OrderBy(SceneNumber/ClipNumber) site in Engine/Web).
+- Insert scene / insert clip at ANY position (not just append). DESIGN (revised 2026-08-19, user call:
+  inserts are rare): RENUMBER ON INSERT — keep the "number = order = filename" invariant; the insert is
+  a bounded renumber pass. Server side renames only small JSON (no media lives there): sidecars (xAI
+  pointers inside), QA verifications, prompt meta, history/trash, registry rows, _extend_src markers.
+  Client folder catches up via a rename manifest applied on next Film load (same self-heal pattern as
+  sidecar restore). Renumber highest-first + idempotent for crash safety. Clip after the insertion point
+  goes stale (new predecessor). ID-named files + map rejected for now (migration of every naming
+  convention; revisit only if inserts become frequent). NOT BUILT YET.
 - Film-level Generate/Regenerate merged (see #20). Row = checkbox + expander + line + duration + chip;
   delete via scene menu ("Delete (N) selected clips…"); autoplay on expand; "Edit Clip Script" / "AI Edit Video".
 
