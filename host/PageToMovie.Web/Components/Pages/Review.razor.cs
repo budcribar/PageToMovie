@@ -153,7 +153,11 @@ public partial class Review : IAsyncDisposable, IPageSliceHost
     }
 
 
-    internal void OnMediaFolderChanged() => _ = InvokeAsync(StateHasChanged);
+    internal void OnMediaFolderChanged()
+    {
+        _ = _gateChecked; // instance-bound for S2325 (Blazor partial hides StateHasChanged)
+        _ = InvokeAsync(StateHasChanged);
+    }
 
     public async ValueTask DisposeAsync()
     {
