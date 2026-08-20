@@ -34,6 +34,9 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | 17 | ScreenplayBeatReorderAndLocationTests.Beat_drag_reorder_swaps_rows_and_persists | Beat ⋮⋮ drag-reorder inside a scene card | ✅ |
 | 18 | ScreenplayBeatReorderAndLocationTests.Scene_card_locations_gear_deep_links_to_locations_page_focused | ⚙ Locations gear → /locations deep-link focus; heading location select change persists to the draft | ✅ |
 
+| 19 | LocationsLookFlowTests.Generate_looks_then_lock_and_switch_preferred_variant | Locations: generate 3 looks (fake image job), lock variant #2, switch preferred to #1 | ✅ |
+| 20 | LocationsLookFlowTests.Configuration_media_folder_connects_and_reports_name | Configuration storage section: connect media folder, connected-name card renders (fixture stub now names the OPFS handle) | ✅ |
+
 ## Bugs found (and status)
 
 | # | Bug | Found by | Status |
@@ -58,6 +61,6 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 - Characters: pick-a-voice through the UI controls (API-level covered by #15), style override
   interplay (StyleOverrideTests covers the gate itself).
 - Configuration page: remaining fields (a known-failing 9:16 autosave test predates this campaign).
-- Locations: generate-new-looks + lock-variant flow (index/plate display covered by #12).
+- ~~Locations generate-looks + lock-variant~~ ✅ (#19) · ~~Configuration media-folder connect~~ ✅ (#20)
 - Final-movie stitch (ffmpeg.wasm in Playwright) — Play tab reachability covered; the actual
   stitched download is client-heavy, evaluate feasibility.

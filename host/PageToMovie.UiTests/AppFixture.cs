@@ -154,7 +154,13 @@ public class AppFixture : IAsyncLifetime
         // Headless Chromium has no folder picker. Video generation is gated on a connected media
         // folder (clips live on the user's machine), so hand the app a real writable directory
         // handle: the origin-private file system. The app's save/register path then runs for real.
-        await ctx.AddInitScriptAsync("window.showDirectoryPicker = async () => navigator.storage.getDirectory();");
+        // The OPFS root's name is "" — shadow it so IsConnected/name-driven UI (Configuration's
+        // connected-folder card, status lines) behaves like a real picked folder.
+        await ctx.AddInitScriptAsync(@"window.showDirectoryPicker = async () => {
+            const d = await navigator.storage.getDirectory();
+            try { Object.defineProperty(d, 'name', { value: 'TestMediaFolder' }); } catch (e) { /* keep '' */ }
+            return d;
+        };");
         var page = await ctx.NewPageAsync();
         return (ctx, page);
     }
