@@ -44,9 +44,9 @@
         </div>
     }
 
-    @if (autoReview._movieReport is { } movieReport)
+    @if (autoReview._movieReport is { })
     {
-        <Review_MovieReport Report="movieReport"
+        <Review_MovieReport Report="autoReview._movieReport"
                             OnDismiss="@( () => autoReview._movieReport = null)"
                             OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
                             OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
