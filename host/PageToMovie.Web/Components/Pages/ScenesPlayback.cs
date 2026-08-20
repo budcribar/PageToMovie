@@ -135,10 +135,20 @@ public partial class Scenes
     internal bool HasCachedLocalVideo(int scene, int clip) =>
         _localVideoReady.TryGetValue((scene, clip), out var ok) && ok;
 
+    internal bool MediaSyncingActiveProject =>
+        S.MediaFolder.IsSyncingProject(S._projectId);
+
+    internal string MediaSyncPlayBlockedReason =>
+        ScenePlayGate.MediaStillDownloadingReason(
+            S.MediaFolder.SyncCurrent, S.MediaFolder.SyncTotal, S.MediaFolder.LastStatus);
+
     internal (bool CanPlay, string? Reason) DecideScenePlay(int sn)
     {
         if (sn <= 0)
             return (false, "Open a scene first");
+
+        var syncing = MediaSyncingActiveProject;
+        var syncReason = syncing ? MediaSyncPlayBlockedReason : null;
 
         var detail = S.List._detail;
         if (detail is { SceneNumber: var dsn, Clips: { Count: > 0 } } && dsn == sn)
@@ -148,7 +158,8 @@ public partial class Scenes
                 .Select(c => c.ClipNumber)
                 .ToList();
             return ScenePlayGate.DecideScenePlay(
-                sn, detail.ClipCount, missing, cn => HasCachedLocalVideo(sn, cn), detail.CompositeExists);
+                sn, detail.ClipCount, missing, cn => HasCachedLocalVideo(sn, cn),
+                detail.CompositeExists, syncing, syncReason);
         }
 
         var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
@@ -159,7 +170,9 @@ public partial class Scenes
             summary.ClipCount,
             summary.ClipsMissingServerVideo,
             cn => HasCachedLocalVideo(sn, cn),
-            summary.CompositeExists);
+            summary.CompositeExists,
+            syncing,
+            syncReason);
     }
 
     internal (bool CanPlay, string? Reason) DecideOpenScenePlay()
@@ -557,7 +570,12 @@ public partial class Scenes
                 (IReadOnlyList<int>)(s.ClipsMissingServerVideo ?? new List<int>()),
                 s.CompositeExists))
             .ToList();
-        return ScenePlayGate.DecidePlaySelected(selected, HasCachedLocalVideo);
+        var syncing = MediaSyncingActiveProject;
+        return ScenePlayGate.DecidePlaySelected(
+            selected,
+            HasCachedLocalVideo,
+            syncing,
+            syncing ? MediaSyncPlayBlockedReason : null);
     }
 
 

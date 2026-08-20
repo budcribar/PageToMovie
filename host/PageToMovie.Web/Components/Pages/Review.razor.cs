@@ -88,6 +88,7 @@ public partial class Review : IAsyncDisposable, IPageSliceHost
         EnsureDomains();
         Hub.JobUpdated += Jobs.OnJobUpdated;
         Hub.JobLog += Jobs.OnJobLog;
+        MediaFolder.Changed += OnMediaFolderChanged;
         try
         {
             try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
@@ -152,10 +153,13 @@ public partial class Review : IAsyncDisposable, IPageSliceHost
     }
 
 
+    internal void OnMediaFolderChanged() => _ = InvokeAsync(StateHasChanged);
+
     public async ValueTask DisposeAsync()
     {
         Hub.JobUpdated -= Jobs.OnJobUpdated;
         Hub.JobLog -= Jobs.OnJobLog;
+        MediaFolder.Changed -= OnMediaFolderChanged;
         Playback._clientWipUrl = null;
         Playback._clientSceneUrl = null;
         await Stitch.RevokePreviewUrlAsync();
