@@ -170,6 +170,41 @@ public partial class Scenes
 
     internal bool CanPlayOpenScene => DecideOpenScenePlay().CanPlay;
 
+    /// <summary>
+    /// Per-clip Play: only this clip's server MP4 or confirmed local file.
+    /// A sibling hole does not disable a clip that is actually present.
+    /// </summary>
+    internal (bool CanPlay, string? Reason) DecideOneClipPlay(int scene, int clip)
+    {
+        if (scene <= 0 || clip <= 0)
+            return (false, "Select a clip first");
+
+        var hasLocal = HasCachedLocalVideo(scene, clip);
+        var detail = S.List._detail;
+        if (detail is { SceneNumber: var dsn, Clips: { Count: > 0 } } && dsn == scene)
+        {
+            var row = detail.Clips.FirstOrDefault(c => c.ClipNumber == clip);
+            if (row is not null)
+                return ScenePlayGate.DecideOneClipPlay(
+                    scene, clip, ScenePlayGate.HasServerVideo(row.SizeBytes), hasLocal);
+        }
+
+        var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == scene);
+        var hasServer = ScenePlayGate.IsClipPlayableFromSceneMissingList(
+            clip, summary?.ClipsMissingServerVideo);
+        return ScenePlayGate.DecideOneClipPlay(scene, clip, hasServer, hasLocal);
+    }
+
+    internal bool CanPlayClip(int scene, int clip) => DecideOneClipPlay(scene, clip).CanPlay;
+
+    internal string ClipPlayTitle(int scene, int clip)
+    {
+        var decided = DecideOneClipPlay(scene, clip);
+        return decided.CanPlay
+            ? "Play this clip"
+            : decided.Reason ?? "Clip video is missing";
+    }
+
     internal string OpenScenePlayTitle
     {
         get
@@ -350,40 +385,37 @@ public partial class Scenes
     internal async Task PlaySingleClipAsync(int sn, int cn)
     {
         if (S._busy || _clientStitching) return;
+        // Per-clip Play: never consult scene completeness — only this clip's media.
         _playingScene = sn;
         _playingClip = cn;
         _showScenePlayer = true;
         _showPreviewPlayer = false;
         _clientPreviewUrl = null;
         _clientSceneUrl = null;
+        S._error = null;
 
-        if (S.MediaFolder.IsConnected)
+        SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
+            ? S.List._detail
+            : null;
+        var urls = await S.Stitch.CollectClipUrlsAsync(
+            S._projectId, sn, detail, clipNumbers: new[] { cn });
+        var src = urls.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        if (string.IsNullOrEmpty(src))
         {
-            try
-            {
-                var relPath = $"assets/video/scene_{sn:D2}_clip_{cn:D2}.mp4";
-                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(sn, cn);
-                var localBlob = expectedSize is long exp
-                    ? await S.MediaFolder.GetCurrentBlobUrlAsync(S._projectId, relPath, exp)
-                    : await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
-                if (!string.IsNullOrWhiteSpace(localBlob))
-                {
-                    _clientSceneUrl = localBlob;
-                }
-            }
-            catch { /* fallback to server URL */ }
+            S._error = S.Stitch.LastCollectError is { Length: > 0 } why
+                ? why
+                : ScenePlayGate.FormatPlayFailedError(
+                    "clip",
+                    S.Stitch.LastSkippedClipLabels.Count > 0
+                        ? S.Stitch.LastSkippedClipLabels
+                        : new[] { ScenePlayGate.FormatClipLabel(sn, cn) });
+            _showScenePlayer = false;
+            _playingScene = null;
+            _playingClip = null;
+            return;
         }
 
-        if (string.IsNullOrEmpty(_clientSceneUrl))
-        {
-            // No local file: the server/provider copy of a video-extend clip is the combined video —
-            // ResolveServerClipUrlAsync slices the previous clip's head off before it plays.
-            var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == cn);
-            _clientSceneUrl = row is { ProviderLeadInSeconds: > 0.1 }
-                ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, sn, row)
-                : Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, sn, cn));
-        }
-
+        _clientSceneUrl = src;
         _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         _inlineCompositeKey = _sceneVideoKey;
         S._message = $"Playing S{sn:D2} · C{cn:D2}";

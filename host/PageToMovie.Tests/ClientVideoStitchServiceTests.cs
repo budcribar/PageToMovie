@@ -472,6 +472,32 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
+    public async Task CollectClipUrlsAsync_RequestedPresentClip_StillResolves_WhenSiblingIsMissing()
+    {
+        var (stitch, _) = CreateStitchWithMixedVideoStatus(scene: 2, playable: new[] { 1, 2, 4 }, missing: new[] { 3 });
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 2, clipNumbers: new[] { 1 });
+
+        Assert.Single(urls);
+        Assert.Contains("/clips/1/", urls[0], StringComparison.Ordinal);
+        Assert.Empty(stitch.LastSkippedClipLabels);
+        Assert.Null(stitch.LastCollectError);
+    }
+
+    [Fact]
+    public async Task CollectClipUrlsAsync_RequestedMissingClip_StaysEmpty_AndNamesThatClip()
+    {
+        var (stitch, _) = CreateStitchWithMixedVideoStatus(scene: 2, playable: new[] { 1, 2, 4 }, missing: new[] { 3 });
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 2, clipNumbers: new[] { 3 });
+
+        Assert.Empty(urls);
+        Assert.Contains("S02 C03", stitch.LastSkippedClipLabels);
+        Assert.Contains("S02 C03", stitch.LastCollectError);
+        Assert.DoesNotContain("S02 C01", stitch.LastCollectError, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CollectClipUrlsAsync_DoesNotAddServerUrl_WhenFallbackDisabled()
     {
         var (stitch, _) = CreateStitchWithSceneClipsOnDisk(scene: 1, clipCount: 1, videoStatus: HttpStatusCode.OK);

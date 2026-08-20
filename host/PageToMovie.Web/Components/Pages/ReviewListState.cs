@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
+using PageToMovie.Core.Utils;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -236,9 +237,28 @@ public partial class Review
                 var c = d.Clips.FirstOrDefault(x => x.ClipNumber == clip);
                 if (c is not null) return c.OnDisk;
             }
-            // Fall back: if scene has all clips on disk, assume yes
+            // Fall back: this clip only — a sibling hole must not hide a present clip.
             var s = _scenes.FirstOrDefault(x => x.SceneNumber == scene);
-            return s is not null && s.ClipsOnDisk >= s.ClipCount && s.ClipCount > 0;
+            if (s is null) return false;
+            return ScenePlayGate.IsClipPlayableFromSceneMissingList(clip, s.ClipsMissingServerVideo);
+        }
+
+        /// <summary>
+        /// Per-clip Play enablement: real MP4 (or confirmed local file), not a sidecar marker
+        /// and not "the rest of the scene is complete."
+        /// </summary>
+        internal bool ClipIsPlayable(int scene, int clip)
+        {
+            if (_selectedDetail is { } d && d.SceneNumber == scene)
+            {
+                var c = d.Clips.FirstOrDefault(x => x.ClipNumber == clip);
+                if (c is not null)
+                    return ScenePlayGate.IsClipPlayable(c.SizeBytes);
+            }
+
+            var s = _scenes.FirstOrDefault(x => x.SceneNumber == scene);
+            if (s is null) return false;
+            return ScenePlayGate.IsClipPlayableFromSceneMissingList(clip, s.ClipsMissingServerVideo);
         }
 
 

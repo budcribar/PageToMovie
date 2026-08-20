@@ -42,7 +42,20 @@ public class ReviewClipReviewCardTests
     {
         var razor = File.ReadAllText(ReviewReviewTabPath());
         Assert.Contains("review-play-scene-{sn}", razor, StringComparison.Ordinal);
+        Assert.Contains("playback.CanPlayScene(sn)", razor, StringComparison.Ordinal);
         Assert.Contains("playback.PlayClipAsync(sel, cn)", razor, StringComparison.Ordinal);
+        Assert.Contains("list.ClipIsPlayable(sel, cn)", razor, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReviewReviewTab_clip_play_does_not_use_scene_completeness()
+    {
+        var razor = File.ReadAllText(ReviewReviewTabPath());
+        var playAt = razor.IndexOf("playback.PlayClipAsync(sel, cn)", StringComparison.Ordinal);
+        Assert.True(playAt >= 0);
+        var window = razor[Math.Max(0, playAt - 500)..Math.Min(razor.Length, playAt + 40)];
+        Assert.DoesNotContain("CanPlayScene", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClipsOnDisk >= s.ClipCount", window, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -55,7 +68,7 @@ public class ReviewClipReviewCardTests
 
         Assert.Contains("btn btn-sm btn-success", window, StringComparison.Ordinal);
         Assert.Contains("review-play-clip-{sel}-{cn}", window, StringComparison.Ordinal);
-        Assert.Contains("disabled=\"@(Host._busy || !onDisk)\"", window, StringComparison.Ordinal);
+        Assert.Contains("disabled=\"@(Host._busy || !playable)\"", window, StringComparison.Ordinal);
         Assert.DoesNotContain("btn-outline-dark", window, StringComparison.Ordinal);
     }
 

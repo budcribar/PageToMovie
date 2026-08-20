@@ -102,6 +102,47 @@ public partial class Review
             || !string.IsNullOrEmpty(_clientWipUrl)
             || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
+        /// <summary>
+        /// Scene-row Play on Review: every planned clip must be a real MP4.
+        /// Per-clip Play uses <see cref="ReviewListState.ClipIsPlayable"/> instead.
+        /// </summary>
+        internal (bool CanPlay, string? Reason) DecideScenePlay(int scene)
+        {
+            if (scene <= 0)
+                return (false, "Select a scene first");
+
+            if (S.List._selectedDetail is { SceneNumber: var dsn, Clips: { Count: > 0 } } detail
+                && dsn == scene)
+            {
+                var missing = detail.Clips
+                    .Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes))
+                    .Select(c => c.ClipNumber)
+                    .ToList();
+                return ScenePlayGate.DecideScenePlay(
+                    scene, detail.ClipCount, missing, hasLocalVideo: null, detail.CompositeExists);
+            }
+
+            var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
+            if (summary is null)
+                return (false, $"S{scene:D2} has no clips yet");
+            return ScenePlayGate.DecideScenePlay(
+                scene,
+                summary.ClipCount,
+                summary.ClipsMissingServerVideo,
+                hasLocalVideo: null,
+                summary.CompositeExists);
+        }
+
+        internal bool CanPlayScene(int scene) => DecideScenePlay(scene).CanPlay;
+
+        internal string ScenePlayTitle(int scene)
+        {
+            var decided = DecideScenePlay(scene);
+            return decided.CanPlay
+                ? "Play scene (browser stitch from clips)"
+                : decided.Reason ?? "Scene is not ready to play";
+        }
+
 
         internal string WipPlayTitle
         {
@@ -428,6 +469,12 @@ public partial class Review
             // fetch"). Same fix applied to every other Play*/stitch entry point in this file and
             // Scenes.razor.
             if (S._busy || _clientStitching) return;
+            var gate = DecideScenePlay(scene);
+            if (!gate.CanPlay)
+            {
+                S._error = gate.Reason;
+                return;
+            }
             S._busy = true;
             try
             {
@@ -472,7 +519,8 @@ public partial class Review
                     SceneDetail? detail = S.List._selectedDetail is { SceneNumber: var dsn } && dsn == scene
                         ? S.List._selectedDetail
                         : null;
-                    var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, scene, detail);
+                    var urls = await S.Stitch.CollectClipUrlsAsync(
+                        S._projectId, scene, detail, requireAllPlannedClips: true);
                     if (urls.Count == 0 && compositeOk)
                     {
                         _clientSceneUrl = await TryLocalSceneCompositeUrlAsync(scene);
@@ -598,6 +646,7 @@ public partial class Review
         /// </summary>
         internal async Task PlayClipAsync(int scene, int clip)
         {
+            // Per-clip Play: only this clip. Do not consult scene completeness.
             if (S._busy || _clientStitching) return;
             S._busy = true;
             try
