@@ -7,8 +7,8 @@ using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
-
 using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review
@@ -553,9 +553,12 @@ public partial class Review
 
         internal static string FriendlyStitchError(int scene, string? stitchError)
         {
-            if (LooksLikeHttpMissing(stitchError))
-                return $"S{scene:D2} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
-            return stitchError ?? "Could not combine clips";
+            if (!LooksLikeHttpMissing(stitchError))
+                return stitchError ?? "Could not combine clips";
+            if (stitchError is { Length: > 0 } named
+                && named.Contains(" C", StringComparison.Ordinal))
+                return named;
+            return $"S{scene:D2} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
         }
 
         internal static bool LooksLikeHttpMissing(string? error) =>
@@ -656,13 +659,13 @@ public partial class Review
         {
             if (LooksLikeHttpMissing(collectError))
             {
-                return $"S{scene:D2}C{clip:D2} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
+                return $"{ScenePlayGate.FormatClipLabel(scene, clip)} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
             }
 
             if (!string.IsNullOrWhiteSpace(collectError))
                 return collectError;
             return ClientVideoStitchService.FormatMissingClipPlayError(
-                new[] { $"S{scene:D2}C{clip:D2}" }, mediaFolderConnected);
+                new[] { ScenePlayGate.FormatClipLabel(scene, clip) }, mediaFolderConnected);
         }
 
         private void FailClipPlayer(string? error)

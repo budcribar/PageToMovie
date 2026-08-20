@@ -106,11 +106,11 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void DecideClipPlay_missing_clip_has_friendly_alert_and_no_src()
     {
-        var collect = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01C02" }, false);
+        var collect = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01 C02" }, false);
         var (src, error) = Review.ReviewPlayback.DecideClipPlay(
             Array.Empty<string>(), collect, 1, 2, mediaFolderConnected: false);
         Assert.Null(src);
-        Assert.Contains("S01C02", error, StringComparison.Ordinal);
+        Assert.Contains("S01 C02", error, StringComparison.Ordinal);
         Assert.Contains("local media folder", error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("404", error, StringComparison.Ordinal);
     }
@@ -124,7 +124,7 @@ public class ReviewClipReviewCardTests
             Array.Empty<string>(), raw, 2, 3, mediaFolderConnected: false);
         Assert.Null(src);
         Assert.DoesNotContain("404", error, StringComparison.Ordinal);
-        Assert.Contains("S02C03", error, StringComparison.Ordinal);
+        Assert.Contains("S02 C03", error, StringComparison.Ordinal);
         Assert.Contains("local media folder", error, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -146,8 +146,8 @@ public class ReviewClipReviewCardTests
     public void FriendlyMissingClipsError_prefers_collect_error()
     {
         var msg = Review.ReviewPlayback.FriendlyMissingClipsError(
-            2, ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S02C01" }, false), false);
-        Assert.Contains("S02C01", msg, StringComparison.Ordinal);
+            2, ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S02 C01" }, false), false);
+        Assert.Contains("S02 C01", msg, StringComparison.Ordinal);
         Assert.DoesNotContain("404", msg, StringComparison.Ordinal);
     }
 

@@ -20,9 +20,10 @@ public partial class ScenesSceneIndex : PageSliceComponent
         {
             if (Playback?.CanPlaySelected == true)
                 return "Stitch selected scenes in the browser (composites or clips)";
-            if (Host.List._selected.Count == 0)
-                return "Select one or more scenes first";
-            return "Selected scenes have no clips or composites to play yet";
+            return Playback?.PlaySelectedDisabledReason
+                ?? (Host.List._selected.Count == 0
+                    ? "Select one or more scenes first"
+                    : "Selected scenes have no clips or composites to play yet");
         }
     }
 

@@ -534,6 +534,7 @@ public partial class Scenes
             await RefreshCastGateAsync();
             await RefreshResolutionLockAsync();
             await RefreshCostEstimateAsync();
+            await S.Playback.RefreshLocalPlayableAsync();
         }
         catch (Exception ex)
         {
@@ -730,6 +731,7 @@ public partial class Scenes
         }
 
         await LoadSceneFountainAsync(sn);
+        await S.Playback.RefreshLocalPlayableAsync();
     }
 
     internal bool _showFountainDrawer = false;

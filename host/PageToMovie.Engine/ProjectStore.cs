@@ -5684,6 +5684,7 @@ public sealed partial class ProjectStore
         var nClips = clips.Count;
         var onDisk = CountClipsOnDisk(ctx.VideoIndex, sn, clips);
         var complete = nClips > 0 && onDisk >= nClips;
+        var missingServerVideo = ListClipsMissingServerVideo(ctx.VideoIndex, sn, clips);
         var (locs, primaryLoc) = CollectSceneLocations(s);
         var staleClipCount = CountStaleClips(projectId, s, sn, onDisk, ctx.VideoIndex);
 
@@ -5697,6 +5698,7 @@ public sealed partial class ProjectStore
             ClipCount = nClips,
             ClipsOnDisk = onDisk,
             ClipsComplete = complete,
+            ClipsMissingServerVideo = missingServerVideo,
             StaleClipCount = staleClipCount,
             HasStaleClips = staleClipCount > 0,
             PlannedDurationSeconds = planned,
@@ -5730,6 +5732,19 @@ public sealed partial class ProjectStore
                 onDisk++;
         }
         return onDisk;
+    }
+
+    private static List<int> ListClipsMissingServerVideo(
+        Dictionary<string, long> videoIndex, int sn, List<JsonElement> clips)
+    {
+        var planned = new List<int>();
+        foreach (var c in clips)
+        {
+            var cn = ClipKeying.ClipNumber(c);
+            if (cn > 0)
+                planned.Add(cn);
+        }
+        return ScenePlayGate.MissingServerVideoClips(videoIndex, sn, planned);
     }
 
     private static double? ReadOptionalDuration(JsonElement s, string name)

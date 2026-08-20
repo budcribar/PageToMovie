@@ -237,9 +237,9 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
-    public async Task CollectSceneMediaUrlsAsync_IgnoresMissingOrDeletedClips_OnlyGathersActiveOnDiskClips()
+    public async Task CollectSceneMediaUrlsAsync_DoesNotStitchAroundAMissingClip()
     {
-        // Arrange: scene 1 has 3 planned clips, but clip 2 was deleted / missing on disk
+        // Arrange: scene 1 has 3 planned clips, but clip 2 is missing (404)
         var projectId = "test-project";
         var sceneDetailJson = JsonSerializer.Serialize(new
         {
@@ -250,30 +250,38 @@ public class ClientVideoStitchServiceTests
                 clips = new[]
                 {
                     new { clipNumber = 1, onDisk = true },
-                    new { clipNumber = 2, onDisk = false }, // deleted or missing clip
+                    new { clipNumber = 2, onDisk = false },
                     new { clipNumber = 3, onDisk = true }
                 }
             }
         });
 
         var handler = new FakeHttpMessageHandler(req =>
-            new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            var path = req.RequestUri?.AbsolutePath ?? "";
+            if (path.Contains("/clips/2/video", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (path.Contains("/clips/", StringComparison.Ordinal) && path.EndsWith("/video", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(new byte[] { 1 })
+                };
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(sceneDetailJson, System.Text.Encoding.UTF8, "application/json")
-            });
+            };
+        });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
         var engineClient = new EngineApiClient(httpClient);
         var stitchService = new ClientVideoStitchService(null!, engineClient);
 
-        // Act: mark scene 1 as stale to force clip gathering
         var urls = await stitchService.CollectSceneMediaUrlsAsync(projectId, new[] { 1 }, null, new HashSet<int> { 1 });
 
-        // Assert: Must return 2 URLs (clip 1 and clip 3), skipping missing clip 2
-        Assert.Equal(2, urls.Count);
-        Assert.Contains("scenes/1/clips/1/video", urls[0]);
-        Assert.Contains("scenes/1/clips/3/video", urls[1]);
-        Assert.DoesNotContain(urls, u => u.Contains("clips/2/video"));
+        Assert.Empty(urls);
+        Assert.Contains("S01 C02", stitchService.LastSkippedClipLabels);
     }
 
     [Fact]
@@ -433,8 +441,8 @@ public class ClientVideoStitchServiceTests
         var urls = await stitch.CollectClipUrlsAsync("test-project", 1);
 
         Assert.Empty(urls);
-        Assert.Contains("S01C01", stitch.LastCollectError);
-        Assert.Contains("S01C02", stitch.LastCollectError);
+        Assert.Contains("S01 C01", stitch.LastCollectError);
+        Assert.Contains("S01 C02", stitch.LastCollectError);
         Assert.DoesNotContain("404", stitch.LastCollectError, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -451,6 +459,19 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
+    public async Task CollectClipUrlsAsync_FourClipsOne404_ReturnsOthersAndNamesMissing()
+    {
+        var (stitch, _) = CreateStitchWithMixedVideoStatus(scene: 1, playable: new[] { 1, 2, 4 }, missing: new[] { 3 });
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 1);
+
+        Assert.Equal(3, urls.Count);
+        Assert.DoesNotContain(urls, u => u.Contains("/clips/3/", StringComparison.Ordinal));
+        Assert.Contains("S01 C03", stitch.LastSkippedClipLabels);
+        Assert.Contains("S01 C03", stitch.LastCollectError);
+    }
+
+    [Fact]
     public async Task CollectClipUrlsAsync_DoesNotAddServerUrl_WhenFallbackDisabled()
     {
         var (stitch, _) = CreateStitchWithSceneClipsOnDisk(scene: 1, clipCount: 1, videoStatus: HttpStatusCode.OK);
@@ -458,21 +479,68 @@ public class ClientVideoStitchServiceTests
         var urls = await stitch.CollectClipUrlsAsync("test-project", 1, includeServerFallback: false);
 
         Assert.Empty(urls);
-        Assert.Contains("S01C01", stitch.LastCollectError);
+        Assert.Contains("S01 C01", stitch.LastCollectError);
     }
 
     [Fact]
     public void FormatMissingClipPlayError_DoesNotSurfaceRawHttpStatus()
     {
-        var connected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01C01" }, mediaFolderConnected: true);
-        var disconnected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01C01", "S01C02" }, mediaFolderConnected: false);
+        var connected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01 C01" }, mediaFolderConnected: true);
+        var disconnected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01 C01", "S01 C02" }, mediaFolderConnected: false);
 
-        Assert.Contains("S01C01", connected);
+        Assert.Contains("S01 C01", connected);
         Assert.Contains("local media folder", connected);
         Assert.DoesNotContain("404", connected);
-        Assert.Contains("S01C02", disconnected);
+        Assert.Contains("S01 C02", disconnected);
         Assert.Contains("Connect your local media folder", disconnected);
         Assert.DoesNotContain("404", disconnected);
+    }
+
+    private static (ClientVideoStitchService Stitch, EngineApiClient Engine) CreateStitchWithMixedVideoStatus(
+        int scene, int[] playable, int[] missing)
+    {
+        var all = playable.Concat(missing).Distinct().OrderBy(x => x).ToArray();
+        var clips = all.Select(cn => new { clipNumber = cn, onDisk = true }).ToArray();
+        var sceneDetailJson = JsonSerializer.Serialize(new
+        {
+            ok = true,
+            scene = new { sceneNumber = scene, clips }
+        });
+        var missingSet = missing.ToHashSet();
+
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri?.AbsolutePath ?? "";
+            if (path.Contains($"/scenes/{scene}/clips/", StringComparison.Ordinal)
+                && path.EndsWith("/video", StringComparison.Ordinal))
+            {
+                var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                var clipIdx = Array.IndexOf(parts, "clips");
+                var cn = clipIdx >= 0 && clipIdx + 1 < parts.Length && int.TryParse(parts[clipIdx + 1], out var n)
+                    ? n
+                    : 0;
+                var status = missingSet.Contains(cn) ? HttpStatusCode.NotFound : HttpStatusCode.OK;
+                return new HttpResponseMessage(status)
+                {
+                    Content = new ByteArrayContent(status == HttpStatusCode.OK ? new byte[] { 0 } : Array.Empty<byte>())
+                };
+            }
+
+            if (path.Contains($"/scenes/{scene}", StringComparison.Ordinal)
+                && !path.Contains("/clips/", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(sceneDetailJson, System.Text.Encoding.UTF8, "application/json")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var engineClient = new EngineApiClient(httpClient);
+        return (new ClientVideoStitchService(null!, engineClient), engineClient);
     }
 
     private static (ClientVideoStitchService Stitch, EngineApiClient Engine) CreateStitchWithSceneClipsOnDisk(
