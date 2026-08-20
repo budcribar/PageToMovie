@@ -19,8 +19,8 @@ public readonly record struct StoredVideoFileRef(
     /// <summary>Sidecar <c>source_url</c>: Files <c>public_url</c> when present, else the poll <c>video.url</c>.</summary>
     public string? DurableSourceUrl(string? pollUrl)
     {
-        if (HasPublicUrl)
-            return PublicUrl!.Trim();
+        if (!string.IsNullOrWhiteSpace(PublicUrl))
+            return PublicUrl.Trim();
         if (string.IsNullOrWhiteSpace(pollUrl))
             return null;
         return pollUrl.Trim();
