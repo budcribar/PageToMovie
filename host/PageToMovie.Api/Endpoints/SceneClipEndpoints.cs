@@ -455,7 +455,6 @@ public static partial class SceneClipEndpoints
     {
     var httpContext = svc.HttpContext;
     var store = svc.Store;
-    var services = svc.Services;
     if (!httpContext.Request.HasFormContentType)
         return Results.BadRequest(new { ok = false, error = "Form data expected." });
 
@@ -471,53 +470,12 @@ public static partial class SceneClipEndpoints
     // only the file_id (+ duration) in a small marker. Fakes / no stored-file upload fall
     // back to the on-disk file below.
     if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase)
-        && services.GetService(typeof(IVideoClient)) is IVideoClient video && video.IsConfigured)
-    {
-        var cfg = await store.GetConfigAsync(id, ct).ConfigureAwait(false);
-        var modelId = CatalogApiKey.ResolveVideoModel(null, ProjectModelSelection.TryVideo(cfg));
-        var providerId = CatalogApiKey.ProviderIdForVideo(modelId);
-        if (!string.IsNullOrWhiteSpace(modelId))
-        {
-            var keys = services.GetService(typeof(IUserApiKeyProvider)) as IUserApiKeyProvider;
-            var user = services.GetService(typeof(IUserContext)) as IUserContext;
-            var key = await CatalogApiKey.GetKeyAsync(keys, user?.UserId, providerId, ct).ConfigureAwait(false);
-            using (CatalogApiKey.PushKey(providerId, key))
-            using (UserApiCallScope.Push(user?.UserId))
-            {
-                await using var src = file.OpenReadStream();
-                var fileId = await video.TryUploadVideoStreamAsync(
-                    src, $"extend_src_s{scene:D2}c{clip:D2}.mp4", modelId, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(fileId))
-                {
-                    var markerDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
-                    Directory.CreateDirectory(markerDir);
-                    var marker = Path.Combine(markerDir, FilmJobService.ExtendSourceMarkerName(scene, clip));
-                    await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
-                    {
-                        file_id = fileId,
-                        duration_seconds = seconds,
-                        uploaded_utc = DateTime.UtcNow.ToString("o"),
-                        bytes = file.Length,
-                    }), ct).ConfigureAwait(false);
-                    var legacy = Path.Combine(markerDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
-                    if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { /* best effort */ } }
-                    return Results.Ok(new { ok = true, projectId = id, scene, clip, fileId, seconds });
-                }
-            }
-        }
-    }
+        && await TryUploadExtendSourceAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false) is { } uploaded)
+        return uploaded;
+
     var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
     Directory.CreateDirectory(destDir);
-    // "extend-source": the client's tail-trimmed continuation input for video-extend (see
-    // FilmJobService.GenerateOneClipAsync) — fixed name, ignores any client-supplied filename so
-    // the server always finds it at the exact path it expects.
-    string fileName;
-    if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
-        fileName = $"_extend_src_s{scene:D2}c{clip:D2}.mp4";
-    else if (!string.IsNullOrWhiteSpace(file.FileName) && file.FileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-        fileName = Path.GetFileName(file.FileName);
-    else
-        fileName = $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4";
+    var fileName = ChooseUploadDestFileName(kind, file.FileName, scene, clip);
     var destPath = Path.Combine(destDir, fileName);
 
     using (var stream = File.Create(destPath))
@@ -535,6 +493,75 @@ public static partial class SceneClipEndpoints
 
     return Results.Ok(new { ok = true, projectId = id, scene, clip, path = destPath });
 }
+
+    // Catalog-routed stored-file upload. Ok when a file_id is issued; null → on-disk fallback.
+    private static async Task<IResult?> TryUploadExtendSourceAsync(
+        string id, int scene, int clip, double? seconds,
+        IFormFile file, ClipUploadServices svc, CancellationToken ct)
+    {
+        if (svc.Services.GetService(typeof(IVideoClient)) is not IVideoClient video || !video.IsConfigured)
+            return null;
+
+        var cfg = await svc.Store.GetConfigAsync(id, ct).ConfigureAwait(false);
+        var modelId = CatalogApiKey.ResolveVideoModel(null, ProjectModelSelection.TryVideo(cfg));
+        var providerId = CatalogApiKey.ProviderIdForVideo(modelId);
+        if (string.IsNullOrWhiteSpace(modelId))
+            return null;
+
+        var keys = svc.Services.GetService(typeof(IUserApiKeyProvider)) as IUserApiKeyProvider;
+        var user = svc.Services.GetService(typeof(IUserContext)) as IUserContext;
+        var key = await CatalogApiKey.GetKeyAsync(keys, user?.UserId, providerId, ct).ConfigureAwait(false);
+        using (CatalogApiKey.PushKey(providerId, key))
+        using (UserApiCallScope.Push(user?.UserId))
+        {
+            await using var src = file.OpenReadStream();
+            var fileId = await video.TryUploadVideoStreamAsync(
+                src, $"extend_src_s{scene:D2}c{clip:D2}.mp4", modelId, ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(fileId))
+                return null;
+
+            var projectDir = await svc.Store.GetProjectDirAsync(id, ct).ConfigureAwait(false);
+            await WriteExtendSourceMarkerAsync(projectDir, scene, clip, fileId, seconds, file.Length, ct)
+                .ConfigureAwait(false);
+            return Results.Ok(new { ok = true, projectId = id, scene, clip, fileId, seconds });
+        }
+    }
+
+    private static async Task WriteExtendSourceMarkerAsync(
+        string projectDir, int scene, int clip, string fileId, double? seconds, long bytes, CancellationToken ct)
+    {
+        var markerDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+        Directory.CreateDirectory(markerDir);
+        var marker = Path.Combine(markerDir, FilmJobService.ExtendSourceMarkerName(scene, clip));
+        await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            file_id = fileId,
+            duration_seconds = seconds,
+            uploaded_utc = DateTime.UtcNow.ToString("o"),
+            bytes,
+        }), ct).ConfigureAwait(false);
+        TryDeleteIfExists(Path.Combine(markerDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4"));
+    }
+
+    private static void TryDeleteIfExists(string path)
+    {
+        if (!File.Exists(path))
+            return;
+        try { File.Delete(path); }
+        catch { /* best effort */ }
+    }
+
+    // "extend-source": the client's tail-trimmed continuation input for video-extend (see
+    // FilmJobService.GenerateOneClipAsync) — fixed name, ignores any client-supplied filename so
+    // the server always finds it at the exact path it expects.
+    private static string ChooseUploadDestFileName(string? kind, string? uploadedFileName, int scene, int clip)
+    {
+        if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
+            return $"_extend_src_s{scene:D2}c{clip:D2}.mp4";
+        if (!string.IsNullOrWhiteSpace(uploadedFileName) && uploadedFileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+            return Path.GetFileName(uploadedFileName);
+        return $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4";
+    }
 
     private static async Task<IResult> PostProjectsIdScenesSceneClipsClipAutoReviewApply(string id, int scene, int clip, ApplyClipAutoReviewRequest? body, ClipAutoReviewService reviews, CancellationToken ct)
     {
