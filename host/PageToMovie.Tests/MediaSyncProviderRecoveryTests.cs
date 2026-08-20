@@ -337,8 +337,8 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         Assert.Contains("500", warning, StringComparison.Ordinal);
         Assert.Contains("Failed to retrieve file", warning, StringComparison.Ordinal);
         Assert.Equal(
-            MediaProxyHeaders.RecoveredViaSourceUrlStatus(warning),
-            "recovered via source_url after file content HTTP 500");
+            "recovered via source_url after file content HTTP 500",
+            MediaProxyHeaders.RecoveredViaSourceUrlStatus(warning));
     }
 
     [Fact]

@@ -310,7 +310,7 @@ public class CombinedExtendRecoveryTests
             RelativePath = C1,
             FileName = Path.GetFileName(C1),
             IsMp4 = true,
-            StreamUrl = ProviderUrl,
+            StreamUrl = "https://files.x.ai/p/public.mp4",
             ProviderRecovery = true,
         });
 
