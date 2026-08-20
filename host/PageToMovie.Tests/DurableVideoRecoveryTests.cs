@@ -19,7 +19,8 @@ public sealed class DurableVideoRecoveryTests
         var opts = GrokVideoClient.PermanentVideoStorageOptions();
         Assert.True(opts.ContainsKey("filename"));
         Assert.False(string.IsNullOrWhiteSpace(opts["filename"] as string));
-        Assert.Equal(true, opts["public_url"]);
+        // S2701: do not Assert.Equal(true, object). `is true` still requires boxed bool true.
+        Assert.True(opts["public_url"] is true);
         Assert.False(opts.ContainsKey("expires_after"));
     }
 
