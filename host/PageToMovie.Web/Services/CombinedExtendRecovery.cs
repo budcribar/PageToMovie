@@ -5,11 +5,13 @@ using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Services;
 
 /// <summary>
-/// Combined video-extend recovery. Each sidecar hop is one previous clip:
-/// <c>provider_lead_in_seconds</c> is how much of THIS file is the previous clip.
-/// Walk backward: save the tail as the current clip, then if the extracted head's
-/// sidecar also has lead-in &gt; 0.1 and the head is longer than that hop, split
-/// again (clip-2 tail + clip-1 head). Never save a combined file as a clip.
+/// Combined video-extend recovery. When extend is chained from the combined
+/// provider file, clip N's copy is clip-1+…+N (C3 = C1+C2+C3). Each sidecar
+/// hop is one previous clip: <c>provider_lead_in_seconds</c> is how much of
+/// THIS file is the previous clip (for C3 that is the full C1+C2 chain).
+/// Walk backward: save the tail as the current clip, then peel the next hop
+/// from the head (C2 tail + C1 head). A sliced C2 hop stops the walk — C1
+/// is not in that C3. Never save a combined file as a clip.
 /// </summary>
 internal static class CombinedExtendRecovery
 {
@@ -30,9 +32,11 @@ internal static class CombinedExtendRecovery
         durationSeconds > leadInSeconds + CombinedLeadInThresholdSeconds;
 
     /// <summary>
-    /// Predecessor hops that still apply to this file's head. Each sidecar is one hop;
-    /// stop when the remaining head is no longer than that hop (sliced C2: C1 is not in C3).
-    /// <paramref name="predecessorSidecarLeadIns"/> is clip-1, then clip-2, … raw sidecar values.
+    /// Predecessor hops that still apply to this file's head. Peel the largest sidecar
+    /// hop that is still strictly inside the remaining head (nearest previous clip), then
+    /// repeat. Order of <paramref name="predecessorSidecarLeadIns"/> does not matter.
+    /// A sliced C2 hop (head ≈ that hop) stops — C1 is not in that C3. A full previous
+    /// chain (C3 lead-in = C1+C2) walks C2's hop and splits C1 out of the head.
     /// </summary>
     internal static IReadOnlyList<double> PlanPredecessorHops(
         double currentLeadInSeconds, IEnumerable<double>? predecessorSidecarLeadIns)
@@ -41,13 +45,26 @@ internal static class CombinedExtendRecovery
         if (predecessorSidecarLeadIns is null || !IsCombined(currentLeadInSeconds))
             return planned;
 
+        var remaining = predecessorSidecarLeadIns.Where(IsCombined).ToList();
         var remainingHead = currentLeadInSeconds;
-        foreach (var prevLead in predecessorSidecarLeadIns)
+        while (remaining.Count > 0)
         {
-            if (!IsCombined(prevLead) || !IsLocalDurationCombined(remainingHead, prevLead))
+            var idx = -1;
+            var best = 0.0;
+            for (var i = 0; i < remaining.Count; i++)
+            {
+                var hop = remaining[i];
+                if (IsLocalDurationCombined(remainingHead, hop) && hop >= best)
+                {
+                    best = hop;
+                    idx = i;
+                }
+            }
+            if (idx < 0)
                 break;
-            planned.Add(prevLead);
-            remainingHead = prevLead;
+            planned.Add(best);
+            remaining.RemoveAt(idx);
+            remainingHead = best;
         }
         return planned;
     }

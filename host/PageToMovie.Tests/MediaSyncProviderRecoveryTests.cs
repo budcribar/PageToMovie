@@ -124,6 +124,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
 
         var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
         Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
+        // Nearest previous first: C2's hop (C1). Client hop-walk peels C1 from the C1+C2 head.
         Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
     }
 }

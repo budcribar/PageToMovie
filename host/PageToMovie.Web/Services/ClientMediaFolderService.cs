@@ -1046,9 +1046,10 @@ public sealed class ClientMediaFolderService
 
     /// <summary>
     /// Combined video-extend recovery: save the new tail as this clip (never the raw combined
-    /// file) and walk backward through sidecar hops. Each hop's lead-in is how much of THAT
-    /// file is the previous clip. Prefers a local combined file; falls back to the provider URL.
-    /// A failed hop leaves that clip missing — it does not overwrite a standalone clip.
+    /// file) and hop-walk the head. Chained extend from a combined provider file makes C3
+    /// = C1+C2+C3; each hop's lead-in is how much of THAT file is the previous clip.
+    /// Prefers a local combined file; falls back to the provider URL. A failed hop leaves
+    /// that clip missing — it does not overwrite a standalone clip.
     /// </summary>
     private async Task<bool> TrySaveCombinedExtendRecoveryAsync(string projectId, ProjectMediaSyncFile file)
     {

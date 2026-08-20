@@ -86,11 +86,11 @@ public static class MediaEndpoints
     /// <summary>One provider-recovery row in the media sync list (serialized camelCase alongside
     /// the regular anonymous entries). <c>ProviderRecovery</c> tells the client to download only
     /// when the clip is missing locally — size/hash are unknown until the provider copy lands.
-    /// <c>ProviderLeadInSeconds</c> &gt; 0 marks a combined video-extend copy: its head repeats
-    /// the previous clip. The client slices the new tail out as this clip and, when the previous
-    /// clip is missing locally, also saves the head as that previous clip (the API host never
-    /// trims). <c>PredecessorLeadInSeconds</c> is clip-1, then clip-2, … sidecar hops so the
-    /// client can walk a leftover unsliced chain (C3 head = C1+C2).</summary>
+    /// <c>ProviderLeadInSeconds</c> &gt; 0 marks a combined video-extend copy: its head is the
+    /// previous clip (or the full previous chain when extend was chained from a combined file —
+    /// C3 = C1+C2+C3). The client slices the new tail out as this clip and hop-walks the head
+    /// to recover missing previous clips (the API host never trims).
+    /// <c>PredecessorLeadInSeconds</c> is nearest previous first (C2, then C1, …).</summary>
     public sealed record ProviderRecoverySyncEntry(
         string RelativePath, string FileName, long SizeBytes, string? Sha256,
         bool IsMp4, string StreamUrl, bool ProviderRecovery, double ProviderLeadInSeconds,
@@ -151,8 +151,10 @@ public static class MediaEndpoints
     }
 
     /// <summary>
-    /// Sidecar lead-ins walking backward from clip-1. Each value is one hop (how much of
-    /// that file is the previous clip). Stops at the first non-combined sidecar.
+    /// Combined-sidecar lead-ins nearest-previous first (clip-1 of current, then older).
+    /// Each value is one hop — how much of that file is its previous clip. Stops at the
+    /// first non-combined sidecar. The client plans which hops still apply to this file's
+    /// head (full C1+C2 chain walks; a sliced C2 hop does not put C1 in C3).
     /// </summary>
     public static List<double> CollectPredecessorLeadIns(string videoDir, int scene, int clip)
     {

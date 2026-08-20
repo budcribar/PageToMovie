@@ -5440,13 +5440,14 @@ public sealed class ProjectMediaSyncFile
     /// <summary>The server has no bytes for this clip — StreamUrl proxies the provider copy named
     /// by its sidecar. Download only when the file is missing locally (size/hash are unknown).</summary>
     public bool ProviderRecovery { get; set; }
-    /// <summary>&gt; 0 on a combined video-extend provider copy: its head repeats the previous
-    /// clip. The new tail is sliced out as this clip; a missing previous clip (same scene,
-    /// clip-1) is recovered from the head when possible.</summary>
+    /// <summary>&gt; 0 on a combined video-extend provider copy: its head is the previous clip
+    /// or the full previous chain (C3 = C1+C2+C3 when extend was chained from the combined
+    /// file). The new tail is sliced out as this clip; hop-walk recovers missing previous
+    /// clips from the head.</summary>
     public double ProviderLeadInSeconds { get; set; }
-    /// <summary>Sidecar lead-ins walking backward from clip-1, then clip-2, … Each value is
-    /// how much of THAT file is its previous clip. The client plans which hops still apply
-    /// to this file's head (sliced C2: C1 is not in C3).</summary>
+    /// <summary>Combined-sidecar hops, nearest previous first (C2, then C1, …). Each value
+    /// is how much of THAT file is its previous clip. The client plans which hops still
+    /// apply to this file's head (full C1+C2 chain walks; sliced C2 does not put C1 in C3).</summary>
     public List<double> PredecessorLeadInSeconds { get; set; } = new();
 }
 
