@@ -10,15 +10,16 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Combined video-extend recovery: clip N's provider/local copy is previous + new tail.
-/// Sync must write the tail as the current clip and, when clip-1 is missing, the head as
-/// that previous clip — never the raw combined file as the current clip.
+/// Combined video-extend recovery: each sidecar hop is one previous clip. Sync writes the
+/// tail as the current clip and walks backward when a leftover unsliced head still contains
+/// earlier clips — never the raw combined file as a clip.
 /// </summary>
 public class CombinedExtendRecoveryTests
 {
     private const string ProjectId = "Mary19";
     private const string C1 = "assets/video/scene_01_clip_01.mp4";
     private const string C2 = "assets/video/scene_01_clip_02.mp4";
+    private const string C3 = "assets/video/scene_01_clip_03.mp4";
     private const string ProviderUrl = "/api/media/proxy/tok-combined";
 
     [Fact]
@@ -26,8 +27,24 @@ public class CombinedExtendRecoveryTests
     {
         Assert.True(CombinedExtendRecovery.TryGetPreviousClipRelativePath(C2, out var prev));
         Assert.Equal(C1, prev);
+        Assert.True(CombinedExtendRecovery.TryGetNthPreviousClipRelativePath(C3, 2, out var c1));
+        Assert.Equal(C1, c1);
         Assert.False(CombinedExtendRecovery.TryGetPreviousClipRelativePath(C1, out _));
-        Assert.False(CombinedExtendRecovery.TryGetPreviousClipRelativePath("assets/music/scene_01_seg_01.wav", out _));
+    }
+
+    [Fact]
+    public void PlanPredecessorHops_sliced_C2_does_not_put_C1_in_C3()
+    {
+        // C3.leadIn is only sliced C2 (5.0); C2 sidecar still has C1's 4.9 hop.
+        var hops = CombinedExtendRecovery.PlanPredecessorHops(5.0, new[] { 4.9 });
+        Assert.Empty(hops);
+    }
+
+    [Fact]
+    public void PlanPredecessorHops_unsliced_C2_walks_C1_plus_C2()
+    {
+        var hops = CombinedExtendRecovery.PlanPredecessorHops(9.8, new[] { 4.9 });
+        Assert.Equal(new[] { 4.9 }, hops);
     }
 
     [Fact]
@@ -39,28 +56,65 @@ public class CombinedExtendRecoveryTests
     }
 
     [Fact]
-    public async Task C1_missing_and_combined_C2_writes_both()
+    public async Task C2_combined_writes_C1_head_and_C2_tail()
     {
-        var (svc, js) = await ConnectAsync();
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
 
-        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedC2());
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
 
         Assert.True(n);
-        Assert.True(js.SavedClip(C2, "blob:tail"));
-        Assert.True(js.SavedClip(C1, "blob:head"));
+        Assert.True(js.SavedRelative(C2));
+        Assert.True(js.SavedRelative(C1));
+        Assert.True(js.SavedFromTail(C2));
+        Assert.True(js.SavedFromHead(C1));
         Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+    }
+
+    [Fact]
+    public async Task C3_after_sliced_C2_writes_C2_only_C1_is_not_in_C3()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C3, leadIn: 5.0, predecessors: [4.9]));
+
+        Assert.True(n);
+        Assert.True(js.SavedRelative(C3));
+        Assert.True(js.SavedRelative(C2));
+        Assert.True(js.SavedFromTail(C3));
+        Assert.True(js.SavedFromHead(C2));
+        Assert.False(js.SavedRelative(C1));
+        Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+    }
+
+    [Fact]
+    public async Task C3_after_unsliced_C2_splits_head_using_C2_sidecar()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 14.8);
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C3, leadIn: 9.8, predecessors: [4.9]));
+
+        Assert.True(n);
+        Assert.True(js.SavedRelative(C3));
+        Assert.True(js.SavedRelative(C2));
+        Assert.True(js.SavedRelative(C1));
+        Assert.True(js.SavedFromTail(C3));
+        Assert.True(js.SavedFromTail(C2));
+        Assert.True(js.SavedFromHead(C1));
+        Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+        Assert.DoesNotContain(js.Saves, s =>
+            s.Path.Contains("clip_02", StringComparison.Ordinal) && s.Url.StartsWith("blob:head:", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task C1_present_is_not_overwritten()
     {
-        var (svc, js) = await ConnectAsync();
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
         js.LocalFiles.Add(C1);
 
-        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedC2());
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
 
         Assert.True(n);
-        Assert.True(js.SavedClip(C2, "blob:tail"));
+        Assert.True(js.SavedFromTail(C2));
         Assert.False(js.SavedRelative(C1));
         Assert.Contains(C1, js.LocalFiles);
     }
@@ -68,10 +122,10 @@ public class CombinedExtendRecoveryTests
     [Fact]
     public async Task Provider_404_with_no_local_combined_leaves_C1_missing()
     {
-        var (svc, js) = await ConnectAsync();
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
         js.ProviderUnavailable = true;
 
-        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedC2());
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
 
         Assert.False(n);
         Assert.False(js.SavedRelative(C1));
@@ -82,37 +136,39 @@ public class CombinedExtendRecoveryTests
     [Fact]
     public async Task Local_combined_C2_is_preferred_over_provider()
     {
-        var (svc, js) = await ConnectAsync();
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
         js.CombinedLocalFiles.Add(C2);
-        js.ProviderUnavailable = true; // provider must not be required
+        js.SetDuration("blob:local-combined/" + C2, 10);
+        js.ProviderUnavailable = true;
 
-        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedC2());
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
 
         Assert.True(n);
-        Assert.True(js.SavedClip(C2, "blob:tail"));
-        Assert.True(js.SavedClip(C1, "blob:head"));
+        Assert.True(js.SavedFromTail(C2));
+        Assert.True(js.SavedFromHead(C1));
         Assert.Contains(js.TrimSources, u => u.StartsWith("blob:local-combined/", StringComparison.Ordinal));
         Assert.DoesNotContain(js.TrimSources, u =>
             u.Contains("/api/media/proxy/", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static ProjectMediaSyncFile CombinedC2() => new()
+    private static ProjectMediaSyncFile CombinedClip(string relativePath, double leadIn, double[]? predecessors = null) => new()
     {
-        RelativePath = C2,
-        FileName = "scene_01_clip_02.mp4",
+        RelativePath = relativePath,
+        FileName = Path.GetFileName(relativePath),
         IsMp4 = true,
         StreamUrl = ProviderUrl,
         ProviderRecovery = true,
-        ProviderLeadInSeconds = 4.9,
+        ProviderLeadInSeconds = leadIn,
+        PredecessorLeadInSeconds = predecessors?.ToList() ?? new List<double>(),
     };
 
     private static bool IsCombinedSource(string url) =>
         url.Contains("/api/media/proxy/", StringComparison.OrdinalIgnoreCase)
         || url.StartsWith("blob:local-combined/", StringComparison.Ordinal);
 
-    private static async Task<(ClientMediaFolderService Svc, RecoveryJsRuntime Js)> ConnectAsync()
+    private static async Task<(ClientMediaFolderService Svc, RecoveryJsRuntime Js)> ConnectAsync(double providerDuration)
     {
-        var js = new RecoveryJsRuntime();
+        var js = new RecoveryJsRuntime { ProviderDurationSeconds = providerDuration };
         var http = new HttpClient(new StubHandler()) { BaseAddress = new Uri("http://localhost") };
         var api = new EngineApiClient(http);
         var hub = new JobHubClient(Options.Create(new EngineApiOptions()));
@@ -120,8 +176,6 @@ public class CombinedExtendRecoveryTests
         {
             AutoSyncOnLogin = false,
         };
-        // FolderName/FullPath is enough for IsConnected — skip ConnectFolderAsync so tests
-        // do not open a SignalR hub.
         await svc.SetFullPathAsync("/tmp/media");
         return (svc, js);
     }
@@ -142,15 +196,24 @@ public class CombinedExtendRecoveryTests
         public List<(string Url, string Path)> Saves { get; } = new();
         public List<string> TrimSources { get; } = new();
         public bool ProviderUnavailable { get; set; }
+        public double ProviderDurationSeconds { get; set; } = 10;
+        private readonly Dictionary<string, double> _durations = new(StringComparer.Ordinal);
+        private int _trimSeq;
+
+        public void SetDuration(string url, double seconds) => _durations[url] = seconds;
 
         public bool SavedRelative(string relativePath) =>
-            Saves.Any(s => s.Path.EndsWith("/" + relativePath, StringComparison.OrdinalIgnoreCase)
-                           || s.Path.Equals(relativePath, StringComparison.OrdinalIgnoreCase));
+            Saves.Any(s => PathEndsWith(s.Path, relativePath));
 
-        public bool SavedClip(string relativePath, string url) =>
-            Saves.Any(s => s.Url == url
-                           && (s.Path.EndsWith("/" + relativePath, StringComparison.OrdinalIgnoreCase)
-                               || s.Path.Equals(relativePath, StringComparison.OrdinalIgnoreCase)));
+        public bool SavedFromTail(string relativePath) =>
+            Saves.Any(s => PathEndsWith(s.Path, relativePath) && s.Url.StartsWith("blob:tail:", StringComparison.Ordinal));
+
+        public bool SavedFromHead(string relativePath) =>
+            Saves.Any(s => PathEndsWith(s.Path, relativePath) && s.Url.StartsWith("blob:head:", StringComparison.Ordinal));
+
+        private static bool PathEndsWith(string path, string relativePath) =>
+            path.EndsWith("/" + relativePath, StringComparison.OrdinalIgnoreCase)
+            || path.Equals(relativePath, StringComparison.OrdinalIgnoreCase);
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
             => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -199,7 +262,10 @@ public class CombinedExtendRecoveryTests
                 TrimSources.Add(url);
                 if (IsUnavailable(url))
                     return """{"success":false,"error":"HTTP 404"}""";
-                var blob = identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) ? "blob:head" : "blob:tail";
+                var keep = args.Length > 1 && double.TryParse(args[1]?.ToString(), out var k) ? k : 1;
+                var kind = identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) ? "head" : "tail";
+                var blob = $"blob:{kind}:{++_trimSeq}";
+                _durations[blob] = keep;
                 return $"{{\"success\":true,\"url\":\"{blob}\"}}";
             }
 
@@ -224,6 +290,8 @@ public class CombinedExtendRecoveryTests
 
         private string Probe(string url)
         {
+            if (_durations.TryGetValue(url, out var mapped))
+                return $"{{\"success\":true,\"seconds\":{mapped.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}";
             if (url.StartsWith("blob:local-combined/", StringComparison.Ordinal))
                 return """{"success":true,"seconds":10}""";
             if (url.StartsWith("blob:local/", StringComparison.Ordinal))
@@ -232,7 +300,7 @@ public class CombinedExtendRecoveryTests
             {
                 return ProviderUnavailable
                     ? """{"success":false,"error":"HTTP 404"}"""
-                    : """{"success":true,"seconds":10}""";
+                    : $"{{\"success\":true,\"seconds\":{ProviderDurationSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}";
             }
             return """{"success":false}""";
         }

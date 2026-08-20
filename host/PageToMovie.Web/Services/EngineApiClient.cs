@@ -5444,6 +5444,10 @@ public sealed class ProjectMediaSyncFile
     /// clip. The new tail is sliced out as this clip; a missing previous clip (same scene,
     /// clip-1) is recovered from the head when possible.</summary>
     public double ProviderLeadInSeconds { get; set; }
+    /// <summary>Sidecar lead-ins walking backward from clip-1, then clip-2, … Each value is
+    /// how much of THAT file is its previous clip. The client plans which hops still apply
+    /// to this file's head (sliced C2: C1 is not in C3).</summary>
+    public List<double> PredecessorLeadInSeconds { get; set; } = new();
 }
 
 public sealed class ModelsCatalogResponse

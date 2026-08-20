@@ -982,8 +982,7 @@ public sealed class ClientMediaFolderService
             // Combined extend: even when this clip is already local, a missing previous clip
             // (same scene, clip-1) can still be split out of the combined head.
             if (CombinedExtendRecovery.IsCombined(file.ProviderLeadInSeconds)
-                && CombinedExtendRecovery.TryGetPreviousClipRelativePath(file.RelativePath, out var prevPath)
-                && !await HasPlayableLocalClipAsync(projectId, prevPath))
+                && await AnyPredecessorClipMissingAsync(projectId, file))
                 return "previous clip missing — split from combined extend";
             return null;
         }
@@ -1045,52 +1044,113 @@ public sealed class ClientMediaFolderService
 
     /// <summary>
     /// Combined video-extend recovery: save the new tail as this clip (never the raw combined
-    /// file) and, when the previous clip in the same scene is missing locally, save the head
-    /// as that previous clip. Prefers a local combined file; falls back to the provider URL.
-    /// A failed head split leaves the previous clip missing — it does not overwrite one that
-    /// is already playable.
+    /// file) and walk backward through sidecar hops. Each hop's lead-in is how much of THAT
+    /// file is the previous clip. Prefers a local combined file; falls back to the provider URL.
+    /// A failed hop leaves that clip missing — it does not overwrite a standalone clip.
     /// </summary>
     private async Task<bool> TrySaveCombinedExtendRecoveryAsync(string projectId, ProjectMediaSyncFile file)
     {
         string? localCombinedUrl = null;
-        string? tailUrl = null;
-        string? headUrl = null;
-        var savedAny = false;
+        var revoke = new List<string>();
         try
         {
             localCombinedUrl = await TryGetLocalCombinedUrlAsync(
                 projectId, file.RelativePath, file.ProviderLeadInSeconds);
+            if (localCombinedUrl is not null)
+                revoke.Add(localCombinedUrl);
             var combinedUrl = CombinedExtendRecovery.PreferCombinedSource(localCombinedUrl, file.StreamUrl);
             if (string.IsNullOrWhiteSpace(combinedUrl))
                 return false;
 
-            var currentPlayable = await HasPlayableLocalClipAsync(projectId, file.RelativePath);
-            var localIsCombined = localCombinedUrl is not null;
-            if (!currentPlayable || localIsCombined)
-            {
-                tailUrl = await SliceCombinedProviderVideoAsync(
-                    combinedUrl, file.ProviderLeadInSeconds, file.RelativePath);
-                // Never save the combined file as the current clip — only the sliced tail.
-                if (tailUrl is not null)
-                    savedAny |= await SaveSyncedClipFromUrlAsync(projectId, file.RelativePath, tailUrl, isMp4: true);
-            }
-
-            if (CombinedExtendRecovery.TryGetPreviousClipRelativePath(file.RelativePath, out var prevPath)
-                && !await HasPlayableLocalClipAsync(projectId, prevPath))
-            {
-                headUrl = await SliceCombinedHeadAsync(combinedUrl, file.ProviderLeadInSeconds, prevPath);
-                if (headUrl is not null)
-                    savedAny |= await SaveSyncedClipFromUrlAsync(projectId, prevPath, headUrl, isMp4: true);
-            }
-
-            return savedAny;
+            var hops = CombinedExtendRecovery.PlanPredecessorHops(
+                file.ProviderLeadInSeconds, file.PredecessorLeadInSeconds);
+            return await SplitCombinedHopsAsync(
+                projectId, combinedUrl, file.RelativePath, file.ProviderLeadInSeconds, hops, revoke);
         }
         finally
         {
-            await RevokeBlobIfAnyAsync(tailUrl);
-            await RevokeBlobIfAnyAsync(headUrl);
-            await RevokeBlobIfAnyAsync(localCombinedUrl);
+            foreach (var url in revoke)
+                await RevokeBlobIfAnyAsync(url);
         }
+    }
+
+    private async Task<bool> SplitCombinedHopsAsync(
+        string projectId,
+        string combinedUrl,
+        string relativePath,
+        double leadInSec,
+        IReadOnlyList<double> remainingHops,
+        List<string> revoke)
+    {
+        var savedAny = false;
+        var currentPlayable = await HasPlayableLocalClipAsync(projectId, relativePath);
+        var localCombined = await IsLocalFileCombinedDurationAsync(projectId, relativePath, leadInSec);
+        if (!currentPlayable || localCombined)
+        {
+            var tailUrl = await SliceCombinedProviderVideoAsync(combinedUrl, leadInSec, relativePath);
+            if (tailUrl is not null)
+            {
+                revoke.Add(tailUrl);
+                // Never save the combined file as the current clip — only the sliced tail.
+                savedAny |= await SaveSyncedClipFromUrlAsync(projectId, relativePath, tailUrl, isMp4: true);
+            }
+        }
+
+        if (!CombinedExtendRecovery.TryGetPreviousClipRelativePath(relativePath, out var prevPath))
+            return savedAny;
+
+        var headUrl = await SliceCombinedHeadAsync(combinedUrl, leadInSec, prevPath);
+        if (headUrl is null)
+            return savedAny;
+        revoke.Add(headUrl);
+
+        var nextLead = remainingHops.Count > 0 ? remainingHops[0] : 0;
+        if (CombinedExtendRecovery.IsCombined(nextLead) && await HeadDurationIsCombinedAsync(headUrl, nextLead))
+        {
+            var rest = remainingHops.Skip(1).ToList();
+            savedAny |= await SplitCombinedHopsAsync(projectId, headUrl, prevPath, nextLead, rest, revoke);
+            return savedAny;
+        }
+
+        if (!await HasPlayableLocalClipAsync(projectId, prevPath))
+            savedAny |= await SaveSyncedClipFromUrlAsync(projectId, prevPath, headUrl, isMp4: true);
+        return savedAny;
+    }
+
+    private async Task<bool> AnyPredecessorClipMissingAsync(string projectId, ProjectMediaSyncFile file)
+    {
+        var hops = CombinedExtendRecovery.PlanPredecessorHops(
+            file.ProviderLeadInSeconds, file.PredecessorLeadInSeconds);
+        var steps = 1 + hops.Count;
+        for (var i = 1; i <= steps; i++)
+        {
+            if (CombinedExtendRecovery.TryGetNthPreviousClipRelativePath(file.RelativePath, i, out var prev)
+                && !await HasPlayableLocalClipAsync(projectId, prev))
+                return true;
+        }
+        return false;
+    }
+
+    private async Task<bool> IsLocalFileCombinedDurationAsync(string projectId, string relativePath, double leadInSec)
+    {
+        var url = await GetLocalBlobUrlAsync(projectId, relativePath);
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        try
+        {
+            return await HeadDurationIsCombinedAsync(url, leadInSec);
+        }
+        finally
+        {
+            await RevokeBlobIfAnyAsync(url);
+        }
+    }
+
+    private async Task<bool> HeadDurationIsCombinedAsync(string url, double leadInSec)
+    {
+        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        return probe is { Success: true, Seconds: var s }
+               && CombinedExtendRecovery.IsLocalDurationCombined(s, leadInSec);
     }
 
     private async Task<string?> TryGetLocalCombinedUrlAsync(string projectId, string relativePath, double leadInSec)
