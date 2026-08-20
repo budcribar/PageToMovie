@@ -26,6 +26,9 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | 12 | PageSweepTests.Locations_and_dialogue_timing_pages_work_on_a_generated_project | Locations index/plate state/unused toggle + Dialogue-Timing scene pick → analyze | ✅ |
 | 13 | PageSweepTests.Screenplay_outline_drag_reorders_scenes_and_persists | Screenplay outline drag-reorder + autosave persistence across reload | ✅ |
 
+| 14 | PageSmokeTests (+7 routes) | /locations, /dialogue-timing, /simple-revoice, /simple-voice, /cost/breakdown, /account/costs, /about hydrate without console errors | ✅ |
+| 15 | VoiceLockConsistencyTests.Film_page_cast_lock_tracks_narrator_voice_profile_edits | Regression guard for the 2026-08-19 live bug: Film-page cast lock follows narrator voice-profile edits in both directions (sexless profile unlocks, pinned sex+age re-locks) | ✅ |
+
 ## Bugs found (and status)
 
 | # | Bug | Found by | Status |
@@ -41,13 +44,13 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 
 ## Still to cover (planned)
 
-- Two users on ONE project through real dual browsers (lease handoff in the UI, second editor sees
-  the lock chip, edits after release). MultiUserLeaseUiTests covers the API layer already.
-- Screenplay editor depth: add/insert/delete scene, beat add/delete/reorder, location modal,
-  character dropdown, transitions.
-- Locations page (lock/unlock, plate generation) — currently zero coverage.
-- Characters: voice picking, wardrobe/style override interplay (partial coverage exists).
+- ~~Two users on ONE project~~ ✅ (#11) · ~~Locations page~~ ✅ (#12) · ~~Dialogue-timing~~ ✅ (#12)
+  · ~~Screenplay outline reorder~~ ✅ (#13) · ~~revoice/voice/cost page smoke~~ ✅ (#14)
+  · ~~voice-lock consistency~~ ✅ (#15)
+- Screenplay editor depth: beat add/delete/reorder, location modal, character dropdown, transitions.
+- Characters: pick-a-voice through the UI controls (API-level covered by #15), style override
+  interplay (StyleOverrideTests covers the gate itself).
 - Configuration page: remaining fields (a known-failing 9:16 autosave test predates this campaign).
-- Dialogue-timing page, simple-voice / revoice pages: smoke + core flow.
+- Locations: generate-new-looks + lock-variant flow (index/plate display covered by #12).
 - Final-movie stitch (ffmpeg.wasm in Playwright) — Play tab reachability covered; the actual
   stitched download is client-heavy, evaluate feasibility.

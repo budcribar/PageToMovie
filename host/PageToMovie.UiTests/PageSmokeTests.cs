@@ -22,6 +22,13 @@ public class PageSmokeTests
     [InlineData("/cost")]
     [InlineData("/adaptation")]
     [InlineData("/demo")]
+    [InlineData("/locations")]
+    [InlineData("/dialogue-timing")]
+    [InlineData("/simple-revoice")]
+    [InlineData("/simple-voice")]
+    [InlineData("/cost/breakdown")]
+    [InlineData("/account/costs")]
+    [InlineData("/about")]
     public async Task Page_hydrates_without_unexpected_console_errors(string route)
     {
         var (ctx, page) = await _fx.NewPageAsync();
