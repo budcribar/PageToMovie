@@ -190,8 +190,25 @@ public partial class Review
         }
 
 
+        /// <summary>Same-scene click closes the clip-review card (Clips link / S-badge toggle).</summary>
+        internal static int? ToggleSelectedScene(int? current, int scene) =>
+            current == scene ? null : scene;
+
+        internal void DismissClipReview()
+        {
+            _selectedScene = null;
+            _selectedDetail = null;
+            S.AutoReview.CloseApplyPanel();
+        }
+
         internal async Task SelectSceneAsync(int scene)
         {
+            if (ToggleSelectedScene(_selectedScene, scene) is null)
+            {
+                DismissClipReview();
+                return;
+            }
+
             _selectedScene = scene;
             S.AutoReview.CloseApplyPanel();
             await LoadSelectedDetailAsync(scene);

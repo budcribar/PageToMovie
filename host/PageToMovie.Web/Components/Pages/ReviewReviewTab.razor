@@ -195,17 +195,16 @@
 
         @if (list._selectedScene is int sel)
         {
-            <div class="card mt-3">
+            <div class="card mt-3" data-testid="review-clip-review-card">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span>S@(sel.ToString("D2")) clip review</span>
-                    <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-success"
-                                disabled="@(Host._busy || jobs.JobRunning || (list.ClipCountOnDisk(sel) == 0 && !list.SceneHasComposite(sel)))"
-                                title="Play scene (browser stitch from clips)"
-                                @onclick="() => playback.PlaySceneAsync(sel)">
-                            ▶ Play scene
-                        </button>
-                    </div>
+                    <button type="button"
+                            class="btn-close"
+                            aria-label="@L["Common.Close"]"
+                            title="@L["Common.Close"]"
+                            data-testid="review-dismiss-clip-review"
+                            @onclick="list.DismissClipReview">
+                    </button>
                 </div>
                 <div class="card-body">
                     <div class="mb-2">
@@ -357,9 +356,8 @@
                         }
                     </div>
                     <p class="small text-muted mb-0 mt-3">
-                        <strong>Review</strong> drafts AI feedback (includes previous clip end when C2+).
+                        <strong>Review</strong> drafts feedback (includes previous clip end when C2+).
                         <strong>Apply suggestions</strong> shows edits; <strong>Apply + regen</strong> writes them and re-gens.
-                        <strong>Play scene</strong> / <strong>Play WIP</strong> stitch in the browser when needed (no server ffmpeg for preview).
                     </p>
                 </div>
             </div>

@@ -9,7 +9,7 @@ Status: ☐ open · ☑ resolved (with decision).
 
 | # | Status | Action | Primary (keep) | Duplicates — state after the Option B rewrite (2026-08-20) |
 |---|---|---|---|---|
-| 1 | ☐ | Play a scene / selection | Film toolbar "▶ Play selected (N)" | Scene header "▶ Play (N)" (scope ladder — INTENTIONAL pair) · scene detail "Play full scene" (composite preview) · Review tab per-row/detail Play — Review as a second play surface is the remaining question |
+| 1 | ☑ | Play a scene / selection | Film toolbar "▶ Play selected (N)" | Film Play ladder stays (toolbar + scene header "▶ Play (N)" — INTENTIONAL pair). Review Play tab + clip ▶ stay. Clip-review header "Play scene" removed. Scene-row Play (`review-play-scene-{sn}`) is the one scene play on Review. |
 | 2 | ☑ | Play one clip | Clip expansion autoplay (row click) | Per-row "▶ Play C0N" button REMOVED (Option B). Review per-clip ▶ stays (rating context). |
 | 3 | ☑ | Verify dialogue | Toolbar (scene scope) + scene header "🔍 Verify (N)" (clip scope) — the scope ladder | Inspector "Verify Dialogue" button REMOVED with the Option B expansion rewrite. |
 | 4 | ☑ | Regenerate clips | Scene header "↻ Regen (N) selected clips" only | Inspector/expansion "Regen clip" REMOVED (single-clip regen = check it + Regen (1)). |
