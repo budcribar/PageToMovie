@@ -463,10 +463,7 @@ public sealed class ClientMediaFolderService
         {
             // Could not probe, or the file is no longer than its lead-in: saving it unsliced would
             // put the previous clip (footage AND lines) into this one. Fail loudly instead.
-            var probeDetail = probe is { Success: true }
-                ? $"{probe.Seconds:F1}s vs {leadInSec:F1}s lead-in"
-                : (string.IsNullOrWhiteSpace(probe?.Error) ? "failed" : probe.Error);
-            NoteMediaFailure($"Video-extend slice failed for {rel} (duration probe {probeDetail}) — retry the clip.");
+            NoteMediaFailure($"Video-extend slice failed for {rel} (duration probe {FormatDurationProbeDetail(probe, leadInSec)}) — retry the clip.");
             return null;
         }
 
@@ -494,6 +491,17 @@ public sealed class ClientMediaFolderService
             return null;
         }
         return capped.Url;
+    }
+
+    private static string FormatDurationProbeDetail(JsProbeResult? probe, double leadInSec)
+    {
+        if (probe is { Success: true })
+            return $"{probe.Seconds:F1}s vs {leadInSec:F1}s lead-in";
+
+        var error = probe?.Error;
+        if (string.IsNullOrWhiteSpace(error))
+            return "failed";
+        return error;
     }
 
     private readonly record struct PreparedSaveUrl(
