@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
 using Xunit;
 
@@ -204,5 +205,111 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         Assert.Equal("https://vidgen.example/ok.mp4", url);
         Assert.Null(fileId);
         Assert.Equal(url, store.TryTakeUrl(token));
+    }
+
+    [Fact]
+    public void Ticket_store_captures_key_user_from_scope_and_explicit_arg()
+    {
+        var store = new PageToMovie.Engine.MediaProxyTicketStore();
+        using (PageToMovie.Engine.Abstractions.UserApiCallScope.Push("budcribar"))
+        {
+            var scoped = store.Issue("https://vidgen.example/expired.mp4", TimeSpan.FromMinutes(5), "file_live");
+            Assert.True(store.TryTake(scoped, out _, out var fileId, out var keyUserId));
+            Assert.Equal("file_live", fileId);
+            Assert.Equal("budcribar", keyUserId);
+        }
+
+        var explicitTok = store.Issue("", TimeSpan.FromMinutes(5), "file_other", "owner-id");
+        Assert.True(store.TryTake(explicitTok, out _, out _, out var explicitUser));
+        Assert.Equal("owner-id", explicitUser);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_url_404_plus_file_id_streams_via_file_id_opener()
+    {
+        var fileHits = 0;
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://vidgen.example/expired.mp4",
+            "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
+            (_, _) => Task.FromResult<IResult?>(null),
+            (id, _) =>
+            {
+                fileHits++;
+                Assert.Equal("file_1ed4c54f-2edd-485b-8d35-5f31c854132a", id);
+                return Task.FromResult<IResult?>(Results.Bytes(new byte[] { 1, 2, 3, 4 }, "video/mp4"));
+            },
+            CancellationToken.None);
+
+        Assert.Equal(1, fileHits);
+        Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
+        Assert.DoesNotContain("File not found", ErrorOf(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_file_id_opener_failure_is_visible_not_blank_file_not_found()
+    {
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://vidgen.example/expired.mp4",
+            "file_dead",
+            (_, _) => Task.FromResult<IResult?>(null),
+            (_, _) => throw new InvalidOperationException("xAI file content HTTP 401: {\"code\":\"invalid_api_key\"}"),
+            CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status502BadGateway, StatusOf(result));
+        var err = ErrorOf(result);
+        Assert.Contains("Provider file download failed", err, StringComparison.Ordinal);
+        Assert.Contains("401", err, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"File not found\"", err, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_no_file_id_still_says_file_not_found()
+    {
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://vidgen.example/expired.mp4",
+            fileId: null,
+            (_, _) => Task.FromResult<IResult?>(null),
+            (_, _) => Task.FromResult<IResult?>(Results.Bytes(new byte[] { 9 }, "video/mp4")),
+            CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status404NotFound, StatusOf(result));
+        Assert.Contains("File not found", ErrorOf(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ResolveTicketGrokKey_uses_personal_key_for_ticket_user()
+    {
+        var keys = new StubUserKeys { ["budcribar"] = "xai-personal-key" };
+        var grokKey = await MediaEndpoints.ResolveTicketGrokKeyAsync(keys, "budcribar", CancellationToken.None);
+        Assert.Equal("xai-personal-key", grokKey);
+
+        using (PageToMovie.Engine.Abstractions.ApiKeyScope.Push(grokKey))
+        using (PageToMovie.Engine.Abstractions.UserApiCallScope.Push("budcribar"))
+        {
+            Assert.Equal("xai-personal-key", PageToMovie.Engine.Abstractions.ApiKeyScope.Current);
+            Assert.Equal("budcribar", PageToMovie.Engine.Abstractions.UserApiCallScope.UserId);
+        }
+    }
+
+    private static int? StatusOf(IResult result) =>
+        result is IStatusCodeHttpResult s ? s.StatusCode : 200;
+
+    private static string ErrorOf(IResult result)
+    {
+        if (result is IValueHttpResult { Value: { } v })
+            return System.Text.Json.JsonSerializer.Serialize(v);
+        return result.GetType().Name;
+    }
+
+    private sealed class StubUserKeys : PageToMovie.Engine.Abstractions.IUserApiKeyProvider
+    {
+        private readonly Dictionary<string, string> _keys = new(StringComparer.OrdinalIgnoreCase);
+        public string this[string userId] { set => _keys[userId] = value; }
+
+        public Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(userId)) return Task.FromResult<string?>(null);
+            return Task.FromResult(_keys.TryGetValue(userId, out var k) ? k : null);
+        }
     }
 }

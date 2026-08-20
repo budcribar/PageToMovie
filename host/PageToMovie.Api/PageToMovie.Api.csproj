@@ -9,6 +9,9 @@
          client is PageToMovie.Web (Sdk.BlazorWebAssembly). -->
     <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PageToMovie.Tests" />
+  </ItemGroup>
 
   <!-- Microsoft.AspNetCore.OpenApi pulled vulnerable Microsoft.OpenApi 2.0.0 (GHSA-v5pm-xwqc-g5wc).
        We don't use MapOpenApi/Swagger yet, so omit it. When re-adding OpenAPI later, pin

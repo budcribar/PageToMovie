@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
+using PageToMovie.Engine.Abstractions;
 
 namespace PageToMovie.Engine;
 
@@ -413,13 +414,25 @@ public sealed class MediaObjectDto
 /// the file handle is the durable fallback.</summary>
 public sealed class MediaProxyTicketStore
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Url, string? FileId, DateTimeOffset Exp)> _map = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Ticket> _map = new();
 
-    public string Issue(string videoUrl, TimeSpan? ttl = null, string? fileId = null)
+    private readonly record struct Ticket(string Url, string? FileId, string? KeyUserId, DateTimeOffset Exp);
+
+    /// <summary>
+    /// Issue a proxy ticket. <paramref name="keyUserId"/> is the account whose grok key
+    /// owns the Files handle — defaults to <see cref="UserApiCallScope.UserId"/> from the
+    /// authenticated request that listed the clip (media-sync JS fetch has no JWT).
+    /// </summary>
+    public string Issue(string videoUrl, TimeSpan? ttl = null, string? fileId = null, string? keyUserId = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var exp = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(45));
-        _map[token] = (videoUrl, string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(), exp);
+        var owner = string.IsNullOrWhiteSpace(keyUserId) ? UserApiCallScope.UserId : keyUserId.Trim();
+        _map[token] = new Ticket(
+            videoUrl,
+            string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(),
+            string.IsNullOrWhiteSpace(owner) ? null : owner,
+            exp);
         // opportunistic purge
         if (_map.Count > 500)
         {
@@ -433,14 +446,18 @@ public sealed class MediaProxyTicketStore
     }
 
     public string? TryTakeUrl(string token) =>
-        TryTake(token, out var url, out _) ? url : null;
+        TryTake(token, out var url, out _, out _) ? url : null;
 
     /// <summary>Look up a live ticket. <paramref name="url"/> may be empty when the
     /// sidecar only has <c>source_file_id</c>.</summary>
-    public bool TryTake(string token, out string? url, out string? fileId)
+    public bool TryTake(string token, out string? url, out string? fileId) =>
+        TryTake(token, out url, out fileId, out _);
+
+    public bool TryTake(string token, out string? url, out string? fileId, out string? keyUserId)
     {
         url = null;
         fileId = null;
+        keyUserId = null;
         if (!_map.TryGetValue(token, out var e)) return false;
         if (e.Exp < DateTimeOffset.UtcNow)
         {
@@ -449,6 +466,7 @@ public sealed class MediaProxyTicketStore
         }
         url = e.Url;
         fileId = e.FileId;
+        keyUserId = e.KeyUserId;
         return true;
     }
 }
