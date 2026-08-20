@@ -21,20 +21,15 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | 8 | ProjectForkTests.Fork_shares_history_and_sync_origin_merges_disjoint_edits_keeping_identity (unit) | Fork shares git history with parent; disjoint merges clean; project.json pinned to fork | ✅ |
 | 9 | ProjectReorderTests (26 unit tests) | Renumber engine: files/blueprint/sidecars/QA/manifest/registry, scene chunk splitting | ✅ |
 | 10 | InteractionTests (2 updated) | Scene ⋯ menu holds Screenplay drawer + Delete scene | ✅ |
-
-| 11 | TwoUserCollaborationUiTests.Second_editors_scene_lease_shows_in_owners_ui_and_blocks_delete | Two users, one project: editor grant (ACL), bob's scene lease shows in the owner's UI (row 🔒 + detail chip), ⋯-menu Delete scene disabled, server 423, release clears | ✅ |
+ 11 | TwoUserCollaborationUiTests.Second_editors_scene_lease_shows_in_owners_ui_and_blocks_delete | Two users, one project: editor grant (ACL), bob's scene lease shows in the owner's UI (row 🔒 + detail chip), ⋯-menu Delete scene disabled, server 423, release clears | ✅ |
 | 12 | PageSweepTests.Locations_and_dialogue_timing_pages_work_on_a_generated_project | Locations index/plate state/unused toggle + Dialogue-Timing scene pick → analyze | ✅ |
 | 13 | PageSweepTests.Screenplay_outline_drag_reorders_scenes_and_persists | Screenplay outline drag-reorder + autosave persistence across reload | ✅ |
-
-| 14 | PageSmokeTests (+7 routes) | /locations, /dialogue-timing, /simple-revoice, /simple-voice, /cost/breakdown, /account/costs, /about hydrate without console errors | ✅ |
+ 14 | PageSmokeTests (+7 routes) | /locations, /dialogue-timing, /simple-revoice, /simple-voice, /cost/breakdown, /account/costs, /about hydrate without console errors | ✅ |
 | 15 | VoiceLockConsistencyTests.Film_page_cast_lock_tracks_narrator_voice_profile_edits | Regression guard for the 2026-08-19 live bug: Film-page cast lock follows narrator voice-profile edits in both directions (sexless profile unlocks, pinned sex+age re-locks) | ✅ |
-
-| 16 | ScreenplayBeatDepthTests.Add_beat_pick_speaker_type_line_delete_beat_and_persist | Structured editor: add Dialogue beat, cast dropdown speaker pick, line entry, beat delete, autosave persistence across full reload | ✅ |
-
-| 17 | ScreenplayBeatReorderAndLocationTests.Beat_drag_reorder_swaps_rows_and_persists | Beat ⋮⋮ drag-reorder inside a scene card | ✅ |
+ 16 | ScreenplayBeatDepthTests.Add_beat_pick_speaker_type_line_delete_beat_and_persist | Structured editor: add Dialogue beat, cast dropdown speaker pick, line entry, beat delete, autosave persistence across full reload | ✅ |
+ 17 | ScreenplayBeatReorderAndLocationTests.Beat_drag_reorder_swaps_rows_and_persists | Beat ⋮⋮ drag-reorder inside a scene card | ✅ |
 | 18 | ScreenplayBeatReorderAndLocationTests.Scene_card_locations_gear_deep_links_to_locations_page_focused | ⚙ Locations gear → /locations deep-link focus; heading location select change persists to the draft | ✅ |
-
-| 19 | LocationsLookFlowTests.Generate_looks_then_lock_and_switch_preferred_variant | Locations: generate 3 looks (fake image job), lock variant #2, switch preferred to #1 | ✅ |
+ 19 | LocationsLookFlowTests.Generate_looks_then_lock_and_switch_preferred_variant | Locations: generate 3 looks (fake image job), lock variant #2, switch preferred to #1 | ✅ |
 | 20 | LocationsLookFlowTests.Configuration_media_folder_connects_and_reports_name | Configuration storage section: connect media folder, connected-name card renders (fixture stub now names the OPFS handle) | ✅ |
 
 ## Bugs found (and status)
