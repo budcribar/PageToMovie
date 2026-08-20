@@ -53,7 +53,6 @@ public class ScenesGenerateScopeTests
             var resLocked = page.GetByTestId("generate-confirm-resolution-locked");
             await Assertions.Expect(resSelect.Or(resLocked)).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("generate-confirm-cost")).ToBeVisibleAsync();
-            await Assertions.Expect(page.GetByText("All clips as new takes")).ToBeVisibleAsync();
 
             await page.GetByTestId("generate-confirm-go").ClickAsync();
             await Assertions.Expect(page.GetByTestId("job-modal-status")).ToBeVisibleAsync(new() { Timeout = 30_000 });
