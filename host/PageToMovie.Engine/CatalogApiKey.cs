@@ -36,7 +36,9 @@ public static class CatalogApiKey
         if (ProjectModelSelection.IsUsableModelId(projectVideoModel)
             && SupportedModelCatalog.Find(projectVideoModel, ModelCapability.Video) is { Enabled: true } fromProject)
             return fromProject.Id;
-        return ProjectModelSelection.IsUsableModelId(sidecarModel) ? sidecarModel!.Trim() : projectVideoModel?.Trim();
+        if (!string.IsNullOrWhiteSpace(sidecarModel) && ProjectModelSelection.IsUsableModelId(sidecarModel))
+            return sidecarModel.Trim();
+        return projectVideoModel?.Trim();
     }
 
     /// <summary>Read <c>pipeline_config.json</c> <c>model_name</c> from a project directory.</summary>

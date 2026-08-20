@@ -153,11 +153,12 @@ public sealed class DurableVideoRecoveryTests
         var token = store.Issue(
             "https://vidgen.example/expired.mp4",
             TimeSpan.FromMinutes(5),
-            "file_imagine",
-            keyUserId: "owner",
-            projectDir: "/data/projects/Mary19",
-            scene: 1,
-            clip: 1);
+            new MediaProxyTicket(
+                FileId: "file_imagine",
+                KeyUserId: "owner",
+                ProjectDir: "/data/projects/Mary19",
+                Scene: 1,
+                Clip: 1));
         Assert.True(store.TryTake(token, out var url, out var fileId, out var keyUser, out var dir, out var scene, out var clip));
         Assert.Equal("https://vidgen.example/expired.mp4", url);
         Assert.Equal("file_imagine", fileId);

@@ -409,6 +409,19 @@ public sealed class MediaObjectDto
     public string? CreatedAt { get; set; }
 }
 
+/// <summary>
+/// Proxy-ticket payload: issue extras and the live <see cref="MediaProxyTicketStore.TryTake(string, out MediaProxyTicket)"/> result.
+/// </summary>
+public readonly record struct MediaProxyTicket(
+    string? Url = null,
+    string? FileId = null,
+    string? KeyUserId = null,
+    string? ProjectDir = null,
+    int Scene = 0,
+    int Clip = 0,
+    string? ModelId = null,
+    string? ProviderId = null);
+
 /// <summary>Short-lived map of opaque tokens → provider video URL and/or Files API
 /// <c>file_id</c> for client download (CORS-safe proxy). Durable playback is
 /// <c>file_output.public_url</c> (or a Railway fork copy). Files <c>file_id</c> downloads
@@ -423,38 +436,32 @@ public sealed class MediaProxyTicketStore
         string? ModelId, string? ProviderId);
 
     /// <summary>
-    /// Issue a proxy ticket. <paramref name="keyUserId"/> is the account whose catalog-provider
-    /// key owns the Files handle — defaults to <see cref="UserApiCallScope.UserId"/> from the
-    /// authenticated request that listed the clip (media-sync JS fetch has no JWT).
-    /// <paramref name="modelId"/> / <paramref name="providerId"/> are the video model (or its
-    /// catalog provider) so the cookie-only proxy can resolve the same key video gen used.
-    /// <paramref name="projectDir"/> + scene/clip let the proxy serve a Railway fork copy
-    /// or mark <c>.need-fork</c> when the provider file cannot be downloaded.
+    /// Issue a proxy ticket. <see cref="MediaProxyTicket.KeyUserId"/> is the account whose
+    /// catalog-provider key owns the Files handle — defaults to
+    /// <see cref="UserApiCallScope.UserId"/> from the authenticated request that listed the
+    /// clip (media-sync JS fetch has no JWT). <see cref="MediaProxyTicket.ModelId"/> /
+    /// <see cref="MediaProxyTicket.ProviderId"/> are the video model (or its catalog provider)
+    /// so the cookie-only proxy can resolve the same key video gen used.
+    /// <see cref="MediaProxyTicket.ProjectDir"/> + scene/clip let the proxy serve a Railway
+    /// fork copy or mark <c>.need-fork</c> when the provider file cannot be downloaded.
     /// </summary>
-    public string Issue(
-        string videoUrl,
-        TimeSpan? ttl = null,
-        string? fileId = null,
-        string? keyUserId = null,
-        string? projectDir = null,
-        int scene = 0,
-        int clip = 0,
-        string? modelId = null,
-        string? providerId = null)
+    public string Issue(string videoUrl, TimeSpan? ttl = null, MediaProxyTicket extras = default)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var exp = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(45));
-        var owner = string.IsNullOrWhiteSpace(keyUserId) ? UserApiCallScope.UserId : keyUserId.Trim();
+        var owner = string.IsNullOrWhiteSpace(extras.KeyUserId)
+            ? UserApiCallScope.UserId
+            : extras.KeyUserId.Trim();
         _map[token] = new Ticket(
             videoUrl,
-            string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(),
+            string.IsNullOrWhiteSpace(extras.FileId) ? null : extras.FileId.Trim(),
             string.IsNullOrWhiteSpace(owner) ? null : owner,
             exp,
-            string.IsNullOrWhiteSpace(projectDir) ? null : projectDir.Trim(),
-            scene,
-            clip,
-            string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim(),
-            string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim());
+            string.IsNullOrWhiteSpace(extras.ProjectDir) ? null : extras.ProjectDir.Trim(),
+            extras.Scene,
+            extras.Clip,
+            string.IsNullOrWhiteSpace(extras.ModelId) ? null : extras.ModelId.Trim(),
+            string.IsNullOrWhiteSpace(extras.ProviderId) ? null : extras.ProviderId.Trim());
         // opportunistic purge
         if (_map.Count > 500)
         {
@@ -467,60 +474,82 @@ public sealed class MediaProxyTicketStore
         return token;
     }
 
+    /// <summary>Common (url, file_id) issue used by audio/voice tickets.</summary>
+    public string Issue(string videoUrl, TimeSpan? ttl, string? fileId, string? keyUserId = null) =>
+        Issue(videoUrl, ttl, new MediaProxyTicket(FileId: fileId, KeyUserId: keyUserId));
+
     public string? TryTakeUrl(string token) =>
-        TryTake(token, out var url, out _, out _) ? url : null;
+        TryTake(token, out var ticket) ? ticket.Url : null;
 
-    /// <summary>Look up a live ticket. <paramref name="url"/> may be empty when the
-    /// sidecar only has <c>source_file_id</c>.</summary>
-    public bool TryTake(string token, out string? url, out string? fileId) =>
-        TryTake(token, out url, out fileId, out _);
-
-    public bool TryTake(string token, out string? url, out string? fileId, out string? keyUserId) =>
-        TryTake(token, out url, out fileId, out keyUserId, out _, out _, out _, out _, out _);
-
-    public bool TryTake(
-        string token,
-        out string? url,
-        out string? fileId,
-        out string? keyUserId,
-        out string? projectDir,
-        out int scene,
-        out int clip) =>
-        TryTake(token, out url, out fileId, out keyUserId, out projectDir, out scene, out clip, out _, out _);
-
-    public bool TryTake(
-        string token,
-        out string? url,
-        out string? fileId,
-        out string? keyUserId,
-        out string? projectDir,
-        out int scene,
-        out int clip,
-        out string? modelId,
-        out string? providerId)
+    /// <summary>Look up a live ticket. <see cref="MediaProxyTicket.Url"/> may be empty when
+    /// the sidecar only has <c>source_file_id</c>.</summary>
+    public bool TryTake(string token, out MediaProxyTicket ticket)
     {
-        url = null;
-        fileId = null;
-        keyUserId = null;
-        projectDir = null;
-        scene = 0;
-        clip = 0;
-        modelId = null;
-        providerId = null;
+        ticket = default;
         if (!_map.TryGetValue(token, out var e)) return false;
         if (e.Exp < DateTimeOffset.UtcNow)
         {
             _map.TryRemove(token, out _);
             return false;
         }
-        url = e.Url;
-        fileId = e.FileId;
-        keyUserId = e.KeyUserId;
-        projectDir = e.ProjectDir;
-        scene = e.Scene;
-        clip = e.Clip;
-        modelId = e.ModelId;
-        providerId = e.ProviderId;
+        ticket = new MediaProxyTicket(
+            e.Url, e.FileId, e.KeyUserId, e.ProjectDir, e.Scene, e.Clip, e.ModelId, e.ProviderId);
+        return true;
+    }
+
+    public bool TryTake(string token, out string? url, out string? fileId)
+    {
+        if (!TryTake(token, out var ticket))
+        {
+            url = null;
+            fileId = null;
+            return false;
+        }
+        url = ticket.Url;
+        fileId = ticket.FileId;
+        return true;
+    }
+
+    public bool TryTake(string token, out string? url, out string? fileId, out string? keyUserId)
+    {
+        if (!TryTake(token, out var ticket))
+        {
+            url = null;
+            fileId = null;
+            keyUserId = null;
+            return false;
+        }
+        url = ticket.Url;
+        fileId = ticket.FileId;
+        keyUserId = ticket.KeyUserId;
+        return true;
+    }
+
+    public bool TryTake(
+        string token,
+        out string? url,
+        out string? fileId,
+        out string? keyUserId,
+        out string? projectDir,
+        out int scene,
+        out int clip)
+    {
+        if (!TryTake(token, out var ticket))
+        {
+            url = null;
+            fileId = null;
+            keyUserId = null;
+            projectDir = null;
+            scene = 0;
+            clip = 0;
+            return false;
+        }
+        url = ticket.Url;
+        fileId = ticket.FileId;
+        keyUserId = ticket.KeyUserId;
+        projectDir = ticket.ProjectDir;
+        scene = ticket.Scene;
+        clip = ticket.Clip;
         return true;
     }
 }

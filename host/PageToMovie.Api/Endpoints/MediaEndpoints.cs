@@ -78,9 +78,14 @@ public static class MediaEndpoints
         foreach (var entry in CollectProviderRecoveryEntries(
                      Path.Combine(assetsRoot, ApiText.VideoFolder),
                      (url, fileId, projectDirHint, scene, clip, modelId, providerId) => tickets.Issue(
-                         url ?? "", TimeSpan.FromHours(2), fileId,
-                         projectDir: projectDirHint, scene: scene, clip: clip,
-                         modelId: modelId, providerId: providerId)))
+                         url ?? "", TimeSpan.FromHours(2),
+                         new MediaProxyTicket(
+                             FileId: fileId,
+                             ProjectDir: projectDirHint,
+                             Scene: scene,
+                             Clip: clip,
+                             ModelId: modelId,
+                             ProviderId: providerId))))
         {
             list.Add(entry);
         }
@@ -490,31 +495,30 @@ public static class MediaEndpoints
         [AsParameters] MediaProxyTokenServices svc,
         CancellationToken ct)
     {
-    if (!svc.Tickets.TryTake(token, out var url, out var fileId, out var keyUserId,
-            out var projectDir, out var scene, out var clip, out var ticketModel, out var ticketProvider)
-        || (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(fileId)))
+    if (!svc.Tickets.TryTake(token, out var ticket)
+        || (string.IsNullOrWhiteSpace(ticket.Url) && string.IsNullOrWhiteSpace(ticket.FileId)))
         return Results.NotFound(new { ok = false, error = "Media ticket expired or invalid" });
 
-    if (!string.IsNullOrWhiteSpace(url) && TryServeDataUrl(url) is { } dataResult)
+    if (!string.IsNullOrWhiteSpace(ticket.Url) && TryServeDataUrl(ticket.Url) is { } dataResult)
         return dataResult;
 
     // Resolve first, then Push on this caller's ExecutionContext. Pushing inside an
     // async helper does not stick — ApiKeyScope is AsyncLocal and is restored after await.
     var modelId = CatalogApiKey.ResolveVideoModel(
-        ticketModel, CatalogApiKey.TryReadProjectVideoModel(projectDir));
-    var providerId = CatalogApiKey.ProviderIdForVideo(modelId, ticketProvider);
-    var key = await ResolveTicketVideoKeyAsync(svc.Keys, keyUserId, modelId, providerId, ct)
+        ticket.ModelId, CatalogApiKey.TryReadProjectVideoModel(ticket.ProjectDir));
+    var providerId = CatalogApiKey.ProviderIdForVideo(modelId, ticket.ProviderId);
+    var key = await ResolveTicketVideoKeyAsync(svc.Keys, ticket.KeyUserId, modelId, providerId, ct)
         .ConfigureAwait(false);
     using (CatalogApiKey.PushKey(providerId, key))
-    using (UserApiCallScope.Push(keyUserId))
+    using (UserApiCallScope.Push(ticket.KeyUserId))
         return await StreamProviderCopyAsync(
-            url, fileId, svc.HttpFactory, svc.HttpContext, ct,
+            ticket.Url, ticket.FileId, svc.HttpFactory, svc.HttpContext, ct,
             new StreamProviderCopyOptions(
                 Video: svc.Video,
                 Model: modelId,
                 LogFactory: svc.LogFactory,
                 RecoverAfterProvider: (_, _, _) => Task.FromResult(
-                    TryRecoverHostedCopy(projectDir, scene, clip))));
+                    TryRecoverHostedCopy(ticket.ProjectDir, ticket.Scene, ticket.Clip))));
 }
 
     /// <summary>
