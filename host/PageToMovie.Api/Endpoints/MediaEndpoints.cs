@@ -87,8 +87,9 @@ public static class MediaEndpoints
     /// the regular anonymous entries). <c>ProviderRecovery</c> tells the client to download only
     /// when the clip is missing locally — size/hash are unknown until the provider copy lands.
     /// <c>ProviderLeadInSeconds</c> &gt; 0 marks a combined video-extend copy: its head repeats
-    /// the previous clip, and the client must slice the new tail out before saving (the API host
-    /// never trims).</summary>
+    /// the previous clip. The client slices the new tail out as this clip and, when the previous
+    /// clip is missing locally, also saves the head as that previous clip (the API host never
+    /// trims).</summary>
     public sealed record ProviderRecoverySyncEntry(
         string RelativePath, string FileName, long SizeBytes, string? Sha256,
         bool IsMp4, string StreamUrl, bool ProviderRecovery, double ProviderLeadInSeconds);
@@ -102,7 +103,8 @@ public static class MediaEndpoints
     /// newest sidecar still points at the provider copy (<c>source_url</c>): offered through the
     /// same proxy-ticket stream so a client sync can self-heal a missed live save. Combined
     /// video-extend copies carry their sidecar's lead-in so the client can slice the new tail
-    /// out before saving. <paramref name="issueTicket"/> maps a provider URL to a proxy token.
+    /// out as this clip and recover a missing previous clip from the head.
+    /// <paramref name="issueTicket"/> maps a provider URL to a proxy token.
     /// </summary>
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
         string videoDir, Func<string, string> issueTicket)

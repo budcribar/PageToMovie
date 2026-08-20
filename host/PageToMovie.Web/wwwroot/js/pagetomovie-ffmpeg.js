@@ -16,6 +16,7 @@ window.PageToMovieFfmpeg = {
     _silenceSessions: {},
     _silenceSessionSeq: 0,
     _trimTailSeq: 0,
+    _trimHeadSeq: 0,
     _lock: Promise.resolve(),
 
     _assets: {
@@ -1471,6 +1472,56 @@ window.PageToMovieFfmpeg = {
                     "-c:a", "aac", "-b:a", "128k",
                     "-movflags", "+faststart",
                     outName);
+                await ffmpeg.exec(args);
+
+                reportProgress(onProgress, 90, "Preparing…");
+                const out = await ffmpeg.readFile(outName);
+                const blob = new Blob([out.buffer], { type: "video/mp4" });
+                const outUrl = URL.createObjectURL(blob);
+                reportProgress(onProgress, 100, "Trim done");
+                return { success: true, url: outUrl, sourceDurationSec: totalSec, keptSec: keepSec };
+            } catch (err) {
+                return { success: false, error: err.message || String(err) };
+            } finally {
+                try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
+                try { await ffmpeg.deleteFile(outName); } catch (_) { /* */ }
+            }
+        });
+    },
+
+    // Keeps the first `keepSeconds` of a combined video-extend copy — the previous clip, which
+    // lives at the head (see CombinedExtendRecovery / provider_lead_in_seconds). Pair of
+    // trimTailAsync; the API host never trims.
+    trimHeadAsync: async function (url, keepSeconds, onProgress) {
+        if (!url) return { success: false, error: "No URL" };
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
+            if (!load.success) return { success: false, error: load.error };
+
+            const ffmpeg = this._ffmpeg;
+            const seq = ++this._trimHeadSeq;
+            const inName = "trimhead_in_" + seq + ".mp4";
+            const outName = "trimhead_out_" + seq + ".mp4";
+            try {
+                reportProgress(onProgress, 10, "Loading clip…");
+                const data = await this._safeFetchFile(url);
+                await ffmpeg.writeFile(inName, data);
+
+                reportProgress(onProgress, 30, "Probing duration…");
+                const probe = await this._probeDurationMemfsAsync(inName);
+                if (!probe.success || probe.seconds <= 0) {
+                    return { success: false, error: "Could not read source duration" };
+                }
+
+                const totalSec = probe.seconds;
+                const keepSec = Math.max(0.5, Math.min(keepSeconds, totalSec));
+
+                reportProgress(onProgress, 55, "Trimming head…");
+                const args = ["-hide_banner", "-y", "-i", inName, "-t", String(keepSec),
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    outName];
                 await ffmpeg.exec(args);
 
                 reportProgress(onProgress, 90, "Preparing…");
