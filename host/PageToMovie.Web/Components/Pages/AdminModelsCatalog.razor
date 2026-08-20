@@ -402,12 +402,42 @@
                     <table class="table table-hover table-striped mb-0 align-middle small">
                         <thead class="table-dark sticky-top" style="z-index: 5;">
                             <tr>
-                                <th style="width: 50px;">On</th>
-                                <th>Model ID</th>
-                                <th>Name</th>
-                                <th>Cap</th>
-                                <th>Provider</th>
-                                <th>Reviewed</th>
+                                <th style="width: 50px; cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortEnabled)'
+                                    title="Click to sort by enabled"
+                                    data-testid="catalog-sort-enabled">
+                                    On @List.SortArrow(AdminModelsList.SortEnabled)
+                                </th>
+                                <th style="cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortId)'
+                                    title="Click to sort by model ID"
+                                    data-testid="catalog-sort-id">
+                                    Model ID @List.SortArrow(AdminModelsList.SortId)
+                                </th>
+                                <th style="cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortName)'
+                                    title="Click to sort by name"
+                                    data-testid="catalog-sort-name">
+                                    Name @List.SortArrow(AdminModelsList.SortName)
+                                </th>
+                                <th style="cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortCapability)'
+                                    title="Click to sort by capability"
+                                    data-testid="catalog-sort-capability">
+                                    Cap @List.SortArrow(AdminModelsList.SortCapability)
+                                </th>
+                                <th style="cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortProvider)'
+                                    title="Click to sort by provider"
+                                    data-testid="catalog-sort-provider">
+                                    Provider @List.SortArrow(AdminModelsList.SortProvider)
+                                </th>
+                                <th style="cursor:pointer; user-select:none;"
+                                    @onclick='() => List.ToggleSort(AdminModelsList.SortReviewed)'
+                                    title="Click to sort by review dates"
+                                    data-testid="catalog-sort-reviewed">
+                                    Reviewed @List.SortArrow(AdminModelsList.SortReviewed)
+                                </th>
                                 <th style="width: 140px;" class="text-end pe-3">Actions</th>
                             </tr>
                         </thead>

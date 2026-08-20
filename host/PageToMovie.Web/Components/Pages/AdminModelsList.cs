@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -31,7 +32,18 @@ public partial class AdminModelsCatalog
 
         internal string _filterStatus = "";
 
+        internal string _sortBy = "";
+
+        internal bool _sortAscending = true;
+
         private const string Deprecated = "deprecated";
+
+        internal const string SortEnabled = "enabled";
+        internal const string SortId = "id";
+        internal const string SortName = "name";
+        internal const string SortCapability = "capability";
+        internal const string SortProvider = "provider";
+        internal const string SortReviewed = "reviewed";
 
         internal void ResetFilters()
         {
@@ -41,7 +53,75 @@ public partial class AdminModelsCatalog
             _filterStatus = "";
         }
 
-        internal IEnumerable<JsonObject> FilteredModels => _modelList.Where(MatchesFilters);
+        internal void ToggleSort(string column)
+        {
+            if (_sortBy == column)
+                _sortAscending = !_sortAscending;
+            else
+            {
+                _sortBy = column;
+                _sortAscending = true;
+            }
+        }
+
+        internal string SortArrow(string column)
+        {
+            if (_sortBy != column) return "⇅";
+            return _sortAscending ? "▲" : "▼";
+        }
+
+        internal IEnumerable<JsonObject> FilteredModels
+        {
+            get
+            {
+                var filtered = _modelList.Where(MatchesFilters);
+                return _sortBy switch
+                {
+                    SortEnabled => OrderBy(filtered, IsEnabled),
+                    SortId => OrderByString(filtered, m => m["id"]?.ToString()),
+                    SortName => OrderByString(filtered, m => m["displayName"]?.ToString()),
+                    SortCapability => OrderByString(filtered, m => m["capability"]?.ToString()),
+                    SortProvider => OrderByString(filtered, m => m["provider"]?.ToString()),
+                    SortReviewed => OrderReviewed(filtered),
+                    _ => filtered
+                };
+            }
+        }
+
+        private IEnumerable<JsonObject> OrderBy<T>(IEnumerable<JsonObject> src, Func<JsonObject, T> key) =>
+            _sortAscending ? src.OrderBy(key) : src.OrderByDescending(key);
+
+        private IEnumerable<JsonObject> OrderByString(IEnumerable<JsonObject> src, Func<JsonObject, string?> key)
+        {
+            var cmp = StringComparer.OrdinalIgnoreCase;
+            return _sortAscending
+                ? src.OrderBy(m => key(m) ?? "", cmp)
+                : src.OrderByDescending(m => key(m) ?? "", cmp);
+        }
+
+        private IEnumerable<JsonObject> OrderReviewed(IEnumerable<JsonObject> src)
+        {
+            var ordered = _sortAscending
+                ? src.OrderBy(ReviewedPrimary)
+                : src.OrderByDescending(ReviewedPrimary);
+            return _sortAscending
+                ? ordered.ThenBy(ReviewedSecondary)
+                : ordered.ThenByDescending(ReviewedSecondary);
+        }
+
+        private static DateTime ReviewedPrimary(JsonObject m) => ParseCatalogDate(m["lastVerifiedAt"]?.ToString());
+
+        private static DateTime ReviewedSecondary(JsonObject m) => ParseCatalogDate(m["pricingLastReviewedAt"]?.ToString());
+
+        private static DateTime ParseCatalogDate(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return DateTime.MinValue;
+            return DateTime.TryParse(value, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var dt)
+                ? dt
+                : DateTime.MinValue;
+        }
 
         private bool MatchesFilters(JsonObject m) =>
             MatchesQuery(m) && MatchesCapability(m) && MatchesProvider(m) && MatchesStatus(m);
