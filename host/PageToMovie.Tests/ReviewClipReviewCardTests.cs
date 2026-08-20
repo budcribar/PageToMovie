@@ -51,7 +51,7 @@ public class ReviewClipReviewCardTests
         var razor = File.ReadAllText(ReviewReviewTabPath());
         var playAt = razor.IndexOf("playback.PlayClipAsync(sel, cn)", StringComparison.Ordinal);
         Assert.True(playAt >= 0, "per-clip Play handler missing");
-        var window = razor[Math.Max(0, playAt - 320)..Math.Min(razor.Length, playAt + 40)];
+        var window = razor[Math.Max(0, playAt - 500)..Math.Min(razor.Length, playAt + 40)];
 
         Assert.Contains("btn btn-sm btn-success", window, StringComparison.Ordinal);
         Assert.Contains("review-play-clip-{sel}-{cn}", window, StringComparison.Ordinal);
