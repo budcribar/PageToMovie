@@ -388,5 +388,41 @@ public class ClientVideoStitchServiceTests
         Assert.Single(urls);
         Assert.Contains("scenes/1/composite", urls[0]);
     }
+
+    [Fact]
+    public void ClientStitchResult_HasPlayableUrl_And_StitchError()
+    {
+        var ok = ClientStitchResult.Ok("blob:1");
+        Assert.True(ok.HasPlayableUrl);
+        Assert.Equal("Browser stitch failed", ok.StitchError);
+
+        var fail = ClientStitchResult.Fail("nope");
+        Assert.False(fail.HasPlayableUrl);
+        Assert.Equal("nope", fail.StitchError);
+
+        var blank = new ClientStitchResult { Success = true, Url = "  " };
+        Assert.False(blank.HasPlayableUrl);
+        Assert.Equal("Browser stitch failed", blank.StitchError);
+    }
+
+    [Fact]
+    public async Task TryConcatSceneClipsAsync_EmptyUrls_CallsOnFail_WithoutStatus()
+    {
+        var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var stitch = new ClientVideoStitchService(null!, new EngineApiClient(httpClient));
+
+        string? status = null;
+        string? fail = null;
+        var url = await stitch.TryConcatSceneClipsAsync(
+            Array.Empty<string>(),
+            "No on-disk clips for S01",
+            s => status = s,
+            e => fail = e);
+
+        Assert.Null(url);
+        Assert.Null(status);
+        Assert.Equal("No on-disk clips for S01", fail);
+    }
 }
 

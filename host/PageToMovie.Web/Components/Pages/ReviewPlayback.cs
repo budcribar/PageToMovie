@@ -470,26 +470,15 @@ public partial class Review
                         return;
                     }
 
-                    if (urls.Count == 0)
-                    {
-                        S._error = $"No on-disk clips for S{scene:D2}";
-                        _showScenePlayer = false;
-                        _playingScene = null;
+                    var stitched = await S.Stitch.TryConcatSceneClipsAsync(
+                        urls,
+                        $"No on-disk clips for S{scene:D2}",
+                        status => _clientStitchStatus = status,
+                        FailScenePlayer);
+                    if (stitched is null)
                         return;
-                    }
 
-                    _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
-                    await S.Stitch.RevokePreviewUrlAsync();
-                    var result = await S.Stitch.ConcatAsync(urls);
-                    if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
-                    {
-                        S._error = result.Error ?? "Browser stitch failed";
-                        _showScenePlayer = false;
-                        _playingScene = null;
-                        return;
-                    }
-
-                    _clientSceneUrl = result.Url;
+                    _clientSceneUrl = stitched;
                     _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     S._message = urls.Count == 1
                         ? $"Playing S{scene:D2} (single clip)"
@@ -497,10 +486,7 @@ public partial class Review
                 }
                 catch (Exception ex)
                 {
-                    S._error = ex.Message;
-                    _showScenePlayer = false;
-                    _playingScene = null;
-                    _clientSceneUrl = null;
+                    FailScenePlayer(ex.Message);
                 }
                 finally
                 {
@@ -514,6 +500,14 @@ public partial class Review
             }
         }
 
+
+        private void FailScenePlayer(string error)
+        {
+            S._error = error;
+            _showScenePlayer = false;
+            _playingScene = null;
+            _clientSceneUrl = null;
+        }
 
         internal async Task HideScenePlayerAsync()
         {
