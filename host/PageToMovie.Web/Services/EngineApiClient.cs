@@ -1636,38 +1636,9 @@ public sealed class EngineApiClient
     public async Task<IReadOnlyList<MediaRenameManifestEntry>> GetMediaRenamesAsync(string projectId, long after, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        var entries = new List<MediaRenameManifestEntry>();
         using var resp = await _http.GetAsync($"{ProjectIdRouting.ProjectApi(projectId)}/media-renames?after={after}", ct);
-        if (!resp.IsSuccessStatusCode) return entries;
-        using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
-        if (!doc.RootElement.TryGetProperty("entries", out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array)
-            return entries;
-        foreach (var e in arr.EnumerateArray())
-        {
-            var entry = new MediaRenameManifestEntry
-            {
-                Id = e.TryGetProperty("id", out var idEl) && idEl.TryGetInt64(out var idVal) ? idVal : 0,
-            };
-            if (e.TryGetProperty("renames", out var rn) && rn.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                foreach (var r in rn.EnumerateArray())
-                {
-                    var from = r.TryGetProperty("from", out var f) ? f.GetString() : null;
-                    var to = r.TryGetProperty("to", out var t) ? t.GetString() : null;
-                    if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(to))
-                        entry.Renames.Add((from!, to!));
-                }
-            }
-            if (e.TryGetProperty("deletes", out var dl) && dl.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                foreach (var d in dl.EnumerateArray())
-                {
-                    if (d.GetString() is { Length: > 0 } path) entry.Deletes.Add(path);
-                }
-            }
-            if (entry.Id > 0) entries.Add(entry);
-        }
-        return entries;
+        if (!resp.IsSuccessStatusCode) return new List<MediaRenameManifestEntry>();
+        return MediaRenameManifestParser.Parse(await resp.Content.ReadAsStringAsync(ct));
     }
 
     public async Task ActivateProjectAsync(string projectId, CancellationToken ct = default)

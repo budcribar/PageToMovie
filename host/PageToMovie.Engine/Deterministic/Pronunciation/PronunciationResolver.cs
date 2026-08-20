@@ -56,23 +56,43 @@ public sealed class PronunciationResolver
         foreach (var entry in lexicon.Entries)
         {
             _entries[entry.Word] = entry;
-            // Inflected forms ("tears", "tearing", "reads") resolve like the base word; the suffix is
-            // carried onto the respelling ("TAIRS", "TAIRING", "REEDS") so ApplyRespellings stays whole-word.
-            foreach (var form in entry.Forms ?? Array.Empty<string>())
-            {
-                if (string.IsNullOrWhiteSpace(form) || _entries.ContainsKey(form)) continue;
-                var suffix = form.Length > entry.Word.Length && form.StartsWith(entry.Word, StringComparison.OrdinalIgnoreCase)
-                    ? form[entry.Word.Length..] : null;
-                _entries[form] = entry with
-                {
-                    Word = form,
-                    Senses = entry.Senses.Select(se => se with
-                    {
-                        Respell = se.Respell is null ? null : suffix is null ? se.Respell : se.Respell + suffix.ToUpperInvariant(),
-                    }).ToList(),
-                };
-            }
+            AddInflectedForms(entry);
         }
+    }
+
+    /// <summary>Inflected forms ("tears", "tearing", "reads") resolve like the base word; the suffix is
+    /// carried onto the respelling ("TAIRS", "TAIRING", "REEDS") so ApplyRespellings stays whole-word.</summary>
+    private void AddInflectedForms(PronunciationEntry entry)
+    {
+        foreach (var form in entry.Forms ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(form) || _entries.ContainsKey(form)) continue;
+            _entries[form] = WithInflectedWord(entry, form);
+        }
+    }
+
+    private static PronunciationEntry WithInflectedWord(PronunciationEntry entry, string form)
+    {
+        var suffix = InflectionSuffix(entry.Word, form);
+        return entry with
+        {
+            Word = form,
+            Senses = entry.Senses.Select(se => se with { Respell = AppendRespellSuffix(se.Respell, suffix) }).ToList(),
+        };
+    }
+
+    private static string? InflectionSuffix(string word, string form)
+    {
+        if (form.Length > word.Length && form.StartsWith(word, StringComparison.OrdinalIgnoreCase))
+            return form[word.Length..];
+        return null;
+    }
+
+    private static string? AppendRespellSuffix(string? respell, string? suffix)
+    {
+        if (respell is null) return null;
+        if (suffix is null) return respell;
+        return respell + suffix.ToUpperInvariant();
     }
 
     public PronunciationResolution Resolve(string? dialogue, string? sceneContext = null)

@@ -242,10 +242,7 @@ public sealed class ActiveProjectState
         ScenesWarning = ScenesWarningFor(screenplayReady, shotsReady, stage2Stale, castReady);
         // Review needs something to review: a current (non-stale) shot plan.
         CanReview = screenplayReady && shotsReady && !stage2Stale;
-        ReviewBlockedReason = !screenplayReady ? ScreenplayNotApprovedReason
-            : !shotsReady ? "Build the shot plan first"
-            : stage2Stale ? "Update the shot plan first"
-            : "";
+        ReviewBlockedReason = ReviewBlockedReasonFor(screenplayReady, shotsReady, stage2Stale);
         CanEstimate = screenplayReady;
         EstimateBlockedReason = screenplayReady
             ? ""
@@ -271,6 +268,14 @@ public sealed class ActiveProjectState
         if (TryGetCamelOrPascal(root, "cast", "Cast", out var ca))
             castReady = PropBool(ca, "readyForShots", "ReadyForShots");
         return castReady;
+    }
+
+    private static string ReviewBlockedReasonFor(bool screenplayReady, bool shotsReady, bool stage2Stale)
+    {
+        if (!screenplayReady) return ScreenplayNotApprovedReason;
+        if (!shotsReady) return "Build the shot plan first";
+        if (stage2Stale) return "Update the shot plan first";
+        return "";
     }
 
     /// <summary>Non-blocking heads-up shown on the Film step (null when nothing to warn about).</summary>
