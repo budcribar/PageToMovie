@@ -279,6 +279,61 @@ public class MultiProviderClientTests
         Assert.Equal(0, xaiClient.DownloadCalls);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Video_missing_model_id_throws(string? model)
+    {
+        var facade = FacadeWithXaiOnly();
+        var ex = Assert.Throws<InvalidOperationException>(() => facade.ResolveClientForModel(model));
+        Assert.Contains("model is required", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Video_unknown_model_id_throws()
+    {
+        var facade = FacadeWithXaiOnly();
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => facade.ResolveClientForModel("not-a-catalog-video-model"));
+        Assert.Contains("not in the models catalog", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Video_disabled_catalog_row_throws()
+    {
+        var disabled = SupportedModelCatalog.ForCapability(ModelCapability.Video, enabledOnly: false)
+            .FirstOrDefault(m => !m.Enabled);
+        Assert.NotNull(disabled);
+        var facade = FacadeWithXaiOnly();
+        var ex = Assert.Throws<InvalidOperationException>(() => facade.ResolveClientForModel(disabled.Id));
+        Assert.Contains("disabled", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Video_download_without_model_throws()
+    {
+        var facade = FacadeWithXaiOnly();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => facade.DownloadToFileAsync("https://cdn.example.com/unsigned.mp4", Path.GetTempFileName(), CancellationToken.None));
+        Assert.Contains("model is required", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Video_poll_without_catalog_provider_tag_throws()
+    {
+        var facade = FacadeWithXaiOnly();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => facade.PollForVideoUrlAsync("req_legacy_no_tag", null, CancellationToken.None));
+        Assert.Contains("catalog provider tag", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private MultiProviderVideoClient FacadeWithXaiOnly() =>
+        new(new Dictionary<string, IVideoClient>
+        {
+            [CatalogXaiVideo().ProviderId] = new StubVideoClient(),
+        });
+
     private static SupportedModelEntry CatalogXaiVideo()
     {
         var api = SupportedModelCatalog.XaiApiBase;

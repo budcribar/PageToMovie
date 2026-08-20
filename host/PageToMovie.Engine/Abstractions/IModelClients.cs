@@ -54,8 +54,8 @@ public interface IVideoClient
 
     /// <summary>
     /// Same as <see cref="DownloadToFileAsync(string, string, CancellationToken)"/>, routed by
-    /// catalog <paramref name="model"/> when the caller still has it (the product path).
-    /// Default: ignore model and call the two-arg form.
+    /// catalog <paramref name="model"/>. The multi-provider facade fail-fasts when model is
+    /// missing — it does not infer a provider from the URL. Default on adapters: ignore model.
     /// </summary>
     Task DownloadToFileAsync(string url, string destPath, string? model, CancellationToken ct) =>
         DownloadToFileAsync(url, destPath, ct);
