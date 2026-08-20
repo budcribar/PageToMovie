@@ -404,6 +404,7 @@ public partial class Scenes
             try
             {
                 await S.Gen.EnsureHubAsync();
+                await UploadClipForEditIfMissingOnServerAsync(sn, cn);
                 await S.Engine.StartVideoEditAsync(S._projectId, sn, cn, _videoEditPromptText.Trim());
                 S._message = $"Editing S{sn:D2}C{cn:D2}…";
                 var jobs = await S.Engine.GetJobAsync();
@@ -411,6 +412,28 @@ public partial class Scenes
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
+        }
+
+        /// <summary>The edit job runs server-side on the clip's active MP4, but clip bytes live in
+        /// the local media folder and are pruned off server disk once synced (see
+        /// <see cref="UploadPredecessorIfMissingAsync"/>'s marker note) — push the local copy back
+        /// up first, or the job dies with "no clip on disk to edit".</summary>
+        private async Task UploadClipForEditIfMissingOnServerAsync(int sn, int cn)
+        {
+            var status = await S.Engine.GetClipMediaStatusAsync(S._projectId, sn, cn);
+            if (status is { Ok: true, OnServer: true, ServerSizeBytes: >= 1024 }) return;
+
+            // Registered client size guards against pushing a stale local take (same check as
+            // dialogue re-verification's upload).
+            long? expectedSize = status is { Ok: true, OnClient: true, ClientSizeBytes: > 0 }
+                ? status.ClientSizeBytes
+                : null;
+            var localBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sn, cn, expectedSize);
+            if (localBytes is not { Length: >= 1024 }) return;
+
+            S._message = $"Preparing S{sn:D2}C{cn:D2} for editing…";
+            S.StateHasChanged();
+            await S.Engine.UploadClipAsync(S._projectId, sn, cn, localBytes);
         }
     }
 }
