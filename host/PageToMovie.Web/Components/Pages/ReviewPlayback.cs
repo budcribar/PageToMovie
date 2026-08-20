@@ -427,6 +427,7 @@ public partial class Review
             try
             {
                 _showClipPlayer = false;
+                S.List._activeTab = ReviewTab.Play;
                 await RefreshWipMetaAsync();
                 var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
                 var stale = (await S.Engine.GetWipMovieMetaAsync(S._projectId))?.StaleScenes?.Contains(scene) ?? false;
@@ -435,7 +436,8 @@ public partial class Review
 
                 if (!needsStitch)
                 {
-                    _clientSceneUrl = null;
+                    var localComposite = await TryLocalSceneCompositeUrlAsync(scene);
+                    _clientSceneUrl = localComposite;
                     _showWipPlayer = false;
                     _playingScene = scene;
                     _showScenePlayer = true;
@@ -461,20 +463,29 @@ public partial class Review
                 _clientSceneUrl = null;
                 try
                 {
-                    var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, scene);
+                    SceneDetail? detail = S.List._selectedDetail is { SceneNumber: var dsn } && dsn == scene
+                        ? S.List._selectedDetail
+                        : null;
+                    var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, scene, detail);
                     if (urls.Count == 0 && compositeOk)
                     {
-                        _clientSceneUrl = null;
+                        _clientSceneUrl = await TryLocalSceneCompositeUrlAsync(scene);
                         _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                         S._message = $"Playing S{scene:D2} composite (may be stale)";
                         return;
                     }
 
+                    if (!string.IsNullOrWhiteSpace(S.Stitch.LastCollectError))
+                    {
+                        FailScenePlayer(S.Stitch.LastCollectError);
+                        return;
+                    }
+
                     var stitched = await S.Stitch.TryConcatSceneClipsAsync(
                         urls,
-                        $"No on-disk clips for S{scene:D2}",
+                        FriendlyMissingClipsError(scene, S.Stitch.LastCollectError, S.MediaFolder.IsConnected),
                         status => _clientStitchStatus = status,
-                        FailScenePlayer);
+                        err => FailScenePlayer(FriendlyStitchError(scene, err)));
                     if (stitched is null)
                         return;
 
@@ -486,7 +497,7 @@ public partial class Review
                 }
                 catch (Exception ex)
                 {
-                    FailScenePlayer(ex.Message);
+                    FailScenePlayer(FriendlyStitchError(scene, ex.Message));
                 }
                 finally
                 {
@@ -508,6 +519,45 @@ public partial class Review
             _playingScene = null;
             _clientSceneUrl = null;
         }
+
+        private async Task<string?> TryLocalSceneCompositeUrlAsync(int scene)
+        {
+            if (!S.MediaFolder.IsConnected)
+                return null;
+            try
+            {
+                var local = await S.MediaFolder.GetLocalBlobUrlAsync(
+                    S._projectId, $"assets/video/scene_{scene:D2}.mp4");
+                return string.IsNullOrWhiteSpace(local) ? null : local;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        internal static string FriendlyMissingClipsError(int scene, string? collectError, bool mediaFolderConnected)
+        {
+            if (!string.IsNullOrWhiteSpace(collectError))
+                return collectError;
+            return mediaFolderConnected
+                ? $"No playable clips for S{scene:D2}."
+                : $"No playable clips for S{scene:D2}. Connect your local media folder if the clips are on this computer, or generate them again.";
+        }
+
+        internal static string FriendlyStitchError(int scene, string? stitchError)
+        {
+            if (LooksLikeHttpMissing(stitchError))
+                return $"S{scene:D2} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
+            return stitchError ?? "Could not combine clips";
+        }
+
+        internal static bool LooksLikeHttpMissing(string? error) =>
+            error is not null
+            && (error.Contains("404", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("Not Found", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("clip video not found", StringComparison.OrdinalIgnoreCase)
+                || error.Contains("Failed to fetch", StringComparison.OrdinalIgnoreCase));
 
         internal async Task HideScenePlayerAsync()
         {

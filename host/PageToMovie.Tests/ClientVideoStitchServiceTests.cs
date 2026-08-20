@@ -424,5 +424,99 @@ public class ClientVideoStitchServiceTests
         Assert.Null(status);
         Assert.Equal("No on-disk clips for S01", fail);
     }
-}
 
+    [Fact]
+    public async Task CollectClipUrlsAsync_SkipsUnreachableServerFallback_WhenOnlyClientMarker()
+    {
+        var (stitch, _) = CreateStitchWithSceneClipsOnDisk(scene: 1, clipCount: 2, videoStatus: HttpStatusCode.NotFound);
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 1);
+
+        Assert.Empty(urls);
+        Assert.Contains("S01C01", stitch.LastCollectError);
+        Assert.Contains("S01C02", stitch.LastCollectError);
+        Assert.DoesNotContain("404", stitch.LastCollectError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CollectClipUrlsAsync_UsesReachableServerUrl_WhenNoLocalBlob()
+    {
+        var (stitch, _) = CreateStitchWithSceneClipsOnDisk(scene: 1, clipCount: 1, videoStatus: HttpStatusCode.OK);
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 1);
+
+        Assert.Single(urls);
+        Assert.Contains("scenes/1/clips/1/video", urls[0]);
+        Assert.Null(stitch.LastCollectError);
+    }
+
+    [Fact]
+    public async Task CollectClipUrlsAsync_DoesNotAddServerUrl_WhenFallbackDisabled()
+    {
+        var (stitch, _) = CreateStitchWithSceneClipsOnDisk(scene: 1, clipCount: 1, videoStatus: HttpStatusCode.OK);
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 1, includeServerFallback: false);
+
+        Assert.Empty(urls);
+        Assert.Contains("S01C01", stitch.LastCollectError);
+    }
+
+    [Fact]
+    public void FormatMissingClipPlayError_DoesNotSurfaceRawHttpStatus()
+    {
+        var connected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01C01" }, mediaFolderConnected: true);
+        var disconnected = ClientVideoStitchService.FormatMissingClipPlayError(new[] { "S01C01", "S01C02" }, mediaFolderConnected: false);
+
+        Assert.Contains("S01C01", connected);
+        Assert.Contains("local media folder", connected);
+        Assert.DoesNotContain("404", connected);
+        Assert.Contains("S01C02", disconnected);
+        Assert.Contains("Connect your local media folder", disconnected);
+        Assert.DoesNotContain("404", disconnected);
+    }
+
+    private static (ClientVideoStitchService Stitch, EngineApiClient Engine) CreateStitchWithSceneClipsOnDisk(
+        int scene, int clipCount, HttpStatusCode videoStatus)
+    {
+        var clips = Enumerable.Range(1, clipCount)
+            .Select(cn => new { clipNumber = cn, onDisk = true })
+            .ToArray();
+        var sceneDetailJson = JsonSerializer.Serialize(new
+        {
+            ok = true,
+            scene = new
+            {
+                sceneNumber = scene,
+                clips
+            }
+        });
+
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri?.AbsolutePath ?? "";
+            if (path.Contains($"/scenes/{scene}/clips/", StringComparison.Ordinal)
+                && path.EndsWith("/video", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(videoStatus)
+                {
+                    Content = new ByteArrayContent(videoStatus == HttpStatusCode.OK ? new byte[] { 0 } : Array.Empty<byte>())
+                };
+            }
+
+            if (path.Contains($"/scenes/{scene}", StringComparison.Ordinal)
+                && !path.Contains("/clips/", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(sceneDetailJson, System.Text.Encoding.UTF8, "application/json")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var engineClient = new EngineApiClient(httpClient);
+        return (new ClientVideoStitchService(null!, engineClient), engineClient);
+    }
+}

@@ -168,6 +168,12 @@ public sealed class ClientVideoStitchService
     public string? LastCollectError { get; private set; }
 
     /// <summary>On-disk clip URLs for one scene (ordered).</summary>
+    /// <remarks>
+    /// <see cref="ClipSummary.OnDisk"/> is true for a local-folder <c>.client.json</c> marker as well
+    /// as a real server mp4. Blindly adding <see cref="EngineApiClient.ClipVideoUrl"/> then lets
+    /// browser stitch fetch a 404. Prefer the local blob; only fall back to the server URL when
+    /// that endpoint is actually reachable.
+    /// </remarks>
     public async Task<IReadOnlyList<string>> CollectClipUrlsAsync(
         string projectId,
         int sceneNumber,
@@ -176,6 +182,7 @@ public sealed class ClientVideoStitchService
         bool includeServerFallback = true,
         IEnumerable<int>? clipNumbers = null)
     {
+        LastCollectError = null;
         // Ensure a fresh ?mt= media token before any ClipVideoUrl fallback (see CollectSceneMediaUrlsAsync).
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
         if (detail is null)
@@ -185,23 +192,66 @@ public sealed class ClientVideoStitchService
 
         var clipSet = clipNumbers?.ToHashSet();
         var list = new List<string>();
+        var missing = new List<string>();
         var query = detail.Clips.Where(c => c.OnDisk);
         if (clipSet is not null && clipSet.Count > 0)
             query = query.Where(c => clipSet.Contains(c.ClipNumber));
 
         foreach (var clipRow in query.OrderBy(c => c.ClipNumber))
         {
-            var clipNumber = clipRow.ClipNumber;
-            var local = _media is null
-                ? null
-                : await _media.GetLocalBlobUrlAsync(
-                    projectId, $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4");
-            if (!string.IsNullOrEmpty(local))
-                list.Add(local);
-            else if (includeServerFallback)
-                list.Add(await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct));
+            var url = await TryResolvePlayableClipUrlAsync(
+                projectId, sceneNumber, clipRow, includeServerFallback, ct).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(url))
+                list.Add(url);
+            else
+                missing.Add($"S{sceneNumber:D2}C{clipRow.ClipNumber:D2}");
         }
+
+        if (missing.Count > 0)
+            LastCollectError = FormatMissingClipPlayError(missing, _media?.IsConnected == true);
         return list;
+    }
+
+    /// <summary>Local media-folder blob, else a reachable server clip URL — never a 404 URL.</summary>
+    private async Task<string?> TryResolvePlayableClipUrlAsync(
+        string projectId,
+        int sceneNumber,
+        ClipSummary clipRow,
+        bool includeServerFallback,
+        CancellationToken ct)
+    {
+        var local = await TryLocalClipBlobUrlAsync(projectId, sceneNumber, clipRow).ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(local))
+            return local;
+        if (!includeServerFallback)
+            return null;
+
+        var server = await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(server))
+            return null;
+        return await _engine.MediaUrlReachableAsync(server, ct).ConfigureAwait(false)
+            ? server
+            : null;
+    }
+
+    private async Task<string?> TryLocalClipBlobUrlAsync(string projectId, int sceneNumber, ClipSummary clipRow)
+    {
+        if (_media is null)
+            return null;
+
+        var fileName = string.IsNullOrWhiteSpace(clipRow.FileName)
+            ? $"scene_{sceneNumber:D2}_clip_{clipRow.ClipNumber:D2}.mp4"
+            : clipRow.FileName;
+        return await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}").ConfigureAwait(false);
+    }
+
+    /// <summary>Operator-facing copy when an OnDisk clip has no local blob and no server mp4.</summary>
+    internal static string FormatMissingClipPlayError(IReadOnlyList<string> missingKeys, bool mediaFolderConnected)
+    {
+        var listed = string.Join(", ", missingKeys);
+        if (mediaFolderConnected)
+            return $"{listed} could not be read from your local media folder.";
+        return $"{listed} cannot be played. Connect your local media folder if the clips are on this computer, or generate them again.";
     }
 
     public async Task<ClientStitchResult> ConcatAsync(
