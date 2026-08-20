@@ -19,7 +19,7 @@ public static class UncastOnScreenPolicy
 {
     public enum Verdict { TextOnlyExtra, MustBeCast }
 
-    public sealed record Decision(string Key, Verdict Kind, int ClipAppearances, bool SpeaksInClip)
+    public sealed record Decision(string Key, Verdict Kind, int ClipAppearances, bool HasSpeech)
     {
         public bool TextOnly => Kind == Verdict.TextOnlyExtra;
     }
@@ -100,11 +100,16 @@ public static class UncastOnScreenPolicy
     }
 }
 
-/// <summary>Keeps <c>Decision.Verdict</c> compiling for existing callers after the S3218 rename to <see cref="UncastOnScreenPolicy.Decision.Kind"/>.</summary>
+/// <summary>
+/// Keeps <c>Decision.Verdict</c> and <c>Decision.SpeaksInClip</c> compiling after S3218
+/// renames to <see cref="UncastOnScreenPolicy.Decision.Kind"/> and
+/// <see cref="UncastOnScreenPolicy.Decision.HasSpeech"/>.
+/// </summary>
 public static class UncastOnScreenDecisionExtensions
 {
     extension(UncastOnScreenPolicy.Decision decision)
     {
         public UncastOnScreenPolicy.Verdict Verdict => decision.Kind;
+        public bool SpeaksInClip => decision.HasSpeech;
     }
 }
