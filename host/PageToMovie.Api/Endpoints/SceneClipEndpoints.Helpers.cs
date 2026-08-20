@@ -154,6 +154,12 @@ public static partial class SceneClipEndpoints
         }
     }
 
-    private static string TrimForPlaybackError(string s, int n = 400) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n];
+    private static string TrimForPlaybackError(string s, int n = 400)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        if (s.Length <= n)
+            return s;
+        return s[..n];
+    }
 }
