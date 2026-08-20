@@ -50,7 +50,7 @@
                 <label class="form-label small text-muted" for="genResConfirm">@L["Common.Resolution"]</label>
                 @if (ResolutionLocked)
                 {
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2" data-testid="generate-confirm-resolution-locked">
                         <span class="badge bg-secondary">@(ResolutionLock ?? Resolution)</span>
                         <span class="small text-muted">@L["Scenes.ResolutionLockedHelp"]</span>
                     </div>

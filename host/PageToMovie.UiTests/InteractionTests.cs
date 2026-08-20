@@ -57,7 +57,9 @@ public class InteractionTests
                 await Assertions.Expect(allTakes).ToBeCheckedAsync();
             else
                 await Assertions.Expect(missing).ToBeCheckedAsync();
-            await Assertions.Expect(page.GetByTestId("generate-confirm-resolution")).ToBeVisibleAsync();
+            var resSelect = page.GetByTestId("generate-confirm-resolution");
+            var resLocked = page.GetByTestId("generate-confirm-resolution-locked");
+            await Assertions.Expect(resSelect.Or(resLocked)).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("generate-confirm-cost")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("generate-confirm-go")).ToBeEnabledAsync();
 
