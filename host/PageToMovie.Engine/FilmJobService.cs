@@ -2955,15 +2955,13 @@ public sealed class FilmJobService
     {
         var cast = req.IncludeCast
             ? _projects.ListCharacters(projectId)
-                .Where(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly)
-                .Where(c => !req.SkipAlreadyLocked || !c.Locked)
+                .Where(c => PlanLooksWork.NeedsLook(c, req.SkipAlreadyLocked))
                 .OrderBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList()
             : new List<CharacterSummary>();
         var locs = req.IncludeLocations
             ? _projects.ListLocations(projectId)
-                .Where(l => l.UsedInPlan)
-                .Where(l => !req.SkipAlreadyLocked || !l.Locked)
+                .Where(l => PlanLooksWork.NeedsLook(l, req.SkipAlreadyLocked))
                 .OrderBy(l => l.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList()
             : new List<LocationSummary>();
@@ -3251,11 +3249,11 @@ public sealed class FilmJobService
         {
             if (string.IsNullOrWhiteSpace(projectId)) return;
 
-            var castNeed = _projects.ListCharacters(projectId)
-                .Count(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly && !c.Locked);
-            var locNeed = _projects.ListLocations(projectId)
-                .Count(l => l.UsedInPlan && !l.Locked);
-            if (castNeed + locNeed == 0)
+            var cast = _projects.ListCharacters(projectId);
+            var locs = _projects.ListLocations(projectId);
+            var castNeed = cast.Count(c => PlanLooksWork.NeedsLook(c));
+            var locNeed = locs.Count(l => PlanLooksWork.NeedsLook(l));
+            if (PlanLooksWork.AllUsedLooksLocked(cast, locs))
             {
                 await AppendLogAsync("Plan looks: all used cast/places already locked — skip auto looks");
                 return;

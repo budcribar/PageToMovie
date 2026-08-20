@@ -19,7 +19,7 @@
             <h1 class="h4 mb-0">@L["Nav.Locations"]</h1>
             <p class="small text-muted mb-0">@L["LocationsPage.Subtitle"]</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2" data-testid="locations-page-actions">
             @if (NeedPlateCount > 0)
             {
                 <button type="button"
@@ -31,15 +31,18 @@
                     @L["LocationsPage.RestorePlates"]
                 </button>
             }
-            <button type="button"
-                    class="btn btn-sm btn-primary"
-                    data-testid="locations-plan-looks"
-                    disabled="@(_busy || string.IsNullOrWhiteSpace(_projectId) || (_job is { Status: "running" or "queued" }))"
-                    title="Generate 3 set plates for each used place (and cast faces). AI locks the best."
-                    @onclick="StartPlanLooksAsync">
-                @L["LocationsPage.GenerateLooksForPlan"]
-            </button>
-            <a class="btn btn-sm btn-success fw-semibold" href="scenes" title="Open Film to generate video clips and stitch the movie">
+            @if (ShowPlanLooksButton)
+            {
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        data-testid="locations-plan-looks"
+                        disabled="@(_busy || string.IsNullOrWhiteSpace(_projectId) || (_job is { Status: "running" or "queued" }))"
+                        title="Generate 3 set plates for each used place (and cast faces). AI locks the best."
+                        @onclick="StartPlanLooksAsync">
+                    @L["LocationsPage.GenerateLooksForPlan"]
+                </button>
+            }
+            <a class="btn btn-success btn-sm" href="scenes" data-testid="locations-open-film" title="Open Film to generate video clips and stitch the movie">
                 @L["LocationsPage.OpenFilm"]
             </a>
         </div>

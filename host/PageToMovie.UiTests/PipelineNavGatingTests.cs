@@ -77,7 +77,10 @@ public class PipelineNavGatingTests
             var planScenes = int.Parse(await shotsStatus.GetAttributeAsync("data-scenes") ?? "0");
             var planClips = int.Parse(await shotsStatus.GetAttributeAsync("data-clips") ?? "0");
             Assert.True(planScenes >= 1 && planClips >= 1, $"shot plan should have scenes+clips, got {planScenes}/{planClips}");
-            await Assertions.Expect(page.GetByTestId("shots-to-scenes")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            var shotsNext = page.GetByTestId("shots-to-scenes");
+            await Assertions.Expect(shotsNext).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(shotsNext).ToHaveClassAsync(new Regex("btn-success"));
+            await Assertions.Expect(page.Locator(".ptm-adapt-header [data-testid=shots-to-scenes]")).ToBeVisibleAsync();
             // The job's completion refreshed readiness: Film and Review gates are open now.
             await Assertions.Expect(page.GetByTestId("nav-scenes")).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("nav-review")).ToBeVisibleAsync(new() { Timeout = 30_000 });

@@ -8,6 +8,8 @@ public partial class AdaptationShell
     [Parameter, EditorRequired] public required AdaptationPageBase Host { get; set; }
     [Parameter, EditorRequired] public string Step { get; set; } = "book";
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Optional top-right header actions (Screenplay-style green next control).</summary>
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
 
     private bool ShowJobPanel =>
         !Host.Busy && AdaptationPageBase.AdaptationStepUi.ShowJobPanel(Session.IsAdmin, Host.Jobs.Job, Step);

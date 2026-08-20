@@ -17,14 +17,34 @@
 
 <StudioPageHeader Kicker="@(List._simpleMode ? "Simple · your voice" : "Studio · Step 4 · Cast")"
                    Title="@(List._simpleMode ? L["CharactersPage.NarratorVoice"] : L["Nav.Cast"])" LedeClass="mb-1">
-    @if (List._simpleMode)
-    {
-        <text>Record one sample for the narrator. Library pictures stay as-is — we only re-voice the lines. Want faces of family? Use full studio.</text>
-    }
-    else
-    {
-        <text>@L["CharactersPage.Subtitle"]</text>
-    }
+    <ChildContent>
+        @if (List._simpleMode)
+        {
+            <text>Record one sample for the narrator. Library pictures stay as-is — we only re-voice the lines. Want faces of family? Use full studio.</text>
+        }
+        else
+        {
+            <text>@L["CharactersPage.Subtitle"]</text>
+        }
+    </ChildContent>
+    <Actions>
+        @if (List.IsCastComplete)
+        {
+            @if (ActiveProject.CanScenes)
+            {
+                <a class="btn btn-success btn-sm" data-testid="characters-to-locations" href="locations">@L["CharactersPage.ToLocations"]</a>
+            }
+            else
+            {
+                <a class="btn btn-success btn-sm" data-testid="characters-to-shots" href="adaptation/shots">@L["CharactersPage.BuildShotPlan"]</a>
+            }
+        }
+        <div data-testid="characters-status"
+             data-cast-complete="@(List.IsCastComplete ? "true" : "false")"
+             data-has-cast="@(List.HasCast ? "true" : "false")"
+             class="visually-hidden"
+             aria-hidden="true"></div>
+    </Actions>
 </StudioPageHeader>
 
 @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
@@ -82,6 +102,8 @@ else
 }
 else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
 {
+    @if (!List.PlanLooksAlreadyDone)
+    {
     <div class="mb-2 d-flex flex-wrap align-items-center gap-2">
         <button type="button"
                 class="btn btn-primary btn-sm"
@@ -93,6 +115,7 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
         </button>
         <span class="small text-muted">Used cast + places · 3 options each · AI auto-locks best (override anytime)</span>
     </div>
+    }
     @if (Session.IsAdmin)
     {
         @* Admin-only redo. These are NOT the same step:
@@ -167,7 +190,7 @@ else if (!string.IsNullOrEmpty(_error) && !Jobs.JobRunning)
 {
     <InlineAlert Message="@_error" />
 }
-@* One outcome surface: success flash OR next-step CTA — not both saying “ready” *@
+@* One outcome surface: success flash, not a second “ready” next to the header next button *@
 @if (!string.IsNullOrEmpty(_message) && !List._extractingCast && !Jobs.JobRunning && !List.IsCastComplete)
 {
     <InlineAlert Message="@_message" Variant="success" />
@@ -178,24 +201,6 @@ else if (!string.IsNullOrEmpty(_error) && !Jobs.JobRunning)
         <strong>Admin · last cast extract</strong>
         · @List._lastCastExtractKeys.Count:
         <code class="user-select-all">@string.Join(", ", List._lastCastExtractKeys)</code>
-    </div>
-}
-else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
-{
-    <div class="alert alert-info py-2 d-flex flex-wrap align-items-center justify-content-end gap-2">
-        @if (ActiveProject.CanScenes)
-        {
-            <a class="btn btn-sm btn-success fw-semibold" data-testid="characters-to-locations" href="locations">@L["CharactersPage.ToLocations"]</a>
-        }
-        else
-        {
-            <a class="btn btn-sm btn-primary" data-testid="characters-to-shots" href="adaptation/shots">@L["CharactersPage.BuildShotPlan"]</a>
-        }
-        <div data-testid="characters-status"
-             data-cast-complete="@(List.IsCastComplete ? "true" : "false")"
-             data-has-cast="@(List.HasCast ? "true" : "false")"
-             class="visually-hidden"
-             aria-hidden="true"></div>
     </div>
 }
 
