@@ -34,10 +34,14 @@ internal static class ApiServiceConfiguration
             return new ProjectAclService(root, users, email, store);
         });
 
-        var listenPorts = new HashSet<string> { "5088", "8080", "80" };
+        // 5088 = local / LoadSim. 8080 = container default. Do not default-bind 80 — that is a
+        // privileged port and Kestrel fails with Permission denied on GitHub Actions / local Linux.
+        // Railway (or any host) that needs 80 or another port still adds it via PORT.
+        var listenPorts = new HashSet<string> { "5088", "8080" };
         // Testability/deploy override: replace the default bind ports entirely (comma-separated). Lets a
         // second local instance (e.g. UI tests with capabilities forced off) bind a distinct port without
-        // colliding on 5088. Unset in normal runs → the defaults above apply.
+        // colliding on 5088. Unset in normal runs → the defaults above apply. UseUrls ignores
+        // ASPNETCORE_URLS, so CI must set PAGETOMOVIE_BIND_PORTS (see loadsim.yml / AppFixture).
         var bindPortsOverride = Environment.GetEnvironmentVariable("PAGETOMOVIE_BIND_PORTS");
         if (!string.IsNullOrWhiteSpace(bindPortsOverride))
             listenPorts = new HashSet<string>(

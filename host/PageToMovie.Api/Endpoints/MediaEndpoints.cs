@@ -87,11 +87,14 @@ public static class MediaEndpoints
     /// the regular anonymous entries). <c>ProviderRecovery</c> tells the client to download only
     /// when the clip is missing locally — size/hash are unknown until the provider copy lands.
     /// <c>ProviderLeadInSeconds</c> &gt; 0 marks a combined video-extend copy: its head repeats
-    /// the previous clip, and the client must slice the new tail out before saving (the API host
-    /// never trims).</summary>
+    /// the previous clip. The client slices the new tail out as this clip and, when the previous
+    /// clip is missing locally, also saves the head as that previous clip (the API host never
+    /// trims). <c>PredecessorLeadInSeconds</c> is clip-1, then clip-2, … sidecar hops so the
+    /// client can walk a leftover unsliced chain (C3 head = C1+C2).</summary>
     public sealed record ProviderRecoverySyncEntry(
         string RelativePath, string FileName, long SizeBytes, string? Sha256,
-        bool IsMp4, string StreamUrl, bool ProviderRecovery, double ProviderLeadInSeconds);
+        bool IsMp4, string StreamUrl, bool ProviderRecovery, double ProviderLeadInSeconds,
+        IReadOnlyList<double> PredecessorLeadInSeconds);
 
     private static readonly Regex ClipSidecarNameRx = new(
         @"^scene_(\d{2})_clip_(\d{2}).*\.clip\.json$",
@@ -102,7 +105,8 @@ public static class MediaEndpoints
     /// newest sidecar still points at the provider copy (<c>source_url</c>): offered through the
     /// same proxy-ticket stream so a client sync can self-heal a missed live save. Combined
     /// video-extend copies carry their sidecar's lead-in so the client can slice the new tail
-    /// out before saving. <paramref name="issueTicket"/> maps a provider URL to a proxy token.
+    /// out as this clip and recover a missing previous clip from the head.
+    /// <paramref name="issueTicket"/> maps a provider URL to a proxy token.
     /// </summary>
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
         string videoDir, Func<string, string> issueTicket)
@@ -140,9 +144,27 @@ public static class MediaEndpoints
                 IsMp4: true,
                 StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl)}",
                 ProviderRecovery: true,
-                ProviderLeadInSeconds: src.IsCombined ? src.LeadInSeconds : 0));
+                ProviderLeadInSeconds: src.IsCombined ? src.LeadInSeconds : 0,
+                PredecessorLeadInSeconds: CollectPredecessorLeadIns(videoDir, scene, clip)));
         }
         return entries;
+    }
+
+    /// <summary>
+    /// Sidecar lead-ins walking backward from clip-1. Each value is one hop (how much of
+    /// that file is the previous clip). Stops at the first non-combined sidecar.
+    /// </summary>
+    public static List<double> CollectPredecessorLeadIns(string videoDir, int scene, int clip)
+    {
+        var hops = new List<double>();
+        for (var c = clip - 1; c >= 1; c--)
+        {
+            var prev = ClipProviderSource.ReadForClip(videoDir, scene, c);
+            if (prev is not { IsCombined: true })
+                break;
+            hops.Add(prev.LeadInSeconds);
+        }
+        return hops;
     }
 
     private static async Task<object?> TryDescribeMediaFileAsync(

@@ -5441,8 +5441,13 @@ public sealed class ProjectMediaSyncFile
     /// by its sidecar. Download only when the file is missing locally (size/hash are unknown).</summary>
     public bool ProviderRecovery { get; set; }
     /// <summary>&gt; 0 on a combined video-extend provider copy: its head repeats the previous
-    /// clip, so the new tail must be sliced out (ffmpeg.wasm) before the save.</summary>
+    /// clip. The new tail is sliced out as this clip; a missing previous clip (same scene,
+    /// clip-1) is recovered from the head when possible.</summary>
     public double ProviderLeadInSeconds { get; set; }
+    /// <summary>Sidecar lead-ins walking backward from clip-1, then clip-2, … Each value is
+    /// how much of THAT file is its previous clip. The client plans which hops still apply
+    /// to this file's head (sliced C2: C1 is not in C3).</summary>
+    public List<double> PredecessorLeadInSeconds { get; set; } = new();
 }
 
 public sealed class ModelsCatalogResponse

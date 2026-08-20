@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -13,18 +14,48 @@ public class SmartClassifierModelRouterTests
     public void ResolveOptimalModelForTask_HonorsUserExplicitOverride()
     {
         var router = new SmartClassifierModelRouter(NullLogger<SmartClassifierModelRouter>.Instance);
-        var chosen = router.ResolveOptimalModelForTask("beat_pacing", userConfiguredModel: "claude-sonnet-5");
+        const string overrideId = "operator-picked-model";
+        var taskKey = FirstRankedTaskKey();
+        var chosen = router.ResolveOptimalModelForTask(taskKey, userConfiguredModel: overrideId);
 
-        Assert.Equal("claude-sonnet-5", chosen);
+        Assert.Equal(overrideId, chosen);
     }
 
     [Fact]
-    public void ResolveOptimalModelForTask_ReturnsRankedCandidateWhenKeysPresentOrFallback()
+    public void ResolveOptimalModelForTask_AutoUsesRankedModelWithKey_OrThrowsWhenNone()
     {
         var router = new SmartClassifierModelRouter(NullLogger<SmartClassifierModelRouter>.Instance);
-        var chosen = router.ResolveOptimalModelForTask("beat_pacing", userConfiguredModel: "auto");
+        var taskKey = FirstRankedTaskKey();
+        Assert.True(SupportedModelCatalog.TaskRankings.TryGetValue(taskKey, out var ranked));
+        Assert.NotEmpty(ranked);
 
-        Assert.NotNull(chosen);
-        Assert.NotEmpty(chosen);
+        var anyKeyed = ranked
+            .Select(id => SupportedModelCatalog.Find(id))
+            .Any(entry => entry is { Enabled: true } && HasRequiredKeys(entry));
+
+        if (anyKeyed)
+        {
+            var chosen = router.ResolveOptimalModelForTask(taskKey, userConfiguredModel: "auto");
+            Assert.Contains(chosen, ranked);
+            return;
+        }
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => router.ResolveOptimalModelForTask(taskKey, userConfiguredModel: "auto"));
+        Assert.Contains("no ranked catalog model has an available API key", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string FirstRankedTaskKey()
+    {
+        Assert.True(
+            SupportedModelCatalog.TaskRankings.Count > 0,
+            "models_catalog.json must define taskRankings for classifier routing.");
+        return SupportedModelCatalog.TaskRankings.ContainsKey("beat_pacing")
+            ? "beat_pacing"
+            : SupportedModelCatalog.TaskRankings.Keys.First();
+    }
+
+    private static bool HasRequiredKeys(SupportedModelEntry entry) =>
+        entry.RequiredEnvKeys.All(reqKey =>
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(reqKey)));
 }
