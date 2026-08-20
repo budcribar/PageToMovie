@@ -510,51 +510,17 @@ public static class MediaEndpoints
     var providerId = CatalogApiKey.ProviderIdForVideo(modelId, ticket.ProviderId);
     var key = await ResolveTicketVideoKeyAsync(svc.Keys, ticket.KeyUserId, modelId, providerId, ct)
         .ConfigureAwait(false);
-
-    // Provider file handles are account-scoped: a clip generated under the server's env key
-    // is NOT retrievable with the user's stored key (xAI answers 500 "Failed to retrieve
-    // file"), and vice versa after a key rotation. Try the resolved key first, then the
-    // model's env key when the file download specifically failed.
-    var candidates = BuildKeyCandidates(
-        key, CatalogApiKey.FirstEnvKeyForVideo(modelId),
-        retryWorthwhile: !string.IsNullOrWhiteSpace(ticket.FileId));
-    (IResult Result, bool ProviderFileUnavailable) last = default;
-    foreach (var candidate in candidates)
-    {
-        using (CatalogApiKey.PushKey(providerId, candidate))
-        using (UserApiCallScope.Push(ticket.KeyUserId))
-        {
-            last = await StreamProviderCopyDetailedAsync(
-                ticket.Url, ticket.FileId, svc.HttpFactory, svc.HttpContext, ct,
-                new StreamProviderCopyOptions(
-                    Video: svc.Video,
-                    Model: modelId,
-                    LogFactory: svc.LogFactory,
-                    RecoverAfterProvider: (_, _, _) => Task.FromResult(
-                        TryRecoverHostedCopy(ticket.ProjectDir, ticket.Scene, ticket.Clip))));
-            if (!last.ProviderFileUnavailable)
-                return last.Result;
-        }
-    }
-    return last.Result;
+    using (CatalogApiKey.PushKey(providerId, key))
+    using (UserApiCallScope.Push(ticket.KeyUserId))
+        return await StreamProviderCopyAsync(
+            ticket.Url, ticket.FileId, svc.HttpFactory, svc.HttpContext, ct,
+            new StreamProviderCopyOptions(
+                Video: svc.Video,
+                Model: modelId,
+                LogFactory: svc.LogFactory,
+                RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                    TryRecoverHostedCopy(ticket.ProjectDir, ticket.Scene, ticket.Clip))));
 }
-
-    /// <summary>
-    /// Distinct API keys worth attempting for a provider file download, resolved-key first.
-    /// With no stored key the resolved key is null and downstream resolution already falls
-    /// through to the env key, so a second explicit env attempt would be a duplicate; same
-    /// when the two keys match. Without a <c>file_id</c> nothing account-scoped can be
-    /// retried, so only the first candidate is returned.
-    /// </summary>
-    public static IReadOnlyList<string?> BuildKeyCandidates(
-        string? resolvedKey, string? envKey, bool retryWorthwhile)
-    {
-        var first = string.IsNullOrWhiteSpace(resolvedKey) ? null : resolvedKey;
-        if (first is null || !retryWorthwhile || string.IsNullOrWhiteSpace(envKey)
-            || string.Equals(envKey, first, StringComparison.Ordinal))
-            return new[] { first };
-        return new[] { first, envKey };
-    }
 
     /// <summary>
     /// Key for the user who issued the ticket (media-sync JS fetch has no JWT), using the
@@ -590,30 +556,14 @@ public static class MediaEndpoints
     /// the 10-minute media-proxy client. Combined-extend slicing/hop-walk is
     /// unchanged — the same bytes (combined file) are streamed either way.
     /// </summary>
-    internal static async Task<IResult> StreamProviderCopyAsync(
+    internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
         IHttpClientFactory httpFactory,
         HttpContext httpContext,
         CancellationToken ct,
         StreamProviderCopyOptions options) =>
-        (await StreamProviderCopyDetailedAsync(url, fileId, httpFactory, httpContext, ct, options)
-            .ConfigureAwait(false)).Result;
-
-    /// <summary>
-    /// Same as <see cref="StreamProviderCopyAsync(string?, string?, IHttpClientFactory, HttpContext, CancellationToken, StreamProviderCopyOptions)"/>
-    /// but reports whether the provider copy itself was unavailable (dead URL / Files download
-    /// failed, no hosted fallback) — the caller may retry under a different account key, since
-    /// provider file handles are only retrievable by the account that created them.
-    /// </summary>
-    internal static Task<(IResult Result, bool ProviderFileUnavailable)> StreamProviderCopyDetailedAsync(
-        string? url,
-        string? fileId,
-        IHttpClientFactory httpFactory,
-        HttpContext httpContext,
-        CancellationToken ct,
-        StreamProviderCopyOptions options) =>
-        StreamProviderCopyDetailedAsync(
+        StreamProviderCopyAsync(
             url,
             fileId,
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
@@ -647,17 +597,6 @@ public static class MediaEndpoints
         Func<string, CancellationToken, Task<IResult?>> openFileId,
         CancellationToken ct,
         ILogger? log = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null) =>
-        (await StreamProviderCopyDetailedAsync(url, fileId, openUrl, openFileId, ct, log, recoverAfterProvider)
-            .ConfigureAwait(false)).Result;
-
-    internal static async Task<(IResult Result, bool ProviderFileUnavailable)> StreamProviderCopyDetailedAsync(
-        string? url,
-        string? fileId,
-        Func<string, CancellationToken, Task<IResult?>> openUrl,
-        Func<string, CancellationToken, Task<IResult?>> openFileId,
-        CancellationToken ct,
-        ILogger? log = null,
         Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null)
     {
         try
@@ -665,15 +604,15 @@ public static class MediaEndpoints
             var streamed = await ClipProviderSource.TryOpenAsync(
                 url, fileId, openUrl, openFileId, ct).ConfigureAwait(false);
             if (streamed is not null)
-                return (streamed, false);
+                return streamed;
             if (recoverAfterProvider is not null
                 && await recoverAfterProvider(fileId, null, ct).ConfigureAwait(false) is { } hosted)
-                return (hosted, false);
+                return hosted;
             if (!string.IsNullOrWhiteSpace(fileId))
-                return (Results.Json(
+                return Results.Json(
                     new { ok = false, error = "Provider file could not be opened" },
-                    statusCode: StatusCodes.Status404NotFound), true);
-            return (Results.NotFound(new { ok = false, error = "File not found" }), true);
+                    statusCode: StatusCodes.Status404NotFound);
+            return Results.NotFound(new { ok = false, error = "File not found" });
         }
         catch (Exception ex) when (!string.IsNullOrWhiteSpace(fileId))
         {
@@ -681,10 +620,10 @@ public static class MediaEndpoints
             log?.LogWarning(ex, "Provider file content failed for {FileId}: {Error}", fileId, detail);
             if (recoverAfterProvider is not null
                 && await recoverAfterProvider(fileId, ex, ct).ConfigureAwait(false) is { } hosted)
-                return (hosted, false);
-            return (Results.Json(
+                return hosted;
+            return Results.Json(
                 new { ok = false, error = "Provider file download failed: " + detail },
-                statusCode: StatusCodes.Status502BadGateway), true);
+                statusCode: StatusCodes.Status502BadGateway);
         }
     }
 
