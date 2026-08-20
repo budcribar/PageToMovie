@@ -40,28 +40,7 @@
     </div>
     <div class="demo-card-body">
         <header class="demo-card-header">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-                <h2 class="demo-card-title mb-0">
-                    @if (YtWatchUrl is not null)
-                    {
-                        <a href="@YtWatchUrl"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           class="demo-card-title-link">@Film.Title</a>
-                    }
-                    else
-                    {
-                        @Film.Title
-                    }
-                </h2>
-                @if (YtWatchUrl is not null)
-                {
-                    <a href="@YtWatchUrl"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="demo-yt-open-link flex-shrink-0">Watch on YouTube ↗</a>
-                }
-            </div>
+            <h2 class="demo-card-title mb-0">@Film.Title</h2>
             <div class="demo-card-chips mt-2">
                 @if (!string.IsNullOrWhiteSpace(Film.ProjectId))
                 {

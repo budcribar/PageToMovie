@@ -25,7 +25,7 @@ Status: ☐ open · ☑ resolved (with decision).
 | 14 | ☐ | New project / Import toggles | Home full-studio card | Easy-start landing duplicates the toggles. |
 | 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase | Record phase repeats the action (two phases of one flow). |
 | 16 | ☑ | Verification report open | Row status chip (one chip: busy/missing/stale/verdict) opens the report | Expansion keeps only a small "report" link next to the heard-vs-expected diff — consistent pair, by design. |
-| 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay | Title link + "Watch on YouTube ↗" — still three links per card. |
+| 17 | ☑ | Watch a demo film on YouTube | Card thumbnail overlay (`demo-watch-link`) | Title is plain text (not a link). "Watch on YouTube ↗" text link REMOVED. One YouTube watch control per card. |
 | 18 | ☑ shipped | Open the demo gallery | Heading "Demo films" is the `/demo` link (`home-demo-films-heading`) | Open Gallery button/link REMOVED. Home keeps ONE surface (standalone card; studio-card inline strip dropped). Left-nav Demo stays. |
 | 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" | Easy-start story list fork (may be intentional dual surface). NOTE: forkable now requires the new Open visibility (B2) — previously-Public projects need re-marking. |
 | 20 | ☑ shipped | Generate vs Regenerate (film level) | ONE "Generate" with scope radio in the confirm (Missing only / All as new takes) | SHIPPED 2026-08-20 — toolbar "🔄 Regenerate (N)" removed; combined confirm is `Scenes.GenerateConfirm.razor` (scope radio + resolution/cost/admin model). |
