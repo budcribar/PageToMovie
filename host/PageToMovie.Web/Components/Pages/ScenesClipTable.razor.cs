@@ -44,41 +44,65 @@ public partial class ScenesClipTable : PageSliceComponent
         if (!c.OnDisk)
             return ("bg-secondary-subtle text-secondary border border-secondary-subtle", "⚪ Missing", "No video yet — generate this clip");
         if (c.IsStale)
-        {
-            var sr = c.StaleReason ?? "";
-            var kind = sr.StartsWith("plan_lint", StringComparison.OrdinalIgnoreCase) ? "plan"
-                : sr.StartsWith("dialogue_qa", StringComparison.OrdinalIgnoreCase) ? "QA"
-                : sr == "plan_newer" ? "plan newer" : "";
-            var help = kind == "plan"
-                ? sr + " — regenerating the clip will not clear this; rebuild the shot plan for this scene"
-                : (sr.Length > 0 ? sr : "stale") + " — re-generate recommended";
-            var score = c.DialogueVerification is { } v && kind == "QA" ? $" ({v.DialogueAccuracyScore:P0})" : "";
-            return ("bg-warning text-dark", $"⚠ Stale · {(kind.Length > 0 ? kind : "regen")}{score}", help);
-        }
+            return StaleClipChip(c);
         if (c.DialogueVerification is { } ver)
-        {
-            var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase)
-                                 && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
-            return ver.Status?.ToLowerInvariant() switch
-            {
-                "verified" => ("bg-success-subtle text-success border border-success-subtle",
-                    $"✓ Verified ({ver.DialogueAccuracyScore:P0})", "Dialogue, speaker and picture verified"),
-                "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle",
-                    "⚠ Speaker Swap", $"Expected {ver.ExpectedSpeaker}, heard {ver.DetectedSpeaker ?? "someone else"}"),
-                "visual_defect" => ("bg-danger-subtle text-danger border border-danger-subtle",
-                    "⚠ Visual defect", "The picture is broken — see the report"),
-                "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle",
-                    $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})", "Spoken words differ from the script"),
-                "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle",
-                    "⚠ No speech (0%)", "A line was planned but nothing was spoken"),
-                // A silent clip that passed the visual-only check IS verified — same badge as spoken clips.
-                "no_speech" => ("bg-success-subtle text-success border border-success-subtle",
-                    $"✓ Verified ({ver.DialogueAccuracyScore:P0})", "Silent as planned; picture verified"),
-                _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle",
-                    ver.Status ?? "unverified", "Verification state unknown"),
-            };
-        }
+            return VerificationClipChip(ver);
         return ("bg-success", "✓ Ready", "On disk — not yet verified");
+    }
+
+    private static (string Class, string Text, string Title) StaleClipChip(ClipSummary c)
+    {
+        var sr = c.StaleReason ?? "";
+        var kind = StaleKindLabel(sr);
+        string help;
+        if (kind == "plan")
+            help = sr + " — regenerating the clip will not clear this; rebuild the shot plan for this scene";
+        else if (sr.Length > 0)
+            help = sr + " — re-generate recommended";
+        else
+            help = "stale — re-generate recommended";
+        var score = "";
+        if (c.DialogueVerification is { } v && kind == "QA")
+            score = $" ({v.DialogueAccuracyScore:P0})";
+        var label = kind;
+        if (label.Length == 0)
+            label = "regen";
+        return ("bg-warning text-dark", $"⚠ Stale · {label}{score}", help);
+    }
+
+    private static string StaleKindLabel(string sr)
+    {
+        if (sr.StartsWith("plan_lint", StringComparison.OrdinalIgnoreCase))
+            return "plan";
+        if (sr.StartsWith("dialogue_qa", StringComparison.OrdinalIgnoreCase))
+            return "QA";
+        if (sr == "plan_newer")
+            return "plan newer";
+        return "";
+    }
+
+    private static (string Class, string Text, string Title) VerificationClipChip(ClipDialogueVerificationResult ver)
+    {
+        var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase)
+                             && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
+        return ver.Status?.ToLowerInvariant() switch
+        {
+            "verified" => ("bg-success-subtle text-success border border-success-subtle",
+                $"✓ Verified ({ver.DialogueAccuracyScore:P0})", "Dialogue, speaker and picture verified"),
+            "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle",
+                "⚠ Speaker Swap", $"Expected {ver.ExpectedSpeaker}, heard {ver.DetectedSpeaker ?? "someone else"}"),
+            "visual_defect" => ("bg-danger-subtle text-danger border border-danger-subtle",
+                "⚠ Visual defect", "The picture is broken — see the report"),
+            "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle",
+                $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})", "Spoken words differ from the script"),
+            "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle",
+                "⚠ No speech (0%)", "A line was planned but nothing was spoken"),
+            // A silent clip that passed the visual-only check IS verified — same badge as spoken clips.
+            "no_speech" => ("bg-success-subtle text-success border border-success-subtle",
+                $"✓ Verified ({ver.DialogueAccuracyScore:P0})", "Silent as planned; picture verified"),
+            _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle",
+                ver.Status ?? "unverified", "Verification state unknown"),
+        };
     }
 
     private static string ClipDialogueTitle(ClipSummary c)
