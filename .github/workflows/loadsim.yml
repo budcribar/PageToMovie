@@ -51,8 +51,9 @@ jobs:
           export PageToMovie__Capacity__MaxVideoInFlightPerUser=2
           export PageToMovie__Fakes__VideoDelayMs=50
           export ASPNETCORE_ENVIRONMENT=Development
+          # Product also binds 8080 and 80; 80 needs root and fails on GHA (EACCES).
+          export PAGETOMOVIE_BIND_PORTS=5088
           export ASPNETCORE_URLS=http://127.0.0.1:5088
-          # Skip launchSettings (localhost can bind IPv6 and fail with EACCES on GHA).
           nohup dotnet run --project PageToMovie.Api --no-build -c Release --no-launch-profile --urls http://127.0.0.1:5088 > /tmp/pagetomovie-api.log 2>&1 &
           echo $! > /tmp/pagetomovie-api.pid
           for i in $(seq 1 60); do
