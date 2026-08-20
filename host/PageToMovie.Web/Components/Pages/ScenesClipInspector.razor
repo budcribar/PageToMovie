@@ -17,7 +17,7 @@
         <div class="border border-primary border-opacity-25 rounded bg-body-tertiary p-3 my-1" data-testid="clip-expansion">
             <div class="row">
                 <div class="col-md-5 mb-3">
-                    @if (Playback?.CanPlayClip(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) == true)
+                    @if (Playback is { } play && play.CanPlayClip(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber))
                     {
                         @if (Playback._clipVideoLoading)
                         {
@@ -63,7 +63,7 @@
                                 data-testid="clip-inspector-play"
                                 disabled="@(Host._busy || Gen.JobRunning || !(Playback?.CanPlayClip(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? false))"
                                 title="@(Playback?.ClipPlayTitle(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? "Play this clip")"
-                                @onclick="() => Playback!.PlaySingleClipAsync(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber)">
+                                @onclick="() => Playback?.PlaySingleClipAsync(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? Task.CompletedTask">
                             ▶ Play
                         </button>
                         <button class="btn btn-sm btn-outline-primary"

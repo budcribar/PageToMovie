@@ -402,13 +402,7 @@ public partial class Scenes
         var src = urls.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
         if (string.IsNullOrEmpty(src))
         {
-            S._error = S.Stitch.LastCollectError is { Length: > 0 } why
-                ? why
-                : ScenePlayGate.FormatPlayFailedError(
-                    "clip",
-                    S.Stitch.LastSkippedClipLabels.Count > 0
-                        ? S.Stitch.LastSkippedClipLabels
-                        : new[] { ScenePlayGate.FormatClipLabel(sn, cn) });
+            S._error = FormatSingleClipPlayError(sn, cn);
             _showScenePlayer = false;
             _playingScene = null;
             _playingClip = null;
@@ -638,6 +632,17 @@ public partial class Scenes
         }
     }
 
+    private string FormatSingleClipPlayError(int sn, int cn)
+    {
+        if (S.Stitch.LastCollectError is { Length: > 0 } why)
+            return why;
+
+        IReadOnlyList<string> labels = S.Stitch.LastSkippedClipLabels;
+        if (labels.Count == 0)
+            labels = new[] { ScenePlayGate.FormatClipLabel(sn, cn) };
+        return ScenePlayGate.FormatPlayFailedError("clip", labels);
+    }
+
     private static string FormatEmptySelectedCollectError(string? lastCollectError)
     {
         if (lastCollectError is not { Length: > 0 })
@@ -649,8 +654,6 @@ public partial class Scenes
 
         return ScenePlayGate.FormatPlayFailedError("scenes", new[] { lastCollectError });
     }
-
-
 
     internal string? CompareVideoUrl(ClipVersionItem v) => _compareVideoUrls.GetValueOrDefault(v.VersionId);
 
