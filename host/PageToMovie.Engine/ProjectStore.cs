@@ -14,6 +14,7 @@ namespace PageToMovie.Engine;
 public sealed partial class ProjectStore
 {
     public const string ClientMarkerExtension = ".client.json";
+    public const string PipelineConfigFileName = StoreLit.PipelineConfigJson;
 
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.IndentedCaseInsensitive;
 

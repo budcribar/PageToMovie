@@ -120,7 +120,7 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
     }
 
     public Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) =>
-        GetKeyAsync(userId, "grok", ct);
+        GetKeyAsync(userId, SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase), ct);
 
     public async Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default)
     {
@@ -207,7 +207,7 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
     }
 
     public Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) =>
-        HasKeyAsync(userId, "grok", ct);
+        HasKeyAsync(userId, SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase), ct);
 
     public async Task<bool> HasKeyAsync(string? userId, string providerId, CancellationToken ct = default) =>
         !string.IsNullOrWhiteSpace(await GetKeyAsync(userId, providerId, ct).ConfigureAwait(false));

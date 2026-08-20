@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
 
 namespace PageToMovie.Engine;
@@ -16,23 +17,28 @@ internal static class GrokProviderHttp
 
     /// <summary>
     /// Same order as video generation once a job/request has pushed <see cref="ApiKeyScope"/>,
-    /// plus the user-id lookup <see cref="GrokChatClient"/> uses when scope is empty
+    /// plus the user-id lookup when scope is empty
     /// (<see cref="UserApiCallScope.UserId"/> — never <c>null</c>, which would skip the
     /// personal key and spend the server env key on someone else's Files).
+    /// Provider id comes from the catalog row that talks to this client's API base.
     /// </summary>
     public static async Task<string?> ResolveApiKeyAsync(
         IUserApiKeyProvider? keyProvider, CancellationToken ct = default)
     {
+        var providerId = SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase);
+        if (!string.IsNullOrWhiteSpace(providerId) && !string.IsNullOrWhiteSpace(ApiKeyScope.Get(providerId)))
+            return ApiKeyScope.Get(providerId);
         if (!string.IsNullOrWhiteSpace(ApiKeyScope.Current))
             return ApiKeyScope.Current;
-        if (keyProvider is not null)
+        if (keyProvider is not null && !string.IsNullOrWhiteSpace(UserApiCallScope.UserId)
+            && !string.IsNullOrWhiteSpace(providerId))
         {
-            var fromUser = await keyProvider.GetKeyAsync(UserApiCallScope.UserId, "grok", ct)
+            var fromUser = await keyProvider.GetKeyAsync(UserApiCallScope.UserId, providerId, ct)
                 .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(fromUser))
                 return fromUser;
         }
-        return Environment.GetEnvironmentVariable("XAI_API_KEY");
+        return Environment.GetEnvironmentVariable(SupportedModelCatalog.XaiApiKeyEnv);
     }
 
     public static Task<HttpResponseMessage> SendJsonAsync(

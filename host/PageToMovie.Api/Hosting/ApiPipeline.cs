@@ -106,7 +106,11 @@ internal static class ApiPipeline
         // Request header override is treated as xAI/Grok (legacy X-Api-Key).
         if (!string.IsNullOrWhiteSpace(user?.RequestApiKey))
             return user.RequestApiKey;
-        return await GetProviderKeyAsync(keyProvider, uid, "grok");
+        var providerId = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+            PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase);
+        if (string.IsNullOrWhiteSpace(providerId))
+            return null;
+        return await GetProviderKeyAsync(keyProvider, uid, providerId);
     }
 
     static Task<string?> GetProviderKeyAsync(IUserApiKeyProvider? keyProvider, string? uid, string provider) =>

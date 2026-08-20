@@ -8,8 +8,8 @@ namespace PageToMovie.Tests;
 
 /// <summary>
 /// Durable clip recovery: request <c>storage_options.public_url</c>, persist that URL as
-/// sidecar <c>source_url</c>, and fall back to the Railway fork copy when Imagine file_id
-/// cannot be downloaded. Hop-walk / combined-extend slicing is unchanged.
+/// sidecar <c>source_url</c>, and fall back to the Railway fork copy when the provider
+/// file_id cannot be downloaded. Hop-walk / combined-extend slicing is unchanged.
 /// </summary>
 public sealed class DurableVideoRecoveryTests
 {
@@ -67,7 +67,7 @@ public sealed class DurableVideoRecoveryTests
                 "https://vidgen.example/expired.mp4",
                 "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
                 (_, _) => Task.FromResult<IResult?>(null),
-                (_, _) => throw new InvalidOperationException("xAI file content HTTP 404: generate-only"),
+                (_, _) => throw new InvalidOperationException("xAI file content HTTP 404: not found"),
                 CancellationToken.None,
                 recoverAfterProvider: (_, _, _) => Task.FromResult(
                     MediaEndpoints.TryRecoverHostedCopy(project, 1, 1)));

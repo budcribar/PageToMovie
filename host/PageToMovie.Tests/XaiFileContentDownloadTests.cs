@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -10,7 +11,8 @@ namespace PageToMovie.Tests;
 
 /// <summary>
 /// The only Files content GET is <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/>
-/// (<c>GET /v1/files/{id}/content</c>). Media proxy must reuse it — no second download.
+/// (<c>GET /v1/files/{id}/content</c>). Media proxy reaches it through catalog-routed
+/// <see cref="IVideoClient.OpenStoredFileStreamAsync"/> — no second download.
 /// Use the Bearer key that owns the file; never <c>GetKeyAsync(null)</c>.
 /// </summary>
 [Collection("env-serial")]
@@ -107,7 +109,7 @@ public sealed class XaiFileContentDownloadTests
     {
         var files = new StubFilesHandler { Body = new byte[] { 0x00, 0x01, 0x02, 0x03 } };
         using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
-        var xai = new XaiResponsesClient(xaiHttp);
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
         var urls = new Url404Factory();
         var ctx = new DefaultHttpContext();
 
@@ -117,7 +119,8 @@ public sealed class XaiFileContentDownloadTests
                 "https://vidgen.example/expired.mp4",
                 "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
                 urls,
-                xai,
+                video,
+                RequireVideoModel(),
                 ctx,
                 CancellationToken.None);
             Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
@@ -139,7 +142,7 @@ public sealed class XaiFileContentDownloadTests
             ErrorBody = "{\"error\":\"file not readable\"}",
         };
         using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
-        var xai = new XaiResponsesClient(xaiHttp);
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
         var ctx = new DefaultHttpContext();
 
         using (ApiKeyScope.Push("xai-from-ticket"))
@@ -148,7 +151,8 @@ public sealed class XaiFileContentDownloadTests
                 url: null,
                 "file_dead",
                 new Url404Factory(),
-                xai,
+                video,
+                RequireVideoModel(),
                 ctx,
                 CancellationToken.None);
             Assert.Equal(StatusCodes.Status502BadGateway, result is IStatusCodeHttpResult s ? s.StatusCode : 0);
@@ -162,6 +166,44 @@ public sealed class XaiFileContentDownloadTests
 
         Assert.Equal("/v1/files/file_dead/content", files.Path);
         Assert.Equal(1, files.SendCount);
+    }
+
+    private static string RequireVideoModel()
+    {
+        var id = SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video);
+        Assert.False(string.IsNullOrWhiteSpace(id));
+        return id!;
+    }
+
+    /// <summary>
+    /// Test stand-in for the catalog facade: stored-file open is the same
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> product adapters use.
+    /// </summary>
+    private sealed class CatalogRoutedFilesClient : IVideoClient
+    {
+        private readonly XaiResponsesClient _files;
+        public CatalogRoutedFilesClient(XaiResponsesClient files) => _files = files;
+        public bool IsConfigured => true;
+
+        public Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct) =>
+            OpenAsync(fileId, ct);
+
+        private async Task<Stream?> OpenAsync(string fileId, CancellationToken ct) =>
+            await _files.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+
+        public Task<string> SubmitGenerationAsync(
+            string prompt, int durationSeconds, string resolution, string model, CancellationToken ct,
+            IReadOnlyList<string>? referenceImagePaths = null, string? startFrameImagePath = null,
+            string? continueFromVideoPath = null, string? aspectRatio = null, string? extendSourceFileId = null) =>
+            throw new NotSupportedException();
+
+        public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
     }
 
     private sealed class Url404Factory : IHttpClientFactory

@@ -92,6 +92,35 @@ public sealed class MultiProviderVideoClient : IVideoClient
         return client.TryGetStoredFileReference(id);
     }
 
+    public Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct)
+    {
+        var client = ResolveClientForModel(model);
+        return client.OpenStoredFileStreamAsync(fileId, model, ct);
+    }
+
+    public Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct)
+    {
+        var client = ResolveClientForModel(model);
+        return client.TryUploadVideoStreamAsync(mp4, fileName, model, ct);
+    }
+
+    /// <summary>Same catalog routing <see cref="SubmitGenerationAsync"/> uses — never a provider-name string.</summary>
+    public IVideoClient ResolveClientForModel(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            throw new InvalidOperationException(
+                "Video: model is required. Open Settings and choose a Video generation model.");
+        var entry = SupportedModelCatalog.Find(model, ModelCapability.Video) ?? SupportedModelCatalog.Find(model);
+        if (entry is null || !entry.Enabled)
+            throw new InvalidOperationException(
+                $"Video: model '{model}' is not in the models catalog (or is disabled). Open Settings and pick a current model.");
+        if (entry.Provider == ModelProviderFamily.Fal)
+            return _fal;
+        if (entry.Provider == ModelProviderFamily.Google)
+            return _gemini;
+        return _grok;
+    }
+
     public IVideoClient ResolveDownloadClient(string url)
     {
         var inferred = InferProviderFromDownloadUrl(url);

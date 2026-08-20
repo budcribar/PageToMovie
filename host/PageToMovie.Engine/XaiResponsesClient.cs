@@ -9,9 +9,10 @@ namespace PageToMovie.Engine;
 
 /// <summary>
 /// Minimal, standalone client for xAI's Files + Responses API — NOT the same surface as
-/// <see cref="PageToMovie.Engine.GrokChatClient"/>, which only talks to the stateless
-/// <c>chat/completions</c> endpoint. Product path uses this for Stage‑1 multi-turn
-/// so the book is uploaded once (file_id) and follow-ups use previous_response_id.
+/// the xAI chat adapter, which only talks to the stateless <c>chat/completions</c> endpoint.
+/// Product path uses this for Stage‑1 multi-turn so the book is uploaded once (file_id)
+/// and follow-ups use previous_response_id. Video recovery opens clip bytes through
+/// <see cref="IVideoClient.OpenStoredFileStreamAsync"/>, which routes here for xAI Files.
 ///
 /// Endpoint shapes below were confirmed live against docs.x.ai (not guessed):
 ///   POST https://api.x.ai/v1/files            (multipart; expires_after must precede file)

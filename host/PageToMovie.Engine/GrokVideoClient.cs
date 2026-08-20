@@ -21,9 +21,8 @@ public sealed class GrokVideoClient : IVideoClient
 
     /// <summary>
     /// Persist the generated video on xAI Files. <c>filename</c> is required (422 without it).
-    /// <c>public_url: true</c> asks for an unauthenticated durable link — Imagine file_ids are
-    /// generate-only and cannot be re-downloaded via Files content GET. Omit <c>expires_after</c>
-    /// so xAI keeps the file until we delete it.
+    /// <c>public_url: true</c> asks for an unauthenticated durable link. Omit <c>expires_after</c>
+    /// so xAI keeps the file until we delete it. Clips are downloadable via Files content GET.
     /// </summary>
     internal static Dictionary<string, object?> PermanentVideoStorageOptions() =>
         new()
@@ -37,6 +36,7 @@ public sealed class GrokVideoClient : IVideoClient
     private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<GrokVideoClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
+    private readonly XaiResponsesClient? _files;
 
     /// <summary>request_id → stored file reference, populated by <see cref="PollForVideoUrlAsync"/>
     /// when the completed job's response includes <c>video.file_output</c> (i.e. storage was
@@ -49,13 +49,15 @@ public sealed class GrokVideoClient : IVideoClient
         IOptions<PageToMovieOptions> opts,
         ProjectTelemetryService telemetry,
         ILogger<GrokVideoClient> log,
-        GenerationErrorLogger? errorLogger = null)
+        GenerationErrorLogger? errorLogger = null,
+        XaiResponsesClient? files = null)
     {
         _http = http;
         _opts = opts.Value;
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
+        _files = files;
         ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
@@ -464,6 +466,9 @@ public sealed class GrokVideoClient : IVideoClient
         return await UploadVideoStreamAsync(fs, Path.GetFileName(path), ct).ConfigureAwait(false);
     }
 
+    public async Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct) =>
+        await UploadVideoStreamAsync(mp4, fileName, ct).ConfigureAwait(false);
+
     /// <summary>Stream form of <see cref="UploadVideoFileAsync"/> (browser → server relay, no disk).</summary>
     public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct)
     {
@@ -660,4 +665,17 @@ public sealed class GrokVideoClient : IVideoClient
 
     public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
         ProviderHttpHelpers.DownloadToFileAsync(_http, url, destPath, ct, _log);
+
+    /// <summary>
+    /// Files content GET via <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> —
+    /// the only Files downloader. Required when the catalog routes this clip to this client.
+    /// </summary>
+    public async Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(fileId))
+            return null;
+        if (_files is null)
+            throw new InvalidOperationException("xAI Files client is not configured.");
+        return await _files.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+    }
 }

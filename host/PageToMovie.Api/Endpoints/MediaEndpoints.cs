@@ -77,9 +77,10 @@ public static class MediaEndpoints
         }
         foreach (var entry in CollectProviderRecoveryEntries(
                      Path.Combine(assetsRoot, ApiText.VideoFolder),
-                     (url, fileId, projectDirHint, scene, clip) => tickets.Issue(
+                     (url, fileId, projectDirHint, scene, clip, modelId, providerId) => tickets.Issue(
                          url ?? "", TimeSpan.FromHours(2), fileId,
-                         projectDir: projectDirHint, scene: scene, clip: clip)))
+                         projectDir: projectDirHint, scene: scene, clip: clip,
+                         modelId: modelId, providerId: providerId)))
         {
             list.Add(entry);
         }
@@ -108,19 +109,26 @@ public static class MediaEndpoints
     /// newest sidecar still points at the provider copy (<c>source_url</c> and/or
     /// <c>source_file_id</c>): offered through the same proxy-ticket stream so a client sync
     /// can self-heal a missed live save. Durable playback is <c>file_output.public_url</c>
-    /// (persisted as <c>source_url</c>); vidgen poll links expire; Imagine file_ids are
-    /// generate-only — Railway <see cref="ClipForkFallback"/> is the hosted fallback.
+    /// (persisted as <c>source_url</c>); vidgen poll links expire; Files <c>file_id</c> is
+    /// downloaded through <see cref="IVideoClient"/> for the clip's catalog video model.
     /// Combined video-extend copies carry their sidecar's lead-in so the client can slice
     /// the new tail out as this clip and recover a missing previous clip from the head.
-    /// <paramref name="issueTicket"/> maps (url, file_id, projectDir, scene, clip) to a proxy token.
+    /// <paramref name="issueTicket"/> maps (url, file_id, projectDir, scene, clip, model, provider) to a proxy token.
     /// </summary>
     public delegate string IssueRecoveryTicket(
-        string? url, string? fileId, string? projectDir, int scene, int clip);
+        string? url, string? fileId, string? projectDir, int scene, int clip,
+        string? modelId, string? providerId);
 
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
         string videoDir, Func<string?, string?, string> issueTicket) =>
         CollectProviderRecoveryEntries(
-            videoDir, (url, fileId, _, _, _) => issueTicket(url, fileId));
+            videoDir, (url, fileId, _, _, _, _, _) => issueTicket(url, fileId));
+
+    public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
+        string videoDir, Func<string?, string?, string?, int, int, string> issueTicket) =>
+        CollectProviderRecoveryEntries(
+            videoDir, (url, fileId, projectDir, scene, clip, _, _) =>
+                issueTicket(url, fileId, projectDir, scene, clip));
 
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
         string videoDir, IssueRecoveryTicket issueTicket)
@@ -150,6 +158,10 @@ public static class MediaEndpoints
             if (src is null || !src.HasProviderCopy)
                 continue;
 
+            var modelId = CatalogApiKey.ResolveVideoModel(
+                src.Model, CatalogApiKey.TryReadProjectVideoModel(projectDir));
+            var providerId = CatalogApiKey.ProviderIdForVideo(modelId, src.SourceProvider);
+
             var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
             entries.Add(new ProviderRecoverySyncEntry(
                 RelativePath: $"{ApiText.AssetsFolder}/{ApiText.VideoFolder}/{fileName}",
@@ -157,7 +169,7 @@ public static class MediaEndpoints
                 SizeBytes: 0,
                 Sha256: null,
                 IsMp4: true,
-                StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl, src.SourceFileId, projectDir, scene, clip)}",
+                StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl, src.SourceFileId, projectDir, scene, clip, modelId, providerId)}",
                 ProviderRecovery: true,
                 ProviderLeadInSeconds: src.IsCombined ? src.LeadInSeconds : 0,
                 PredecessorLeadInSeconds: CollectPredecessorLeadIns(videoDir, scene, clip)));
@@ -234,7 +246,7 @@ public static class MediaEndpoints
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
     IHttpClientFactory httpFactory,
-    XaiResponsesClient xai,
+    IVideoClient video,
     IUserApiKeyProvider keys,
     ILoggerFactory logFactory,
     HttpContext httpContext,
@@ -255,10 +267,15 @@ public static class MediaEndpoints
 
         if (!File.Exists(fullPath))
         {
-            var grokKey = await ResolveTicketGrokKeyAsync(keys, ticketKeyUserId, ct).ConfigureAwait(false);
-            using (ApiKeyScope.Push(grokKey))
+            var src = ClipProviderSource.ReadForMp4(fullPath);
+            var cfg = await store.GetConfigAsync(id, ct).ConfigureAwait(false);
+            var modelId = CatalogApiKey.ResolveVideoModel(src?.Model, ProjectModelSelection.TryVideo(cfg));
+            var providerId = CatalogApiKey.ProviderIdForVideo(modelId, src?.SourceProvider);
+            var key = await ResolveTicketVideoKeyAsync(keys, ticketKeyUserId, modelId, providerId, ct)
+                .ConfigureAwait(false);
+            using (CatalogApiKey.PushKey(providerId, key))
             using (UserApiCallScope.Push(ticketKeyUserId))
-                return await ServeMissingMediaAsync(fullPath, httpFactory, xai, httpContext, logFactory, ct);
+                return await ServeMissingMediaAsync(fullPath, httpFactory, video, modelId, httpContext, logFactory, ct);
         }
 
         return Results.File(fullPath, ContentTypeForMediaExtension(fullPath), Path.GetFileName(fullPath), enableRangeProcessing: true);
@@ -289,14 +306,14 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult> ServeMissingMediaAsync(
-        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient xai, HttpContext httpContext,
-        ILoggerFactory logFactory, CancellationToken ct)
+        string fullPath, IHttpClientFactory httpFactory, IVideoClient video, string? model,
+        HttpContext httpContext, ILoggerFactory logFactory, CancellationToken ct)
     {
         // Clips do not live on the server: a generated clip is provider-hosted (sidecar
         // source_url / source_file_id) until the browser saves it locally. Stream it through, never store it.
         if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
         {
-            var served = await TryServeMissingMp4Async(fullPath, httpFactory, xai, httpContext, logFactory, ct);
+            var served = await TryServeMissingMp4Async(fullPath, httpFactory, video, model, httpContext, logFactory, ct);
             if (served is not null)
                 return served;
         }
@@ -304,8 +321,8 @@ public static class MediaEndpoints
     }
 
     private static async Task<IResult?> TryServeMissingMp4Async(
-        string fullPath, IHttpClientFactory httpFactory, XaiResponsesClient xai, HttpContext httpContext,
-        ILoggerFactory logFactory, CancellationToken ct)
+        string fullPath, IHttpClientFactory httpFactory, IVideoClient video, string? model,
+        HttpContext httpContext, ILoggerFactory logFactory, CancellationToken ct)
     {
         var src = ClipProviderSource.ReadForMp4(fullPath);
         if (src is null || !src.HasProviderCopy)
@@ -322,7 +339,7 @@ public static class MediaEndpoints
         var videoDir = Path.GetDirectoryName(fullPath);
         ClipFileNaming.TryParseSceneClip(Path.GetFileName(fullPath), out var scene, out var clip);
         return await StreamProviderCopyAsync(
-            src.SourceUrl, src.SourceFileId, httpFactory, xai, httpContext, ct,
+            src.SourceUrl, src.SourceFileId, httpFactory, video, model, httpContext, ct,
             new StreamProviderCopyOptions(
                 LogFactory: logFactory,
                 RecoverAfterProvider: (_, _, _) => Task.FromResult(
@@ -461,8 +478,9 @@ public static class MediaEndpoints
     private sealed record MediaProxyTokenServices(
         MediaProxyTicketStore Tickets,
         IHttpClientFactory HttpFactory,
-        XaiResponsesClient Xai,
+        IVideoClient Video,
         IUserApiKeyProvider Keys,
+        ILoggerFactory LogFactory,
         HttpContext HttpContext);
 
     private static async Task<IResult> GetMediaProxyToken(
@@ -471,7 +489,7 @@ public static class MediaEndpoints
         CancellationToken ct)
     {
     if (!svc.Tickets.TryTake(token, out var url, out var fileId, out var keyUserId,
-            out var projectDir, out var scene, out var clip)
+            out var projectDir, out var scene, out var clip, out var ticketModel, out var ticketProvider)
         || (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(fileId)))
         return Results.NotFound(new { ok = false, error = "Media ticket expired or invalid" });
 
@@ -480,28 +498,35 @@ public static class MediaEndpoints
 
     // Resolve first, then Push on this caller's ExecutionContext. Pushing inside an
     // async helper does not stick — ApiKeyScope is AsyncLocal and is restored after await.
-    var grokKey = await ResolveTicketGrokKeyAsync(svc.Keys, keyUserId, ct).ConfigureAwait(false);
-    using (ApiKeyScope.Push(grokKey))
+    var modelId = CatalogApiKey.ResolveVideoModel(
+        ticketModel, CatalogApiKey.TryReadProjectVideoModel(projectDir));
+    var providerId = CatalogApiKey.ProviderIdForVideo(modelId, ticketProvider);
+    var key = await ResolveTicketVideoKeyAsync(svc.Keys, keyUserId, modelId, providerId, ct)
+        .ConfigureAwait(false);
+    using (CatalogApiKey.PushKey(providerId, key))
     using (UserApiCallScope.Push(keyUserId))
         return await StreamProviderCopyAsync(
-            url, fileId, svc.HttpFactory, svc.Xai, svc.HttpContext, ct,
+            url, fileId, svc.HttpFactory, svc.Video, modelId, svc.HttpContext, ct,
             new StreamProviderCopyOptions(
-                LogFactory: svc.HttpContext.RequestServices.GetService<ILoggerFactory>(),
+                LogFactory: svc.LogFactory,
                 RecoverAfterProvider: (_, _, _) => Task.FromResult(
                     TryRecoverHostedCopy(projectDir, scene, clip))));
 }
 
     /// <summary>
-    /// Grok key for the user who issued the ticket (media-sync JS fetch has no JWT).
-    /// Same <c>GetKeyAsync(userId, grok)</c> path video-generation jobs use.
+    /// Key for the user who issued the ticket (media-sync JS fetch has no JWT), using the
+    /// same catalog provider id video generation uses for the clip's video model.
+    /// Never <c>GetKeyAsync(null, …)</c> and never a hardcoded provider name.
     /// </summary>
-    internal static async Task<string?> ResolveTicketGrokKeyAsync(
-        IUserApiKeyProvider? keys, string? keyUserId, CancellationToken ct)
+    internal static Task<string?> ResolveTicketVideoKeyAsync(
+        IUserApiKeyProvider? keys,
+        string? keyUserId,
+        string? modelId,
+        string? providerId,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(keyUserId) || keys is null)
-            return ApiKeyScope.Current;
-        var fromUser = await keys.GetKeyAsync(keyUserId, "grok", ct).ConfigureAwait(false);
-        return !string.IsNullOrWhiteSpace(fromUser) ? fromUser : ApiKeyScope.Current;
+        var provider = CatalogApiKey.ProviderIdForVideo(modelId, providerId);
+        return CatalogApiKey.GetKeyAsync(keys, keyUserId, provider, ct);
     }
 
     /// <summary>Optional logger and Railway hosted-copy recovery for the DI wrapper.</summary>
@@ -510,16 +535,18 @@ public static class MediaEndpoints
         Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
 
     /// <summary>
-    /// Stream the provider copy: public URL first, then
-    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> for <c>file_id</c>
-    /// (the only Files content GET — do not add another). Combined-extend slicing/hop-walk
-    /// is unchanged — the same bytes (combined file) are streamed either way.
+    /// Stream the provider copy: public URL first, then the catalog-routed
+    /// <see cref="IVideoClient"/> stored-file path. xAI models reuse
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> (the only Files
+    /// content GET — do not add another). Combined-extend slicing/hop-walk is
+    /// unchanged — the same bytes (combined file) are streamed either way.
     /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
         IHttpClientFactory httpFactory,
-        XaiResponsesClient xai,
+        IVideoClient video,
+        string? model,
         HttpContext httpContext,
         CancellationToken ct,
         StreamProviderCopyOptions? options = null) =>
@@ -527,7 +554,7 @@ public static class MediaEndpoints
             url,
             fileId,
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
-            (id, token) => TryOpenXaiFileAsync(xai, id, httpContext, token),
+            (id, token) => TryOpenStoredFileAsync(video, model, id, httpContext, token),
             ct,
             options?.LogFactory?.CreateLogger("MediaProxy"),
             options?.RecoverAfterProvider);
@@ -537,17 +564,18 @@ public static class MediaEndpoints
         string? url,
         string? fileId,
         IHttpClientFactory httpFactory,
-        XaiResponsesClient xai,
+        IVideoClient video,
+        string? model,
         HttpContext httpContext,
         CancellationToken ct,
         Func<string?, Exception?, CancellationToken, Task<IResult?>> recoverAfterProvider) =>
         StreamProviderCopyAsync(
-            url, fileId, httpFactory, xai, httpContext, ct,
+            url, fileId, httpFactory, video, model, httpContext, ct,
             new StreamProviderCopyOptions(RecoverAfterProvider: recoverAfterProvider));
 
     /// <summary>Test hook: URL then file_id openers. A file_id failure is a visible error,
     /// not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/> is the
-    /// Railway hosted-copy / <c>.need-fork</c> path when Imagine file_id cannot be downloaded.</summary>
+    /// Railway hosted-copy / <c>.need-fork</c> path when the provider file cannot be downloaded.</summary>
     internal static async Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
@@ -575,7 +603,7 @@ public static class MediaEndpoints
         catch (Exception ex) when (!string.IsNullOrWhiteSpace(fileId))
         {
             var detail = TrimForError(ex.Message, 400);
-            log?.LogWarning(ex, "xAI Files content failed for {FileId}: {Error}", fileId, detail);
+            log?.LogWarning(ex, "Provider file content failed for {FileId}: {Error}", fileId, detail);
             if (recoverAfterProvider is not null
                 && await recoverAfterProvider(fileId, ex, ct).ConfigureAwait(false) is { } hosted)
                 return hosted;
@@ -627,14 +655,22 @@ public static class MediaEndpoints
         return false;
     }
 
-    /// <summary>The only Files content GET: <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/>.
-    /// Failures throw so the proxy can log the real xAI status instead of <c>File not found</c>.</summary>
-    internal static async Task<IResult?> TryOpenXaiFileAsync(
-        XaiResponsesClient xai, string fileId, HttpContext httpContext, CancellationToken ct)
+    /// <summary>
+    /// Catalog-routed stored-file open. xAI adapters call
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> (the only Files content GET).
+    /// Failures throw so the proxy can log the real provider status instead of <c>File not found</c>.
+    /// </summary>
+    private static async Task<IResult?> TryOpenStoredFileAsync(
+        IVideoClient video, string? model, string fileId, HttpContext httpContext, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(fileId))
             return null;
-        var stream = await xai.OpenFileContentStreamAsync(fileId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(model))
+            throw new InvalidOperationException(
+                "Video: model is required to open a stored provider file. Open Settings and choose a Video generation model.");
+        var stream = await video.OpenStoredFileStreamAsync(fileId, model, ct).ConfigureAwait(false);
+        if (stream is null)
+            return null;
         httpContext.Response.RegisterForDispose(stream);
         return Results.Stream(
             stream,

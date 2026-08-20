@@ -106,6 +106,18 @@ public static class ProjectModelSelection
     public static string RequireVideo(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Video generation") =>
         Require(cfg, ModelCapability.Video, jobLabel, VideoConfigKey);
 
+    /// <summary>
+    /// Project-configured video model when the catalog has an enabled Video row; otherwise null.
+    /// Does not throw — recovery and other fallback paths use this instead of <see cref="RequireVideo"/>.
+    /// </summary>
+    public static string? TryVideo(IReadOnlyDictionary<string, JsonElement>? cfg)
+    {
+        var id = TryGet(cfg, VideoConfigKey);
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var entry = SupportedModelCatalog.Find(id, ModelCapability.Video);
+        return entry is { Enabled: true } ? entry.Id : null;
+    }
+
     public static string RequireImage(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Image generation") =>
         Require(cfg, ModelCapability.Image, jobLabel, ImageConfigKey);
 

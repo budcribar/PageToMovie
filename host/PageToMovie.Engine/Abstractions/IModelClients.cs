@@ -44,12 +44,29 @@ public interface IVideoClient
 
     /// <summary>
     /// Provider-persisted handle after <see cref="PollForVideoUrlAsync"/> when storage was
-    /// requested (Grok <c>storage_options</c>). Empty when unsupported, storage wasn't granted, or
-    /// the request id is unknown. Callers persist <see cref="StoredVideoFileRef.PublicUrl"/> as
-    /// sidecar <c>source_url</c> (durable playback) and <see cref="StoredVideoFileRef.FileId"/>
-    /// for edit/extend attach. Imagine file_ids are generate-only — Files content GET is not recovery.
+    /// requested. Empty when unsupported, storage wasn't granted, or the request id is unknown.
+    /// Callers persist <see cref="StoredVideoFileRef.PublicUrl"/> as sidecar <c>source_url</c>
+    /// (durable playback) and <see cref="StoredVideoFileRef.FileId"/> for edit/extend attach
+    /// and <see cref="OpenStoredFileStreamAsync"/> recovery.
     /// </summary>
     StoredVideoFileRef TryGetStoredFileReference(string requestId);
+
+    /// <summary>
+    /// Open a provider-hosted clip by stored <c>file_id</c> for the catalog <paramref name="model"/>.
+    /// The multi-provider facade routes to the same impl video generation used. Returns null when
+    /// that impl has no stored-file download (caller then uses <c>source_url</c> or a hosted copy).
+    /// Default: not supported.
+    /// </summary>
+    Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct) =>
+        Task.FromResult<Stream?>(null);
+
+    /// <summary>
+    /// Upload a local/browser clip to the provider's file store for the catalog
+    /// <paramref name="model"/>. Returns the stored file id, or null when that impl has no
+    /// upload path. Default: not supported.
+    /// </summary>
+    Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct) =>
+        Task.FromResult<string?>(null);
 }
 
 /// <summary>Image generate / edit. Grok, Gemini, or fake — see MultiProviderImageClient.</summary>
