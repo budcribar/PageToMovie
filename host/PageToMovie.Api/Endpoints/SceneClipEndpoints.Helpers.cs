@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
@@ -25,7 +26,8 @@ public static partial class SceneClipEndpoints
         IUserContext User,
         IOptions<PageToMovieOptions> Opts,
         IHttpClientFactory HttpFactory,
-        XaiResponsesClient Xai);
+        IVideoClient Video,
+        IUserApiKeyProvider Keys);
 
     public sealed record ClipReorderServices(
         ProjectStore Store,
@@ -121,29 +123,48 @@ public static partial class SceneClipEndpoints
         if (providerSrc.IsCombined)
             req.HttpContext.Response.Headers[MediaEndpoints.LeadInHeader] =
                 providerSrc.LeadInSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        return await MediaEndpoints.StreamProviderCopyAsync(
-            providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Xai, req.HttpContext, ct,
-            recoverAfterProvider: (_, _, _) => Task.FromResult(
-                MediaEndpoints.TryRecoverHostedCopy(projectDir, sceneNumber, clipNumber)));
+        var cfg = await svc.Store.GetConfigAsync(id, ct).ConfigureAwait(false);
+        var modelId = CatalogApiKey.ResolveVideoModel(providerSrc.Model, ProjectModelSelection.TryVideo(cfg));
+        var providerId = CatalogApiKey.ProviderIdForVideo(modelId, providerSrc.SourceProvider);
+        var key = await CatalogApiKey.GetKeyAsync(svc.Keys, svc.User.UserId, providerId, ct).ConfigureAwait(false);
+        using (CatalogApiKey.PushKey(providerId, key))
+        using (UserApiCallScope.Push(svc.User.UserId))
+            return await MediaEndpoints.StreamProviderCopyAsync(
+                providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Video, modelId,
+                req.HttpContext, ct,
+                recoverAfterProvider: (_, _, _) => Task.FromResult(
+                    MediaEndpoints.TryRecoverHostedCopy(projectDir, sceneNumber, clipNumber)));
     }
 
     private static async Task<IResult> ServeXaiClipOrNotFoundAsync(
         string id, int sceneNumber, int clipNumber, string? parentId, string? fileId,
         ClipVideoServices svc, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(fileId))
+        var cfg = await svc.Store.GetConfigAsync(id, ct).ConfigureAwait(false);
+        var modelId = CatalogApiKey.ResolveVideoModel(null, ProjectModelSelection.TryVideo(cfg));
+        if (string.IsNullOrWhiteSpace(fileId) || string.IsNullOrWhiteSpace(modelId))
         {
             await MarkForkFallbackNeededAsync(svc.Store, id, parentId, sceneNumber, clipNumber, ct);
             return Results.NotFound(new { ok = false, error = "clip video not found" });
         }
         try
         {
-            var stream = await svc.Xai.OpenFileContentStreamAsync(fileId, ct);
-            return Results.Stream(stream, SpecializedMimeType.VideoMp4.ToMimeTypeString());
+            var providerId = CatalogApiKey.ProviderIdForVideo(modelId);
+            var key = await CatalogApiKey.GetKeyAsync(svc.Keys, svc.User.UserId, providerId, ct).ConfigureAwait(false);
+            using (CatalogApiKey.PushKey(providerId, key))
+            using (UserApiCallScope.Push(svc.User.UserId))
+            {
+                var stream = await svc.Video.OpenStoredFileStreamAsync(fileId, modelId, ct).ConfigureAwait(false);
+                if (stream is null)
+                {
+                    await MarkForkFallbackNeededAsync(svc.Store, id, parentId, sceneNumber, clipNumber, ct);
+                    return Results.NotFound(new { ok = false, error = "clip video not found" });
+                }
+                return Results.Stream(stream, SpecializedMimeType.VideoMp4.ToMimeTypeString());
+            }
         }
         catch (Exception ex)
         {
-            // Imagine file_ids are generate-only. Surface the xAI error; Railway is the fallback.
             if (MediaEndpoints.TryRecoverHostedCopy(
                     await svc.Store.GetProjectDirAsync(id, ct), sceneNumber, clipNumber) is { } hosted)
                 return hosted;

@@ -411,21 +411,25 @@ public sealed class MediaObjectDto
 
 /// <summary>Short-lived map of opaque tokens → provider video URL and/or Files API
 /// <c>file_id</c> for client download (CORS-safe proxy). Durable playback is
-/// <c>file_output.public_url</c> (or a Railway fork copy). Imagine file_ids are generate-only.</summary>
+/// <c>file_output.public_url</c> (or a Railway fork copy). Files <c>file_id</c> downloads
+/// go through <see cref="IVideoClient"/> for the clip's catalog video model.</summary>
 public sealed class MediaProxyTicketStore
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Ticket> _map = new();
 
     private readonly record struct Ticket(
         string Url, string? FileId, string? KeyUserId, DateTimeOffset Exp,
-        string? ProjectDir, int Scene, int Clip);
+        string? ProjectDir, int Scene, int Clip,
+        string? ModelId, string? ProviderId);
 
     /// <summary>
-    /// Issue a proxy ticket. <paramref name="keyUserId"/> is the account whose grok key
-    /// owns the Files handle — defaults to <see cref="UserApiCallScope.UserId"/> from the
+    /// Issue a proxy ticket. <paramref name="keyUserId"/> is the account whose catalog-provider
+    /// key owns the Files handle — defaults to <see cref="UserApiCallScope.UserId"/> from the
     /// authenticated request that listed the clip (media-sync JS fetch has no JWT).
+    /// <paramref name="modelId"/> / <paramref name="providerId"/> are the video model (or its
+    /// catalog provider) so the cookie-only proxy can resolve the same key video gen used.
     /// <paramref name="projectDir"/> + scene/clip let the proxy serve a Railway fork copy
-    /// or mark <c>.need-fork</c> when Imagine file_id cannot be downloaded.
+    /// or mark <c>.need-fork</c> when the provider file cannot be downloaded.
     /// </summary>
     public string Issue(
         string videoUrl,
@@ -434,7 +438,9 @@ public sealed class MediaProxyTicketStore
         string? keyUserId = null,
         string? projectDir = null,
         int scene = 0,
-        int clip = 0)
+        int clip = 0,
+        string? modelId = null,
+        string? providerId = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var exp = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(45));
@@ -446,7 +452,9 @@ public sealed class MediaProxyTicketStore
             exp,
             string.IsNullOrWhiteSpace(projectDir) ? null : projectDir.Trim(),
             scene,
-            clip);
+            clip,
+            string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim(),
+            string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim());
         // opportunistic purge
         if (_map.Count > 500)
         {
@@ -468,7 +476,7 @@ public sealed class MediaProxyTicketStore
         TryTake(token, out url, out fileId, out _);
 
     public bool TryTake(string token, out string? url, out string? fileId, out string? keyUserId) =>
-        TryTake(token, out url, out fileId, out keyUserId, out _, out _, out _);
+        TryTake(token, out url, out fileId, out keyUserId, out _, out _, out _, out _, out _);
 
     public bool TryTake(
         string token,
@@ -477,7 +485,19 @@ public sealed class MediaProxyTicketStore
         out string? keyUserId,
         out string? projectDir,
         out int scene,
-        out int clip)
+        out int clip) =>
+        TryTake(token, out url, out fileId, out keyUserId, out projectDir, out scene, out clip, out _, out _);
+
+    public bool TryTake(
+        string token,
+        out string? url,
+        out string? fileId,
+        out string? keyUserId,
+        out string? projectDir,
+        out int scene,
+        out int clip,
+        out string? modelId,
+        out string? providerId)
     {
         url = null;
         fileId = null;
@@ -485,6 +505,8 @@ public sealed class MediaProxyTicketStore
         projectDir = null;
         scene = 0;
         clip = 0;
+        modelId = null;
+        providerId = null;
         if (!_map.TryGetValue(token, out var e)) return false;
         if (e.Exp < DateTimeOffset.UtcNow)
         {
@@ -497,6 +519,8 @@ public sealed class MediaProxyTicketStore
         projectDir = e.ProjectDir;
         scene = e.Scene;
         clip = e.Clip;
+        modelId = e.ModelId;
+        providerId = e.ProviderId;
         return true;
     }
 }

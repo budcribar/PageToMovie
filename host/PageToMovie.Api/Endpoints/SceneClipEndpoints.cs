@@ -467,28 +467,44 @@ public static partial class SceneClipEndpoints
     var projectDir = await store.GetProjectDirAsync(id, ct);
 
     // "extend-source": the browser-trimmed continuation input for video-extend. Media must not
-    // live on the server, so relay the bytes straight to xAI Files and keep only the file_id
-    // (+ duration) in a small marker; FilmJobService.ResolveExtendInputAsync reads it first.
-    // Fakes / no xAI client (tests, offline) fall back to the on-disk file below.
+    // live on the server, so relay the bytes through IVideoClient (catalog-routed) and keep
+    // only the file_id (+ duration) in a small marker. Fakes / no stored-file upload fall
+    // back to the on-disk file below.
     if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase)
-        && services.GetService(typeof(GrokVideoClient)) is GrokVideoClient grok && grok.IsConfigured)
+        && services.GetService(typeof(IVideoClient)) is IVideoClient video && video.IsConfigured)
     {
-        await using var src = file.OpenReadStream();
-        var fileId = await grok.UploadVideoStreamAsync(src, $"extend_src_s{scene:D2}c{clip:D2}.mp4", ct).ConfigureAwait(false);
-        var markerDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
-        Directory.CreateDirectory(markerDir);
-        var marker = Path.Combine(markerDir, FilmJobService.ExtendSourceMarkerName(scene, clip));
-        await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
+        var cfg = await store.GetConfigAsync(id, ct).ConfigureAwait(false);
+        var modelId = CatalogApiKey.ResolveVideoModel(null, ProjectModelSelection.TryVideo(cfg));
+        var providerId = CatalogApiKey.ProviderIdForVideo(modelId);
+        if (!string.IsNullOrWhiteSpace(modelId))
         {
-            file_id = fileId,
-            duration_seconds = seconds,
-            uploaded_utc = DateTime.UtcNow.ToString("o"),
-            bytes = file.Length,
-        }), ct).ConfigureAwait(false);
-        // A stale on-disk source from before this change must not shadow the marker.
-        var legacy = Path.Combine(markerDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
-        if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { /* best effort */ } }
-        return Results.Ok(new { ok = true, projectId = id, scene, clip, fileId, seconds });
+            var keys = services.GetService(typeof(IUserApiKeyProvider)) as IUserApiKeyProvider;
+            var user = services.GetService(typeof(IUserContext)) as IUserContext;
+            var key = await CatalogApiKey.GetKeyAsync(keys, user?.UserId, providerId, ct).ConfigureAwait(false);
+            using (CatalogApiKey.PushKey(providerId, key))
+            using (UserApiCallScope.Push(user?.UserId))
+            {
+                await using var src = file.OpenReadStream();
+                var fileId = await video.TryUploadVideoStreamAsync(
+                    src, $"extend_src_s{scene:D2}c{clip:D2}.mp4", modelId, ct).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(fileId))
+                {
+                    var markerDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+                    Directory.CreateDirectory(markerDir);
+                    var marker = Path.Combine(markerDir, FilmJobService.ExtendSourceMarkerName(scene, clip));
+                    await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        file_id = fileId,
+                        duration_seconds = seconds,
+                        uploaded_utc = DateTime.UtcNow.ToString("o"),
+                        bytes = file.Length,
+                    }), ct).ConfigureAwait(false);
+                    var legacy = Path.Combine(markerDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+                    if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { /* best effort */ } }
+                    return Results.Ok(new { ok = true, projectId = id, scene, clip, fileId, seconds });
+                }
+            }
+        }
     }
     var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
     Directory.CreateDirectory(destDir);
@@ -715,7 +731,7 @@ public static partial class SceneClipEndpoints
             await using var ms = new MemoryStream();
             await file.CopyToAsync(ms, ct);
             var dir = await store.GetProjectDirAsync(id, ct);
-            // xAI Imagine file_ids are generate-only (read-only after). Railway is the fallback.
+            // Hosted Railway copy: fallback when the provider file cannot be streamed.
             ClipForkFallback.WriteProtectedMp4(dir, sceneNumber, clipNumber, ms.ToArray());
             ClipForkFallback.ClearNeeded(dir, sceneNumber, clipNumber);
             return Results.Ok(new { ok = true, hosted = "railway" });

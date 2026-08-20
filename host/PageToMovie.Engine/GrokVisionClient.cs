@@ -684,10 +684,24 @@ public sealed class GrokVisionClient : IVisionClient
         return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
     }
 
-    private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
-        ApiKeyScope.Current
-        ?? (_keyProvider is not null ? await _keyProvider.GetKeyAsync(null, "grok", ct).ConfigureAwait(false) : null)
-        ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
+    private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default)
+    {
+        var providerId = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+            PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase);
+        if (!string.IsNullOrWhiteSpace(providerId) && !string.IsNullOrWhiteSpace(ApiKeyScope.Get(providerId)))
+            return ApiKeyScope.Get(providerId);
+        if (!string.IsNullOrWhiteSpace(ApiKeyScope.Current))
+            return ApiKeyScope.Current;
+        if (_keyProvider is not null && !string.IsNullOrWhiteSpace(UserApiCallScope.UserId)
+            && !string.IsNullOrWhiteSpace(providerId))
+        {
+            var fromUser = await _keyProvider.GetKeyAsync(UserApiCallScope.UserId, providerId, ct)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(fromUser))
+                return fromUser;
+        }
+        return Environment.GetEnvironmentVariable(PageToMovie.Core.Models.SupportedModelCatalog.XaiApiKeyEnv);
+    }
 
     private async Task<HttpResponseMessage> SendJsonAsync(
         HttpMethod method, string uri, object payload, CancellationToken ct)

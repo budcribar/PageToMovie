@@ -1026,6 +1026,25 @@ public static class SupportedModelCatalog
         ?? Find(modelId)?.ProviderId
         ?? "";
 
+    /// <summary>
+    /// Catalog <c>providerId</c> for any enabled model that talks to <paramref name="apiBase"/>.
+    /// Empty when the catalog has no such row — callers must not invent a provider name.
+    /// </summary>
+    public static string ProviderIdForApiBase(string? apiBase)
+    {
+        if (string.IsNullOrWhiteSpace(apiBase)) return "";
+        try { EnsureLoaded(); } catch { return ""; }
+        var want = apiBase.Trim().TrimEnd('/');
+        foreach (var e in Entries)
+        {
+            if (string.IsNullOrWhiteSpace(e.ApiBase) || string.IsNullOrWhiteSpace(e.ProviderId))
+                continue;
+            if (string.Equals(e.ApiBase.Trim().TrimEnd('/'), want, StringComparison.OrdinalIgnoreCase))
+                return NormalizeProviderId(e.ProviderId);
+        }
+        return "";
+    }
+
     public static string? DefaultModelIdForCapability(ModelCapability capability) =>
         DefaultModelIdForCapability(capability.ToString());
 

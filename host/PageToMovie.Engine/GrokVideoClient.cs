@@ -21,9 +21,8 @@ public sealed class GrokVideoClient : IVideoClient
 
     /// <summary>
     /// Persist the generated video on xAI Files. <c>filename</c> is required (422 without it).
-    /// <c>public_url: true</c> asks for an unauthenticated durable link — Imagine file_ids are
-    /// generate-only and cannot be re-downloaded via Files content GET. Omit <c>expires_after</c>
-    /// so xAI keeps the file until we delete it.
+    /// <c>public_url: true</c> asks for an unauthenticated durable link. Omit <c>expires_after</c>
+    /// so xAI keeps the file until we delete it. Clips are downloadable via Files content GET.
     /// </summary>
     internal static Dictionary<string, object?> PermanentVideoStorageOptions() =>
         new()
@@ -37,6 +36,7 @@ public sealed class GrokVideoClient : IVideoClient
     private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<GrokVideoClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
+    private readonly XaiResponsesClient? _files;
 
     /// <summary>request_id → stored file reference, populated by <see cref="PollForVideoUrlAsync"/>
     /// when the completed job's response includes <c>video.file_output</c> (i.e. storage was
@@ -49,17 +49,21 @@ public sealed class GrokVideoClient : IVideoClient
         IOptions<PageToMovieOptions> opts,
         ProjectTelemetryService telemetry,
         ILogger<GrokVideoClient> log,
-        GenerationErrorLogger? errorLogger = null)
+        GenerationErrorLogger? errorLogger = null,
+        XaiResponsesClient? files = null)
     {
         _http = http;
         _opts = opts.Value;
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
+        _files = files;
         ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(GrokProviderHttp.ResolveApiKey());
+
+    public string CatalogProviderId => SupportedModelCatalog.ProviderIdForApiBase(ApiBase);
 
     /// <param name="referenceImagePaths">Character/style refs → API <c>reference_images</c> + prompt <c>&lt;IMAGE_n&gt;</c> tags.</param>
     /// <param name="startFrameImagePath">Optional first-frame still (image-to-video). Prefer video continue when possible.</param>
@@ -353,7 +357,7 @@ public sealed class GrokVideoClient : IVideoClient
             return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
                 async _ =>
                 {
-                    using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+                    using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct, setup.Model);
                     return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                         extResp, ct, "request_id",
                         "Grok video extend",
@@ -372,7 +376,7 @@ public sealed class GrokVideoClient : IVideoClient
                 setup.ExtendSourceFileId, setup.ContinueFromVideoPath);
             var freshId = await UploadVideoFileAsync(setup.ContinueFromVideoPath, ct).ConfigureAwait(false);
             extPayload["video"] = new Dictionary<string, object?> { ["file_id"] = freshId };
-            using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
+            using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct, setup.Model);
             return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                 extResp, ct, "request_id",
                 "Grok video extend fallback",
@@ -424,7 +428,7 @@ public sealed class GrokVideoClient : IVideoClient
         return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
             async _ =>
             {
-                using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/generations", payload, ct);
+                using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/generations", payload, ct, setup.Model);
                 return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                     resp, ct, "request_id",
                     "Grok submit",
@@ -464,15 +468,18 @@ public sealed class GrokVideoClient : IVideoClient
         return await UploadVideoStreamAsync(fs, Path.GetFileName(path), ct).ConfigureAwait(false);
     }
 
+    public async Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct) =>
+        await UploadVideoStreamAsync(mp4, fileName, ct, model).ConfigureAwait(false);
+
     /// <summary>Stream form of <see cref="UploadVideoFileAsync"/> (browser → server relay, no disk).</summary>
-    public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct)
+    public async Task<string> UploadVideoStreamAsync(Stream mp4, string fileName, CancellationToken ct, string? model = null)
     {
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent("assistants"), "purpose");
         var part = new StreamContent(mp4);
         part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
         form.Add(part, "file", string.IsNullOrWhiteSpace(fileName) ? "clip.mp4" : fileName);
-        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Post, "files", form, ct).ConfigureAwait(false);
+        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Post, "files", form, ct, model).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"xAI video upload HTTP {(int)resp.StatusCode}: {(body.Length > 600 ? body[..600] : body)}");
@@ -660,4 +667,17 @@ public sealed class GrokVideoClient : IVideoClient
 
     public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
         ProviderHttpHelpers.DownloadToFileAsync(_http, url, destPath, ct, _log);
+
+    /// <summary>
+    /// Files content GET via <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> —
+    /// the only Files downloader. Required when the catalog routes this clip to this client.
+    /// </summary>
+    public async Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(fileId))
+            return null;
+        if (_files is null)
+            throw new InvalidOperationException("xAI Files client is not configured.");
+        return await _files.OpenFileContentStreamAsync(fileId, model, ct).ConfigureAwait(false);
+    }
 }

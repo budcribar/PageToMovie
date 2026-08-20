@@ -341,7 +341,7 @@ public sealed class VoicePreviewService
         await AppendLogSafe(onProgress, 12, "request_id=" + requestId);
 
         var videoUrl = await _video.PollForVideoUrlAsync(requestId, msg => ReportPollProgress(onProgress, msg), ct);
-        return await DownloadPreviewAsync(projectId, charKey, inputs, videoUrl, duration, onProgress, ct)
+        return await DownloadPreviewAsync(projectId, charKey, inputs, videoUrl, duration, model, onProgress, ct)
             .ConfigureAwait(false);
     }
 
@@ -361,6 +361,7 @@ public sealed class VoicePreviewService
         VoicePreviewInputs inputs,
         string videoUrl,
         int duration,
+        string model,
         Action<int, int, string>? onProgress,
         CancellationToken ct)
     {
@@ -369,7 +370,7 @@ public sealed class VoicePreviewService
         var mp4Path = GetMp4Path(projectId, charKey);
         var metaPath = GetMetaPath(projectId, charKey);
 
-        await _video.DownloadToFileAsync(videoUrl, mp4Path, ct);
+        await _video.DownloadToFileAsync(videoUrl, mp4Path, model, ct);
         if (!File.Exists(mp4Path) || new FileInfo(mp4Path).Length < 512)
             throw new InvalidOperationException("Voice sample download produced empty file.");
 

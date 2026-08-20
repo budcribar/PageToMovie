@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -10,7 +11,8 @@ namespace PageToMovie.Tests;
 
 /// <summary>
 /// The only Files content GET is <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/>
-/// (<c>GET /v1/files/{id}/content</c>). Media proxy must reuse it — no second download.
+/// (<c>GET /v1/files/{id}/content</c>). Media proxy reaches it through catalog-routed
+/// <see cref="IVideoClient.OpenStoredFileStreamAsync"/> — no second download.
 /// Use the Bearer key that owns the file; never <c>GetKeyAsync(null)</c>.
 /// </summary>
 [Collection("env-serial")]
@@ -23,7 +25,7 @@ public sealed class XaiFileContentDownloadTests
         using var http = new HttpClient(handler);
         var client = new XaiResponsesClient(http);
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         await using (var stream = await client.OpenFileContentStreamAsync("file_1ed4c54f-2edd-485b-8d35-5f31c854132a"))
         {
             using var ms = new MemoryStream();
@@ -56,7 +58,7 @@ public sealed class XaiFileContentDownloadTests
             }
 
             Assert.Equal("budcribar", keys.LastUserId);
-            Assert.Equal("grok", keys.LastProvider);
+            Assert.Equal(AdapterProviderId(), keys.LastProvider);
             Assert.Equal("xai-personal", handler.Auth?.Parameter);
         }
         finally
@@ -73,7 +75,7 @@ public sealed class XaiFileContentDownloadTests
         var keys = new StubKeys { UserId = null, Key = "should-not-be-used" };
         var client = new XaiResponsesClient(http, keys);
 
-        using (ApiKeyScope.Push("scoped-key"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "scoped-key"))
         {
             await using var _ = await client.OpenFileContentStreamAsync("file_abc");
         }
@@ -93,7 +95,7 @@ public sealed class XaiFileContentDownloadTests
         using var http = new HttpClient(handler);
         var client = new XaiResponsesClient(http);
 
-        using (ApiKeyScope.Push("wrong-key"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "wrong-key"))
         {
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => client.OpenFileContentStreamAsync("file_abc"));
@@ -107,17 +109,18 @@ public sealed class XaiFileContentDownloadTests
     {
         var files = new StubFilesHandler { Body = new byte[] { 0x00, 0x01, 0x02, 0x03 } };
         using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
-        var xai = new XaiResponsesClient(xaiHttp);
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
         var urls = new Url404Factory();
         var ctx = new DefaultHttpContext();
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         {
             var result = await MediaEndpoints.StreamProviderCopyAsync(
                 "https://vidgen.example/expired.mp4",
                 "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
                 urls,
-                xai,
+                video,
+                RequireVideoModel(),
                 ctx,
                 CancellationToken.None);
             Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
@@ -139,16 +142,17 @@ public sealed class XaiFileContentDownloadTests
             ErrorBody = "{\"error\":\"file not readable\"}",
         };
         using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
-        var xai = new XaiResponsesClient(xaiHttp);
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
         var ctx = new DefaultHttpContext();
 
-        using (ApiKeyScope.Push("xai-from-ticket"))
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
         {
             var result = await MediaEndpoints.StreamProviderCopyAsync(
                 url: null,
                 "file_dead",
                 new Url404Factory(),
-                xai,
+                video,
+                RequireVideoModel(),
                 ctx,
                 CancellationToken.None);
             Assert.Equal(StatusCodes.Status502BadGateway, result is IStatusCodeHttpResult s ? s.StatusCode : 0);
@@ -164,6 +168,48 @@ public sealed class XaiFileContentDownloadTests
         Assert.Equal(1, files.SendCount);
     }
 
+    private static string RequireVideoModel()
+    {
+        var provider = AdapterProviderId();
+        var entry = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .FirstOrDefault(m =>
+                string.Equals(
+                    SupportedModelCatalog.NormalizeProviderId(m.ProviderId),
+                    provider,
+                    StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(entry);
+        return entry.Id;
+    }
+
+    /// <summary>
+    /// Test stand-in for the catalog facade: stored-file open is the same
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> product adapters use.
+    /// </summary>
+    private sealed class CatalogRoutedFilesClient : IVideoClient
+    {
+        private readonly XaiResponsesClient _files;
+        public CatalogRoutedFilesClient(XaiResponsesClient files) => _files = files;
+        public bool IsConfigured => true;
+        public string CatalogProviderId => AdapterProviderId();
+
+        public async Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct) =>
+            await _files.OpenFileContentStreamAsync(fileId, model, ct).ConfigureAwait(false);
+
+        public Task<string> SubmitGenerationAsync(
+            string prompt, int durationSeconds, string resolution, string model, CancellationToken ct,
+            IReadOnlyList<string>? referenceImagePaths = null, string? startFrameImagePath = null,
+            string? continueFromVideoPath = null, string? aspectRatio = null, string? extendSourceFileId = null) =>
+            throw new NotSupportedException();
+
+        public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
+    }
+
     private sealed class Url404Factory : IHttpClientFactory
     {
         public string? LastName { get; private set; }
@@ -176,6 +222,13 @@ public sealed class XaiFileContentDownloadTests
                 BaseAddress = new Uri("https://example.invalid/"),
             };
         }
+    }
+
+    private static string AdapterProviderId()
+    {
+        var id = SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase);
+        Assert.False(string.IsNullOrWhiteSpace(id));
+        return id;
     }
 
     private sealed class StubFilesHandler : HttpMessageHandler

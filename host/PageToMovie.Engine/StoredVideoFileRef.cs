@@ -3,8 +3,8 @@ namespace PageToMovie.Engine;
 /// <summary>
 /// Provider-persisted video handle after generate/poll.
 /// <see cref="PublicUrl"/> is the durable unauthenticated Files link (when requested via
-/// <c>storage_options.public_url</c>). <see cref="FileId"/> is for edit/extend attach —
-/// Imagine file_ids are generate-only and cannot be re-downloaded via Files content GET.
+/// <c>storage_options.public_url</c>). <see cref="FileId"/> is for edit/extend attach and
+/// <see cref="Abstractions.IVideoClient.OpenStoredFileStreamAsync"/> recovery.
 /// </summary>
 public readonly record struct StoredVideoFileRef(
     string? FileId,

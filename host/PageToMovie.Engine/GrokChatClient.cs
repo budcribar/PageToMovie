@@ -393,8 +393,15 @@ public sealed class GrokChatClient : IChatClient
             }
         }
 
-        return ApiKeyScope.Current ??
-            (_keyProvider is not null ? await _keyProvider.GetKeyAsync(UserApiCallScope.UserId, "grok", ct).ConfigureAwait(false) : null) ??
+        var providerId = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdFor(
+            model, PageToMovie.Core.Models.ModelCapability.Chat);
+        if (string.IsNullOrWhiteSpace(providerId))
+            providerId = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+                PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase);
+        return ApiKeyScope.Get(providerId) ?? ApiKeyScope.Current ??
+            (_keyProvider is not null && !string.IsNullOrWhiteSpace(UserApiCallScope.UserId)
+                ? await _keyProvider.GetKeyAsync(UserApiCallScope.UserId, providerId, ct).ConfigureAwait(false)
+                : null) ??
             Environment.GetEnvironmentVariable(envKey);
     }
 }

@@ -136,13 +136,13 @@ public sealed class ClipSidecarService
         // project can re-fetch the clip bytes, instead of landing with dead clips (bytes only ever
         // lived in the original user's browser media folder). Only stored when the provider gives one.
         if (!string.IsNullOrWhiteSpace(sourceUrl))
-        {
             sidecar["source_url"] = sourceUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(sourceProvider)
+            || !string.IsNullOrWhiteSpace(sourceUrl)
+            || !string.IsNullOrWhiteSpace(sourceFileId))
             sidecar["source_provider"] = string.IsNullOrWhiteSpace(sourceProvider) ? "" : sourceProvider.Trim();
-        }
 
-        // xAI Files API file_id (permanent unless we set expires_after at generate time).
-        // Forks skip .mp4s; playback/Easy Start streams this id from xAI.
+        // Provider Files file_id. Forks skip .mp4s; playback streams this id through IVideoClient.
         if (!string.IsNullOrWhiteSpace(sourceFileId))
         {
             sidecar["source_file_id"] = sourceFileId.Trim();

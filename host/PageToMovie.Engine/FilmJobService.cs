@@ -659,7 +659,10 @@ public sealed class FilmJobService
     {
         if (!string.IsNullOrWhiteSpace(_user.RequestApiKey))
             return _user.RequestApiKey;
-        return await _keys.GetKeyAsync(keyUserId, "grok").ConfigureAwait(false);
+        var providerId = SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase);
+        if (string.IsNullOrWhiteSpace(providerId))
+            return null;
+        return await _keys.GetKeyAsync(keyUserId, providerId).ConfigureAwait(false);
     }
 
     private async Task ExecuteQueuedJobAsync(
@@ -5954,7 +5957,7 @@ public sealed class FilmJobService
         // return a local fixture scheme that DownloadToFileAsync resolves on disk.
         try
         {
-            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Ct).ConfigureAwait(false);
+            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Model, ctx.Ct).ConfigureAwait(false);
             var bytesLength = File.Exists(mp4Path) ? new FileInfo(mp4Path).Length : 0;
             if (bytesLength > 0)
             {
@@ -6190,9 +6193,8 @@ public sealed class FilmJobService
         {
             var projDir = await _projects.GetProjectDirAsync(
                 Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId, ctx.Ct).ConfigureAwait(false);
-            // Storage handle when generation requested storage_options (Grok): public_url is
-            // the durable playback link; file_id is for later edit/extend attach. Imagine
-            // file_ids are generate-only — do not treat Files content GET as recovery.
+            // Storage handle when generation requested storage: public_url is the durable
+            // playback link; file_id is for later edit/extend attach and IVideoClient recovery.
             var stored = _grok.TryGetStoredFileReference(requestId);
             var generated = (double)duration;
             var savedSlice = ClipExtendSource.SavedSliceDurationSeconds(generated);

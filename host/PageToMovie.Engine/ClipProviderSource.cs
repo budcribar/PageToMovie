@@ -19,7 +19,9 @@ public sealed record ClipProviderSource(
     double LeadInSeconds,
     double? DurationSeconds,
     double? ClipStartSeconds = null,
-    double? ClipStopSeconds = null)
+    double? ClipStopSeconds = null,
+    string? Model = null,
+    string? SourceProvider = null)
 {
     public bool HasProviderCopy => !string.IsNullOrWhiteSpace(SourceUrl) || !string.IsNullOrWhiteSpace(SourceFileId);
     public bool IsCombined => LeadInSeconds > 0.1;
@@ -64,7 +66,9 @@ public sealed record ClipProviderSource(
                 Num(LeadInProperty) ?? 0,
                 Num("duration_seconds"),
                 Num(ClipStartProperty),
-                Num(ClipStopProperty));
+                Num(ClipStopProperty),
+                Str("model"),
+                Str("source_provider"));
         }
         catch { return null; }
     }
@@ -81,7 +85,8 @@ public sealed record ClipProviderSource(
 
     /// <summary>
     /// URL first, then Files <c>file_id</c> via the caller’s opener
-    /// (<see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> on the media proxy).
+    /// (catalog-routed <c>IVideoClient.OpenStoredFileStreamAsync</c> on the media proxy;
+    /// xAI adapters reuse <c>XaiResponsesClient.OpenFileContentStreamAsync</c>).
     /// Combined extend copies stay combined.
     /// </summary>
     public static async Task<T?> TryOpenAsync<T>(

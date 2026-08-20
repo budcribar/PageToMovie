@@ -6,9 +6,8 @@ using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
-/// Rare Railway copy of a clip: only when a fork could not stream the xAI file_id.
-/// Imagine file_ids are generate-only (read-only). Owner attach then stores the local .mp4
-/// on our server and the pruner leaves it alone.
+/// Rare Railway copy of a clip: only when a fork could not stream the provider file_id.
+/// Owner attach then stores the local .mp4 on our server and the pruner leaves it alone.
 /// </summary>
 public static class ClipForkFallback
 {

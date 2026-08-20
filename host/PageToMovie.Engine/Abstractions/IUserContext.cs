@@ -15,11 +15,15 @@ public interface IUserContext
 /// <summary>Resolve provider API keys for a user (personal DB key, then process env).</summary>
 public interface IUserApiKeyProvider
 {
-    Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) => GetKeyAsync(userId, "grok", ct);
+    Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) =>
+        GetKeyAsync(userId, PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+            PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase), ct);
 
     Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default);
 
-    Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) => HasKeyAsync(userId, "grok", ct);
+    Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) =>
+        HasKeyAsync(userId, PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+            PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase), ct);
 
     async Task<bool> HasKeyAsync(string? userId, string providerId, CancellationToken ct = default) =>
         !string.IsNullOrWhiteSpace(await GetKeyAsync(userId, providerId, ct).ConfigureAwait(false));

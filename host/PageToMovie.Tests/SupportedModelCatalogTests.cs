@@ -144,6 +144,32 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
+    public void ProviderIdForApiBase_matches_models_that_use_that_api()
+    {
+        var xai = SupportedModelCatalog.ProviderIdForApiBase(SupportedModelCatalog.XaiApiBase);
+        Assert.False(string.IsNullOrWhiteSpace(xai));
+        var fromModel = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .First(m => string.Equals(
+                m.ApiBase.TrimEnd('/'),
+                SupportedModelCatalog.XaiApiBase.TrimEnd('/'),
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(
+            SupportedModelCatalog.NormalizeProviderId(fromModel.ProviderId),
+            SupportedModelCatalog.NormalizeProviderId(xai));
+
+        var otherApi = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .First(m => !string.Equals(
+                m.ApiBase.TrimEnd('/'),
+                SupportedModelCatalog.XaiApiBase.TrimEnd('/'),
+                StringComparison.OrdinalIgnoreCase)).ApiBase;
+        var other = SupportedModelCatalog.ProviderIdForApiBase(otherApi);
+        Assert.False(string.IsNullOrWhiteSpace(other));
+        Assert.NotEqual(
+            SupportedModelCatalog.NormalizeProviderId(xai),
+            SupportedModelCatalog.NormalizeProviderId(other));
+    }
+
+    [Fact]
     public void Chat_and_vision_defaults_match_catalog_json()
     {
         // Do not assert a literal model id here — that is the same bug as hardcoding grok-4.6

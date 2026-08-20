@@ -32,6 +32,8 @@ public sealed class FalVideoClient : IVideoClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
 
+    public string CatalogProviderId => SupportedModelCatalog.ProviderIdForApiBase(ApiBase);
+
     private static string? ResolveApiKey() => ProviderApiKey.ResolveFal();
 
     public async Task<string> SubmitGenerationAsync(

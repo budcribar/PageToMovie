@@ -4,6 +4,8 @@ using Xunit;
 
 namespace PageToMovie.Tests;
 
+[Collection("catalog-serial")]
+
 /// <summary>
 /// Provider-recovery rows in the media sync list (MediaEndpoints.CollectProviderRecoveryEntries):
 /// a clip whose bytes are on neither server disk nor the client, but whose sidecar still points at
@@ -26,14 +28,18 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         try { Directory.Delete(_videoDir, recursive: true); } catch { /* best effort */ }
     }
 
-    private void WriteSidecar(int scene, int clip, int take, string? sourceUrl, double? leadIn = null, string? sourceFileId = null)
+    private void WriteSidecar(
+        int scene, int clip, int take, string? sourceUrl, double? leadIn = null, string? sourceFileId = null,
+        string? model = null, string? sourceProvider = null)
     {
         var lead = leadIn is { } l ? $",\"provider_lead_in_seconds\":{l:0.0##}" : "";
         var src = sourceUrl is null ? "" : $",\"source_url\":\"{sourceUrl}\"";
         var fid = sourceFileId is null ? "" : $",\"source_file_id\":\"{sourceFileId}\"";
+        var mdl = model is null ? "" : $",\"model\":\"{model}\"";
+        var prov = sourceProvider is null ? "" : $",\"source_provider\":\"{sourceProvider}\"";
         File.WriteAllText(
             Path.Combine(_videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_{take:D2}.clip.json"),
-            $"{{\"scene\":{scene},\"clip\":{clip}{src}{fid}{lead}}}");
+            $"{{\"scene\":{scene},\"clip\":{clip}{src}{fid}{lead}{mdl}{prov}}}");
     }
 
     private static List<MediaEndpoints.ProviderRecoverySyncEntry> Collect(string videoDir) =>
@@ -277,18 +283,135 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task ResolveTicketGrokKey_uses_personal_key_for_ticket_user()
+    public void Ticket_store_keeps_model_and_catalog_provider()
     {
-        var keys = new StubUserKeys { ["budcribar"] = "xai-personal-key" };
-        var grokKey = await MediaEndpoints.ResolveTicketGrokKeyAsync(keys, "budcribar", CancellationToken.None);
-        Assert.Equal("xai-personal-key", grokKey);
+        var store = new PageToMovie.Engine.MediaProxyTicketStore();
+        var token = store.Issue(
+            "https://vidgen.example/ok.mp4",
+            TimeSpan.FromMinutes(5),
+            "file_live",
+            keyUserId: "owner-id",
+            projectDir: "/data/projects/demo",
+            scene: 1,
+            clip: 2,
+            modelId: "catalog-video-model",
+            providerId: "catalog-provider");
+        Assert.True(store.TryTake(token, out _, out var fileId, out var keyUser, out var dir, out var scene, out var clip, out var model, out var provider));
+        Assert.Equal("file_live", fileId);
+        Assert.Equal("owner-id", keyUser);
+        Assert.Equal("/data/projects/demo", dir);
+        Assert.Equal(1, scene);
+        Assert.Equal(2, clip);
+        Assert.Equal("catalog-video-model", model);
+        Assert.Equal("catalog-provider", provider);
+    }
 
-        using (PageToMovie.Engine.Abstractions.ApiKeyScope.Push(grokKey))
-        using (PageToMovie.Engine.Abstractions.UserApiCallScope.Push("budcribar"))
-        {
-            Assert.Equal("xai-personal-key", PageToMovie.Engine.Abstractions.ApiKeyScope.Current);
-            Assert.Equal("budcribar", PageToMovie.Engine.Abstractions.UserApiCallScope.UserId);
-        }
+    [Fact]
+    public void CollectRecovery_tickets_sidecar_model_and_catalog_provider()
+    {
+        var xaiVideo = CatalogXaiVideoModel();
+        WriteSidecar(5, 1, 1, "https://vidgen.example/c.mp4", sourceFileId: "file_live",
+            model: xaiVideo.Id, sourceProvider: xaiVideo.ProviderId);
+
+        string? seenModel = null;
+        string? seenProvider = null;
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(
+            _videoDir,
+            (url, fileId, _, _, _, modelId, providerId) =>
+            {
+                seenModel = modelId;
+                seenProvider = providerId;
+                return "tok-model";
+            });
+
+        Assert.Single(entries);
+        Assert.Equal(xaiVideo.Id, seenModel);
+        Assert.Equal(
+            PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(xaiVideo.ProviderId),
+            seenProvider);
+    }
+
+    [Fact]
+    public async Task ResolveTicketVideoKey_uses_catalog_provider_for_non_xai_video_model()
+    {
+        var other = CatalogNonXaiVideoModel();
+        var keys = new RecordingUserKeys();
+        keys.Set("budcribar", other.ProviderId, "other-provider-secret");
+        keys.Set("budcribar", CatalogXaiVideoModel().ProviderId, "xai-secret-must-not-be-used");
+
+        var key = await MediaEndpoints.ResolveTicketVideoKeyAsync(
+            keys, "budcribar", other.Id, null, CancellationToken.None);
+
+        Assert.Equal("other-provider-secret", key);
+        var call = Assert.Single(keys.Calls);
+        Assert.Equal("budcribar", call.UserId);
+        Assert.Equal(
+            PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(other.ProviderId),
+            call.ProviderId);
+        Assert.DoesNotContain(keys.Calls, c => c.UserId is null);
+    }
+
+    [Fact]
+    public async Task ResolveTicketVideoKey_imagine_style_model_uses_its_catalog_provider()
+    {
+        var xaiVideo = CatalogXaiVideoModel();
+        var keys = new RecordingUserKeys();
+        keys.Set("budcribar", xaiVideo.ProviderId, "xai-from-catalog-provider");
+
+        var key = await MediaEndpoints.ResolveTicketVideoKeyAsync(
+            keys, "budcribar", xaiVideo.Id, null, CancellationToken.None);
+
+        Assert.Equal("xai-from-catalog-provider", key);
+        var call = Assert.Single(keys.Calls);
+        Assert.Equal("budcribar", call.UserId);
+        Assert.Equal(
+            PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(xaiVideo.ProviderId),
+            call.ProviderId);
+        Assert.DoesNotContain(keys.Calls, c => c.UserId is null);
+    }
+
+    [Fact]
+    public async Task ResolveTicketVideoKey_never_calls_GetKeyAsync_with_null_user()
+    {
+        var xaiVideo = CatalogXaiVideoModel();
+        var keys = new RecordingUserKeys();
+        keys.Set("owner", xaiVideo.ProviderId, "personal");
+
+        var missingUser = await MediaEndpoints.ResolveTicketVideoKeyAsync(
+            keys, null, xaiVideo.Id, xaiVideo.ProviderId, CancellationToken.None);
+        Assert.Null(missingUser);
+        Assert.Empty(keys.Calls);
+
+        var withUser = await MediaEndpoints.ResolveTicketVideoKeyAsync(
+            keys, "owner", xaiVideo.Id, null, CancellationToken.None);
+        Assert.Equal("personal", withUser);
+        Assert.All(keys.Calls, c => Assert.False(string.IsNullOrWhiteSpace(c.UserId)));
+    }
+
+    private static PageToMovie.Core.Models.SupportedModelEntry CatalogXaiVideoModel()
+    {
+        var api = PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase;
+        var hit = PageToMovie.Core.Models.SupportedModelCatalog.ForCapability(PageToMovie.Core.Models.ModelCapability.Video)
+            .FirstOrDefault(m =>
+                m.Enabled
+                && !string.IsNullOrWhiteSpace(m.ApiBase)
+                && string.Equals(m.ApiBase.TrimEnd('/'), api.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(hit);
+        return hit;
+    }
+
+    private static PageToMovie.Core.Models.SupportedModelEntry CatalogNonXaiVideoModel()
+    {
+        var xai = CatalogXaiVideoModel();
+        var hit = PageToMovie.Core.Models.SupportedModelCatalog.ForCapability(PageToMovie.Core.Models.ModelCapability.Video)
+            .FirstOrDefault(m =>
+                m.Enabled
+                && !string.Equals(
+                    PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(m.ProviderId),
+                    PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(xai.ProviderId),
+                    StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(hit);
+        return hit;
     }
 
     private static int? StatusOf(IResult result) =>
@@ -301,15 +424,20 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         return result.GetType().Name;
     }
 
-    private sealed class StubUserKeys : PageToMovie.Engine.Abstractions.IUserApiKeyProvider
+    private sealed class RecordingUserKeys : PageToMovie.Engine.Abstractions.IUserApiKeyProvider
     {
-        private readonly Dictionary<string, string> _keys = new(StringComparer.OrdinalIgnoreCase);
-        public string this[string userId] { set => _keys[userId] = value; }
+        private readonly Dictionary<(string User, string Provider), string> _keys = new();
+        public List<(string? UserId, string ProviderId)> Calls { get; } = new();
+
+        public void Set(string userId, string providerId, string key) =>
+            _keys[(userId, PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(providerId))] = key;
 
         public Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default)
         {
+            Calls.Add((userId, providerId));
             if (string.IsNullOrWhiteSpace(userId)) return Task.FromResult<string?>(null);
-            return Task.FromResult(_keys.TryGetValue(userId, out var k) ? k : null);
+            var norm = PageToMovie.Core.Models.SupportedModelCatalog.NormalizeProviderId(providerId);
+            return Task.FromResult(_keys.TryGetValue((userId, norm), out var k) ? k : null);
         }
     }
 }

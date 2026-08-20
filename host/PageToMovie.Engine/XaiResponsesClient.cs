@@ -9,9 +9,10 @@ namespace PageToMovie.Engine;
 
 /// <summary>
 /// Minimal, standalone client for xAI's Files + Responses API — NOT the same surface as
-/// <see cref="PageToMovie.Engine.GrokChatClient"/>, which only talks to the stateless
-/// <c>chat/completions</c> endpoint. Product path uses this for Stage‑1 multi-turn
-/// so the book is uploaded once (file_id) and follow-ups use previous_response_id.
+/// the xAI chat adapter, which only talks to the stateless <c>chat/completions</c> endpoint.
+/// Product path uses this for Stage‑1 multi-turn so the book is uploaded once (file_id)
+/// and follow-ups use previous_response_id. Video recovery opens clip bytes through
+/// <see cref="IVideoClient.OpenStoredFileStreamAsync"/>, which routes here for xAI Files.
 ///
 /// Endpoint shapes below were confirmed live against docs.x.ai (not guessed):
 ///   POST https://api.x.ai/v1/files            (multipart; expires_after must precede file)
@@ -33,7 +34,7 @@ public sealed class XaiResponsesClient
         _keyProvider = keyProvider;
     }
 
-    public static bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
+    public static bool IsConfigured => !string.IsNullOrWhiteSpace(GrokProviderHttp.ResolveApiKey());
 
     public sealed record UploadResult(string FileId, string Filename, long Bytes, long? ExpiresAtUnixSeconds);
 
@@ -82,7 +83,7 @@ public sealed class XaiResponsesClient
         int expiresAfterSeconds,
         CancellationToken ct)
     {
-        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
+        var key = await RequireApiKeyAsync(ct: ct).ConfigureAwait(false);
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(expiresAfterSeconds.ToString()), "expires_after");
         var fileContent = new ByteArrayContent(fileBytes);
@@ -259,7 +260,7 @@ public sealed class XaiResponsesClient
         Dictionary<string, object?> payload,
         CancellationToken ct)
     {
-        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
+        var key = await RequireApiKeyAsync(ct: ct).ConfigureAwait(false);
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/responses")
         {
             Content = JsonContent.Create(payload),
@@ -348,21 +349,20 @@ public sealed class XaiResponsesClient
         parts.Add(t.GetString() ?? "");
     }
 
-    private Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
-        GrokProviderHttp.ResolveApiKeyAsync(_keyProvider, ct);
-
-    private async Task<string> RequireApiKeyAsync(CancellationToken ct = default) =>
-        (await ResolveApiKeyAsync(ct).ConfigureAwait(false)) ?? throw new InvalidOperationException(
-            "No xAI API key available for Files/Responses (save XAI key in Settings or set XAI_API_KEY).");
+    private Task<string> RequireApiKeyAsync(string? model = null, CancellationToken ct = default) =>
+        GrokProviderHttp.RequireApiKeyAsync(_keyProvider, model, ct);
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 
     /// <summary>GET /v1/files/{id}/content — raw bytes. Caller must dispose the stream (closes the HTTP response).</summary>
-    public async Task<Stream> OpenFileContentStreamAsync(string fileId, CancellationToken ct = default)
+    public Task<Stream> OpenFileContentStreamAsync(string fileId, CancellationToken ct = default) =>
+        OpenFileContentStreamAsync(fileId, model: null, ct);
+
+    public async Task<Stream> OpenFileContentStreamAsync(string fileId, string? model, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(fileId))
             throw new ArgumentException("file_id required", nameof(fileId));
-        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
+        var key = await RequireApiKeyAsync(model, ct).ConfigureAwait(false);
         var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/files/{Uri.EscapeDataString(fileId.Trim())}/content");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);

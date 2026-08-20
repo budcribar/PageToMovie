@@ -48,6 +48,8 @@ public sealed class GeminiVideoClient : IVideoClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
 
+    public string CatalogProviderId => SupportedModelCatalog.ProviderIdForApiBase(ApiBase);
+
     /// <summary>
     /// Veo does not have a direct equivalent of Grok's reference_images / video-extend on the
     /// same endpoint family yet in this client — only text-to-video and image-to-video

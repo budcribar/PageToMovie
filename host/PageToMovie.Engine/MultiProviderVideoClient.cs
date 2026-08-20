@@ -4,33 +4,43 @@ using PageToMovie.Engine.Abstractions;
 namespace PageToMovie.Engine;
 
 /// <summary>
-/// Routes <see cref="IVideoClient"/> calls to the right concrete provider client based on
-/// the requested <c>model</c>'s provider in <see cref="SupportedModelCatalog"/>. Submit / poll /
-/// download are three separate calls in this interface, and Grok's and Gemini's request ids
-/// have different shapes (Grok: short opaque id; Gemini: an operation resource path) — rather
-/// than keep a requestId→provider lookup table (extra state to go stale across restarts), this
-/// tags the id itself with a small provider prefix on submit and strips it again on poll, so
-/// routing stays correct with no server-side memory of in-flight jobs.
+/// Catalog-routed <see cref="IVideoClient"/> facade. Fail-fast: model id →
+/// <see cref="SupportedModelCatalog.Find"/> → <c>providerId</c> → registered adapter.
+/// Missing model, unknown/disabled catalog row, or no map entry throws. No Grok default,
+/// no first-configured-provider fallback, no download-URL host inference.
 /// </summary>
 public sealed class MultiProviderVideoClient : IVideoClient
 {
-    private const string GrokPrefix = "grok:";
-    private const string GeminiPrefix = "gemini:";
-    private const string FalPrefix = "fal:";
+    private readonly IReadOnlyDictionary<string, IVideoClient> _clients;
 
-    private readonly GrokVideoClient _grok;
-    private readonly GeminiVideoClient _gemini;
-    private readonly FalVideoClient _fal;
-
+    /// <summary>
+    /// Production registration: each adapter is keyed by its catalog
+    /// <see cref="IVideoClient.CatalogProviderId"/> (from <c>ProviderIdForApiBase</c>).
+    /// Adding a catalog provider is a new adapter in this list — not a new if-branch.
+    /// </summary>
     public MultiProviderVideoClient(GrokVideoClient grok, GeminiVideoClient gemini, FalVideoClient fal)
+        : this(BindAdapters(grok, gemini, fal))
     {
-        _grok = grok;
-        _gemini = gemini;
-        _fal = fal;
     }
 
-    /// <summary>True when at least one provider has an API key configured.</summary>
-    public bool IsConfigured => _grok.IsConfigured || _gemini.IsConfigured || _fal.IsConfigured;
+    /// <summary>Test / explicit map: keys are catalog <c>providers[].id</c>.</summary>
+    public MultiProviderVideoClient(IReadOnlyDictionary<string, IVideoClient> clientsByProviderId)
+    {
+        var map = new Dictionary<string, IVideoClient>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, client) in clientsByProviderId)
+        {
+            var id = SupportedModelCatalog.NormalizeProviderId(key);
+            if (string.IsNullOrWhiteSpace(id) || client is null)
+                continue;
+            map[id] = client;
+        }
+        if (map.Count == 0)
+            throw new InvalidOperationException(
+                "Video: no IVideoClient adapters registered from catalog provider attributes.");
+        _clients = map;
+    }
+
+    public bool IsConfigured => _clients.Values.Any(c => c.IsConfigured);
 
     public async Task<string> SubmitGenerationAsync(
         string prompt,
@@ -44,121 +54,152 @@ public sealed class MultiProviderVideoClient : IVideoClient
         string? aspectRatio = null,
         string? extendSourceFileId = null)
     {
-        if (string.IsNullOrWhiteSpace(model))
-            throw new InvalidOperationException(
-                "Video: model is required. Open Settings and choose a Video generation model.");
-        var entry = SupportedModelCatalog.Find(model, ModelCapability.Video) ?? SupportedModelCatalog.Find(model);
-        if (entry is null || !entry.Enabled)
-            throw new InvalidOperationException(
-                $"Video: model '{model}' is not in the models catalog (or is disabled). Open Settings and pick a current model.");
-        var provider = entry.Provider;
-        if (provider == ModelProviderFamily.Fal)
-        {
-            var falId = await _fal.SubmitGenerationAsync(
-                prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
-            return FalPrefix + falId;
-        }
-
-        if (provider == ModelProviderFamily.Google)
-        {
-            var id = await _gemini.SubmitGenerationAsync(
-                prompt, durationSeconds, resolution, model, ct,
-                referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
-            return GeminiPrefix + id;
-        }
-
-        var grokId = await _grok.SubmitGenerationAsync(
+        var entry = RequireVideoEntry(model);
+        var client = ClientForProviderId(entry.ProviderId, model);
+        var raw = await client.SubmitGenerationAsync(
             prompt, durationSeconds, resolution, model, ct,
-            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId).ConfigureAwait(false);
-            return GrokPrefix + grokId;
+            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId)
+            .ConfigureAwait(false);
+        return TagRequestId(entry.ProviderId, raw);
     }
 
     public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct)
     {
-        var (client, id) = Resolve(requestId);
-        return client.PollForVideoUrlAsync(id, onProgress, ct);
+        var (client, raw) = ResolveRequest(requestId);
+        return client.PollForVideoUrlAsync(raw, onProgress, ct);
     }
 
-    public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
+    public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+        throw new InvalidOperationException(
+            "Video: model is required to download. Open Settings and choose a Video generation model.");
+
+    public Task DownloadToFileAsync(string url, string destPath, string? model, CancellationToken ct)
     {
-        var client = ResolveDownloadClient(url);
+        var client = ResolveClientForModel(model);
         return client.DownloadToFileAsync(url, destPath, ct);
     }
 
     public StoredVideoFileRef TryGetStoredFileReference(string requestId)
     {
-        var (client, id) = Resolve(requestId);
-        return client.TryGetStoredFileReference(id);
+        var (client, raw) = ResolveRequest(requestId);
+        return client.TryGetStoredFileReference(raw);
     }
 
-    public IVideoClient ResolveDownloadClient(string url)
+    public Task<Stream?> OpenStoredFileStreamAsync(string fileId, string? model, CancellationToken ct)
     {
-        var inferred = InferProviderFromDownloadUrl(url);
-        if (inferred == ModelProviderFamily.Fal)
-            return _fal;
-        if (inferred == ModelProviderFamily.Google)
-            return _gemini;
-        if (inferred == ModelProviderFamily.Xai)
-            return _grok;
-
-        if (_fal.IsConfigured)
-            return _fal;
-        if (_grok.IsConfigured)
-            return _grok;
-        if (_gemini.IsConfigured)
-            return _gemini;
-        return _grok;
+        var client = ResolveClientForModel(model);
+        return client.OpenStoredFileStreamAsync(fileId, model, ct);
     }
 
-    public static ModelProviderFamily? InferProviderFromDownloadUrl(string? url)
+    public Task<string?> TryUploadVideoStreamAsync(Stream mp4, string fileName, string? model, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            return null;
-        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
-            return null;
-
-        var host = uri.Host;
-        if (host.Contains("fal.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("fal.run", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("fal.media", StringComparison.OrdinalIgnoreCase))
-            return ModelProviderFamily.Fal;
-
-        if (host.Contains("googleapis", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("googleusercontent", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("google.com", StringComparison.OrdinalIgnoreCase))
-            return ModelProviderFamily.Google;
-
-        if (host.Equals("api.x.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith(".x.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("x.ai", StringComparison.OrdinalIgnoreCase) ||
-            host.Contains("xai", StringComparison.OrdinalIgnoreCase))
-            return ModelProviderFamily.Xai;
-
-        return null;
+        var client = ResolveClientForModel(model);
+        return client.TryUploadVideoStreamAsync(mp4, fileName, model, ct);
     }
 
-    private (IVideoClient Client, string Id) Resolve(string requestId)
+    /// <summary>
+    /// Model id → catalog Video row → <c>providerId</c> → registered adapter.
+    /// Throws when the model is missing, unknown, disabled, or has no map entry.
+    /// </summary>
+    public IVideoClient ResolveClientForModel(string? model)
     {
-        var (provider, id) = ParseTaggedRequestId(requestId);
-        return provider switch
+        var entry = RequireVideoEntry(model);
+        return ClientForProviderId(entry.ProviderId, model);
+    }
+
+    /// <summary>
+    /// Split a catalog-tagged request id (<c>{providerId}:{raw}</c>). The prefix must be a
+    /// catalog provider id (or alias) — not a hardcoded family name.
+    /// </summary>
+    public static bool TrySplitTaggedRequestId(
+        string? requestId,
+        IEnumerable<string> catalogProviderIds,
+        out string providerId,
+        out string rawId)
+    {
+        providerId = "";
+        rawId = requestId ?? "";
+        if (string.IsNullOrWhiteSpace(requestId))
+            return false;
+        var colon = requestId.IndexOf(':');
+        if (colon <= 0)
+            return false;
+        var prefix = requestId[..colon];
+        var known = catalogProviderIds
+            .Select(SupportedModelCatalog.NormalizeProviderId)
+            .Where(id => id.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (known.Count == 0)
+            return false;
+        var normalized = SupportedModelCatalog.NormalizeProviderId(prefix);
+        if (string.IsNullOrWhiteSpace(normalized) || !known.Contains(normalized))
+            return false;
+        providerId = normalized;
+        rawId = requestId[(colon + 1)..];
+        return true;
+    }
+
+    public static string TagRequestId(string providerId, string rawId)
+    {
+        var id = SupportedModelCatalog.NormalizeProviderId(providerId);
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException(
+                "Video: catalog provider id is required to tag a request. No default provider.");
+        if (string.IsNullOrWhiteSpace(rawId))
+            throw new InvalidOperationException("Video: request id is required.");
+        return id + ":" + rawId;
+    }
+
+    private (IVideoClient Client, string RawId) ResolveRequest(string requestId)
+    {
+        if (TrySplitTaggedRequestId(requestId, _clients.Keys, out var taggedProvider, out var raw)
+            && _clients.TryGetValue(taggedProvider, out var taggedClient))
+            return (taggedClient, raw);
+
+        throw new InvalidOperationException(
+            "Video: cannot route this request — it has no catalog provider tag. Generate again with a selected video model.");
+    }
+
+    private IVideoClient ClientForProviderId(string? providerId, string? model)
+    {
+        var key = SupportedModelCatalog.NormalizeProviderId(providerId);
+        if (string.IsNullOrWhiteSpace(key) || !_clients.TryGetValue(key, out var client))
         {
-            ModelProviderFamily.Fal => (_fal, id),
-            ModelProviderFamily.Google => (_gemini, id),
-            _ => (_grok, id),
-        };
+            throw new InvalidOperationException(
+                "Video: no client is registered for catalog provider '"
+                + (string.IsNullOrWhiteSpace(key) ? "(empty)" : key)
+                + "' (model '" + (model ?? "") + "'). Add an IVideoClient adapter for that providers[].id.");
+        }
+        return client;
     }
 
-    public static (ModelProviderFamily Provider, string Id) ParseTaggedRequestId(string requestId)
+    private static Dictionary<string, IVideoClient> BindAdapters(params IVideoClient[] adapters)
     {
-        if (requestId.StartsWith(FalPrefix, StringComparison.Ordinal))
-            return (ModelProviderFamily.Fal, requestId[FalPrefix.Length..]);
-        if (requestId.StartsWith(GeminiPrefix, StringComparison.Ordinal))
-            return (ModelProviderFamily.Google, requestId[GeminiPrefix.Length..]);
-        if (requestId.StartsWith(GrokPrefix, StringComparison.Ordinal))
-            return (ModelProviderFamily.Xai, requestId[GrokPrefix.Length..]);
-        return (ModelProviderFamily.Xai, requestId);
+        var map = new Dictionary<string, IVideoClient>(StringComparer.OrdinalIgnoreCase);
+        foreach (var adapter in adapters)
+        {
+            var id = SupportedModelCatalog.NormalizeProviderId(adapter.CatalogProviderId);
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException(
+                    "Video: adapter " + adapter.GetType().Name
+                    + " has no catalog provider id. Bind CatalogProviderId from SupportedModelCatalog.");
+            map[id] = adapter;
+        }
+        return map;
+    }
+
+    private static SupportedModelEntry RequireVideoEntry(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+            throw new InvalidOperationException(
+                "Video: model is required. Open Settings and choose a Video generation model.");
+        var entry = SupportedModelCatalog.Find(model, ModelCapability.Video);
+        if (entry is null || !entry.Enabled)
+            throw new InvalidOperationException(
+                $"Video: model '{model}' is not in the models catalog (or is disabled). Open Settings and pick a current model.");
+        if (string.IsNullOrWhiteSpace(entry.ProviderId))
+            throw new InvalidOperationException(
+                $"Video: catalog row '{entry.Id}' has no providerId.");
+        return entry;
     }
 }
