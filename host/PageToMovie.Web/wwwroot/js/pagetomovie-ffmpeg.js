@@ -60,7 +60,10 @@ window.PageToMovieFfmpeg = {
             if (!res.ok) {
                 const label = this._clipLabelFromUrl(url);
                 const named = label ? (label + ": ") : "";
-                throw new Error(named + "clip video missing (" + res.status + " " + (res.statusText || "") + "). Generate those clips first or connect the media folder.");
+                const detail = (window.PageToMovieMedia && typeof window.PageToMovieMedia.httpErrorText === "function")
+                    ? await window.PageToMovieMedia.httpErrorText(res)
+                    : ("HTTP " + res.status + " " + (res.statusText || ""));
+                throw new Error(named + "clip video missing (" + detail + "). Generate those clips first or connect the media folder.");
             }
             const buf = await res.arrayBuffer();
             return new Uint8Array(buf);
@@ -499,6 +502,23 @@ window.PageToMovieFfmpeg = {
                 return { success: false, error: err.message || String(err) };
             }
         });
+    },
+
+    /**
+     * One GET of a remote (proxy) URL into a blob: URL. Combined-extend probe + trim
+     * must reuse that blob — never _safeFetchFile the same StreamUrl twice.
+     */
+    prefetchToBlobUrlAsync: async function (url) {
+        if (!url) return { success: false, error: "No URL" };
+        if (typeof url === "string" && (url.startsWith("blob:") || url.startsWith("data:")))
+            return { success: true, url: url };
+        try {
+            const data = await this._safeFetchFile(url);
+            const blob = new Blob([data], { type: "video/mp4" });
+            return { success: true, url: URL.createObjectURL(blob) };
+        } catch (err) {
+            return { success: false, error: err.message || String(err) };
+        }
     },
 
     probeDurationAsync: async function (url) {

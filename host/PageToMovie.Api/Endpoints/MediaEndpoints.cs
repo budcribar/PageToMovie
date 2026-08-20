@@ -549,10 +549,11 @@ public static class MediaEndpoints
         Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
 
     /// <summary>
-    /// Stream the provider copy: public URL first, then the catalog-routed
-    /// <see cref="IVideoClient"/> stored-file path. xAI models reuse
-    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> (the only Files
-    /// content GET — do not add another). Combined-extend slicing/hop-walk is
+    /// Stream the provider copy: catalog-routed <see cref="IVideoClient"/> stored-file
+    /// path first when <c>file_id</c> is set (xAI models reuse
+    /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> — the only Files
+    /// content GET), then the public URL capped so a dead vidgen link cannot hang
+    /// the 10-minute media-proxy client. Combined-extend slicing/hop-walk is
     /// unchanged — the same bytes (combined file) are streamed either way.
     /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(

@@ -89,9 +89,8 @@ internal static class ApiPipeline
         var user = context.RequestServices.GetService<IUserContext>();
         var uid = user?.UserId;
         var xai = await ResolveXaiKeyAsync(user, keyProvider, uid);
-        return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        var keys = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["grok"] = xai,
             ["gemini"] = await GetProviderKeyAsync(keyProvider, uid, "gemini"),
             ["anthropic"] = await GetProviderKeyAsync(keyProvider, uid, "anthropic"),
             ["fal"] = await GetProviderKeyAsync(keyProvider, uid, "fal"),
@@ -99,6 +98,19 @@ internal static class ApiPipeline
             ["aimusicapi"] = await GetProviderKeyAsync(keyProvider, uid, "aimusicapi"),
             [ApiText.ElevenLabsClient] = await GetProviderKeyAsync(keyProvider, uid, ApiText.ElevenLabsClient),
         };
+        SeedCatalogApiBaseKey(keys, PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase, xai);
+        return keys;
+    }
+
+    /// <summary>
+    /// Ambient key slot is the catalog <c>providerId</c> for that API base — never a hardcoded name.
+    /// </summary>
+    internal static void SeedCatalogApiBaseKey(IDictionary<string, string?> keys, string? apiBase, string? key)
+    {
+        var providerId = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(apiBase);
+        if (string.IsNullOrWhiteSpace(providerId))
+            return;
+        keys[providerId] = key;
     }
 
     static async Task<string?> ResolveXaiKeyAsync(IUserContext? user, IUserApiKeyProvider? keyProvider, string? uid)

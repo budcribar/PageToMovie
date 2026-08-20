@@ -233,11 +233,16 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     [Fact]
     public async Task StreamProviderCopy_url_404_plus_file_id_streams_via_file_id_opener()
     {
+        var urlHits = 0;
         var fileHits = 0;
         var result = await MediaEndpoints.StreamProviderCopyAsync(
             "https://vidgen.example/expired.mp4",
             "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
-            (_, _) => Task.FromResult<IResult?>(null),
+            (_, _) =>
+            {
+                urlHits++;
+                return Task.FromResult<IResult?>(null);
+            },
             (id, _) =>
             {
                 fileHits++;
@@ -246,9 +251,56 @@ public class MediaSyncProviderRecoveryTests : IDisposable
             },
             CancellationToken.None);
 
+        Assert.Equal(0, urlHits);
         Assert.Equal(1, fileHits);
         Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
         Assert.DoesNotContain("File not found", ErrorOf(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_hanging_url_plus_file_id_does_not_wait()
+    {
+        var urlHits = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://vidgen.example/hang.mp4",
+            "file_live",
+            async (_, ct) =>
+            {
+                urlHits++;
+                await Task.Delay(Timeout.Infinite, ct);
+                return (IResult?)null;
+            },
+            (_, _) => Task.FromResult<IResult?>(Results.Bytes(new byte[] { 1, 2, 3 }, "video/mp4")),
+            CancellationToken.None);
+
+        sw.Stop();
+        Assert.Equal(0, urlHits);
+        Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void SeedCatalogApiBaseKey_uses_ProviderIdForApiBase_not_a_hardcoded_slot()
+    {
+        var keys = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        ApiPipeline.SeedCatalogApiBaseKey(keys, PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase, "xai-from-catalog");
+
+        var expected = PageToMovie.Core.Models.SupportedModelCatalog.ProviderIdForApiBase(
+            PageToMovie.Core.Models.SupportedModelCatalog.XaiApiBase);
+        Assert.False(string.IsNullOrWhiteSpace(expected));
+        Assert.Equal("xai-from-catalog", keys[expected]);
+        Assert.DoesNotContain(keys.Keys, k =>
+            k.Equals("grok", StringComparison.OrdinalIgnoreCase)
+            && !k.Equals(expected, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SeedCatalogApiBaseKey_empty_api_base_adds_no_slot()
+    {
+        var keys = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        ApiPipeline.SeedCatalogApiBaseKey(keys, "", "should-not-land");
+        Assert.Empty(keys);
     }
 
     [Fact]

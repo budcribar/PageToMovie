@@ -31,6 +31,19 @@ window.PageToMovieMedia = {
     },
 
     /**
+     * Status + a short body snippet so a 502 JSON error is visible in LastStatus
+     * without Railway logs. Consumes the response body.
+     */
+    httpErrorText: async function (res) {
+        let body = "";
+        try {
+            body = (await res.text()).replace(/\s+/g, " ").trim().slice(0, 400);
+        } catch (_) { /* */ }
+        const status = "HTTP " + res.status + (res.statusText ? " " + res.statusText : "");
+        return body ? (status + " " + body) : status;
+    },
+
+    /**
      * Prompt once for a media root folder (session). Prefer same folder as export.
      */
     connectFolderAsync: async function () {
@@ -262,7 +275,7 @@ window.PageToMovieMedia = {
             const report = (p, m) => typeof onProgress === "function" && onProgress(p, m);
             report(5, "Downloading clip…");
             const res = await fetch(url, { credentials: "same-origin" });
-            if (!res.ok) return { success: false, error: "Download failed HTTP " + res.status };
+            if (!res.ok) return { success: false, error: "Download failed " + await this.httpErrorText(res) };
             const buf = await res.arrayBuffer();
 
             report(60, "Hashing…");
@@ -292,7 +305,7 @@ window.PageToMovieMedia = {
     uploadUrlToServerAsync: async function (url, uploadUrl) {
         try {
             const res = await fetch(url, { credentials: "same-origin" });
-            if (!res.ok) return { success: false, error: "Fetch failed HTTP " + res.status };
+            if (!res.ok) return { success: false, error: "Fetch failed " + await this.httpErrorText(res) };
             const blob = await res.blob();
             const form = new FormData();
             form.append("video", blob, "upload.mp4");

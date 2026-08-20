@@ -112,4 +112,16 @@ internal static class CombinedExtendRecovery
             return localCombinedUrl;
         return string.IsNullOrWhiteSpace(providerUrl) ? null : providerUrl;
     }
+
+    /// <summary>
+    /// True when the playable still needs a network GET (proxy / provider URL).
+    /// Blob and data URLs are already in memory — probe/trim must not refetch them.
+    /// </summary>
+    internal static bool IsRemotePlayableUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        return !url.StartsWith("blob:", StringComparison.OrdinalIgnoreCase)
+               && !url.StartsWith("data:", StringComparison.OrdinalIgnoreCase);
+    }
 }
