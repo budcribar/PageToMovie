@@ -453,10 +453,11 @@ When debugging runtime behavior on the live Railway server across coding agent s
 - **On-Demand Server Transfer Only**: `.mp4` files are uploaded to the server strictly on-demand:
   1. When publishing/uploading a full film to YouTube.
   2. When generating a scene continuation (`extend_previous`) that requires the previous scene's video file on the server for AI continuation.
+- **Remote copy is the provider, not Railway**: Generated MP4 clip files come from the video provider (xAI Files / source_url / source_file_id). They are NOT stored on the Railway app server. Storage is only: (1) the local client project folder, or (2) the provider (xAI). Railway may keep sidecars (`.clip.json`) and pointers (`source_url`, `source_file_id`), but never the clip bytes as a recovery source. After a local folder wipe, MP4s must be re-downloaded from the provider via those sidecar pointers. Do not expect Railway media-sync to serve MP4 bytes from disk.
 
 ---
 
-*Last updated: 2026-08-13 — P5 share the master; P4 trim-is-a-view; P3 write from index.*
+*Last updated: 2026-08-20 — provider (not Railway) is the remote MP4 copy; P5 share the master; P4 trim-is-a-view; P3 write from index.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)
