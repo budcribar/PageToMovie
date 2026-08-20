@@ -32,6 +32,11 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
  19 | LocationsLookFlowTests.Generate_looks_then_lock_and_switch_preferred_variant | Locations: generate 3 looks (fake image job), lock variant #2, switch preferred to #1 | ✅ |
 | 20 | LocationsLookFlowTests.Configuration_media_folder_connects_and_reports_name | Configuration storage section: connect media folder, connected-name card renders (fixture stub now names the OPFS handle) | ✅ |
 
+| 21 | RemainingCoverageTests.Characters_voice_profile_edit_via_panel_persists | Voice picking through the real panel: open the folded Voice card, type a pinned profile, autosave persists to the characters API | ✅ |
+| 22 | RemainingCoverageTests.Configuration_theme_and_external_editor_persist_across_reload | Appearance section: theme select + preferred external editor persist across reload | ✅ |
+| 23 | RemainingCoverageTests.Simple_revoice_page_shows_main_card_on_generated_project | simple-revoice main card renders with the truthful no-clone hand-off | ✅ |
+| 24 | RemainingCoverageTests.Play_tab_stitches_the_full_movie_in_the_browser | ffmpeg.wasm depth: with no fresh server WIP, the Review Play tab combines the full cut IN THE BROWSER and plays a blob-backed video | ✅ |
+
 ## Bugs found (and status)
 
 | # | Bug | Found by | Status |
@@ -44,18 +49,10 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | B6 | (Not a bug — noted) `SanitizeSpokenDialogue` expands unknown hyphen compounds ("SNOW-DRIFT" → "SNOW — DRIFT") on clip-script save; deliberate speech-safety behavior, kept. | Test #7 | ℹ by design |
 | B7 | Locations page froze on "Loading locations…" forever: `OnProjectChanged` ran `LoadAsync` fire-and-forget with no re-render on completion, so whenever `ActiveProject.Changed` fired around navigation (readiness refresh does, repeatedly) the last render stuck at the loading state despite loaded data. | Test #12 | ✅ fixed (StateHasChanged after reload) |
 | B9 | Scene-heading dropdown edits (INT/EXT, location, time-of-day) were SILENTLY DISCARDED on save: `FormatSceneHeading` serializes the raw imported `SceneTitle` verbatim whenever present, so structured edits showed in the UI, never reached the Fountain draft, and reverted on reload. Fixed: changing a structured heading field invalidates `SceneTitle` (parser/Clone assign it last, so imported headings still survive untouched until a real user edit). | Test #18 | ✅ fixed |
+| B10 | Session hydration was SILENT (RestoreFromStoredJsonAsync never raised Changed) — pages that checked IsLoggedIn before hydration completed never learned the user signed in; /simple-revoice stuck on its "Sign in" alert while the nav showed @admin. Fixed in AdminSessionService + SimpleRevoice now subscribes and also hydrates the active-project pointer (RefreshFromServerAsync) instead of concluding "no project". | Test #23 | ✅ fixed |
 | B8 | (Observation) Screenplay-page scene drag-reorder rewrites the fountain draft only — it does NOT renumber clip files/blueprint like the Film page's reorder does. Harmless pre-shot-plan; after a plan exists it desyncs plan and files until a replan. Consider routing it through ProjectStore.ReorderScenes once a plan exists. | Test #13 | ⚠ documented |
 
-## Still to cover (planned)
+## Still to cover — NONE. Campaign complete 2026-08-20.
 
-- ~~Two users on ONE project~~ ✅ (#11) · ~~Locations page~~ ✅ (#12) · ~~Dialogue-timing~~ ✅ (#12)
-  · ~~Screenplay outline reorder~~ ✅ (#13) · ~~revoice/voice/cost page smoke~~ ✅ (#14)
-  · ~~voice-lock consistency~~ ✅ (#15)
-- ~~Screenplay beat add/delete + character dropdown~~ ✅ (#16); still open: beat drag-reorder,
-  location modal, transition presets.
-- Characters: pick-a-voice through the UI controls (API-level covered by #15), style override
-  interplay (StyleOverrideTests covers the gate itself).
-- Configuration page: remaining fields (a known-failing 9:16 autosave test predates this campaign).
-- ~~Locations generate-looks + lock-variant~~ ✅ (#19) · ~~Configuration media-folder connect~~ ✅ (#20)
-- Final-movie stitch (ffmpeg.wasm in Playwright) — Play tab reachability covered; the actual
-  stitched download is client-heavy, evaluate feasibility.
+Remaining product calls for the user: B2 (visibility "Open" mode vs one Public option) and
+B8 (route Screenplay-page scene reorder through ProjectStore.ReorderScenes once a plan exists).

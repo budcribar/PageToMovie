@@ -83,10 +83,36 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
     internal int _narratorClipCount => _clips.Count(c => c.WillRevoice);
     internal int _keepClipCount => _clips.Count - _narratorClipCount;
 
+    private bool _pageLoaded;
+
     protected override async Task OnInitializedAsync()
     {
+        // The session hydrates from sessionStorage asynchronously: on a direct navigation this
+        // page can render before IsLoggedIn flips true, and without this subscription it stuck on
+        // the "Sign in to re-voice" alert while the nav already showed the logged-in user.
+        Session.Changed += OnSessionChanged;
         if (!Session.IsLoggedIn) return;
+        await LoadPageAsync();
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(async () =>
+    {
+        if (!_pageLoaded && Session.IsLoggedIn)
+            await LoadPageAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadPageAsync()
+    {
+        _pageLoaded = true;
         _projectId = ActiveProject.ProjectId;
+        if (string.IsNullOrWhiteSpace(_projectId))
+        {
+            // Direct navigation lands before the active-project pointer hydrates — ask the server
+            // (RefreshFromServerAsync exists exactly for this) instead of concluding "no project".
+            try { await ActiveProject.RefreshFromServerAsync(Engine); } catch { /* stays empty */ }
+            _projectId = ActiveProject.ProjectId;
+        }
         if (string.IsNullOrWhiteSpace(_projectId))
         {
             _loading = false;
@@ -473,6 +499,7 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
 
     public async ValueTask DisposeAsync()
     {
+        Session.Changed -= OnSessionChanged;
         foreach (var u in _blobUrls.Distinct().Where(u => u.StartsWith("blob:", StringComparison.Ordinal)))
         {
             try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", u); } catch { /* blob URL may already be revoked */ }

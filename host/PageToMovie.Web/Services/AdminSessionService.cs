@@ -182,6 +182,10 @@ public sealed class AdminSessionService
         Roles = s.Roles?.ToList() ?? new List<string>();
         ExpiresAt = s.ExpiresAt;
         _viewAsUser = s.ViewAsUser;
+        // Hydration was silent, so pages that checked IsLoggedIn before it completed never
+        // learned the user is signed in (e.g. simple-revoice stuck on its "Sign in" alert while
+        // the nav showed the logged-in handle). Every other session mutation raises Changed.
+        Changed?.Invoke();
     }
 
     private async Task PersistAsync()
