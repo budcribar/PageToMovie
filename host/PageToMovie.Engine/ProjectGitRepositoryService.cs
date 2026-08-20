@@ -66,7 +66,7 @@ namespace PageToMovie.Engine
         private const string SyncRemoteName = "sync-origin";
         private const string GithubRemoteName = "github-projects";
         private const string DefaultAuthor = "PageToMovie";
-        private const string ProjectJsonFileName = ProjectStore.ProjectJson;
+        private const string ProjectJsonFileName = "project.json";
 
         /// <summary>
         /// Video/audio binaries never belong in the project's own Git history — they live in the

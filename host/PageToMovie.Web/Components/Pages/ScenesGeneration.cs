@@ -925,7 +925,7 @@ public partial class Scenes
         }
     }
 
-    private void ApplySimpleMovieDubResult(DubMovieResult res)
+    private void ApplySimpleMovieDubResult(ClientVoiceSubstitutionService.DubMovieResult res)
     {
         if (res.Ok)
             S._message = $"{res.ClipsDubbed} scene(s) in your voice"
