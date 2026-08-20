@@ -15,6 +15,20 @@ public static class ClipExtendSource
         public bool HasInput => !string.IsNullOrWhiteSpace(FileId) || !string.IsNullOrWhiteSpace(LocalPath);
     }
 
+    public readonly record struct PredecessorOffer(
+        string? FileId,
+        double LeadInSeconds,
+        double? DurationSeconds,
+        double? ClipStopSeconds = null,
+        string? LocalPath = null,
+        double? LocalDuration = null);
+
+    public readonly record struct FallbackOffer(
+        string? MarkerFileId = null,
+        double? MarkerSeconds = null,
+        string? ExplicitLocalPath = null,
+        double? ExplicitLocalDuration = null);
+
     /// <summary>
     /// Duration of the predecessor's provider file — the next extend INPUT and the new clip's
     /// <c>provider_lead_in_seconds</c>. Combined: lead-in + this clip in that file (or explicit
@@ -38,33 +52,23 @@ public static class ClipExtendSource
     /// Prefer the predecessor's provider <c>file_id</c> (combined is OK). Marker / local upload
     /// are fallbacks when there is no provider file. Never refuses because of the VideoEdit cap.
     /// </summary>
-    public static Choice Select(
-        string? predecessorFileId,
-        double predecessorLeadInSeconds,
-        double? predecessorDurationSeconds,
-        double? predecessorClipStopSeconds,
-        string? markerFileId,
-        double? markerSeconds,
-        string? explicitLocalPath,
-        double? explicitLocalDuration,
-        string? predecessorLocalPath,
-        double? predecessorLocalDuration)
+    public static Choice Select(PredecessorOffer predecessor, FallbackOffer fallback = default)
     {
-        if (!string.IsNullOrWhiteSpace(predecessorFileId))
+        if (!string.IsNullOrWhiteSpace(predecessor.FileId))
         {
             var input = ProviderInputDurationSeconds(
-                predecessorLeadInSeconds, predecessorDurationSeconds, predecessorClipStopSeconds);
-            return new Choice(predecessorFileId, null, input > 0.1 ? input : predecessorDurationSeconds);
+                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds);
+            return new Choice(predecessor.FileId, null, input > 0.1 ? input : predecessor.DurationSeconds);
         }
 
-        if (!string.IsNullOrWhiteSpace(markerFileId))
-            return new Choice(markerFileId, null, markerSeconds);
+        if (!string.IsNullOrWhiteSpace(fallback.MarkerFileId))
+            return new Choice(fallback.MarkerFileId, null, fallback.MarkerSeconds);
 
-        if (!string.IsNullOrWhiteSpace(explicitLocalPath))
-            return new Choice(null, explicitLocalPath, explicitLocalDuration);
+        if (!string.IsNullOrWhiteSpace(fallback.ExplicitLocalPath))
+            return new Choice(null, fallback.ExplicitLocalPath, fallback.ExplicitLocalDuration);
 
-        if (!string.IsNullOrWhiteSpace(predecessorLocalPath))
-            return new Choice(null, predecessorLocalPath, predecessorLocalDuration);
+        if (!string.IsNullOrWhiteSpace(predecessor.LocalPath))
+            return new Choice(null, predecessor.LocalPath, predecessor.LocalDuration);
 
         return new Choice(null, null, null);
     }
@@ -72,17 +76,11 @@ public static class ClipExtendSource
     public static Choice SelectFromPredecessor(ClipProviderSource? src) =>
         src is null
             ? new Choice(null, null, null)
-            : Select(
+            : Select(new PredecessorOffer(
                 src.SourceFileId,
                 src.LeadInSeconds,
                 src.DurationSeconds,
-                src.ClipStopSeconds,
-                markerFileId: null,
-                markerSeconds: null,
-                explicitLocalPath: null,
-                explicitLocalDuration: null,
-                predecessorLocalPath: null,
-                predecessorLocalDuration: null);
+                src.ClipStopSeconds));
 
     /// <summary>Lead-in written on the new clip: how much of THIS provider file is previous.</summary>
     public static double? NewClipLeadInSeconds(double? previousInputDurationSeconds) =>

@@ -40,16 +40,17 @@ public class ClipExtendSourceTests : IDisposable
     {
         var cap = EditCap();
         var choice = ClipExtendSource.Select(
-            predecessorFileId: "file_c1_c2",
-            predecessorLeadInSeconds: 6.0,
-            predecessorDurationSeconds: cap + 2.0,
-            predecessorClipStopSeconds: null,
-            markerFileId: "file_trimmed_marker",
-            markerSeconds: 4.0,
-            explicitLocalPath: "/tmp/local.mp4",
-            explicitLocalDuration: 5.0,
-            predecessorLocalPath: "/tmp/c2.mp4",
-            predecessorLocalDuration: 5.0);
+            new ClipExtendSource.PredecessorOffer(
+                FileId: "file_c1_c2",
+                LeadInSeconds: 6.0,
+                DurationSeconds: cap + 2.0,
+                LocalPath: "/tmp/c2.mp4",
+                LocalDuration: 5.0),
+            new ClipExtendSource.FallbackOffer(
+                MarkerFileId: "file_trimmed_marker",
+                MarkerSeconds: 4.0,
+                ExplicitLocalPath: "/tmp/local.mp4",
+                ExplicitLocalDuration: 5.0));
 
         Assert.Equal("file_c1_c2", choice.FileId);
         Assert.Null(choice.LocalPath);
@@ -110,29 +111,13 @@ public class ClipExtendSourceTests : IDisposable
     public void Marker_is_only_used_when_predecessor_has_no_file_id()
     {
         var withFile = ClipExtendSource.Select(
-            predecessorFileId: "file_keep",
-            predecessorLeadInSeconds: 6.0,
-            predecessorDurationSeconds: 5.0,
-            predecessorClipStopSeconds: 11.0,
-            markerFileId: "file_marker",
-            markerSeconds: 4.0,
-            explicitLocalPath: null,
-            explicitLocalDuration: null,
-            predecessorLocalPath: null,
-            predecessorLocalDuration: null);
+            new ClipExtendSource.PredecessorOffer("file_keep", 6.0, 5.0, ClipStopSeconds: 11.0),
+            new ClipExtendSource.FallbackOffer(MarkerFileId: "file_marker", MarkerSeconds: 4.0));
         Assert.Equal("file_keep", withFile.FileId);
 
         var noFile = ClipExtendSource.Select(
-            predecessorFileId: null,
-            predecessorLeadInSeconds: 0,
-            predecessorDurationSeconds: 5.0,
-            predecessorClipStopSeconds: null,
-            markerFileId: "file_marker",
-            markerSeconds: 4.0,
-            explicitLocalPath: null,
-            explicitLocalDuration: null,
-            predecessorLocalPath: null,
-            predecessorLocalDuration: null);
+            new ClipExtendSource.PredecessorOffer(null, 0, 5.0),
+            new ClipExtendSource.FallbackOffer(MarkerFileId: "file_marker", MarkerSeconds: 4.0));
         Assert.Equal("file_marker", noFile.FileId);
         Assert.Equal(4.0, noFile.InputDurationSeconds);
     }

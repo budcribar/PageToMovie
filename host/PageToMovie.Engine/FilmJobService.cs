@@ -5558,16 +5558,14 @@ public sealed class FilmJobService
 
         var prev = TryReadPredecessorClipDetails(projectDir, scene, clip - 1);
         var choice = ClipExtendSource.Select(
-            prev?.SourceFileId,
-            prev?.LeadInSeconds ?? 0,
-            prev?.DurationSeconds,
-            prev?.ClipStopSeconds,
-            markerFileId,
-            markerSeconds,
-            explicitSrc,
-            explicitDur,
-            prev?.LocalMp4Path,
-            prev?.DurationSeconds);
+            new ClipExtendSource.PredecessorOffer(
+                prev?.SourceFileId,
+                prev?.LeadInSeconds ?? 0,
+                prev?.DurationSeconds,
+                prev?.ClipStopSeconds,
+                prev?.LocalMp4Path,
+                prev?.DurationSeconds),
+            new ClipExtendSource.FallbackOffer(markerFileId, markerSeconds, explicitSrc, explicitDur));
 
         if (!choice.HasInput)
         {
