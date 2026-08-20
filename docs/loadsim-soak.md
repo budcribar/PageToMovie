@@ -5,9 +5,10 @@
 - API with **fakes** for any gen-heavy run (avoids xAI spend).
 - Prefer **Release** for latency numbers (Debug is much slower under 100 VUs).
 - Built solution: `dotnet build host/PageToMovie.slnx -c Release`
-- **Sandbox project:** uses checked-in `projects/LoadSimBuster` (isolated copy of Buster).
+- **Sandbox project:** uses checked-in `projects/LoadSimBuster` (minimal soak fixture, flat id).
   Gen/remux/review only touch that folder. Real `Buster` / `NickAndMe` refused unless `--allowRealProject`.
-  Optional rebuild from Buster: `--prepareSandbox --refreshSandbox`.
+  Optional rebuild from a local Buster tree: `--prepareSandbox --refreshSandbox` (Buster is not in git).
+- **Auth:** start the API with `PageToMovie__Auth__RequireLogin=false`. Virtual users send `X-User-Id` only (not a JWT); login-required hosts 401 project list, clip play, and gen.
 
 ### What is `light=1`?
 
@@ -43,6 +44,7 @@ Terminal 1:
 ```powershell
 cd host
 $env:PageToMovie_USE_FAKES = "true"
+$env:PageToMovie__Auth__RequireLogin = "false"
 $env:PageToMovie__Capacity__MaxVideoInFlight = "4"
 $env:PageToMovie__Capacity__MaxVideoInFlightPerUser = "1"
 $env:PageToMovie__Fakes__VideoDelayMs = "50"
@@ -64,6 +66,7 @@ dotnet run --project PageToMovie.LoadSim -- `
 ```
 
 `projects/LoadSimBuster` is checked into git — no copy step on normal runs.
+Start the API with `PageToMovie__Auth__RequireLogin=false` (the `http (fakes)` profile and this workflow already do).
 
 
 Exit code **0** = gates pass. Results JSON is written to `--out`.
@@ -97,6 +100,7 @@ Exit code **0** = gates pass. Results JSON is written to `--out`.
 # Terminal 1
 # Default multi-user caps: 4 video / 1 per user (raise only if browse p95 stays healthy)
 $env:PageToMovie_USE_FAKES = "true"
+$env:PageToMovie__Auth__RequireLogin = "false"
 $env:PageToMovie__Capacity__MaxVideoInFlight = "4"
 $env:PageToMovie__Capacity__MaxVideoInFlightPerUser = "1"
 dotnet run --project PageToMovie.Api

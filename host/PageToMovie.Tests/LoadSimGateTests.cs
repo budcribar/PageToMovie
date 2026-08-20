@@ -1,3 +1,5 @@
+using System.Text.Json;
+using PageToMovie.Core.Models;
 using PageToMovie.LoadSim;
 using Xunit;
 
@@ -81,14 +83,15 @@ public class LoadSimGateTests
         for (var i = 0; i < 20; i++)
             m.Record("browse", 200, 10 + i);
         m.Record("gen", 409, 5, intentionalConflict: true);
+        m.Record("gen", 423, 8, intentionalConflict: true);
         m.Record("gen", 202, 100);
         m.NoteServerCapacity(12, 4);
 
         var r = m.Build(new SimOptions { Users = 5, DurationSec = 30 }, TimeSpan.FromSeconds(30));
-        Assert.True(r.Http.Total >= 22);
-        Assert.Equal(1, r.Http.Intentional409);
+        Assert.True(r.Http.Total >= 23);
+        Assert.Equal(2, r.Http.Intentional409);
         Assert.Equal(1, r.Jobs.Submitted);
-        Assert.Equal(1, r.Jobs.Rejected);
+        Assert.Equal(2, r.Jobs.Rejected);
         Assert.Equal(12, r.Server.ConfiguredMaxVideoInFlight);
         Assert.Equal(4, r.Server.PeakApiInFlight);
         Assert.True(r.Http.BrowseP95Ms >= r.Http.BrowseP50Ms);
@@ -129,5 +132,54 @@ public class LoadSimGateTests
 
         // Counts dict still present
         Assert.Equal(40, r.Actions["scenes"]);
+    }
+
+    [Fact]
+    public void LoadSimBuster_fixture_is_checked_in_with_flat_id_and_scenes()
+    {
+        var root = FindRepoRoot();
+        Assert.False(string.IsNullOrEmpty(root), "Could not find repo root containing projects/LoadSimBuster.");
+
+        var dir = Path.Combine(root, "projects", "LoadSimBuster");
+        var metaPath = Path.Combine(dir, "project.json");
+        Assert.True(File.Exists(metaPath), metaPath);
+
+        using var meta = JsonDocument.Parse(File.ReadAllText(metaPath));
+        Assert.Equal("LoadSimBuster", meta.RootElement.GetProperty("id").GetString());
+        if (meta.RootElement.TryGetProperty("ownerUserId", out var owner))
+            Assert.True(string.IsNullOrWhiteSpace(owner.GetString()), "LoadSimBuster must stay a flat id (no owner).");
+
+        var configPath = Path.Combine(dir, "pipeline_config.json");
+        Assert.True(File.Exists(configPath), configPath);
+        using var cfg = JsonDocument.Parse(File.ReadAllText(configPath));
+        var expectedVideo = SupportedModelCatalog.DefaultModelIdForCapability("video");
+        Assert.Equal(expectedVideo, cfg.RootElement.GetProperty("model_name").GetString());
+
+        var blueprintPath = Path.Combine(dir, "blueprint.clips.grok.json");
+        Assert.True(File.Exists(blueprintPath), blueprintPath);
+        using var bp = JsonDocument.Parse(File.ReadAllText(blueprintPath));
+        Assert.True(bp.RootElement.TryGetProperty("scenes", out var scenes) && scenes.GetArrayLength() >= 8);
+        Assert.True(
+            scenes.EnumerateArray().All(s =>
+                s.TryGetProperty("veo_clips", out var clips) &&
+                clips.GetArrayLength() > 0 &&
+                clips[0].TryGetProperty("clip_number", out _)),
+            "Every scene needs at least one numbered clip.");
+    }
+
+    private static string? FindRepoRoot()
+    {
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            var dir = new DirectoryInfo(start);
+            while (dir is not null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "projects", "LoadSimBuster", "project.json")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+        }
+
+        return null;
     }
 }

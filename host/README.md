@@ -103,8 +103,9 @@ button appears until an admin connects a channel. To enable it:
 ## LoadSim (Phase E)
 
 ```powershell
-# Terminal 1 — API with fakes
+# Terminal 1 — API with fakes (login off so virtual users are not 401'd)
 $env:PageToMovie_USE_FAKES = "true"
+$env:PageToMovie__Auth__RequireLogin = "false"
 dotnet run --project PageToMovie.Api
 
 # Terminal 2 — virtual users

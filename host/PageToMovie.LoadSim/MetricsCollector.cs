@@ -38,7 +38,7 @@ public sealed class MetricsCollector
         if (action is "gen" or "remux")
         {
             if (statusCode is >= 200 and < 300) Interlocked.Increment(ref _jobsSubmitted);
-            else if (statusCode == 409) Interlocked.Increment(ref _jobsRejected);
+            else if (statusCode is 409 or 423) Interlocked.Increment(ref _jobsRejected);
             else if (statusCode >= 500) Interlocked.Increment(ref _jobs5xx);
         }
         else if (statusCode >= 500)

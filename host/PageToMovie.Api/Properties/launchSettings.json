@@ -23,7 +23,8 @@
         "PageToMovie__UseFakes": "true",
         "PageToMovie__Capacity__MaxVideoInFlight": "4",
         "PageToMovie__Capacity__MaxVideoInFlightPerUser": "1",
-        "PageToMovie__Fakes__VideoDelayMs": "50"
+        "PageToMovie__Fakes__VideoDelayMs": "50",
+        "PageToMovie__Auth__RequireLogin": "false"
       }
     },
     "https": {

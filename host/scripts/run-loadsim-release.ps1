@@ -28,6 +28,7 @@ try {
     $env:PageToMovie__Capacity__MaxVideoInFlightPerUser = "1"
     $env:PageToMovie__Capacity__MaxFfmpegInFlight = "2"
     $env:PageToMovie__Fakes__VideoDelayMs = "50"
+    $env:PageToMovie__Auth__RequireLogin = "false"
     $env:ASPNETCORE_ENVIRONMENT = "Development"
     $env:ASPNETCORE_URLS = $BaseUrl
 

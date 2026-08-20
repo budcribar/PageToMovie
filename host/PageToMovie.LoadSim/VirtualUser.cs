@@ -205,7 +205,7 @@ public sealed class VirtualUser
             if (code is >= 200 and < 300)
                 Interlocked.Increment(ref _gensDone);
             return code;
-        }, ct, intentionalConflictOn409: true);
+        }, ct, intentionalConflict: true);
     }
 
     private async Task ReviewAsync(CancellationToken ct)
@@ -293,7 +293,7 @@ public sealed class VirtualUser
         string action,
         Func<Task<int>> work,
         CancellationToken ct,
-        bool intentionalConflictOn409 = false)
+        bool intentionalConflict = false)
     {
         var sw = Stopwatch.StartNew();
         int code;
@@ -310,7 +310,8 @@ public sealed class VirtualUser
             code = -1;
         }
         sw.Stop();
-        var intentional = intentionalConflictOn409 && code == 409;
+        // 409 = lock/capacity queue rejection (JobStartError). 423 = another VU holds the scene lease.
+        var intentional = intentionalConflict && code is 409 or 423;
         _metrics.Record(action, code, sw.ElapsedMilliseconds, intentional);
     }
 

@@ -1,0 +1,2 @@
+source=minimal-fixture
+note=LoadSim-only sandbox; checked into git so CI can list project id LoadSimBuster.
