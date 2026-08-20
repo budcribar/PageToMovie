@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Abstractions;
@@ -998,35 +997,7 @@ promptVersion: "stage1-vision-meta-repair-v2",
     public sealed record LocationReplacement(string From, string To);
 
     public static List<LocationReplacement> ParseLocationReplacements(string? raw)
-    {
-        var list = new List<LocationReplacement>();
-        if (string.IsNullOrWhiteSpace(raw)) return list;
-        try
-        {
-            var json = StripFences(raw);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            var arr = root.ValueKind == JsonValueKind.Array
-                ? root
-                : root.TryGetProperty("replacements", out var reps) && reps.ValueKind == JsonValueKind.Array
-                    ? reps
-                    : default;
-            if (arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in arr.EnumerateArray())
-                {
-                    var from = el.TryGetProperty("from", out var f) ? f.GetString() : null;
-                    var to = el.TryGetProperty("to", out var t) ? t.GetString() : null;
-                    if (!string.IsNullOrWhiteSpace(from) && !string.IsNullOrWhiteSpace(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
-                    {
-                        list.Add(new LocationReplacement(from.Trim(), to.Trim()));
-                    }
-                }
-            }
-        }
-        catch { }
-        return list;
-    }
+        => ReplacementJsonParser.ParsePairs(raw, static (from, to) => new LocationReplacement(from, to));
 
     public static string ApplyLocationReplacements(string fountain, IReadOnlyList<LocationReplacement> replacements)
     {
@@ -1035,27 +1006,45 @@ promptVersion: "stage1-vision-meta-repair-v2",
 
         var lines = fountain.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         for (var i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i];
-            if (!SceneHeadingLineRegex.IsMatch(line)) continue;
-
-            foreach (var r in replacements)
-            {
-                if (line.Trim().Equals(r.From, StringComparison.OrdinalIgnoreCase))
-                {
-                    lines[i] = r.To;
-                    break;
-                }
-                var (prefix, loc, suffix) = SplitSceneHeadingParts(line);
-                if (loc.Equals(r.From, StringComparison.OrdinalIgnoreCase))
-                {
-                    var newSuffix = string.IsNullOrWhiteSpace(suffix) ? "" : " - " + suffix;
-                    lines[i] = $"{prefix.TrimEnd()} {r.To}{newSuffix}";
-                    break;
-                }
-            }
-        }
+            TryReplaceSceneHeadingLocation(lines, i, replacements);
         return string.Join("\n", lines);
+    }
+
+    private static void TryReplaceSceneHeadingLocation(
+        string[] lines, int i, IReadOnlyList<LocationReplacement> replacements)
+    {
+        var line = lines[i];
+        if (!SceneHeadingLineRegex.IsMatch(line))
+            return;
+
+        foreach (var r in replacements)
+        {
+            if (!TryApplyLocationReplacement(line, r, out var replaced))
+                continue;
+            lines[i] = replaced;
+            return;
+        }
+    }
+
+    private static bool TryApplyLocationReplacement(
+        string line, LocationReplacement r, out string replaced)
+    {
+        if (line.Trim().Equals(r.From, StringComparison.OrdinalIgnoreCase))
+        {
+            replaced = r.To;
+            return true;
+        }
+
+        var (prefix, loc, suffix) = SplitSceneHeadingParts(line);
+        if (!loc.Equals(r.From, StringComparison.OrdinalIgnoreCase))
+        {
+            replaced = line;
+            return false;
+        }
+
+        var newSuffix = string.IsNullOrWhiteSpace(suffix) ? "" : " - " + suffix;
+        replaced = $"{prefix.TrimEnd()} {r.To}{newSuffix}";
+        return true;
     }
 
     /// <summary>
@@ -1535,35 +1524,7 @@ promptVersion: "stage1-vision-meta-repair-v2",
     public sealed record NameReplacement(string From, string To);
 
     public static List<NameReplacement> ParseNameReplacements(string? raw)
-    {
-        var list = new List<NameReplacement>();
-        if (string.IsNullOrWhiteSpace(raw)) return list;
-        try
-        {
-            var json = StripFences(raw);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            var arr = root.ValueKind == JsonValueKind.Array
-                ? root
-                : root.TryGetProperty("replacements", out var reps) && reps.ValueKind == JsonValueKind.Array
-                    ? reps
-                    : default;
-            if (arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in arr.EnumerateArray())
-                {
-                    var from = el.TryGetProperty("from", out var f) ? f.GetString() : null;
-                    var to = el.TryGetProperty("to", out var t) ? t.GetString() : null;
-                    if (!string.IsNullOrWhiteSpace(from) && !string.IsNullOrWhiteSpace(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
-                    {
-                        list.Add(new NameReplacement(from.Trim(), to.Trim()));
-                    }
-                }
-            }
-        }
-        catch { }
-        return list;
-    }
+        => ReplacementJsonParser.ParsePairs(raw, static (from, to) => new NameReplacement(from, to));
 
     public static string ApplyNameReplacements(string fountain, IReadOnlyList<NameReplacement> replacements)
     {
