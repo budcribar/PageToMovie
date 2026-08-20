@@ -167,26 +167,34 @@ public static class Ui
 
     // ── Configuration page sections (most start collapsed; Studio coverage starts open) ───────
 
-    /// <summary>Expand a Configuration <c>&lt;details&gt;</c> section by its summary testid
+    /// <summary>Expand a Configuration section by its header testid
     /// (<c>config-section-coverage|storage|appearance|music|format|pipeline|advanced</c>) if it is
-    /// currently closed. Studio coverage starts open; other Settings sections start collapsed.</summary>
+    /// currently closed. Studio coverage is a button + body (aria-expanded); other sections are
+    /// native <c>&lt;details&gt;</c>.</summary>
     public static async Task OpenConfigSectionAsync(IPage page, string sectionTestId)
     {
         var summary = page.GetByTestId(sectionTestId);
         await Assertions.Expect(summary).ToBeVisibleAsync(new() { Timeout = 20_000 });
-        var isOpen = await summary.EvaluateAsync<bool>("el => el.parentElement?.open === true");
-        if (!isOpen)
+        if (await IsConfigSectionOpenAsync(summary))
+            return;
+        await summary.ClickAsync();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
         {
-            await summary.ClickAsync();
-            var deadline = DateTime.UtcNow.AddSeconds(10);
-            while (DateTime.UtcNow < deadline)
-            {
-                if (await summary.EvaluateAsync<bool>("el => el.parentElement?.open === true")) return;
-                await Task.Delay(150);
-            }
-            Assert.Fail($"Configuration section '{sectionTestId}' did not open after clicking its summary.");
+            if (await IsConfigSectionOpenAsync(summary)) return;
+            await Task.Delay(150);
         }
+        Assert.Fail($"Configuration section '{sectionTestId}' did not open after clicking its summary.");
     }
+
+    /// <summary>Studio coverage uses aria-expanded; sibling Settings cards use details.open.</summary>
+    public static Task<bool> IsConfigSectionOpenAsync(ILocator summary) =>
+        summary.EvaluateAsync<bool>(@"el => {
+            const expanded = el.getAttribute('aria-expanded');
+            if (expanded === 'true') return true;
+            if (expanded === 'false') return false;
+            return el.parentElement?.open === true;
+        }");
 
     // ── Authed API access from the browser session ──────────────────────────────
 

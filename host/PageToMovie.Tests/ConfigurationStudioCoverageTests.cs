@@ -5,7 +5,7 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Studio coverage key-panel state (Add / Replace / Add provider) without a browser.
+/// Studio coverage open policy + key-panel state without a browser.
 /// Provider ids come from the catalog — never a hardcoded model/provider string.
 /// </summary>
 [Collection("catalog-serial")]
@@ -17,11 +17,24 @@ public class ConfigurationStudioCoverageTests
     }
 
     [Fact]
-    public void Studio_coverage_starts_open()
+    public void ShouldShowStudioBody_starts_open_from_local_flag()
     {
-        var host = new Configuration();
-        host.EnsureDomains();
-        Assert.True(host.Coverage.StudioCoverageOpen);
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(localOpen: true, coverageOpen: false, editId: null));
+    }
+
+    [Fact]
+    public void ShouldShowStudioBody_closed_when_all_flags_false()
+    {
+        Assert.False(ConfigurationCoverageCard.ShouldShowStudioBody(localOpen: false, coverageOpen: false, editId: null));
+    }
+
+    [Fact]
+    public void ShouldShowStudioBody_stays_open_for_add_key_rerender()
+    {
+        // Uncontrolled details would collapse on re-render; C# @if must stay open
+        // when BeginAddKey* sets StudioCoverageOpen and/or _coverageEditId.
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(localOpen: false, coverageOpen: true, editId: null));
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(localOpen: false, coverageOpen: false, editId: "video"));
     }
 
     [Fact]
@@ -39,6 +52,10 @@ public class ConfigurationStudioCoverageTests
         Assert.Equal(
             SupportedModelCatalog.NormalizeProviderId(providerId),
             host.Coverage._coverageKeyProviderId);
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(
+            localOpen: false,
+            coverageOpen: host.Coverage.StudioCoverageOpen,
+            editId: host.Coverage._coverageEditId));
     }
 
     [Fact]
@@ -56,6 +73,10 @@ public class ConfigurationStudioCoverageTests
         Assert.Equal(
             SupportedModelCatalog.NormalizeProviderId(providerId),
             host.Coverage._coverageKeyProviderId);
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(
+            localOpen: false,
+            coverageOpen: host.Coverage.StudioCoverageOpen,
+            editId: host.Coverage._coverageEditId));
     }
 
     [Fact]
@@ -69,6 +90,10 @@ public class ConfigurationStudioCoverageTests
         Assert.True(host.Coverage.StudioCoverageOpen);
         Assert.Equal("video", host.Coverage._coverageEditId);
         Assert.Equal("add-provider", host.Coverage._coverageKeyMode);
+        Assert.True(ConfigurationCoverageCard.ShouldShowStudioBody(
+            localOpen: false,
+            coverageOpen: host.Coverage.StudioCoverageOpen,
+            editId: host.Coverage._coverageEditId));
     }
 
     private static string FirstCatalogProviderId(ModelCapability capability)

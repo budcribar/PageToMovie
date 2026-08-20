@@ -23,7 +23,7 @@ public class PageDepthTests
             // The coverage card + rows load after the models fetch — give it room.
             var slow = new LocatorAssertionsToBeVisibleOptions { Timeout = 20_000 };
             await Assertions.Expect(page.GetByTestId("studio-coverage-card")).ToBeVisibleAsync(slow);
-            // Studio coverage starts open; still open via helper so a later collapse cannot hide rows.
+            // Settings sections start collapsed by design (acf910b5) — open the coverage card first.
             await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
             foreach (var cap in new[] { "video", "image", "review", "voice" })
                 await Assertions.Expect(page.GetByTestId($"coverage-{cap}")).ToBeVisibleAsync(slow);

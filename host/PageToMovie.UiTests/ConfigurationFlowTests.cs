@@ -120,18 +120,19 @@ public class ConfigurationFlowTests
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
 
             var keysTable = page.GetByTestId("capability-coverage");
+            var header = page.GetByTestId("config-section-coverage");
             await Assertions.Expect(keysTable).ToBeVisibleAsync(new() { Timeout = 20_000 });
-            // Wait until the first coverage row is painted so the initial catalog load
-            // cannot re-apply <details open> and undo the collapse click below.
             await Assertions.Expect(page.GetByTestId("coverage-video"))
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
+            Assert.True(await Ui.IsConfigSectionOpenAsync(header));
 
-            var header = page.GetByTestId("config-section-coverage");
             await header.ClickAsync();
             await Assertions.Expect(keysTable).ToBeHiddenAsync(new() { Timeout = 10_000 });
+            Assert.False(await Ui.IsConfigSectionOpenAsync(header));
 
             await header.ClickAsync();
             await Assertions.Expect(keysTable).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            Assert.True(await Ui.IsConfigSectionOpenAsync(header));
         }
         finally { await ctx.CloseAsync(); }
     }

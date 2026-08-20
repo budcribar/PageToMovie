@@ -122,11 +122,8 @@ public partial class Configuration
             return rows;
         }
 
-        /// <summary>
-        /// Studio coverage starts open (Settings is for keys). Kept true across Add/Replace key
-        /// so a later force-open path can re-apply <c>open</c> without a click no-op.
-        /// </summary>
-        internal bool StudioCoverageOpen = true;
+        /// <summary>Keep Studio coverage <details> open across re-renders (add key, save, etc.).</summary>
+        internal bool StudioCoverageOpen;
 
         internal CoverageRow MakeCoverage(
             string id,
