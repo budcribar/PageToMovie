@@ -80,37 +80,56 @@ public sealed record ClipProviderSource(
     }
 
     /// <summary>
-    /// Bring the clip's bytes to a temp file from the provider copy (download <c>source_url</c>).
-    /// Combined extend files stay combined — the API host never spawns native ffmpeg. The copy is
-    /// returned with <see cref="Materialized.LeadInSecondsRemaining"/> set so the consumer can
-    /// offset (dialogue verify / duration probe) instead of trimming. The browser slices playback
-    /// via <c>ProviderLeadInSeconds</c>. Returns null when there is no usable provider copy. Caller
+    /// URL first, then Files API <c>file_id</c> when the public link is empty or fails (vidgen
+    /// links expire; xAI keeps the file). Combined extend copies stay combined.
+    /// </summary>
+    public static async Task<T?> TryOpenAsync<T>(
+        string? sourceUrl,
+        string? sourceFileId,
+        Func<string, CancellationToken, Task<T?>> openUrl,
+        Func<string, CancellationToken, Task<T?>> openFileId,
+        CancellationToken ct) where T : class
+    {
+        if (!string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            var fromUrl = await openUrl(sourceUrl, ct).ConfigureAwait(false);
+            if (fromUrl is not null) return fromUrl;
+        }
+        if (!string.IsNullOrWhiteSpace(sourceFileId))
+            return await openFileId(sourceFileId, ct).ConfigureAwait(false);
+        return null;
+    }
+
+    /// <summary>
+    /// Bring the clip's bytes to a temp file from the provider copy (<c>source_url</c>, then
+    /// <c>source_file_id</c> when the public link is empty or 404s). Combined extend files stay
+    /// combined — the API host never spawns native ffmpeg. The copy is returned with
+    /// <see cref="Materialized.LeadInSecondsRemaining"/> set so the consumer can offset
+    /// (dialogue verify / duration probe) instead of trimming. The browser slices playback via
+    /// <c>ProviderLeadInSeconds</c>. Returns null when there is no usable provider copy. Caller
     /// deletes the temp file. Nothing is written into the project — media does not live on the server.
     /// </summary>
     public static async Task<Materialized?> TryMaterializeAsync(
-        ClipProviderSource? src, CancellationToken ct, Func<string, string, CancellationToken, Task>? download = null)
+        ClipProviderSource? src,
+        CancellationToken ct,
+        Func<string, string, CancellationToken, Task>? download = null,
+        Func<string, string, CancellationToken, Task>? downloadFileId = null)
     {
-        if (src is null || string.IsNullOrWhiteSpace(src.SourceUrl)) return null;
+        if (src is null || !src.HasProviderCopy) return null;
         var raw = Path.Combine(Path.GetTempPath(), $"ptm_clip_{Guid.NewGuid():N}.mp4");
         try
         {
-            if (src.SourceUrl.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+            var got = await TryOpenAsync(
+                src.SourceUrl,
+                src.SourceFileId,
+                (url, token) => TryDownloadUrlToFileAsync(url, raw, download, token),
+                (fileId, token) => TryDownloadFileIdToFileAsync(fileId, raw, downloadFileId, token),
+                ct).ConfigureAwait(false);
+            if (got is not true || !File.Exists(raw) || new FileInfo(raw).Length < 1024)
             {
-                // Fakes: the provider copy is a local fixture file.
-                var fixture = src.SourceUrl["fixture:".Length..];
-                if (!File.Exists(fixture)) return null;
-                File.Copy(fixture, raw, overwrite: true);
+                TryDelete(raw);
+                return null;
             }
-            else if (download is not null)
-                await download(src.SourceUrl, raw, ct).ConfigureAwait(false);
-            else
-            {
-                using var resp = await Http.GetAsync(src.SourceUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-                resp.EnsureSuccessStatusCode();
-                await using var fs = File.Create(raw);
-                await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
-            }
-            if (!File.Exists(raw) || new FileInfo(raw).Length < 1024) { TryDelete(raw); return null; }
             // Combined extend files stay combined; consumers skip the head via LeadInSecondsRemaining.
             return new Materialized(raw, src.IsCombined ? src.LeadInSeconds : 0);
         }
@@ -119,6 +138,59 @@ public sealed record ClipProviderSource(
             TryDelete(raw);
             return null;
         }
+    }
+
+    /// <summary>Boxed <see cref="bool"/> so <see cref="TryOpenAsync{T}"/> can treat a failed
+    /// URL fetch as null and fall through to <c>file_id</c>.</summary>
+    private static async Task<object?> TryDownloadUrlToFileAsync(
+        string url, string dest, Func<string, string, CancellationToken, Task>? download, CancellationToken ct)
+    {
+        try
+        {
+            if (url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+            {
+                var fixture = url["fixture:".Length..];
+                if (!File.Exists(fixture)) return null;
+                File.Copy(fixture, dest, overwrite: true);
+                return File.Exists(dest) ? BooleanBox.True : null;
+            }
+            if (download is not null)
+                await download(url, dest, ct).ConfigureAwait(false);
+            else
+            {
+                using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode) return null;
+                await using var fs = File.Create(dest);
+                await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
+            }
+            return File.Exists(dest) && new FileInfo(dest).Length >= 1024 ? BooleanBox.True : null;
+        }
+        catch
+        {
+            TryDelete(dest);
+            return null;
+        }
+    }
+
+    private static async Task<object?> TryDownloadFileIdToFileAsync(
+        string fileId, string dest, Func<string, string, CancellationToken, Task>? downloadFileId, CancellationToken ct)
+    {
+        if (downloadFileId is null) return null;
+        try
+        {
+            await downloadFileId(fileId, dest, ct).ConfigureAwait(false);
+            return File.Exists(dest) && new FileInfo(dest).Length >= 1024 ? BooleanBox.True : null;
+        }
+        catch
+        {
+            TryDelete(dest);
+            return null;
+        }
+    }
+
+    private static class BooleanBox
+    {
+        public static readonly object True = true;
     }
 
     public static void TryDelete(string? path)

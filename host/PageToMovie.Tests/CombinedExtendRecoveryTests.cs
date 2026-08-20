@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
+using PageToMovie.Api;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 using Xunit;
@@ -203,6 +204,59 @@ public class CombinedExtendRecoveryTests
         Assert.True(js.SavedFromTail(C2));
         Assert.False(js.SavedRelative(C1));
         Assert.Contains(C1, js.LocalFiles);
+    }
+
+    [Fact]
+    public async Task File_id_only_recovery_entry_hop_walks_combined_C3()
+    {
+        // Server lists a sidecar that has source_file_id only (vidgen URL gone). The
+        // recovery entry still carries lead-in + predecessor hops; the client hop-walk
+        // peels C1 from the C1+C2 head and writes the tail as C3 — never the raw file.
+        var videoDir = Path.Combine(Path.GetTempPath(), "ptm-fid-hop-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(videoDir);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(videoDir, "scene_01_clip_02_take_01.clip.json"),
+                """{"scene":1,"clip":2,"source_file_id":"file_c2","provider_lead_in_seconds":6.0}""");
+            File.WriteAllText(
+                Path.Combine(videoDir, "scene_01_clip_03_take_01.clip.json"),
+                """{"scene":1,"clip":3,"source_file_id":"file_c3","provider_lead_in_seconds":11.0}""");
+
+            var entries = MediaEndpoints.CollectProviderRecoveryEntries(videoDir, (_, fileId) => "tok-" + fileId);
+            var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+            Assert.Equal(11.0, c3.ProviderLeadInSeconds, 3);
+            Assert.Equal(new[] { 6.0 }, c3.PredecessorLeadInSeconds);
+            Assert.Equal("/api/media/proxy/tok-file_c3", c3.StreamUrl);
+
+            const double c1 = 6.0;
+            const double c2 = 5.0;
+            const double c3Dur = 4.0;
+            var (svc, js) = await ConnectAsync(providerDuration: c1 + c2 + c3Dur);
+            var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, new ProjectMediaSyncFile
+            {
+                RelativePath = c3.RelativePath,
+                FileName = c3.FileName,
+                IsMp4 = true,
+                StreamUrl = c3.StreamUrl,
+                ProviderRecovery = true,
+                ProviderLeadInSeconds = c3.ProviderLeadInSeconds,
+                PredecessorLeadInSeconds = c3.PredecessorLeadInSeconds.ToList(),
+            });
+
+            Assert.True(n);
+            Assert.True(js.SavedRelative(C3));
+            Assert.True(js.SavedRelative(C2));
+            Assert.True(js.SavedRelative(C1));
+            Assert.True(js.SavedFromTail(C3));
+            Assert.True(js.SavedFromTail(C2));
+            Assert.True(js.SavedFromHead(C1));
+            Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+        }
+        finally
+        {
+            try { Directory.Delete(videoDir, recursive: true); } catch { /* best effort */ }
+        }
     }
 
     [Fact]
