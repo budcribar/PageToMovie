@@ -108,6 +108,37 @@ public class ClientMediaFolderServiceTests
     }
 
     [Fact]
+    public async Task SyncProjectMedia_sets_IsSyncing_during_listing_before_downloads()
+    {
+        var gate = new SyncListGateHandler();
+        var (svc, js) = CreateService(gate);
+        svc.AutoSyncOnLogin = false;
+        js.Responses["PageToMovieMedia.connectFolderAsync"] = """{"success":true,"folderName":"Test"}""";
+        await svc.ConnectFolderAsync();
+
+        var sawSyncingOnChanged = false;
+        svc.Changed += () =>
+        {
+            if (svc.IsSyncing)
+                sawSyncingOnChanged = true;
+        };
+
+        var syncTask = svc.SyncProjectMediaToClientAsync("proj1");
+        await gate.Listed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(svc.IsSyncing);
+        Assert.True(svc.IsSyncingProject("proj1"));
+        Assert.False(svc.IsSyncingProject("other"));
+        Assert.True(sawSyncingOnChanged);
+        Assert.Contains("downloading", svc.LastStatus, StringComparison.OrdinalIgnoreCase);
+
+        gate.Release.SetResult(true);
+        await syncTask;
+        Assert.False(svc.IsSyncing);
+        Assert.False(svc.IsSyncingProject("proj1"));
+    }
+
+    [Fact]
     public async Task TryReconnect_succeeds_silently_when_the_browser_still_grants_permission()
     {
         var (svc, js) = CreateService();
@@ -176,6 +207,34 @@ public class ClientMediaFolderServiceTests
             {
                 Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
             });
+    }
+
+    /// <summary>
+    /// Holds the media/sync list response until the test observes <see cref="ClientMediaFolderService.IsSyncing"/>.
+    /// </summary>
+    private sealed class SyncListGateHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource<bool> Listed { get; } = new();
+        public TaskCompletionSource<bool> Release { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? "";
+            if (path.Contains("/media/sync", StringComparison.OrdinalIgnoreCase))
+            {
+                Listed.TrySetResult(true);
+                await Release.Task.WaitAsync(ct);
+                return Json("""{"ok":true,"projectId":"proj1","files":[]}""");
+            }
+
+            return Json("{}");
+        }
+
+        private static HttpResponseMessage Json(string json) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+            };
     }
 
     private sealed class FakeJsRuntime : IJSRuntime

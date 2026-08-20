@@ -111,6 +111,12 @@ public partial class Review
             if (scene <= 0)
                 return (false, "Select a scene first");
 
+            var syncing = S.MediaFolder.IsSyncingProject(S._projectId);
+            var syncReason = syncing
+                ? ScenePlayGate.MediaStillDownloadingReason(
+                    S.MediaFolder.SyncCurrent, S.MediaFolder.SyncTotal, S.MediaFolder.LastStatus)
+                : null;
+
             if (S.List._selectedDetail is { SceneNumber: var dsn, Clips: { Count: > 0 } } detail
                 && dsn == scene)
             {
@@ -119,7 +125,8 @@ public partial class Review
                     .Select(c => c.ClipNumber)
                     .ToList();
                 return ScenePlayGate.DecideScenePlay(
-                    scene, detail.ClipCount, missing, hasLocalVideo: null, detail.CompositeExists);
+                    scene, detail.ClipCount, missing, hasLocalVideo: null,
+                    detail.CompositeExists, syncing, syncReason);
             }
 
             var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
@@ -130,7 +137,9 @@ public partial class Review
                 summary.ClipCount,
                 summary.ClipsMissingServerVideo,
                 hasLocalVideo: null,
-                summary.CompositeExists);
+                summary.CompositeExists,
+                syncing,
+                syncReason);
         }
 
         internal bool CanPlayScene(int scene) => DecideScenePlay(scene).CanPlay;

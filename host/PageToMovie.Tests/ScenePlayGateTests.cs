@@ -150,6 +150,70 @@ public class ScenePlayGateTests
     }
 
     [Fact]
+    public void DecideScenePlay_disabled_while_media_is_syncing_even_if_clips_look_complete()
+    {
+        var (canPlay, reason) = ScenePlayGate.DecideScenePlay(
+            2,
+            clipCount: 4,
+            missingServerVideoClips: Array.Empty<int>(),
+            mediaSyncing: true,
+            mediaSyncReason: ScenePlayGate.MediaStillDownloadingReason(3, 68, "Downloading clips (3/68)"));
+        Assert.False(canPlay);
+        Assert.Contains("Downloading", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3/68", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void After_sync_DecideScenePlay_follows_completeness()
+    {
+        var complete = ScenePlayGate.DecideScenePlay(
+            2, clipCount: 4, missingServerVideoClips: Array.Empty<int>(), mediaSyncing: false);
+        Assert.True(complete.CanPlay);
+        Assert.Null(complete.DisabledReason);
+
+        var hole = ScenePlayGate.DecideScenePlay(
+            2, clipCount: 4, missingServerVideoClips: new[] { 3 }, mediaSyncing: false);
+        Assert.False(hole.CanPlay);
+        Assert.Contains("S02 C03", hole.DisabledReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DecidePlaySelected_disabled_while_media_is_syncing()
+    {
+        var selected = new[]
+        {
+            (Scene: 1, ClipCount: 2, MissingServerVideo: (IReadOnlyList<int>)Array.Empty<int>(), CompositeExists: false),
+        };
+        var (canPlay, reason) = ScenePlayGate.DecidePlaySelected(
+            selected,
+            mediaSyncing: true,
+            mediaSyncReason: ScenePlayGate.MediaStillDownloadingReason());
+        Assert.False(canPlay);
+        Assert.Contains("still downloading", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Locally_present_clip_can_still_play_while_media_is_syncing()
+    {
+        var scene = ScenePlayGate.DecideScenePlay(
+            2, clipCount: 4, missingServerVideoClips: new[] { 3 }, mediaSyncing: true);
+        Assert.False(scene.CanPlay);
+
+        var localClip = ScenePlayGate.DecideOneClipPlay(2, 1, hasServerVideo: false, hasLocalVideo: true);
+        var serverClip = ScenePlayGate.DecideOneClipPlay(2, 2, hasServerVideo: true);
+        Assert.True(localClip.CanPlay);
+        Assert.True(serverClip.CanPlay);
+    }
+
+    [Fact]
+    public void MediaStillDownloadingReason_prefers_last_status_then_counts()
+    {
+        Assert.Equal("Checking files…", ScenePlayGate.MediaStillDownloadingReason(1, 10, "Checking files…"));
+        Assert.Equal("Media is still downloading (2/5)", ScenePlayGate.MediaStillDownloadingReason(2, 5));
+        Assert.Equal("Media is still downloading", ScenePlayGate.MediaStillDownloadingReason());
+    }
+
+    [Fact]
     public void FormatPlayFailedError_names_every_missing_clip()
     {
         var msg = ScenePlayGate.FormatPlayFailedError("clips", new[] { "S02 C01", "S02 C03" });

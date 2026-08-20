@@ -108,16 +108,41 @@ public static class ScenePlayGate
     }
 
     /// <summary>
+    /// Tooltip while the local media folder is still downloading this project's files.
+    /// Prefers the live sync status when the caller already has one.
+    /// </summary>
+    public static string MediaStillDownloadingReason(
+        int syncCurrent = 0,
+        int syncTotal = 0,
+        string? lastStatus = null)
+    {
+        if (!string.IsNullOrWhiteSpace(lastStatus))
+            return lastStatus.Trim();
+        if (syncTotal > 0)
+            return $"Media is still downloading ({syncCurrent}/{syncTotal})";
+        return "Media is still downloading";
+    }
+
+    /// <summary>
     /// Scene Play / Play selected: every planned clip must be playable
     /// (server MP4 or confirmed local file). First hole wins the tooltip.
+    /// While media-sync is still running, scene Play stays off so we do not
+    /// treat a half-downloaded folder as ready.
     /// </summary>
     public static (bool CanPlay, string? DisabledReason) DecideScenePlay(
         int sceneNumber,
         int clipCount,
         IReadOnlyList<int> missingServerVideoClips,
         Func<int, bool>? hasLocalVideo = null,
-        bool compositeExists = false)
+        bool compositeExists = false,
+        bool mediaSyncing = false,
+        string? mediaSyncReason = null)
     {
+        if (mediaSyncing)
+            return (false, string.IsNullOrWhiteSpace(mediaSyncReason)
+                ? MediaStillDownloadingReason()
+                : mediaSyncReason);
+
         if (clipCount <= 0)
         {
             return compositeExists
@@ -138,8 +163,15 @@ public static class ScenePlayGate
 
     public static (bool CanPlay, string? DisabledReason) DecidePlaySelected(
         IReadOnlyList<(int Scene, int ClipCount, IReadOnlyList<int> MissingServerVideo, bool CompositeExists)> selectedScenes,
-        Func<int, int, bool>? hasLocalVideo = null)
+        Func<int, int, bool>? hasLocalVideo = null,
+        bool mediaSyncing = false,
+        string? mediaSyncReason = null)
     {
+        if (mediaSyncing)
+            return (false, string.IsNullOrWhiteSpace(mediaSyncReason)
+                ? MediaStillDownloadingReason()
+                : mediaSyncReason);
+
         if (selectedScenes is null || selectedScenes.Count == 0)
             return (false, "Select one or more scenes first");
 

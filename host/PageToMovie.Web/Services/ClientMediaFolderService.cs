@@ -46,6 +46,7 @@ public sealed class ClientMediaFolderService
     {
         if (AutoSyncOnLogin && IsConnected && !IsSyncing && !string.IsNullOrWhiteSpace(_activeProject.ProjectId))
         {
+            BeginSync(_activeProject.ProjectId);
             _ = SyncThenPushForkFallbacksAsync(_activeProject.ProjectId);
         }
     }
@@ -836,6 +837,35 @@ public sealed class ClientMediaFolderService
     public double SyncPercent => SyncTotal > 0 ? Math.Round((double)SyncCurrent / SyncTotal * 100.0, 0) : 0;
 
     /// <summary>
+    /// True when this project's media-sync is still listing or downloading files.
+    /// An empty project id is treated as "any in-flight sync" so Film can disable
+    /// scene Play as soon as sync starts, before the first await.
+    /// </summary>
+    public bool IsSyncingProject(string? projectId)
+    {
+        if (!IsSyncing)
+            return false;
+        if (string.IsNullOrWhiteSpace(SyncProjectId) || string.IsNullOrWhiteSpace(projectId))
+            return true;
+        return string.Equals(SyncProjectId, projectId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Mark sync in-flight before the first await so Film/Review can disable scene
+    /// Play during the missing-file listing pass, not only during downloads.
+    /// </summary>
+    private void BeginSync(string projectId)
+    {
+        IsSyncing = true;
+        SyncProjectId = projectId;
+        SyncCurrent = 0;
+        SyncTotal = 0;
+        SyncCurrentFile = null;
+        LastStatus = "Media is still downloading";
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Sync project media files (MP4s and sidecars) from server to client local media folder.
     /// Called after Admin import or project load when a client folder is connected.
     /// </summary>
@@ -844,11 +874,13 @@ public sealed class ClientMediaFolderService
         if (string.IsNullOrWhiteSpace(projectId))
             return 0;
 
-        if (!await EnsureConnectedForSyncAsync())
-            return 0;
+        if (!IsSyncing || !string.Equals(SyncProjectId, projectId, StringComparison.OrdinalIgnoreCase))
+            BeginSync(projectId);
 
         try
         {
+            if (!await EnsureConnectedForSyncAsync())
+                return 0;
             var syncList = await _api.GetProjectMediaSyncListAsync(projectId);
             if (syncList?.Files is null || syncList.Files.Count == 0)
             {
