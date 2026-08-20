@@ -326,7 +326,14 @@ public class ScreenplayScene
     public string Environment
     {
         get => _environment;
-        set { if (!string.Equals(_environment, value, StringComparison.Ordinal)) SceneTitle = ""; _environment = value; }
+        set
+        {
+            if (!string.Equals(_environment, value, StringComparison.Ordinal))
+            {
+                SceneTitle = "";
+            }
+            _environment = value;
+        }
     }
     public SceneEnvironment Env
     {
@@ -337,13 +344,27 @@ public class ScreenplayScene
     public string Location
     {
         get => _location;
-        set { if (!string.Equals(_location, value, StringComparison.Ordinal)) SceneTitle = ""; _location = value; }
+        set
+        {
+            if (!string.Equals(_location, value, StringComparison.Ordinal))
+            {
+                SceneTitle = "";
+            }
+            _location = value;
+        }
     }
     private string _timeOfDay = "DAY";
     public string TimeOfDay
     {
         get => _timeOfDay;
-        set { if (!string.Equals(_timeOfDay, value, StringComparison.Ordinal)) SceneTitle = ""; _timeOfDay = value; }
+        set
+        {
+            if (!string.Equals(_timeOfDay, value, StringComparison.Ordinal))
+            {
+                SceneTitle = "";
+            }
+            _timeOfDay = value;
+        }
     }
     public TimeOfDay TimeOfDayEnum
     {

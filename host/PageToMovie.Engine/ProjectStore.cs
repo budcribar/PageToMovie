@@ -443,7 +443,7 @@ public sealed partial class ProjectStore
         AddActiveClipVersion(result, activeMp4, scene, clip);
         AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
         await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
-        AddProviderHostedTakes(result, videoDir, scene, clip, activeMp4);
+        AddProviderHostedTakes(result, videoDir, scene, clip);
         return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
     }
 
@@ -452,7 +452,7 @@ public sealed partial class ProjectStore
     /// saved them): one item per scene_XX_clip_YY_take_NN.clip.json not already represented by a
     /// file or a registry row. The newest is the current take when nothing else claims it.
     /// </summary>
-    private static void AddProviderHostedTakes(List<ClipVersionItem> result, string videoDir, int scene, int clip, string activeMp4)
+    private static void AddProviderHostedTakes(List<ClipVersionItem> result, string videoDir, int scene, int clip)
     {
         if (!Directory.Exists(videoDir)) return;
         var known = new HashSet<string>(result.Select(r => Path.GetFileNameWithoutExtension(r.Mp4FileName)), StringComparer.OrdinalIgnoreCase);
@@ -3438,7 +3438,7 @@ public sealed partial class ProjectStore
         var hasLockedPlate = path is not null;
         row.Locked = hasLockedPlate;
         row.HasPreferred = hasLockedPlate;
-        if (hasLockedPlate && path is not null)
+        if (path is not null)
         {
             row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
             row.PreferredUrl = $"{ProjectIdRouting.ProjectApi(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
@@ -3462,7 +3462,7 @@ public sealed partial class ProjectStore
             });
             // LockVariantAsync copies the variant bytes into the ref, so an exact match tells us
             // which look is the locked one (the tile grid shows the lock on it after a reload).
-            if (hasLockedPlate && path is not null && row.PreferredVariantIndex is null && SameFileBytes(path, full))
+            if (path is not null && row.PreferredVariantIndex is null && SameFileBytes(path, full))
                 row.PreferredVariantIndex = i;
         }
     }
@@ -6061,9 +6061,7 @@ public sealed partial class ProjectStore
             OnDisk = onDisk,
             SizeBytes = size,
             FileName = onDisk ? resolvedFileName : null,
-            ProviderLeadInSeconds = onDisk && clipPath is null
-                ? ClipProviderSource.ReadForClip(Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video), sceneNumber, cn) is { IsCombined: true } ps ? ps.LeadInSeconds : null
-                : null,
+            ProviderLeadInSeconds = ResolveProviderLeadInSeconds(onDisk, clipPath, projectDir, sceneNumber, cn),
             VideoUrl = onDisk
                 ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                 : null,
@@ -6074,6 +6072,18 @@ public sealed partial class ProjectStore
             StaleReason = staleReason,
             PlanLint = lint.Select(f => f.Message).ToList(),
         };
+    }
+
+    private static double? ResolveProviderLeadInSeconds(
+        bool onDisk, string? clipPath, string projectDir, int sceneNumber, int cn)
+    {
+        if (!onDisk || clipPath is not null)
+            return null;
+        var ps = ClipProviderSource.ReadForClip(
+            Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video), sceneNumber, cn);
+        if (ps is { IsCombined: true })
+            return ps.LeadInSeconds;
+        return null;
     }
 
     private static long ResolveClipSizeOnDisk(
@@ -6686,9 +6696,14 @@ public sealed partial class ProjectStore
     /// which exists to speak) needs the sex+age
     /// lock (its profile is the cross-clip voice identity); a role with no lines only needs some
     /// profile text ("does not speak; soft breath") — there is no voice to keep consistent.</summary>
-    private static string? VoiceUnlockedReason(CharacterSummary c) =>
-        c.Speaks || c.VoiceOnly ? VoiceProfileGuard.UnlockedReason(c.VoiceProfile)
-                 : string.IsNullOrWhiteSpace(c.VoiceProfile) ? "voice profile" : null;
+    private static string? VoiceUnlockedReason(CharacterSummary c)
+    {
+        if (c.Speaks || c.VoiceOnly)
+            return VoiceProfileGuard.UnlockedReason(c.VoiceProfile);
+        if (string.IsNullOrWhiteSpace(c.VoiceProfile))
+            return "voice profile";
+        return null;
+    }
 
     private static bool VoiceUsable(CharacterSummary c) => VoiceUnlockedReason(c) is null;
 

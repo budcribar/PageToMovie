@@ -1304,29 +1304,41 @@ public sealed class ClientMediaFolderService
     {
         if (!IsConnected || string.IsNullOrWhiteSpace(projectId) || scenes is null) return 0;
         var restored = 0;
-        foreach (var sc in scenes.Where(x => x.ClipCount > 0 && x.ClipsOnDisk < x.ClipCount))
-        {
-            SceneDetail? detail;
-            try { detail = (await _api.GetSceneDetailAsync(projectId, sc.SceneNumber, ct))?.Scene; }
-            catch { continue; }
-            if (detail?.Clips is null) continue;
-            foreach (var clip in detail.Clips.Where(c => !c.OnDisk))
-            {
-                var rel = $"assets/video/scene_{sc.SceneNumber:D2}_clip_{clip.ClipNumber:D2}_take_01.clip.json";
-                var bytes = await ReadLocalBytesAsync($"{projectId}/{rel}", minBytes: 16);
-                if (bytes is null) continue;
-                string json;
-                try { json = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF'); } catch { continue; }
-                try { if (await _api.RestoreClipSidecarAsync(projectId, sc.SceneNumber, clip.ClipNumber, json, ct)) restored++; }
-                catch { /* best effort */ }
-            }
-        }
+        foreach (var sceneNumber in scenes.Where(x => x.ClipCount > 0 && x.ClipsOnDisk < x.ClipCount).Select(sc => sc.SceneNumber))
+            restored += await RestoreMissingSidecarsForSceneAsync(projectId, sceneNumber, ct);
         if (restored > 0)
         {
             LastStatus = $"Restored {restored} clip pointer(s) to the server from this folder.";
             Changed?.Invoke();
         }
         return restored;
+    }
+
+    private async Task<int> RestoreMissingSidecarsForSceneAsync(string projectId, int sceneNumber, CancellationToken ct)
+    {
+        SceneDetail? detail;
+        try { detail = (await _api.GetSceneDetailAsync(projectId, sceneNumber, ct))?.Scene; }
+        catch { return 0; }
+        if (detail?.Clips is null) return 0;
+        var restored = 0;
+        foreach (var clipNumber in detail.Clips.Where(c => !c.OnDisk).Select(clip => clip.ClipNumber))
+        {
+            if (await TryRestoreClipSidecarAsync(projectId, sceneNumber, clipNumber, ct))
+                restored++;
+        }
+        return restored;
+    }
+
+    private async Task<bool> TryRestoreClipSidecarAsync(string projectId, int sceneNumber, int clipNumber, CancellationToken ct)
+    {
+        var rel = $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}_take_01.clip.json";
+        var bytes = await ReadLocalBytesAsync($"{projectId}/{rel}", minBytes: 16);
+        if (bytes is null) return false;
+        string json;
+        try { json = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF'); }
+        catch { return false; }
+        try { return await _api.RestoreClipSidecarAsync(projectId, sceneNumber, clipNumber, json, ct); }
+        catch { return false; }
     }
 
     /// <summary>
@@ -1339,13 +1351,7 @@ public sealed class ClientMediaFolderService
     {
         if (!IsConnected || string.IsNullOrWhiteSpace(projectId)) return 0;
         var key = $"ptm-renames-applied::{projectId}";
-        long after = 0;
-        try
-        {
-            var s = await _js.InvokeAsync<string?>("localStorage.getItem", ct, key);
-            long.TryParse(s, out after);
-        }
-        catch { /* fresh browser */ }
+        var after = await ReadAppliedRenameIdAsync(key, ct);
 
         IReadOnlyList<MediaRenameManifestEntry> entries;
         try { entries = await _api.GetMediaRenamesAsync(projectId, after, ct); }
@@ -1354,30 +1360,50 @@ public sealed class ClientMediaFolderService
 
         var applied = 0;
         foreach (var entry in entries.OrderBy(e => e.Id))
-        {
-            foreach (var (from, to) in entry.Renames)
-            {
-                try
-                {
-                    var r = await _js.InvokeAsync<JsResult>(
-                        "PageToMovieMedia.renameFileAsync", ct, $"{projectId}/{from}", $"{projectId}/{to}");
-                    if (r is { Success: true }) applied++;
-                }
-                catch { /* keep going — the next Film load retries via the id bookmark */ }
-            }
-            foreach (var del in entry.Deletes)
-            {
-                try { await _js.InvokeAsync<JsResult>("PageToMovieMedia.deleteFileAsync", ct, $"{projectId}/{del}"); }
-                catch { /* best effort */ }
-            }
-            try { await _js.InvokeVoidAsync("localStorage.setItem", ct, key, entry.Id.ToString()); }
-            catch { /* re-applying later is harmless */ }
-        }
+            applied += await ApplyRenameEntryAsync(projectId, key, entry, ct);
         if (applied > 0)
         {
             LastStatus = $"Renamed {applied} local file(s) to match the server's new numbering.";
             Changed?.Invoke();
         }
+        return applied;
+    }
+
+    private async Task<long> ReadAppliedRenameIdAsync(string key, CancellationToken ct)
+    {
+        try
+        {
+            var s = await _js.InvokeAsync<string?>("localStorage.getItem", ct, key);
+            long.TryParse(s, out var after);
+            return after;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private async Task<int> ApplyRenameEntryAsync(
+        string projectId, string key, MediaRenameManifestEntry entry, CancellationToken ct)
+    {
+        var applied = 0;
+        foreach (var (from, to) in entry.Renames)
+        {
+            try
+            {
+                var r = await _js.InvokeAsync<JsResult>(
+                    "PageToMovieMedia.renameFileAsync", ct, $"{projectId}/{from}", $"{projectId}/{to}");
+                if (r is { Success: true }) applied++;
+            }
+            catch { /* keep going — the next Film load retries via the id bookmark */ }
+        }
+        foreach (var del in entry.Deletes)
+        {
+            try { await _js.InvokeAsync<JsResult>("PageToMovieMedia.deleteFileAsync", ct, $"{projectId}/{del}"); }
+            catch { /* best effort */ }
+        }
+        try { await _js.InvokeVoidAsync("localStorage.setItem", ct, key, entry.Id.ToString()); }
+        catch { /* re-applying later is harmless */ }
         return applied;
     }
 
