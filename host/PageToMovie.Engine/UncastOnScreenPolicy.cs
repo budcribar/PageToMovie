@@ -83,16 +83,8 @@ public static class UncastOnScreenPolicy
         return count;
     }
 
-    private static int CountKeyInClips(JsonElement clips, string key)
-    {
-        var count = 0;
-        foreach (var c in clips.EnumerateArray())
-        {
-            if (ClipListsKeyOnScreen(c, key))
-                count++;
-        }
-        return count;
-    }
+    private static int CountKeyInClips(JsonElement clips, string key) =>
+        clips.EnumerateArray().Count(c => ClipListsKeyOnScreen(c, key));
 
     private static bool ClipListsKeyOnScreen(JsonElement clip, string key)
     {
