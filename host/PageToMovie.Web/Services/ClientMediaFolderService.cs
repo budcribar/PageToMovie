@@ -10,6 +10,8 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public sealed class ClientMediaFolderService
 {
+    private const string ProbeDurationJs = "PageToMovieFfmpeg.probeDurationAsync";
+
     private readonly IJSRuntime _js;
     private readonly EngineApiClient _api;
     private readonly JobHubClient _hub;
@@ -427,7 +429,7 @@ public sealed class ClientMediaFolderService
     /// </summary>
     private async Task<string?> SliceCombinedProviderVideoAsync(string url, double leadInSec, string rel)
     {
-        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        var probe = await ProbeDurationAsync(url);
         var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
         var newDurationSec = combinedSec is { } c && CombinedExtendRecovery.IsLocalDurationCombined(c, leadInSec)
             ? c - leadInSec
@@ -1146,9 +1148,12 @@ public sealed class ClientMediaFolderService
         }
     }
 
+    private ValueTask<JsProbeResult> ProbeDurationAsync(string url) =>
+        _js.InvokeAsync<JsProbeResult>(ProbeDurationJs, url);
+
     private async Task<bool> HeadDurationIsCombinedAsync(string url, double leadInSec)
     {
-        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        var probe = await ProbeDurationAsync(url);
         return probe is { Success: true, Seconds: var s }
                && CombinedExtendRecovery.IsLocalDurationCombined(s, leadInSec);
     }
@@ -1158,7 +1163,7 @@ public sealed class ClientMediaFolderService
         var url = await GetLocalBlobUrlAsync(projectId, relativePath);
         if (string.IsNullOrWhiteSpace(url))
             return null;
-        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        var probe = await ProbeDurationAsync(url);
         if (probe is { Success: true, Seconds: var s } && CombinedExtendRecovery.IsLocalDurationCombined(s, leadInSec))
             return url;
         await RevokeBlobIfAnyAsync(url);
@@ -1169,7 +1174,7 @@ public sealed class ClientMediaFolderService
     {
         if (!CombinedExtendRecovery.IsCombined(leadInSec))
             return null;
-        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        var probe = await ProbeDurationAsync(url);
         if (probe is not { Success: true, Seconds: > 0 })
             return null;
         if (probe.Seconds + CombinedExtendRecovery.CombinedLeadInThresholdSeconds < leadInSec)

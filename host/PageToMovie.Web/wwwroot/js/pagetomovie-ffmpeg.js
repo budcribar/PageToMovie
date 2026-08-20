@@ -1434,21 +1434,21 @@ window.PageToMovieFfmpeg = {
         });
     },
 
-    // Trims a video down to its last `keepSeconds` — used to prepare a video-extend continuation
-    // source (see FilmJobService.GenerateOneClipAsync): the model rejects input video longer than
-    // its own max clip length, so the client keeps only the tail before uploading it. Standalone
-    // (not tied to the silence-trim session bookkeeping that encodeSliceAsync uses) since the
-    // caller only ever wants one trim, not an analyze-then-slice round trip.
-    trimTailAsync: async function (url, keepSeconds, onProgress) {
+    // Shared by trimTailAsync (keep last N seconds) and trimHeadAsync (keep first N).
+    // Standalone — not the silence-trim session bookkeeping that encodeSliceAsync uses.
+    _trimKeepSecondsAsync: async function (url, keepSeconds, onProgress, opts) {
         if (!url) return { success: false, error: "No URL" };
+        const prefix = opts.prefix;
+        const fromEnd = !!opts.fromEnd;
+        const progressLabel = opts.progressLabel || "Trimming…";
         return this._runExclusiveAsync(async () => {
             const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error };
 
             const ffmpeg = this._ffmpeg;
-            const seq = ++this._trimTailSeq;
-            const inName = "trimtail_in_" + seq + ".mp4";
-            const outName = "trimtail_out_" + seq + ".mp4";
+            const seq = ++this[opts.seqKey];
+            const inName = prefix + "_in_" + seq + ".mp4";
+            const outName = prefix + "_out_" + seq + ".mp4";
             try {
                 reportProgress(onProgress, 10, "Loading clip…");
                 const data = await this._safeFetchFile(url);
@@ -1462,9 +1462,9 @@ window.PageToMovieFfmpeg = {
 
                 const totalSec = probe.seconds;
                 const keepSec = Math.max(0.5, Math.min(keepSeconds, totalSec));
-                const startSec = Math.max(0, totalSec - keepSec);
+                const startSec = fromEnd ? Math.max(0, totalSec - keepSec) : 0;
 
-                reportProgress(onProgress, 55, "Trimming tail…");
+                reportProgress(onProgress, 55, progressLabel);
                 const args = ["-hide_banner", "-y"];
                 if (startSec > 0.001) args.push("-ss", String(startSec));
                 args.push("-i", inName, "-t", String(keepSec),
@@ -1489,53 +1489,27 @@ window.PageToMovieFfmpeg = {
         });
     },
 
+    // Trims a video down to its last `keepSeconds` — used to prepare a video-extend continuation
+    // source (see FilmJobService.GenerateOneClipAsync): the model rejects input video longer than
+    // its own max clip length, so the client keeps only the tail before uploading it.
+    trimTailAsync: async function (url, keepSeconds, onProgress) {
+        return this._trimKeepSecondsAsync(url, keepSeconds, onProgress, {
+            prefix: "trimtail",
+            seqKey: "_trimTailSeq",
+            fromEnd: true,
+            progressLabel: "Trimming tail…",
+        });
+    },
+
     // Keeps the first `keepSeconds` of a combined video-extend copy — the previous clip, which
     // lives at the head (see CombinedExtendRecovery / provider_lead_in_seconds). Pair of
     // trimTailAsync; the API host never trims.
     trimHeadAsync: async function (url, keepSeconds, onProgress) {
-        if (!url) return { success: false, error: "No URL" };
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) return { success: false, error: load.error };
-
-            const ffmpeg = this._ffmpeg;
-            const seq = ++this._trimHeadSeq;
-            const inName = "trimhead_in_" + seq + ".mp4";
-            const outName = "trimhead_out_" + seq + ".mp4";
-            try {
-                reportProgress(onProgress, 10, "Loading clip…");
-                const data = await this._safeFetchFile(url);
-                await ffmpeg.writeFile(inName, data);
-
-                reportProgress(onProgress, 30, "Probing duration…");
-                const probe = await this._probeDurationMemfsAsync(inName);
-                if (!probe.success || probe.seconds <= 0) {
-                    return { success: false, error: "Could not read source duration" };
-                }
-
-                const totalSec = probe.seconds;
-                const keepSec = Math.max(0.5, Math.min(keepSeconds, totalSec));
-
-                reportProgress(onProgress, 55, "Trimming head…");
-                const args = ["-hide_banner", "-y", "-i", inName, "-t", String(keepSec),
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-movflags", "+faststart",
-                    outName];
-                await ffmpeg.exec(args);
-
-                reportProgress(onProgress, 90, "Preparing…");
-                const out = await ffmpeg.readFile(outName);
-                const blob = new Blob([out.buffer], { type: "video/mp4" });
-                const outUrl = URL.createObjectURL(blob);
-                reportProgress(onProgress, 100, "Trim done");
-                return { success: true, url: outUrl, sourceDurationSec: totalSec, keptSec: keepSec };
-            } catch (err) {
-                return { success: false, error: err.message || String(err) };
-            } finally {
-                try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
-                try { await ffmpeg.deleteFile(outName); } catch (_) { /* */ }
-            }
+        return this._trimKeepSecondsAsync(url, keepSeconds, onProgress, {
+            prefix: "trimhead",
+            seqKey: "_trimHeadSeq",
+            fromEnd: false,
+            progressLabel: "Trimming head…",
         });
     },
 
