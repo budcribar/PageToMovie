@@ -106,45 +106,51 @@ public static class NativeFfmpeg
         }
     }
 
+    private const string WindowsFfmpegExeName = "ffmpeg.exe";
+    private const string PathFfmpegName = "ffmpeg";
+
     public static string? FindFfmpegExecutable()
     {
         try
         {
-            if (OperatingSystem.IsWindows())
-            {
-                var candidates = new List<string>
-                {
-                    Path.Combine(AppContext.BaseDirectory, "Resources", "ffmpeg.exe"),
-                    Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
-                    "ffmpeg.exe",
-                };
-
-                // Check user NuGet cache if running in local dev / tests
-                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                if (!string.IsNullOrWhiteSpace(userProfile))
-                {
-                    var nugetFfmpegDir = Path.Combine(userProfile, ".nuget", "packages", "soenneker.libraries.ffmpeg");
-                    if (Directory.Exists(nugetFfmpegDir))
-                    {
-                        var exe = Directory.GetFiles(nugetFfmpegDir, "ffmpeg.exe", SearchOption.AllDirectories).FirstOrDefault();
-                        if (exe is not null) candidates.Add(exe);
-                    }
-                }
-
-                var found = candidates.FirstOrDefault(File.Exists);
-                if (found is not null) return found;
-            }
-            else
-            {
-                var candidates = new[] { "/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg" };
-                var found = candidates.FirstOrDefault(File.Exists);
-                if (found is not null) return found;
-            }
-            return "ffmpeg";
+            var found = OperatingSystem.IsWindows() ? FindWindowsFfmpeg() : FindUnixFfmpeg();
+            return found ?? PathFfmpegName;
         }
         catch
         {
-            return "ffmpeg";
+            return PathFfmpegName;
         }
+    }
+
+    private static string? FindWindowsFfmpeg()
+    {
+        var candidates = new List<string>
+        {
+            Path.Combine(AppContext.BaseDirectory, "Resources", WindowsFfmpegExeName),
+            Path.Combine(AppContext.BaseDirectory, WindowsFfmpegExeName),
+            WindowsFfmpegExeName,
+        };
+        AddNugetCacheCandidate(candidates);
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static void AddNugetCacheCandidate(List<string> candidates)
+    {
+        // Check user NuGet cache if running in local dev / tests
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfile))
+            return;
+        var nugetFfmpegDir = Path.Combine(userProfile, ".nuget", "packages", "soenneker.libraries.ffmpeg");
+        if (!Directory.Exists(nugetFfmpegDir))
+            return;
+        var exe = Directory.GetFiles(nugetFfmpegDir, WindowsFfmpegExeName, SearchOption.AllDirectories).FirstOrDefault();
+        if (exe is not null)
+            candidates.Add(exe);
+    }
+
+    private static string? FindUnixFfmpeg()
+    {
+        var candidates = new[] { "/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg" };
+        return candidates.FirstOrDefault(File.Exists);
     }
 }

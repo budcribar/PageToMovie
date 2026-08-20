@@ -22,11 +22,13 @@ public partial class AdminConfig
         return $"recent p95 {st.P95Seconds}s · p99 {st.P99Seconds}s · max {st.MaxSeconds}s (n={st.Count}){to}";
     }
 
-    private static string TimeoutEvidenceClass(TimeoutBucketStatsDto? st, int configured) =>
-        st is null || st.Count == 0 ? "text-muted"
-        : st.P99Seconds > configured ? "text-danger"
-        : st.P99Seconds * 3 < configured ? "text-warning"
-        : "text-success";
+    private static string TimeoutEvidenceClass(TimeoutBucketStatsDto? st, int configured)
+    {
+        if (st is null || st.Count == 0) return "text-muted";
+        if (st.P99Seconds > configured) return "text-danger";
+        if (st.P99Seconds * 3 < configured) return "text-warning";
+        return "text-success";
+    }
 
     private string TimeoutEvidenceClassFor(string bucket, int configured) =>
         TimeoutEvidenceClass(_timeoutStats.TryGetValue(bucket, out var st) ? st : null, configured);

@@ -81,7 +81,7 @@ public partial class AdminModelsCatalog
                     SortId => OrderByString(filtered, m => m["id"]?.ToString()),
                     SortName => OrderByString(filtered, m => m["displayName"]?.ToString()),
                     SortCapability => OrderByString(filtered, m => m["capability"]?.ToString()),
-                    SortProvider => OrderByString(filtered, m => m["provider"]?.ToString()),
+                    SortProvider => OrderByString(filtered, m => m[SortProvider]?.ToString()),
                     SortReviewed => OrderReviewed(filtered),
                     _ => filtered
                 };
@@ -132,7 +132,7 @@ public partial class AdminModelsCatalog
             var q = _filterQuery.Trim();
             var modelId = m["id"]?.ToString() ?? "";
             var displayName = m["displayName"]?.ToString() ?? "";
-            var prov = m["provider"]?.ToString() ?? "";
+            var prov = m[SortProvider]?.ToString() ?? "";
             return modelId.Contains(q, StringComparison.OrdinalIgnoreCase)
                 || displayName.Contains(q, StringComparison.OrdinalIgnoreCase)
                 || prov.Contains(q, StringComparison.OrdinalIgnoreCase);
@@ -148,7 +148,7 @@ public partial class AdminModelsCatalog
         private bool MatchesProvider(JsonObject m)
         {
             if (string.IsNullOrWhiteSpace(_filterProvider)) return true;
-            var prov = m["provider"]?.ToString() ?? "";
+            var prov = m[SortProvider]?.ToString() ?? "";
             return string.Equals(prov, _filterProvider, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -158,7 +158,7 @@ public partial class AdminModelsCatalog
             if (_filterStatus == Deprecated) return isDeprecated;
             if (_filterStatus == "all") return true;
             if (isDeprecated) return false;
-            if (_filterStatus == "enabled") return IsEnabled(m);
+            if (_filterStatus == SortEnabled) return IsEnabled(m);
             if (_filterStatus == "disabled") return !IsEnabled(m);
             if (_filterStatus == "lab")
                 return m.TryGetPropertyValue("labMode", out var labNode) && labNode?.GetValue<bool>() == true;
@@ -167,14 +167,14 @@ public partial class AdminModelsCatalog
         }
 
         internal List<string> GetAvailableProviders() => _modelList
-            .Select(m => m["provider"]?.ToString())
+            .Select(m => m[SortProvider]?.ToString())
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p)
             .ToList();
 
         internal static bool IsEnabled(JsonObject m) =>
-            m.TryGetPropertyValue("enabled", out var en) && en?.GetValue<bool>() == true;
+            m.TryGetPropertyValue(SortEnabled, out var en) && en?.GetValue<bool>() == true;
 
         internal static bool IsDeprecated(JsonObject m) =>
             m.TryGetPropertyValue(Deprecated, out var dep) && dep?.GetValue<bool>() == true;
@@ -219,7 +219,7 @@ public partial class AdminModelsCatalog
 
         internal void ToggleModelEnabled(JsonObject m)
         {
-            m["enabled"] = !IsEnabled(m);
+            m[SortEnabled] = !IsEnabled(m);
             S.Raw.SyncModelListToRawJson();
         }
 

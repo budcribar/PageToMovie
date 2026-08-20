@@ -3,9 +3,9 @@
 
 @if (Visible)
 {
-    var all = Selected.Count > 0 && Selected.Count >= TotalScenes;
+    var all = AllSelected;
     <DarkModalShell Visible="true" OnClose="OnClose">
-        <Title>📝 Regenerate @(all ? "the whole shot plan" : $"{Selected.Count} selected scene{(Selected.Count == 1 ? "" : "s")}")</Title>
+        <Title>📝 Regenerate @RegeneratingWhat</Title>
         <ChildContent>
             <p class="mb-2 small" data-testid="replan-confirm-summary">
                 @if (all)
@@ -54,4 +54,17 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private int GeneratedClipsAtRisk => Scenes.Where(s => Selected.Contains(s.SceneNumber)).Sum(s => s.ClipsOnDisk);
+
+    private bool AllSelected => Selected.Count > 0 && Selected.Count >= TotalScenes;
+
+    private string RegeneratingWhat
+    {
+        get
+        {
+            if (AllSelected)
+                return "the whole shot plan";
+            var sceneWord = Selected.Count == 1 ? "scene" : "scenes";
+            return $"{Selected.Count} selected {sceneWord}";
+        }
+    }
 }

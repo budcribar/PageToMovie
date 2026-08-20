@@ -433,7 +433,7 @@ window.PageToMovieMedia = {
             try {
                 await toDir.getFileHandle(toName, { create: false });
                 return { success: true, skipped: "target exists" };
-            } catch (_) { /* target free — proceed */ }
+            } catch (err) { if (err) { /* target free — proceed */ } }
             const file = await fromFh.getFile();
             const buf = await file.arrayBuffer();
             const wh = await toDir.getFileHandle(toName, { create: true });
