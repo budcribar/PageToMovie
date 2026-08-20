@@ -27,6 +27,7 @@ Status: ☐ open · ☑ resolved (with decision).
 | 16 | ☐ | Verification report open | Clip row status badge (opens report) | Clip inspector status badge (opens the same report) — consistent pair, maybe fine |
 | 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay (`Demo.FilmCard.razor:12`, ▶ + "Watch on YouTube") | Film title link (`Demo.FilmCard.razor:47`) · "Watch on YouTube ↗" link (`Demo.FilmCard.razor:59`) — three links per card to the same URL |
 | 18 | ☐ | Open the demo gallery | Left-nav "Demo" | Home demo-films card "Open gallery" — rendered in TWO variants (inline `HomeDemoFilmsCard.razor:18` + card `:56`), both with the same `home-open-demo-gallery` testid |
+| 20 | ☑ | Generate vs Regenerate (film level) | ONE "Generate (N scenes)…" button; scope radio in the confirm: "Missing clips only" (default) vs "All clips (new takes)" with per-scope cost | Toolbar "🔄 Regenerate (N)" (`ScenesSceneIndex.razor:214`) folds into it. Scene-header "Regen (N) selected clips" is NOT part of this — checked clips always exist. Decided 2026-08-19 (mockup). |
 | 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" (`Demo.FilmCard.razor:113`) | Home easy-start story list fork (same action, different surface — may be intentional) |
 
 ## Resolved this session (for reference)
