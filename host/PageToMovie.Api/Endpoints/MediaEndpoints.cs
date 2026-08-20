@@ -411,10 +411,9 @@ public static class MediaEndpoints
     private static async Task MaybeOffloadServerMediaAsync(
         string id, MediaObjectDto dto, string? userId, ProjectStore store, CancellationToken ct)
     {
-        // Character reference images are kept server-side (small; Cast readiness + thumbnails depend on
-        // the ref file surviving reload). Client-storage offload is for large video clips only.
-        var isCharacterImage = dto.RelativePath.Replace('\\', '/')
-            .Contains("assets/characters/", StringComparison.OrdinalIgnoreCase);
+        // Character and location look plates stay on the server (small; Cast/Locations readiness
+        // + thumbnails + wipe-resync depend on the bytes). Client-storage offload is for video.
+        var keepLookOnServer = ProjectAssetNaming.IsServerRetainedLookPath(dto.RelativePath);
 
         // Sidecar so scene lists treat clip as present without server MP4.
         try
@@ -434,7 +433,7 @@ public static class MediaEndpoints
             // server-side (Mary19, 2026-08-19).
             var ext = Path.GetExtension(full);
             var isMediaBytes = MediaSyncExtensions.Contains(ext);
-            if (!isCharacterImage && isMediaBytes)
+            if (!keepLookOnServer && isMediaBytes)
                 await WriteClientStorageMarkerAndDeleteServerCopyAsync(full, dto, userId, ct);
 
             store.InvalidateSceneListCache(id);

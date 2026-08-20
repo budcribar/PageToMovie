@@ -211,6 +211,29 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
+    public void ReadForClip_skips_newer_sidecar_that_omits_provider_pointer()
+    {
+        var videoDir = Path.Combine(_root, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        var older = Path.Combine(videoDir, "scene_01_clip_02_take_01.clip.json");
+        var newer = Path.Combine(videoDir, "scene_01_clip_02_take_02.clip.json");
+        File.WriteAllText(older, """{"scene":1,"clip":2,"source_url":"https://vidgen.example/take1.mp4","source_file_id":"file_live"}""");
+        File.WriteAllText(newer, """{"scene":1,"clip":2,"schema_version":"clip_sidecar.v1"}""");
+        File.SetLastWriteTimeUtc(older, DateTime.UtcNow.AddMinutes(-2));
+        File.SetLastWriteTimeUtc(newer, DateTime.UtcNow);
+
+        var src = ClipProviderSource.ReadForClip(videoDir, 1, 2);
+        Assert.NotNull(src);
+        Assert.True(src!.HasProviderCopy);
+        Assert.Equal("https://vidgen.example/take1.mp4", src.SourceUrl);
+        Assert.Equal("file_live", src.SourceFileId);
+
+        var fromMp4 = ClipProviderSource.ReadForMp4(Path.Combine(videoDir, "scene_01_clip_02.mp4"));
+        Assert.NotNull(fromMp4);
+        Assert.True(fromMp4!.HasProviderCopy);
+    }
+
+    [Fact]
     public void Engine_does_not_expose_NativeFfmpeg()
     {
         Assert.Null(typeof(ClipProviderSource).Assembly.GetType("PageToMovie.Engine.NativeFfmpeg"));

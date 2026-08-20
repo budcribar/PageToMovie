@@ -50,4 +50,18 @@ public class ProjectAssetNamingTests
         Assert.Equal("kitchen_ref.png", ProjectAssetNaming.LocationRefFileName("kitchen_ref.png"));
         Assert.Equal("mary_ref.png", ProjectAssetNaming.CharacterRefFileName("Mary_ref.png"));
     }
+
+    [Theory]
+    [InlineData("assets/characters/hero_ref.png", true)]
+    [InlineData("assets/characters/hero_variant_01.png", true)]
+    [InlineData(@"assets\characters\hero_ref.png", true)]
+    [InlineData("assets/locations/kitchen_ref.png", true)]
+    [InlineData("assets/locations/kitchen_variant_01.png", true)]
+    [InlineData(@"assets\locations\kitchen_ref.png", true)]
+    [InlineData("assets/video/scene_01_clip_01.mp4", false)]
+    [InlineData("assets/audio/theme.mp3", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsServerRetainedLookPath_CharactersAndLocationsOnly(string? path, bool expected) =>
+        Assert.Equal(expected, ProjectAssetNaming.IsServerRetainedLookPath(path));
 }

@@ -33,15 +33,19 @@ public sealed record ClipProviderSource(
     private static readonly Regex ClipNameRx = new(@"scene_(\d{2})_clip_(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
-    /// <summary>Newest sidecar for the clip in <paramref name="videoDir"/>, or null.</summary>
-    public static string? FindLatestSidecarPath(string videoDir, int scene, int clip)
+    /// <summary>Sidecars for the clip, newest write first.</summary>
+    public static IEnumerable<string> EnumerateSidecarsNewestFirst(string videoDir, int scene, int clip)
     {
-        if (!Directory.Exists(videoDir)) return null;
-        return new DirectoryInfo(videoDir)
+        if (!Directory.Exists(videoDir)) yield break;
+        foreach (var fi in new DirectoryInfo(videoDir)
             .EnumerateFiles($"scene_{scene:D2}_clip_{clip:D2}*.clip.json")
-            .OrderByDescending(fi => fi.LastWriteTimeUtc)
-            .FirstOrDefault()?.FullName;
+            .OrderByDescending(f => f.LastWriteTimeUtc))
+            yield return fi.FullName;
     }
+
+    /// <summary>Newest sidecar for the clip in <paramref name="videoDir"/>, or null.</summary>
+    public static string? FindLatestSidecarPath(string videoDir, int scene, int clip) =>
+        EnumerateSidecarsNewestFirst(videoDir, scene, clip).FirstOrDefault();
 
     /// <summary>Sidecar for the clip named by an mp4 path (<c>…/scene_01_clip_02[_take_01].mp4</c>).</summary>
     public static string? FindLatestSidecarPathForMp4(string mp4Path)
@@ -73,8 +77,30 @@ public sealed record ClipProviderSource(
         catch { return null; }
     }
 
-    public static ClipProviderSource? ReadForMp4(string mp4Path) => Read(FindLatestSidecarPathForMp4(mp4Path));
-    public static ClipProviderSource? ReadForClip(string videoDir, int scene, int clip) => Read(FindLatestSidecarPath(videoDir, scene, clip));
+    /// <summary>
+    /// Newest sidecar that still has a provider pointer (<c>source_url</c> / <c>source_file_id</c>).
+    /// Conversion / edit sidecars from <c>WriteSidecarWithTakeAsync</c> omit those fields and must
+    /// not hide an older take's recovery handle.
+    /// </summary>
+    public static ClipProviderSource? ReadForClip(string videoDir, int scene, int clip)
+    {
+        ClipProviderSource? newest = null;
+        foreach (var path in EnumerateSidecarsNewestFirst(videoDir, scene, clip))
+        {
+            var src = Read(path);
+            if (src is null) continue;
+            newest ??= src;
+            if (src.HasProviderCopy) return src;
+        }
+        return newest;
+    }
+
+    public static ClipProviderSource? ReadForMp4(string mp4Path)
+    {
+        var m = ClipNameRx.Match(Path.GetFileName(mp4Path));
+        if (!m.Success) return null;
+        return ReadForClip(Path.GetDirectoryName(mp4Path) ?? "", int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
+    }
 
     /// <summary>A temp copy of the clip. <see cref="LeadInSecondsRemaining"/> is > 0 when the copy is
     /// the combined extend video: consumers must skip that head (the API host never trims).</summary>
