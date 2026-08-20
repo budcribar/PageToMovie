@@ -2100,7 +2100,7 @@ h1:focus {
     height: 100%;
 }
 
-/* Project Settings (/configuration): sections start collapsed */
+/* Project Settings (/configuration): most sections start collapsed; Studio coverage starts open */
 .ptm-cfg-section {
   margin: 0;
 }

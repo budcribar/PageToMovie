@@ -165,11 +165,11 @@ public static class Ui
         Assert.Fail($"Expected picker options [{string.Join(", ", want)}] but got [{string.Join(", ", got)}].");
     }
 
-    // ── Configuration page sections (collapsed by default since acf910b5) ───────
+    // ── Configuration page sections (most start collapsed; Studio coverage starts open) ───────
 
     /// <summary>Expand a Configuration <c>&lt;details&gt;</c> section by its summary testid
     /// (<c>config-section-coverage|storage|appearance|music|format|pipeline|advanced</c>) if it is
-    /// currently closed. Sections start collapsed by design; tests must open what they touch.</summary>
+    /// currently closed. Studio coverage starts open; other Settings sections start collapsed.</summary>
     public static async Task OpenConfigSectionAsync(IPage page, string sectionTestId)
     {
         var summary = page.GetByTestId(sectionTestId);

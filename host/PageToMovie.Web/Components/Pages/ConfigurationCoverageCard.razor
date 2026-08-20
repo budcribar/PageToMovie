@@ -1,13 +1,11 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Configuration — studio API coverage card (starts collapsed) *@
+@* Page-local to Configuration — studio API coverage card (starts open; native details like sibling Settings cards) *@
 @using Microsoft.AspNetCore.Components
 
 <div class="card mb-3" id="api-keys" data-testid="studio-coverage-card">
-    <details class="ptm-cfg-section" open="@IsStudioOpen">
+    <details class="ptm-cfg-section" open>
         <summary class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary"
-                 data-testid="config-section-coverage"
-                 @onclick="ToggleStudioCoverage"
-                 @onclick:preventDefault="true">
+                 data-testid="config-section-coverage">
             <span>Studio coverage</span>
             @{
                 var cov = Coverage.BuildCoverageRows();
@@ -193,9 +191,8 @@
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary"
                                                 data-testid="coverage-add-provider-@c.Id"
-                                                disabled="@Host._busy"
                                                 title="Add another provider key for this job"
-                                                @onclick="() => Keys.BeginAddProvider(c.Id)"
+                                                @onclick="() => KeyActions.BeginAddProvider(c.Id)"
                                                 @onclick:stopPropagation="true">
                                             Add provider
                                         </button>
@@ -204,8 +201,7 @@
                                             <button type="button"
                                                     class="btn btn-sm btn-primary"
                                                     data-testid="coverage-add-key-@c.Id"
-                                                    disabled="@Host._busy"
-                                                    @onclick="() => Keys.BeginAddKeyForProvider(c.Id, c.ProviderId)"
+                                                    @onclick="() => KeyActions.BeginAddKeyForProvider(c.Id, c.ProviderId)"
                                                     @onclick:stopPropagation="true">
                                                 Add key
                                             </button>
@@ -215,9 +211,8 @@
                                             <button type="button"
                                                     class="btn btn-sm btn-outline-secondary"
                                                     data-testid="coverage-change-key-@c.Id"
-                                                    disabled="@Host._busy"
                                                     title="Replace only the @Configuration.ConfigurationCatalog.FriendlyProviderLabel(c.ProviderId) key"
-                                                    @onclick="() => Keys.BeginReplaceKey(c.Id, c.ProviderId)"
+                                                    @onclick="() => KeyActions.BeginReplaceKey(c.Id, c.ProviderId)"
                                                     @onclick:stopPropagation="true">
                                                 Replace key
                                             </button>

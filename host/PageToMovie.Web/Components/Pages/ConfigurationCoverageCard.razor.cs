@@ -25,19 +25,18 @@ public partial class ConfigurationCoverageCard : PageSliceComponent
     [CascadingParameter] public Configuration.ConfigurationMediaTheme? Media { get; set; }
 
     /// <summary>
-    /// Controlled <details open> — Blazor re-renders after "Add key" would otherwise collapse
-    /// an uncontrolled details element and hide the paste panel.
+    /// Add / Replace / Add provider open a local paste panel — do not depend on the Coverage
+    /// cascade alone (IsFixed slices can miss it) and do not gate on Host._busy.
     /// </summary>
-    private bool IsStudioOpen =>
-        Coverage is not null
-        && (Coverage.StudioCoverageOpen || !string.IsNullOrWhiteSpace(Coverage._coverageEditId));
+    private Configuration.ConfigurationKeys KeyActions => Keys ?? Host.Keys;
 
-    private void ToggleStudioCoverage()
+    protected override void OnParametersSet()
     {
-        if (Coverage is null) return;
-        // Keep open while the key panel is active.
-        if (!string.IsNullOrWhiteSpace(Coverage._coverageEditId) && Coverage.StudioCoverageOpen)
-            return;
-        Coverage.StudioCoverageOpen = !Coverage.StudioCoverageOpen;
+        base.OnParametersSet();
+        Coverage ??= Host.Coverage;
+        Keys ??= Host.Keys;
+        Catalog ??= Host.Catalog;
+        Form ??= Host.Form;
+        Media ??= Host.Media;
     }
 }
