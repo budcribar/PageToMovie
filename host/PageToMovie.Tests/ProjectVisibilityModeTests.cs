@@ -55,9 +55,11 @@ public class ProjectVisibilityModeTests
             Assert.NotNull(reloaded);
             Assert.Equal(ProjectVisibility.Public, reloaded!.VisibilityMode);
 
-            // Change to Public (Forkable)
-            var openProj = await store.SetProjectVisibilityModeAsync(proj.Id, "Public");
-            Assert.Equal(ProjectVisibility.Public, openProj.VisibilityMode);
+            // Change to Public (Forkable) — a REAL Open mode, distinct from read-only Public.
+            var openProj = await store.SetProjectVisibilityModeAsync(proj.Id, "Open");
+            Assert.Equal(ProjectVisibility.Open, openProj.VisibilityMode);
+            var reloadedOpen = await store.GetProjectAsync(proj.Id);
+            Assert.Equal(ProjectVisibility.Open, reloadedOpen!.VisibilityMode);
         }
         finally
         {
@@ -78,6 +80,12 @@ public class ProjectVisibilityModeTests
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => store.ForkProjectAsync(source.Id, "bob"));
             Assert.Contains("Forking disabled", ex.Message);
+
+            // Read-only Public is viewable but NOT forkable — the distinction Open exists for.
+            await store.SetProjectVisibilityModeAsync(source.Id, "Public");
+            var exPublic = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => store.ForkProjectAsync(source.Id, "bob"));
+            Assert.Contains("Forking disabled", exPublic.Message);
 
             // Change visibility to Open
             await store.SetProjectVisibilityModeAsync(source.Id, "Open");

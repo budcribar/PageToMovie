@@ -7,28 +7,28 @@ editing only · Review = ratings/approval, not a second play surface.**
 
 Status: ☐ open · ☑ resolved (with decision).
 
-| # | Status | Action | Primary (keep) | Duplicates (candidates to remove/merge) |
+| # | Status | Action | Primary (keep) | Duplicates — state after the Option B rewrite (2026-08-20) |
 |---|---|---|---|---|
-| 1 | ☐ | Play a scene / selection | Film toolbar "▶ Play selected (N)" (`ScenesSceneIndex.razor:207`) | Scene header "Play selected clips" (`ScenesSceneDetail.razor:82`) · scene detail "Play full scene" (`ScenesSceneDetail.razor:236`) · Review tab per-row "▶ Play" (`ReviewReviewTab.razor:158`) + detail "▶ Play scene" (`ReviewReviewTab.razor:206`) |
-| 2 | ☐ | Play one clip | Clip row "▶ Play C0N" (`ScenesClipTable.razor`) | Review tab per-clip "▶" (`ReviewReviewTab.razor:242`) |
-| 3 | ☐ | Verify dialogue | Film toolbar "🔍 Verify Scene Dialogue (N)" (`ScenesSceneIndex.razor:226`) — scene scope; scene header "Verify (N) Selected Clips" (`ScenesSceneDetail.razor:91`) — clip scope | Clip inspector "Verify Dialogue" button (`ScenesClipInspector.razor:299`) — redundant with the row's verification badge |
-| 4 | ☐ | Regenerate clips | Scene header "↻ Regen (N) selected clips" (`ScenesSceneDetail.razor`, new) · Film toolbar "🔄 Regenerate (N)" (`ScenesSceneIndex.razor:214`) — scene scope | Clip inspector "Regen clip" (`ScenesClipInspector.razor:31,136` — appears twice in the inspector itself) |
-| 5 | ☐ | Takes / versions | Clip row "🎬 Takes" (`ScenesClipTable.razor:103`) | Clip inspector "🎬 Takes (N)" (`ScenesClipInspector.razor:40`) |
-| 6 | ☐ | Delete a clip | Clip row 🗑️ (`ScenesClipTable.razor:120`) | Clip inspector "Delete clip" (`ScenesClipInspector.razor:56`) |
-| 7 | ☐ | Delete a scene | Scene header 🗑️ (`ScenesSceneDetail.razor:143`) | — (single site; listed for the pattern discussion) |
-| 8 | ☐ | Screenplay text from Film | Scene header "📜 Screenplay" drawer (`ScenesSceneDetail.razor:124`) | Scene-index footer "Screenplay: View" (`ScenesSceneIndex.razor:280`) · left-nav "Screenplay" (full editor — arguably fine) |
-| 9 | ☐ | Open in ClipChamp / external editor | Scene header (`ScenesSceneDetail.razor:119`) | Review page (`Review.razor:83`) |
-| 10 | ☐ | Score music | Scene header "🎵 Score" (`ScenesSceneDetail.razor`) | "Audio takes" button beside it (compare vs create — could be one split button) |
-| 11 | ☐ | Connect media folder | Settings → Project Storage card (`Configuration.razor`) — canonical | Film banner (`Scenes.razor:119`) — reactive, keep? · Review Play tab "Connect folder" (`ReviewPlayTab.razor:74`) · NavMenu reconnect (`NavMenu.razor.cs:144`) · generate-gate prompt (by design) |
-| 12 | ☐ | Generate looks for plan | Cast page (`Characters.razor:92`) | Locations page (`Locations.razor:40`) · Estimate page "Generate" (`Cost.razor`) · Shots page (`AdaptationShots.razor.cs`) |
-| 13 | ☐ | Open Film → | Left nav "Film" + process strip step 6 (every page) | Locations header "Open Film →" (`Locations.razor:43`) · Estimate page link (`Cost.razor.cs`) · Shots page "Open Scenes →" (`AdaptationShots`) |
-| 14 | ☐ | New project / Import project toggles | Home full-studio card (`HomeStudioCard.razor`) | Same toggles duplicated in easy-start landing + `HomeImportPanel.razor` |
-| 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase (`SimpleVoiceMoviePhase.razor`) | SimpleVoice record phase (`SimpleVoiceRecordPhase.razor`) — same action on two phases of one flow |
-| 16 | ☐ | Verification report open | Clip row status badge (opens report) | Clip inspector status badge (opens the same report) — consistent pair, maybe fine |
-| 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay (`Demo.FilmCard.razor:12`, ▶ + "Watch on YouTube") | Film title link (`Demo.FilmCard.razor:47`) · "Watch on YouTube ↗" link (`Demo.FilmCard.razor:59`) — three links per card to the same URL |
-| 18 | ☐ | Open the demo gallery | Left-nav "Demo" | Home demo-films card "Open gallery" — rendered in TWO variants (inline `HomeDemoFilmsCard.razor:18` + card `:56`), both with the same `home-open-demo-gallery` testid |
-| 20 | ☑ | Generate vs Regenerate (film level) | ONE "Generate (N scenes)…" button; scope radio in the confirm: "Missing clips only" (default) vs "All clips (new takes)" with per-scope cost | Toolbar "🔄 Regenerate (N)" (`ScenesSceneIndex.razor:214`) folds into it. Scene-header "Regen (N) selected clips" is NOT part of this — checked clips always exist. Decided 2026-08-19 (mockup). |
-| 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" (`Demo.FilmCard.razor:113`) | Home easy-start story list fork (same action, different surface — may be intentional) |
+| 1 | ☐ | Play a scene / selection | Film toolbar "▶ Play selected (N)" | Scene header "▶ Play (N)" (scope ladder — INTENTIONAL pair) · scene detail "Play full scene" (composite preview) · Review tab per-row/detail Play — Review as a second play surface is the remaining question |
+| 2 | ☑ | Play one clip | Clip expansion autoplay (row click) | Per-row "▶ Play C0N" button REMOVED (Option B). Review per-clip ▶ stays (rating context). |
+| 3 | ☑ | Verify dialogue | Toolbar (scene scope) + scene header "🔍 Verify (N)" (clip scope) — the scope ladder | Inspector "Verify Dialogue" button REMOVED with the Option B expansion rewrite. |
+| 4 | ☑ | Regenerate clips | Scene header "↻ Regen (N) selected clips" only | Inspector/expansion "Regen clip" REMOVED (single-clip regen = check it + Regen (1)). |
+| 5 | ☑ | Takes / versions | Expansion action bar "🎬 Takes (N)" | Per-row Takes button REMOVED (Option B). |
+| 6 | ☑ | Delete a clip | Scene ⋯ menu "🗑️ Delete (N) selected clips…" (multi-confirm) | Per-row 🗑️ and expansion "Delete clip" REMOVED. |
+| 7 | ☑ | Delete a scene | Scene ⋯ menu "🗑️ Delete scene…" | Naked header trash button folded into the menu. |
+| 8 | ☑ | Screenplay text from Film | Scene ⋯ menu "📜 Screenplay" drawer | Scene-index footer duplicate gone; left-nav Screenplay = full editor (different tool, fine). |
+| 9 | ☑ | Open in ClipChamp / external editor | Scene ⋯ menu | Header button folded into the menu; Review page instance stays (post-review hand-off — intentional). |
+| 10 | ☑ | Score music | Scene ⋯ menu "🎵 Score" | Audio takes lives beside it IN THE SAME MENU now — one surface. |
+| 11 | ☐ | Connect media folder | Settings → Project Storage (canonical) | Film banner / Review Play tab / NavMenu reconnect / generate-gate — all REACTIVE prompts at point of need; likely keep, decide once. |
+| 12 | ☐ | Generate looks for plan | Cast page | Locations page · Estimate · Shots — one "prepare visuals" verb across four pages, still open. |
+| 13 | ☐ | Open Film → | Left nav + process strip | Locations/Estimate/Shots inline links — harmless nav sugar? decide once. |
+| 14 | ☐ | New project / Import toggles | Home full-studio card | Easy-start landing duplicates the toggles. |
+| 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase | Record phase repeats the action (two phases of one flow). |
+| 16 | ☑ | Verification report open | Row status chip (one chip: busy/missing/stale/verdict) opens the report | Expansion keeps only a small "report" link next to the heard-vs-expected diff — consistent pair, by design. |
+| 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay | Title link + "Watch on YouTube ↗" — still three links per card. |
+| 18 | ☐ | Open the demo gallery | Left-nav "Demo" | Home demo-films card renders "Open gallery" twice with the same testid. |
+| 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" | Easy-start story list fork (may be intentional dual surface). NOTE: forkable now requires the new Open visibility (B2) — previously-Public projects need re-marking. |
+| 20 | ☐→☑ decided | Generate vs Regenerate (film level) | ONE "Generate (N scenes)…" with scope radio in the confirm (Missing only / All as new takes) | DECIDED 2026-08-19, NOT YET BUILT — toolbar "🔄 Regenerate (N)" still exists (`ScenesSceneIndex.razor:214`); the last unimplemented piece of the mockup. |
 
 ## Feature decisions from the mockup review (2026-08-19)
 - Insert scene / insert clip at ANY position (not just append). DESIGN (revised 2026-08-19, user call:

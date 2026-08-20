@@ -644,7 +644,7 @@ public static class ProjectEndpoints
         var all = await store.ListProjectsAsync(ct);
         var forkable = new List<object>();
         foreach (var p in all
-            .Where(p => p.VisibilityMode == ProjectVisibility.Public
+            .Where(p => p.VisibilityMode == ProjectVisibility.Open // forkable only — plain Public is read-only
                         && string.IsNullOrWhiteSpace(p.ParentProjectId))
             .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase))
         {

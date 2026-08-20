@@ -9,8 +9,13 @@ namespace PageToMovie.Core.Models;
 public enum ProjectVisibility
 {
     Private = 0,
+    /// <summary>Publicly viewable, read-only — NOT forkable.</summary>
     Public = 1,
-    Unlisted = 2
+    Unlisted = 2,
+    /// <summary>Publicly viewable AND forkable (the Easy Start / "open story" catalog).
+    /// Before 2026-08-20 this value was coerced to Public and the read-only/forkable
+    /// distinction the UI advertised did not actually exist.</summary>
+    Open = 3
 }
 
 public static class ProjectVisibilityExtensions
@@ -20,16 +25,22 @@ public static class ProjectVisibilityExtensions
         if (string.IsNullOrWhiteSpace(value)) return ProjectVisibility.Private;
         return value.Trim().ToLowerInvariant() switch
         {
-            "public" or "open" or "publicforkable" or "forkable" => ProjectVisibility.Public,
+            "public" => ProjectVisibility.Public,
+            "open" or "publicforkable" or "forkable" => ProjectVisibility.Open,
             "unlisted" => ProjectVisibility.Unlisted,
             "private" => ProjectVisibility.Private,
             _ => Enum.TryParse<ProjectVisibility>(value, true, out var result) ? result : ProjectVisibility.Private
         };
     }
 
+    /// <summary>Any publicly viewable mode (read-only Public or forkable Open).</summary>
+    public static bool IsPubliclyViewable(this ProjectVisibility visibility) =>
+        visibility is ProjectVisibility.Public or ProjectVisibility.Open;
+
     public static string ToClientString(this ProjectVisibility visibility) => visibility switch
     {
         ProjectVisibility.Public => "Public",
+        ProjectVisibility.Open => "Open",
         ProjectVisibility.Unlisted => "Unlisted",
         _ => "Private"
     };

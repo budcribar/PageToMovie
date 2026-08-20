@@ -177,7 +177,8 @@ public partial class Home
 
         internal static string VisibilityBadgeClass(string? mode) => mode?.Trim().ToLowerInvariant() switch
         {
-            "open" or "public" => "bg-info text-dark",
+            "open" => "bg-success text-white",
+            "public" => "bg-info text-dark",
             _ => "bg-dark border border-secondary text-muted",
         };
 
@@ -185,7 +186,8 @@ public partial class Home
 
         internal static string VisibilityBadgeText(string? mode) => mode?.Trim().ToLowerInvariant() switch
         {
-            "open" or "public" => "👁️ Public",
+            "open" => "🔄 Forkable",
+            "public" => "👁️ Public",
             _ => "🔒 Private",
         };
 

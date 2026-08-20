@@ -1797,13 +1797,14 @@ public sealed partial class ProjectStore
         if (string.IsNullOrWhiteSpace(newOwnerUserId))
             throw new InvalidOperationException("newOwnerUserId required");
 
-        // Allow forking if project is Public (or unowned/legacy), requested via explicit invite, or if caller is owner/admin
+        // Allow forking if project is Open/forkable (or unowned/legacy), requested via explicit
+        // invite, or if caller is owner/admin. Plain Public is READ-ONLY: viewable, not forkable.
         var isOwnerOrLegacy = string.IsNullOrWhiteSpace(source.OwnerUserId)
             || string.Equals(source.OwnerUserId, newOwnerUserId, StringComparison.OrdinalIgnoreCase);
-        var isForkable = source.VisibilityMode == ProjectVisibility.Public;
+        var isForkable = source.VisibilityMode == ProjectVisibility.Open;
         if (!isInvite && !isOwnerOrLegacy && !isForkable)
         {
-            throw new InvalidOperationException($"Forking disabled for this project (Visibility mode: {source.VisibilityMode}). Only 'Public' projects can be forked by community members.");
+            throw new InvalidOperationException($"Forking disabled for this project (Visibility mode: {source.VisibilityMode}). Only 'Open' (Public Forkable) projects can be forked by community members.");
         }
     }
 

@@ -174,7 +174,26 @@ public partial class ScreenplayEditor : ComponentBase
         ActiveViewMode = ActiveViewMode == "all" ? ViewModeScene : "all";
     }
 
+    /// <summary>
+    /// A host can take over scene reorders (e.g. the studio routes them through the server's
+    /// renumber engine once a shot plan exists, so clip files and blueprint move with the text —
+    /// see docs/ui-dedup-checklist.md "RENUMBER ON INSERT"). Unwired = the local model reorder.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(int from, int to)> OnReorderScenesRequested { get; set; }
+
     public async Task ReorderScenes((int from, int to) args)
+    {
+        if (OnReorderScenesRequested.HasDelegate)
+        {
+            await OnReorderScenesRequested.InvokeAsync(args);
+            return;
+        }
+        await ReorderScenesLocallyAsync(args);
+    }
+
+    /// <summary>Model-only reorder (pre-shot-plan, or standalone tooling).</summary>
+    public async Task ReorderScenesLocallyAsync((int from, int to) args)
     {
         int from = args.from;
         int to = args.to;

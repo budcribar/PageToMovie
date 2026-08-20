@@ -101,12 +101,10 @@ public class ProjectLifecycleTests
             await page.GetByTestId("home-manage-projects").ClickAsync();
             await Assertions.Expect(page.GetByTestId("home-visibility-select")).ToBeVisibleAsync(new() { Timeout = 10_000 });
             await page.GetByTestId("home-visibility-select").SelectOptionAsync("Open");
-            // KNOWN MODEL GAP (ui-test-campaign doc): the select offers "Public (Read-Only)" vs
-            // "Public (Forkable)" (value Open), but ProjectVisibility has no Open member — the
-            // server coerces Open→Public and ANY Public project is forkable. Assert the truthful
-            // stored state until the product decides whether read-only public should exist.
+            // B2 fixed (2026-08-20): Open is a real mode now — forkable, distinct from the
+            // read-only Public option, and it round-trips instead of snapping back to Public.
             await Assertions.Expect(page.GetByTestId("home-visibility-badge"))
-                .ToHaveAttributeAsync("data-visibility", "Public", new() { Timeout = 15_000 });
+                .ToHaveAttributeAsync("data-visibility", "Open", new() { Timeout = 15_000 });
 
             var forkJson = await ApiAsync(page, "POST", ProjectIdRouting.ProjectApi(originId) + "/fork");
             using var forkDoc = JsonDocument.Parse(forkJson);

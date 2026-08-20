@@ -98,6 +98,49 @@ public class PageSweepTests
     }
 
     [Fact]
+    public async Task Screenplay_outline_drag_with_a_shot_plan_routes_through_the_renumber_engine()
+    {
+        // B8: once a shot plan exists, a text-only reorder would desync blueprint + clip files —
+        // the outline drag must go through the same renumber engine as the Film page's drag.
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToScenesAsync(page, _fx.BaseUrl,
+                "SpDragPlan_" + Guid.NewGuid().ToString("N")[..6], "mary_had_a_lamb.fountain");
+
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/adaptation/screenplay");
+            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            var rows = page.Locator(".spe-outline-row");
+            await Assertions.Expect(rows.First).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            await rows.Nth(1).DragToAsync(rows.Nth(0));
+
+            // The BLUEPRINT (not just the text) now has the schoolroom as scene 1 — proof the
+            // renumber engine ran rather than a local model move.
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            var swapped = false;
+            string last = "";
+            while (DateTime.UtcNow < deadline && !swapped)
+            {
+                last = await page.EvaluateAsync<string>(@"async () => {
+                    const raw = sessionStorage.getItem('PageToMovie.admin.session');
+                    const s = JSON.parse(raw);
+                    const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+                    const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
+                    const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
+                    const list = await fetch('/api/projects/'+encodeURIComponent(id)+'/scenes', {headers:h}).then(r=>r.json());
+                    const scenes = (list.scenes||list.Scenes||[]);
+                    return scenes.map(x => (x.sceneNumber ?? x.SceneNumber) + ':' + (x.setting ?? x.Setting ?? '')).join(' | ');
+                }");
+                swapped = last.StartsWith("1:INT. SCHOOLROOM", StringComparison.OrdinalIgnoreCase);
+                if (!swapped) await page.WaitForTimeoutAsync(750);
+            }
+            Assert.True(swapped, "blueprint scene 1 never became the schoolroom after the outline drag; scenes: " + last);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task Screenplay_outline_drag_reorders_scenes_and_persists()
     {
         var (ctx, page) = await _fx.NewPageAsync();

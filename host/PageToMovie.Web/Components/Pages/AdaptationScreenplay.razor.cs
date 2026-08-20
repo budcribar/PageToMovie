@@ -35,6 +35,72 @@ public partial class AdaptationScreenplay
     /// <summary>Hosted structured editor instance (for Menu actions).</summary>
     private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi = null;
 
+    [Inject] private ClientMediaFolderService MediaFolder { get; set; } = default!;
+
+    /// <summary>
+    /// Outline scene drag (B8): BEFORE a shot plan exists a reorder is a pure text operation —
+    /// keep the editor's local model move + autosave. AFTER a plan exists, a text-only reorder
+    /// silently desyncs the blueprint and every numbered clip file, so route it through the
+    /// server's renumber engine (same one the Film page's drag uses): it permutes the screenplay
+    /// chunks, blueprint order, media files, registry rows, and the client rename manifest.
+    /// </summary>
+    internal async Task OnOutlineReorderRequestedAsync((int from, int to) args)
+    {
+        int planCount = 0;
+        try
+        {
+            var scenes = await Engine.GetScenesAsync(ProjectId);
+            planCount = scenes?.Scenes?.Count ?? 0;
+        }
+        catch
+        {
+            planCount = 0;
+        }
+
+        if (planCount == 0)
+        {
+            if (_structuredUi is not null)
+                await _structuredUi.ReorderScenesLocallyAsync(args);
+            return;
+        }
+
+        // The engine reorders COMMITTED draft text — flush any pending editor edits first.
+        await Save.SaveDraftAsync(manual: false);
+
+        // The order must be a permutation of the BLUEPRINT's scenes — that can include a trailing
+        // auto-credits scene the outline doesn't show, so span planCount, not the outline count.
+        var outlineCount = Editor._model.Scenes.Count;
+        if (args.from < 0 || args.from >= outlineCount || args.to < 0 || args.to >= outlineCount || args.from == args.to)
+            return;
+        var order = Enumerable.Range(1, planCount).ToList();
+        var moved = order[args.from];
+        order.RemoveAt(args.from);
+        order.Insert(args.to, moved);
+
+        Busy = true;
+        Error = null;
+        try
+        {
+            var (ok, error) = await Engine.ReorderScenesAsync(ProjectId, order);
+            if (!ok)
+            {
+                Error = error ?? "Scene reorder failed.";
+                return;
+            }
+            await MediaFolder.ApplyServerRenamesAsync(ProjectId);
+            await Editor.LoadEditorDataAsync(); // fresh draft + rebuilt model
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+            StateHasChanged();
+        }
+    }
+
     /// <summary>Deep link from Film: /adaptation/screenplay?scene=N</summary>
     private int? _pendingSceneFromQuery;
     private bool _appliedSceneQuery;
