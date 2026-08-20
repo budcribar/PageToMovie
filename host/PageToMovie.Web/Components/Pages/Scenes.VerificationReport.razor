@@ -10,7 +10,8 @@
         "speaker_swap" => ("bg-danger", "⚠ Speaker swap"),
         "visual_defect" => ("bg-danger", "⚠ Visual defect"),
         "mismatch" => ("bg-warning text-dark", $"⚠ Dialogue mismatch ({Report.DialogueAccuracyScore:P0})"),
-        "no_speech" => ("bg-secondary", "No speech planned"),
+        "no_speech" when !string.IsNullOrWhiteSpace(Report.ExpectedDialogue) => ("bg-danger", "⚠ No speech (0%)"),
+        "no_speech" => ("bg-success", $"✓ Verified ({Report.DialogueAccuracyScore:P0})"),
         _ => ("bg-secondary", Report.Status ?? "unverified"),
     };
     var diff = Report.ActualDurationSeconds - Report.EstimatedDurationSeconds;

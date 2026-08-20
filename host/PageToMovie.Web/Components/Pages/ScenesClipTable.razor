@@ -91,7 +91,8 @@
 
                                 "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
                                 "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
-                                "no_speech" => ("bg-secondary-subtle text-secondary border border-secondary-subtle", "✓ No speech"),
+                                // A silent clip that passed the visual-only check IS verified — same badge as spoken clips.
+                                "no_speech" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
                                 _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle", ver.Status ?? "unverified"),
                             };
                             <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
