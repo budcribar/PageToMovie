@@ -1073,6 +1073,32 @@ public static class SupportedModelCatalog
         return id;
     }
 
+    /// <summary>
+    /// Longest user-facing slice <c>/v1/videos/edits</c> will accept, from the VideoEdit
+    /// capability's catalog default (<see cref="SupportedModelEntry.MaxEditInputDurationSeconds"/>).
+    /// Null when the catalog has no cap. This is never an extend-INPUT gate.
+    /// </summary>
+    public static double? VideoEditMaxInputDurationSeconds()
+    {
+        var id = DefaultModelIdForCapability(ModelCapability.VideoEdit);
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        return Find(id, ModelCapability.VideoEdit)?.MaxEditInputDurationSeconds
+               ?? Find(id)?.MaxEditInputDurationSeconds;
+    }
+
+    /// <summary>
+    /// Cap a saved / AI-Edit slice to <see cref="VideoEditMaxInputDurationSeconds"/>.
+    /// Screenplay-boundary duration is kept when it is already under the cap.
+    /// </summary>
+    public static double CapToVideoEditInput(double seconds)
+    {
+        if (seconds <= 0) return seconds;
+        var cap = VideoEditMaxInputDurationSeconds();
+        if (cap is { } c && c > 0 && seconds > c)
+            return c;
+        return seconds;
+    }
+
     public static bool TryParseCapabilityId(string? capabilityId, out ModelCapability cap)
     {
         cap = ModelCapability.Chat;

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -172,10 +173,10 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
     [Fact]
     public async Task Edit_is_rejected_server_side_when_the_clip_exceeds_the_input_duration_cap()
     {
-        // xAI's edit endpoint caps input at 8.7s (grok-imagine-video-edit's
-        // maxEditInputDurationSeconds) — a clip longer than that must be rejected before any
-        // provider call, not just gated client-side by the UI.
-        SeedActiveClip(scene: 1, clip: 1, durationSeconds: 12.0);
+        SupportedModelCatalog.ReloadCatalog();
+        var cap = SupportedModelCatalog.VideoEditMaxInputDurationSeconds();
+        Assert.True(cap is > 0, "VideoEdit catalog must publish maxEditInputDurationSeconds");
+        SeedActiveClip(scene: 1, clip: 1, durationSeconds: cap.Value + 3.3);
 
         var (status, error, _) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
         {
@@ -186,6 +187,6 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         });
 
         Assert.Equal("error", status);
-        Assert.Contains("8.7", error ?? "");
+        Assert.Contains(cap.Value.ToString("0.#"), error ?? "");
     }
 }

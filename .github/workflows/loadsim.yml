@@ -22,11 +22,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: Restore
-        run: dotnet restore FilmStudio.slnx
+        run: dotnet restore PageToMovie.slnx
       - name: Test
-        run: dotnet test FilmStudio.Tests --no-restore --verbosity minimal
+        run: dotnet test PageToMovie.Tests --no-restore --verbosity minimal
 
+  # Soak needs projects/LoadSimBuster (removed from git in 0c6aad42). Keep it off PRs
+  # so unit-tests can stay green; run only from schedule / workflow_dispatch.
   loadsim-ci:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: unit-tests
     defaults:
@@ -40,20 +43,23 @@ jobs:
 
       - name: Build
         run: |
-          dotnet build FilmStudio.Api/FilmStudio.Api.csproj -c Release
-          dotnet build FilmStudio.LoadSim/FilmStudio.LoadSim.csproj -c Release
+          dotnet build PageToMovie.Api/PageToMovie.Api.csproj -c Release
+          dotnet build PageToMovie.LoadSim/PageToMovie.LoadSim.csproj -c Release
 
       - name: Start API (fakes)
         run: |
-          export FILMSTUDIO_USE_FAKES=true
-          export FilmStudio__UseFakes=true
-          export FilmStudio__Capacity__MaxVideoInFlight=8
-          export FilmStudio__Capacity__MaxVideoInFlightPerUser=2
-          export FilmStudio__Fakes__VideoDelayMs=50
+          export PAGETOMOVIE_USE_FAKES=true
+          export PageToMovie_USE_FAKES=true
+          export PageToMovie__UseFakes=true
+          export PageToMovie__Capacity__MaxVideoInFlight=8
+          export PageToMovie__Capacity__MaxVideoInFlightPerUser=2
+          export PageToMovie__Fakes__VideoDelayMs=50
           export ASPNETCORE_ENVIRONMENT=Development
           export ASPNETCORE_URLS=http://127.0.0.1:5088
-          nohup dotnet run --project FilmStudio.Api --no-build -c Release > /tmp/filmstudio-api.log 2>&1 &
-          echo $! > /tmp/filmstudio-api.pid
+          # UseUrls ignores ASPNETCORE_URLS; bind only 5088 (no privileged port 80).
+          export PAGETOMOVIE_BIND_PORTS=5088
+          nohup dotnet run --project PageToMovie.Api --no-build -c Release > /tmp/pagetomovie-api.log 2>&1 &
+          echo $! > /tmp/pagetomovie-api.pid
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:5088/health >/dev/null; then
               echo "API up"
@@ -62,14 +68,14 @@ jobs:
             sleep 1
           done
           echo "API failed to start"
-          cat /tmp/filmstudio-api.log || true
+          cat /tmp/pagetomovie-api.log || true
           exit 1
 
       - name: Run LoadSim (CI gates)
         run: |
-          export FILMSTUDIO_USE_FAKES=true
+          export PAGETOMOVIE_USE_FAKES=true
           # CI profile: 25 VUs × 90s, mixed with light gen against fakes
-          dotnet run --project FilmStudio.LoadSim -c Release --no-build -- \
+          dotnet run --project PageToMovie.LoadSim -c Release --no-build -- \
             --baseUrl http://127.0.0.1:5088 \
             --users 25 \
             --duration 90 \
@@ -89,8 +95,8 @@ jobs:
       - name: Stop API
         if: always()
         run: |
-          if [ -f /tmp/filmstudio-api.pid ]; then kill $(cat /tmp/filmstudio-api.pid) || true; fi
-          cat /tmp/filmstudio-api.log || true
+          if [ -f /tmp/pagetomovie-api.pid ]; then kill $(cat /tmp/pagetomovie-api.pid) || true; fi
+          cat /tmp/pagetomovie-api.log || true
 
       - name: Upload results
         if: always()

@@ -113,4 +113,18 @@ public class MediaSyncProviderRecoveryTests : IDisposable
 
         Assert.Empty(entries);
     }
+
+    [Fact]
+    public void Combined_C3_carries_C2_sidecar_lead_in_as_predecessor_hop()
+    {
+        WriteSidecar(1, 2, 1, "https://vidgen.example/c2.mp4", leadIn: 4.9);
+        WriteSidecar(1, 3, 1, "https://vidgen.example/c3.mp4", leadIn: 9.8);
+
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+
+        var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+        Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
+        // Nearest previous first: C2's hop (C1). Client hop-walk peels C1 from the C1+C2 head.
+        Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
+    }
 }

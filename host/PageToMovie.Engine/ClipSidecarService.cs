@@ -106,6 +106,8 @@ public sealed class ClipSidecarService
         string? sourceFileId = null,
         long? sourceFileExpiresAtUnixSeconds = null,
         double? providerLeadInSeconds = null,
+        double? providerClipStartSeconds = null,
+        double? providerClipStopSeconds = null,
         CancellationToken ct = default)
     {
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -150,9 +152,14 @@ public sealed class ClipSidecarService
 
         // Video-extend: the provider copy is the COMBINED video (continuation input + new footage).
         // Record how much of its head is the previous clip so every consumer of source_url /
-        // source_file_id (playback, verification, re-upload as extend input, forks) drops it.
+        // source_file_id (playback, verification, hop-walk, forks) drops it. Optional start/stop
+        // name this clip's window in that file (lead-in → end).
         if (providerLeadInSeconds is > 0.1)
             sidecar[ClipProviderSource.LeadInProperty] = Math.Round(providerLeadInSeconds.Value, 3);
+        if (providerClipStartSeconds is { } start && start >= 0)
+            sidecar[ClipProviderSource.ClipStartProperty] = Math.Round(start, 3);
+        if (providerClipStopSeconds is { } stop && stop > 0.1)
+            sidecar[ClipProviderSource.ClipStopProperty] = Math.Round(stop, 3);
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
         _log.LogInformation("Written clip sidecar manifest → {Path}", sidecarPath);

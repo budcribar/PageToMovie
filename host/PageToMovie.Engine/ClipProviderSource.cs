@@ -13,12 +13,20 @@ namespace PageToMovie.Engine;
 /// Anyone who streams, verifies or re-uploads the provider copy must drop that head first, or the
 /// previous clip's footage and lines play twice.
 /// </summary>
-public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId, double LeadInSeconds, double? DurationSeconds)
+public sealed record ClipProviderSource(
+    string? SourceUrl,
+    string? SourceFileId,
+    double LeadInSeconds,
+    double? DurationSeconds,
+    double? ClipStartSeconds = null,
+    double? ClipStopSeconds = null)
 {
     public bool HasProviderCopy => !string.IsNullOrWhiteSpace(SourceUrl) || !string.IsNullOrWhiteSpace(SourceFileId);
     public bool IsCombined => LeadInSeconds > 0.1;
 
     public const string LeadInProperty = "provider_lead_in_seconds";
+    public const string ClipStartProperty = "provider_clip_start_seconds";
+    public const string ClipStopProperty = "provider_clip_stop_seconds";
 
     private static readonly Regex ClipNameRx = new(@"scene_(\d{2})_clip_(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
@@ -50,7 +58,13 @@ public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId,
             var r = doc.RootElement;
             string? Str(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
             double? Num(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : null;
-            return new ClipProviderSource(Str("source_url"), Str("source_file_id"), Num(LeadInProperty) ?? 0, Num("duration_seconds"));
+            return new ClipProviderSource(
+                Str("source_url"),
+                Str("source_file_id"),
+                Num(LeadInProperty) ?? 0,
+                Num("duration_seconds"),
+                Num(ClipStartProperty),
+                Num(ClipStopProperty));
         }
         catch { return null; }
     }

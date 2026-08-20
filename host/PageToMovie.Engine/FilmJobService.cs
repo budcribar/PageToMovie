@@ -5470,7 +5470,8 @@ public sealed class FilmJobService
         string? SourceFileId,
         string? SourceUrl,
         double? DurationSeconds,
-        bool ProviderCopyIsCombined = false);
+        double LeadInSeconds = 0,
+        double? ClipStopSeconds = null);
 
     private static PredecessorClipDetails? TryReadPredecessorClipDetails(string projectDir, int scene, int clip)
     {
@@ -5479,30 +5480,7 @@ public sealed class FilmJobService
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             if (!Directory.Exists(videoDir)) return null;
 
-            var pattern = $"scene_{scene:D2}_clip_{clip:D2}*.clip.json";
-            var sidecarFile = new DirectoryInfo(videoDir)
-                .EnumerateFiles(pattern)
-                .OrderByDescending(fi => fi.LastWriteTimeUtc)
-                .FirstOrDefault();
-
-            string? sourceFileId = null;
-            string? sourceUrl = null;
-            double? durationSeconds = null;
-            var providerCombined = false;
-
-            if (sidecarFile is not null && File.Exists(sidecarFile.FullName))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(sidecarFile.FullName));
-                var root = doc.RootElement;
-                if (root.TryGetProperty("source_file_id", out var sfid))
-                    sourceFileId = sfid.GetString();
-                if (root.TryGetProperty("source_url", out var surl))
-                    sourceUrl = surl.GetString();
-                if (root.TryGetProperty("duration_seconds", out var ds) && ds.TryGetDouble(out var dur))
-                    durationSeconds = dur;
-                if (root.TryGetProperty(ClipProviderSource.LeadInProperty, out var li) && li.TryGetDouble(out var lead) && lead > 0.1)
-                    providerCombined = true;
-            }
+            var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
 
             var mp4Pattern = $"scene_{scene:D2}_clip_{clip:D2}*.mp4";
             var mp4File = new DirectoryInfo(videoDir)
@@ -5511,12 +5489,16 @@ public sealed class FilmJobService
                 .OrderByDescending(fi => fi.LastWriteTimeUtc)
                 .FirstOrDefault();
 
+            if (src is null && mp4File is null)
+                return null;
+
             return new PredecessorClipDetails(
                 LocalMp4Path: mp4File?.FullName,
-                SourceFileId: sourceFileId,
-                SourceUrl: sourceUrl,
-                DurationSeconds: durationSeconds,
-                ProviderCopyIsCombined: providerCombined);
+                SourceFileId: src?.SourceFileId,
+                SourceUrl: src?.SourceUrl,
+                DurationSeconds: src?.DurationSeconds,
+                LeadInSeconds: src?.LeadInSeconds ?? 0,
+                ClipStopSeconds: src?.ClipStopSeconds);
         }
         catch
         {
@@ -5552,57 +5534,48 @@ public sealed class FilmJobService
         if (clip <= 1 || !modelEntry.SupportsVideoContinue)
             return (null, null, null);
 
-        // 0. Browser-trimmed delta relayed to xAI Files: marker holds the file_id (+ its duration,
-        //    which is exactly the lead-in the extension result carries and the client trims).
+        string? markerFileId = null;
+        double? markerSeconds = null;
         var markerPath = Path.Combine(projectDir, AssetsFolder, VideoFolder, ExtendSourceMarkerName(scene, clip));
         if (File.Exists(markerPath))
         {
-            var (fid, sec) = TryReadExtendSourceMarker(await File.ReadAllTextAsync(markerPath, ct).ConfigureAwait(false));
-            if (!string.IsNullOrWhiteSpace(fid))
-                return (null, fid, sec);
-            _log.LogWarning("Unreadable extend-source marker {Path}; falling back", markerPath);
+            (markerFileId, markerSeconds) = TryReadExtendSourceMarker(await File.ReadAllTextAsync(markerPath, ct).ConfigureAwait(false));
+            if (string.IsNullOrWhiteSpace(markerFileId))
+            {
+                _log.LogWarning("Unreadable extend-source marker {Path}; falling back", markerPath);
+                markerFileId = null;
+                markerSeconds = null;
+            }
         }
 
-        // 1. Check if client already uploaded an explicit _extend_src_ file (fakes / legacy path)
-        var explicitSrc = Path.Combine(
+        string? explicitSrc = Path.Combine(
             projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+        double? explicitDur = null;
         if (File.Exists(explicitSrc) && new FileInfo(explicitSrc).Length >= 1024)
-        {
-            var explicitDur = await Mp4DurationReader.TryReadSecondsAsync(explicitSrc, ct).ConfigureAwait(false);
-            return (explicitSrc, null, explicitDur);
-        }
+            explicitDur = await Mp4DurationReader.TryReadSecondsAsync(explicitSrc, ct).ConfigureAwait(false);
+        else
+            explicitSrc = null;
 
-        // 2. Inspect predecessor clip take/sidecar
-        var maxInputSeconds = modelEntry.MaxEditInputDurationSeconds ?? 8.7;
-        var prevClipInfo = TryReadPredecessorClipDetails(projectDir, scene, clip - 1);
-        if (prevClipInfo is null)
+        var prev = TryReadPredecessorClipDetails(projectDir, scene, clip - 1);
+        var choice = ClipExtendSource.Select(
+            new ClipExtendSource.PredecessorOffer(
+                prev?.SourceFileId,
+                prev?.LeadInSeconds ?? 0,
+                prev?.DurationSeconds,
+                prev?.ClipStopSeconds,
+                prev?.LocalMp4Path,
+                prev?.DurationSeconds),
+            new ClipExtendSource.FallbackOffer(markerFileId, markerSeconds, explicitSrc, explicitDur));
+
+        if (!choice.HasInput)
+        {
+            _log.LogInformation(
+                "No extend source for S{Scene:D2}C{Clip:D2}; generating fresh",
+                scene, clip);
             return (null, null, null);
-
-        var prevDur = prevClipInfo.Value.DurationSeconds ?? 5.0;
-
-        // Case 1: Predecessor local standalone MP4 exists and duration <= maxInputSeconds.
-        // We prefer the local standalone file because predecessor's remote source_file_id may contain
-        // un-trimmed accumulated predecessor footage from earlier extends (e.g. [C01 + C02]).
-        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.LocalMp4Path) && File.Exists(prevClipInfo.Value.LocalMp4Path) && prevDur <= maxInputSeconds + 0.1)
-        {
-            return (prevClipInfo.Value.LocalMp4Path, null, prevDur);
         }
 
-        // Case 2: Predecessor has valid source_file_id and duration <= maxInputSeconds (e.g. Clip 1 fresh anchor).
-        // Not when the predecessor was itself an extend: its provider copy is the COMBINED video
-        // (lead-in recorded in the sidecar) — extending from it would carry the clip before it along.
-        if (!string.IsNullOrWhiteSpace(prevClipInfo.Value.SourceFileId) && prevDur <= maxInputSeconds + 0.1 && !prevClipInfo.Value.ProviderCopyIsCombined)
-        {
-            return (null, prevClipInfo.Value.SourceFileId, prevDur);
-        }
-
-        // Predecessor longer than the model's edit-input cap, or only a combined provider copy:
-        // the browser is the trimmer (marker / _extend_src_ upload above). Do not download to
-        // spawn native ffmpeg. Fresh gen instead — same as production (image has no ffmpeg).
-        _log.LogInformation(
-            "No browser-trimmed extend source for S{Scene:D2}C{Clip:D2} (predecessor {Dur:F1}s, cap {Cap:F1}s, combined={Combined}); generating fresh",
-            scene, clip, prevDur, maxInputSeconds, prevClipInfo.Value.ProviderCopyIsCombined);
-        return (null, null, null);
+        return (choice.LocalPath, choice.FileId, choice.InputDurationSeconds);
     }
 
     private static string? ResolvePreviousClipVisual(
@@ -6222,6 +6195,16 @@ public sealed class FilmJobService
             // later "AI Edit" reuse the file instead of re-uploading. Absent for
             // non-Grok providers or when storage wasn't granted; never required.
             var (sourceFileId, sourceFileExpiresAt) = _grok.TryGetStoredFileReference(requestId);
+            var generated = (double)duration;
+            var savedSlice = ClipExtendSource.SavedSliceDurationSeconds(generated);
+            double? clipStart = null;
+            double? clipStop = null;
+            if (providerLeadInSeconds is { } lead && lead > 0.1)
+            {
+                var window = ClipExtendSource.ClipWindowInProviderFile(lead, generated);
+                clipStart = window.Start;
+                clipStop = window.Stop;
+            }
             await _sidecars.WriteSidecarAsync(
                 projDir,
                 ctx.Scene,
@@ -6230,7 +6213,7 @@ public sealed class FilmJobService
                 scriptText: "",
                 model: ctx.Model,
                 resolution: ctx.Resolution,
-                durationSeconds: (double)duration,
+                durationSeconds: savedSlice,
                 sha256: "",
                 sizeBytes: 0,
                 // Persist the provider-hosted video URL so an exported project can be re-hydrated
@@ -6241,6 +6224,8 @@ public sealed class FilmJobService
                 sourceFileId: sourceFileId,
                 sourceFileExpiresAtUnixSeconds: sourceFileExpiresAt,
                 providerLeadInSeconds: providerLeadInSeconds,
+                providerClipStartSeconds: clipStart,
+                providerClipStopSeconds: clipStop,
                 ct: ctx.Ct).ConfigureAwait(false);
         }
         catch (Exception ex)
