@@ -74,12 +74,14 @@
                     — @(ListState._detail.Setting is { Length: > 0 } st ? st : "—")
                 </span>
             </div>
+            @* Scope ladder: the SAME three verbs as the film level, acting on the CHECKED CLIPS.
+               Everything rarer lives behind the ⋯ menu — one grammar, fewer competing buttons. *@
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button class="btn btn-sm btn-success"
                         disabled="@(Host._busy || Gen.JobRunning || (ListState._detail.ClipsOnDisk == 0 && !ListState._detail.CompositeExists))"
-                        title="Play selected clips"
+                        title="Play the checked clips (all when none are checked)"
                         @onclick="() => Playback.PlaySelectedClipsInSceneAsync(ListState._detail.SceneNumber)">
-                    Play selected clips
+                    ▶ Play@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "")
                 </button>
                 <button class="btn btn-sm btn-outline-warning"
                         data-testid="scene-regen-selected-clips"
@@ -95,53 +97,67 @@
                             disabled="@(Host._busy || Gen.JobRunning || Dialogue._verifyingClip)"
                             title="@(ClipSel._selectedClips.Count > 0 ? $"Run dialogue & speaker verification on {ClipSel._selectedClips.Count} selected clip(s)" : "Run dialogue & speaker verification on selected clips in the first column")"
                             @onclick="Dialogue.VerifySelectedScenesDialogueAsync">
-                        @(ClipSel._selectedClips.Count > 0 ? $"🔍 Verify ({ClipSel._selectedClips.Count}) Selected Clips" : "🔍 Verify Clip Dialogue")
+                        🔍 Verify@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "")
                     </button>
                 }
-                @if (ListState._detail.HasBackgroundMusic)
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-info"
-                            disabled="@(Host._busy || Gen.JobRunning)"
-                            title="View past audio takes & compare against the current one"
-                            @onclick="() => Music.OpenMusicCompareAsync(ListState._detail.SceneNumber)">
-                        @L["ScenesPage.AudioTakes"]
-                    </button>
-                }
-                @if (ListState._detail.CompositeExists || ListState._detail.ClipsOnDisk > 0)
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-info"
-                            data-testid="scene-open-external-editor"
-                            disabled="@(Host._busy || Gen.JobRunning)"
-                            title="Open scene video in @ClipRegen._preferredVideoEditor"
-                            @onclick="() => ClipRegen.OpenInExternalEditorAsync(ListState._detail.SceneNumber, ClipForm._selectedClip)">
-                        @L.Format("ScenesPage.OpenInVideoEditor", ClipRegen._preferredVideoEditor)
-                    </button>
-                }
-                @* Scene text lives in the Screenplay step; here it is a read-only drawer. *@
-                <button type="button" class="btn btn-sm btn-outline-info"
-                        data-testid="toggle-fountain-drawer"
-                        title="@(ListState._showFountainDrawer ? "Hide this scene's screenplay text" : "Show this scene's screenplay text")"
-                        @onclick="() => ListState._showFountainDrawer = !ListState._showFountainDrawer">
-                    📜 @L["Nav.Screenplay"]
-                </button>
-                @* Per-scene actions that used to live only on the retired all-scenes table. *@
-                <button type="button"
-                        class="btn btn-sm btn-warning text-black fw-bold"
-                        data-testid="scene-row-score-music"
-                        disabled="@(Host._busy || Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || Host.DetailLockedByOther)"
-                        title="@(Caps.MusicReady ? "Score background music for this scene" : StudioCapabilityState.MusicBlockedReason)"
-                        @onclick="() => Music.OpenScoreMenu(ListState._detail.SceneNumber)">
-                    🎵 @L["ScenesPage.Score"]
-                </button>
-                <button type="button"
-                        class="btn btn-sm btn-outline-danger"
-                        disabled="@(Host._busy || Gen.JobRunning || Host.DetailLockedByOther)"
-                        title="Delete scene S@(ListState._detail.SceneNumber.ToString("D2")) from plan"
-                        @onclick="() => ListState.RequestDeleteScene(ListState._detail.SceneNumber)">
-                    🗑️
-                </button>
+                <div class="position-relative">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            data-testid="scene-menu"
+                            title="More scene actions"
+                            @onclick="() => _showSceneMenu = !_showSceneMenu">⋯</button>
+                    @if (_showSceneMenu)
+                    {
+                        <div class="dropdown-menu show position-absolute end-0 mt-1 shadow" style="z-index:1050; min-width:16rem;">
+                            <button type="button" class="dropdown-item"
+                                    data-testid="scene-row-score-music"
+                                    disabled="@(Host._busy || Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || Host.DetailLockedByOther)"
+                                    title="@(Caps.MusicReady ? "Score background music for this scene" : StudioCapabilityState.MusicBlockedReason)"
+                                    @onclick="() => { _showSceneMenu = false; Music.OpenScoreMenu(ListState._detail.SceneNumber); }">
+                                🎵 @L["ScenesPage.Score"]
+                            </button>
+                            <button type="button" class="dropdown-item"
+                                    data-testid="toggle-fountain-drawer"
+                                    title="@(ListState._showFountainDrawer ? "Hide this scene's screenplay text" : "Show this scene's screenplay text")"
+                                    @onclick="() => { _showSceneMenu = false; ListState._showFountainDrawer = !ListState._showFountainDrawer; }">
+                                📜 @L["Nav.Screenplay"]
+                            </button>
+                            @if (ListState._detail.HasBackgroundMusic)
+                            {
+                                <button type="button" class="dropdown-item"
+                                        disabled="@(Host._busy || Gen.JobRunning)"
+                                        title="View past audio takes & compare against the current one"
+                                        @onclick="() => { _showSceneMenu = false; Music.OpenMusicCompareAsync(ListState._detail.SceneNumber); }">
+                                    @L["ScenesPage.AudioTakes"]
+                                </button>
+                            }
+                            @if (ListState._detail.CompositeExists || ListState._detail.ClipsOnDisk > 0)
+                            {
+                                <button type="button" class="dropdown-item"
+                                        data-testid="scene-open-external-editor"
+                                        disabled="@(Host._busy || Gen.JobRunning)"
+                                        title="Open scene video in @ClipRegen._preferredVideoEditor"
+                                        @onclick="() => { _showSceneMenu = false; ClipRegen.OpenInExternalEditorAsync(ListState._detail.SceneNumber, ClipForm._selectedClip); }">
+                                    @L.Format("ScenesPage.OpenInVideoEditor", ClipRegen._preferredVideoEditor)
+                                </button>
+                            }
+                            <div class="dropdown-divider"></div>
+                            <button type="button" class="dropdown-item text-danger"
+                                    data-testid="scene-delete-selected-clips"
+                                    disabled="@(Host._busy || Gen.JobRunning || ClipSel._selectedClips.Count == 0)"
+                                    title="@(ClipSel._selectedClips.Count > 0 ? "Delete the checked clips (video + shot-plan entry)" : "Check clip(s) in the first column first")"
+                                    @onclick="() => { _showSceneMenu = false; ClipForm.RequestDeleteSelectedClips(ListState._detail.SceneNumber, ClipSel._selectedClips); }">
+                                🗑️ Delete@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "") selected clips…
+                            </button>
+                            <button type="button" class="dropdown-item text-danger"
+                                    data-testid="scene-delete"
+                                    disabled="@(Host._busy || Gen.JobRunning || Host.DetailLockedByOther)"
+                                    title="Delete scene S@(ListState._detail.SceneNumber.ToString("D2")) from plan"
+                                    @onclick="() => { _showSceneMenu = false; ListState.RequestDeleteScene(ListState._detail.SceneNumber); }">
+                                🗑️ Delete scene…
+                            </button>
+                        </div>
+                    }
+                </div>
                 @if (Host.DetailLockedByOther)
                 {
                     <span class="badge bg-warning text-dark">🔒 @Host._detailLockOwner</span>
@@ -255,10 +271,10 @@
                 </p>
             }
 
+            @* Option B: the clip rows expand in place (ScenesClipInspector renders inside the
+               expanded row) — no separate inspector panel below the card. *@
             <ScenesClipTable />
 
 
         </div>
     </div>
-
-    <ScenesClipInspector />

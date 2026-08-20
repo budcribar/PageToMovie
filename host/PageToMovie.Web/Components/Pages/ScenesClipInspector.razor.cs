@@ -36,13 +36,8 @@ public partial class ScenesClipInspector : PageSliceComponent
 
     [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
 
-    private string RegenClipTitle(bool clipNeedsPrev)
-    {
-        if (!ListState.CastReady) return ListState.CastBlockedTitle;
-        if (clipNeedsPrev)
-            return $"Generate C{(ClipForm._clip.ClipNumber - 1):D2} first — continues from previous video";
-        return "Force re-generate this clip (overwrites if present)";
-    }
+    /// <summary>Admin Details fold (visual prompt / negative / plan meta), collapsed by default.</summary>
+    private bool _showDetails;
 
     private string VideoEditTitle
     {

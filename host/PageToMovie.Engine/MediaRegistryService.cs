@@ -226,6 +226,67 @@ public sealed class MediaRegistryService
         return result is not null;
     }
 
+    /// <summary>
+    /// Mirror a renumber pass (clip/scene reorder) into the registry: rewrite each row's
+    /// relative_path and its scene/clip columns, and drop rows for files the pass deleted.
+    /// Two-phase (tmp-prefixed paths first) inside one transaction so swap cycles never trip the
+    /// UNIQUE(project_id, relative_path) constraint.
+    /// </summary>
+    public async Task RenamePathsAsync(
+        string projectId,
+        IReadOnlyList<MediaRenameEntry> renames,
+        IReadOnlyList<string> deletes,
+        CancellationToken ct = default)
+    {
+        if (renames.Count == 0 && deletes.Count == 0) return;
+        EnsureInitialized();
+        using var conn = new SqliteConnection(ConnectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        using var tx = conn.BeginTransaction();
+
+        const string tmpPrefix = "renumtmp::";
+        foreach (var r in renames)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+                UPDATE media_objects SET relative_path = @tmp
+                WHERE project_id = @p AND relative_path = @from";
+            cmd.Parameters.AddWithValue("@p", projectId);
+            cmd.Parameters.AddWithValue("@from", r.From.Replace('\\', '/'));
+            cmd.Parameters.AddWithValue("@tmp", tmpPrefix + r.To.Replace('\\', '/'));
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        foreach (var r in renames)
+        {
+            var to = r.To.Replace('\\', '/');
+            var m = System.Text.RegularExpressions.Regex.Match(
+                Path.GetFileName(to), @"^scene_(\d{2,})(?:_clip_(\d{2,}))?(?=[._])");
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+                UPDATE media_objects SET relative_path = @to, scene = @sc, clip = @cl
+                WHERE project_id = @p AND relative_path = @tmp";
+            cmd.Parameters.AddWithValue("@p", projectId);
+            cmd.Parameters.AddWithValue("@tmp", tmpPrefix + to);
+            cmd.Parameters.AddWithValue("@to", to);
+            cmd.Parameters.AddWithValue("@sc", m.Success ? int.Parse(m.Groups[1].Value) : (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@cl", m is { Success: true } && m.Groups[2].Success
+                ? int.Parse(m.Groups[2].Value) : (object)DBNull.Value);
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        foreach (var d in deletes)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM media_objects WHERE project_id = @p AND relative_path = @path";
+            cmd.Parameters.AddWithValue("@p", projectId);
+            cmd.Parameters.AddWithValue("@path", d.Replace('\\', '/'));
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        tx.Commit();
+    }
+
     public async Task<MediaObjectDto?> TryGetAsync(string projectId, string relativePath, CancellationToken ct = default)
     {
         EnsureInitialized();

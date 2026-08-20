@@ -19,7 +19,8 @@ public class ScenesTests
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Film", Exact = true })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Generate Batch" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Add scene" })).ToBeVisibleAsync();
-            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" })).ToBeVisibleAsync();
+            // Label is localized ("Regen shot plan for selected scenes") — target the stable testid.
+            await Assertions.Expect(page.GetByTestId("scenes-regenerate-selected-scenes")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Filters" })).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }

@@ -5,6 +5,7 @@
 @inject AdminSessionService Session
 @inject IAppLocalizer L
 @inject EngineApiClient Engine
+@inject ClientMediaFolderService MediaFolder
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 @using PageToMovie.Core.Models
@@ -303,7 +304,15 @@ else
                  data-testid="scene-row"
                  data-scene-number="@sn"
                  title="@ItemTitle(s)"
+                 draggable="@(CanDragScenes ? "true" : "false")"
+                 @ondragstart="() => HandleSceneDragStart(sn)"
+                 @ondragover:preventDefault
+                 @ondrop="() => HandleSceneDropAsync(sn)"
                  @onclick="() => list.OpenSceneAsync(sn)">
+
+                <span class="flex-shrink-0 text-muted"
+                      title="@(CanDragScenes ? "Drag to reorder scenes (renumbers files + screenplay)" : "Reorder is off while filtered or a job runs")"
+                      style="cursor:@(CanDragScenes ? "grab" : "default"); letter-spacing:-2px; opacity:.5;">⠿</span>
 
                 <div class="form-check mb-0 flex-shrink-0" @onclick:stopPropagation="true">
                     <input class="form-check-input" type="checkbox"

@@ -1329,6 +1329,58 @@ public sealed class ClientMediaFolderService
         return restored;
     }
 
+    /// <summary>
+    /// Replay server-side renumbering (scene/clip reorder or insert) onto this folder: fetch the
+    /// committed rename manifest past the last id this browser applied (localStorage) and apply
+    /// each rename/delete. Renames are exact-name, skip-if-source-missing, skip-if-target-exists —
+    /// so replaying is idempotent even without the id bookmark. Returns files actually renamed.
+    /// </summary>
+    public async Task<int> ApplyServerRenamesAsync(string projectId, CancellationToken ct = default)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId)) return 0;
+        var key = $"ptm-renames-applied::{projectId}";
+        long after = 0;
+        try
+        {
+            var s = await _js.InvokeAsync<string?>("localStorage.getItem", ct, key);
+            long.TryParse(s, out after);
+        }
+        catch { /* fresh browser */ }
+
+        IReadOnlyList<MediaRenameManifestEntry> entries;
+        try { entries = await _api.GetMediaRenamesAsync(projectId, after, ct); }
+        catch { return 0; }
+        if (entries.Count == 0) return 0;
+
+        var applied = 0;
+        foreach (var entry in entries.OrderBy(e => e.Id))
+        {
+            foreach (var (from, to) in entry.Renames)
+            {
+                try
+                {
+                    var r = await _js.InvokeAsync<JsResult>(
+                        "PageToMovieMedia.renameFileAsync", ct, $"{projectId}/{from}", $"{projectId}/{to}");
+                    if (r is { Success: true }) applied++;
+                }
+                catch { /* keep going — the next Film load retries via the id bookmark */ }
+            }
+            foreach (var del in entry.Deletes)
+            {
+                try { await _js.InvokeAsync<JsResult>("PageToMovieMedia.deleteFileAsync", ct, $"{projectId}/{del}"); }
+                catch { /* best effort */ }
+            }
+            try { await _js.InvokeVoidAsync("localStorage.setItem", ct, key, entry.Id.ToString()); }
+            catch { /* re-applying later is harmless */ }
+        }
+        if (applied > 0)
+        {
+            LastStatus = $"Renamed {applied} local file(s) to match the server's new numbering.";
+            Changed?.Invoke();
+        }
+        return applied;
+    }
+
     /// <summary>Read a file already in the media folder as bytes.</summary>
     public async Task<byte[]?> ReadLocalBytesAsync(string relativePath, int minBytes = 0)
     {

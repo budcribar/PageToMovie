@@ -381,6 +381,20 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
     </ConfirmModal>
 }
 
+@if (ClipForm._deleteClipsTarget is { } delClips)
+{
+    <ConfirmModal Visible="true" Title="Delete selected clips?" ConfirmLabel="@($"Delete {delClips.Clips.Count} clips")"
+                  ConfirmTestId="clips-delete-confirm" Busy="_busy" BodyClass="" BackdropOpacity=".45"
+                  OnConfirm="ClipForm.ConfirmDeleteClipsAsync" OnCancel="ClipForm.CancelDeleteClips">
+        <p class="mb-0">
+            Delete <strong>@delClips.Clips.Count clips</strong>
+            (<code>@string.Join(", ", delClips.Clips.Select(c => $"C{c:D2}"))</code>)
+            from scene <code>S@(delClips.Scene.ToString("D2"))</code>?
+            This removes each video file and its shot-plan entry — cannot be undone.
+        </p>
+    </ConfirmModal>
+}
+
 @if (ClipForm._clipEditor is not null)
 {
     <Scenes_ClipFieldEditor Editor="ClipForm._clipEditor"

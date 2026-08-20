@@ -1,5 +1,7 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Scenes — clip table in scene detail *@
+@* Page-local to Scenes — clip table in scene detail. Option B: the row IS the clip surface —
+   grip + checkbox + numbered expander + line + duration + ONE status chip; clicking a row expands
+   it in place (player + actions), no separate inspector panel below the table. *@
 @inject StudioCapabilityState Caps
 @inject AdminSessionService Session
 @inject IAppLocalizer L
@@ -12,6 +14,7 @@
     <table class="table table-sm table-hover align-middle">
         <thead>
             <tr>
+                <th style="width:1.2rem;"></th>
                 <th style="width:2rem;">
                     <input class="form-check-input" type="checkbox"
                            data-testid="clip-select-all"
@@ -20,14 +23,14 @@
                            disabled="@(Host._busy || ListState._detail is not { Clips.Count: > 0 })"
                            @onchange="e => ClipSel.ToggleSelectAllClips((bool)(e.Value ?? false))" />
                 </th>
-                <th style="width:7rem;">@L["ScenesPage.ClipHeader"]</th>
+                <th style="width:5.5rem;">@L["ScenesPage.ClipHeader"]</th>
+                <th>@L["ScenesPage.BeatScriptHeader"]</th>
                 <th style="width:5rem; cursor:pointer; user-select:none;"
                     @onclick="ClipSel.ToggleClipDurationSort"
-                    title="Click to sort by duration">
+                    title="Click to sort by duration (drag-reorder needs plan order)">
                     @L["ScenesPage.DurHeader"] @ClipSel.DurationSortArrow
                 </th>
-                <th>@L["ScenesPage.BeatScriptHeader"]</th>
-                <th style="width:4rem;">@L["Common.Status"]</th>
+                <th style="width:10rem;">@L["Common.Status"]</th>
             </tr>
         </thead>
         <tbody>
@@ -37,7 +40,14 @@
                 var cn = c.ClipNumber;
                 var isChecked = ClipSel._selectedClips.Contains(cn);
                 <tr class="@ClipRowClass(active, isChecked)" style="cursor:pointer;"
-                    @onclick="() => ClipForm.SelectClip(cn)">
+                    draggable="@(CanDragClips ? "true" : "false")"
+                    @ondragstart="() => HandleClipDragStart(cn)"
+                    @ondragover:preventDefault
+                    @ondrop="() => HandleClipDropAsync(cn)"
+                    @onclick="() => ToggleExpand(cn)">
+                    <td class="text-muted text-center align-middle pe-0"
+                        title="@(CanDragClips ? "Drag to reorder clips (renumbers files)" : "Reorder is off while sorted by duration or a job runs")"
+                        style="cursor:@(CanDragClips ? "grab" : "default"); letter-spacing:-2px; opacity:.6;">⠿</td>
                     <td @onclick:stopPropagation="true">
                         <input class="form-check-input" type="checkbox"
                                data-testid="@($"clip-select-{cn}")"
@@ -45,81 +55,38 @@
                                disabled="@Host._busy"
                                @onchange="e => ClipSel.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
                     </td>
-                    <td class="text-nowrap" @onclick:stopPropagation="true">
-                        @{
-                            var clipBusy = ClipSel.IsClipGenBusy(cn);
-                        }
-                        @if (clipBusy)
+                    <td class="text-nowrap">
+                        <button type="button"
+                                class="btn btn-sm rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline @(active ? "btn-primary" : "btn-outline-secondary")"
+                                style="font-size:0.78rem;"
+                                data-testid="@($"clip-expander-{cn}")"
+                                title="@(active ? "Collapse this clip" : "Expand this clip (player + actions)")"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ToggleExpand(cn)">
+                            C@(cn.ToString("D2")) @(active ? "▾" : "▸")
+                        </button>
+                    </td>
+                    <td class="small clip-dialogue-cell" title="@ClipDialogueTitle(c)">
+                        @if (!string.IsNullOrWhiteSpace(c.Speaker))
                         {
-                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
-                                  title="Generating — file is about to change">⏳ C@(cn.ToString("D2"))</span>
+                            <strong class="text-info me-1" style="letter-spacing:0.03em;">@c.Speaker.ToUpper():</strong>
                         }
-                        else if (c.OnDisk)
+                        @if (!string.IsNullOrWhiteSpace(c.Dialogue))
                         {
-                            <button type="button"
-                                    class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
-                                    style="font-size:0.78rem; border-width:1px;"
-                                    title="Click to play clip C@(cn.ToString("D2")) video"
-                                    @onclick="() => Playback.PlaySingleClipAsync(ListState._detail.SceneNumber, cn)">
-                                ▶ Play C@(cn.ToString("D2"))
-                            </button>
+                            <span>@Scenes.Trunc(c.Dialogue, 110)</span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
+                        {
+                            <span class="text-muted fst-italic">🎬 @Scenes.Trunc(c.VisualPrompt, 110)</span>
                         }
                         else
                         {
-                            <span class="badge bg-secondary text-light px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
-                                  title="Not on disk yet">C@(cn.ToString("D2"))</span>
+                            <span class="text-muted">—</span>
                         }
-                        @if (c.IsStale)
+                        @if (c.CharactersOnScreen.Count > 0)
                         {
-                                var sr = c.StaleReason ?? "";
-                                var staleKind = sr.StartsWith("plan_lint", StringComparison.OrdinalIgnoreCase) ? "plan"
-                                    : sr.StartsWith("dialogue_qa", StringComparison.OrdinalIgnoreCase) ? "QA"
-                                    : sr == "plan_newer" ? "plan newer" : "";
-                                var staleHelp = staleKind == "plan"
-                                    ? sr + " — regenerating the clip will not clear this; rebuild the shot plan for this scene"
-                                    : (sr.Length > 0 ? sr : "stale") + " — re-generate recommended";
-                            <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")" title="@staleHelp">stale@(staleKind.Length > 0 ? $" · {staleKind}" : "")</span>
+                            <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
                         }
-                        @if (c.DialogueVerification is { } ver)
-                        {
-                            var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
-                            var (badgeClass, badgeText) = ver.Status?.ToLowerInvariant() switch
-                            {
-                                "verified" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
-                                "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Speaker Swap"),
-                                "visual_defect" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Visual defect"),
-
-                                "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
-                                "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
-                                // A silent clip that passed the visual-only check IS verified — same badge as spoken clips.
-                                "no_speech" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
-                                _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle", ver.Status ?? "unverified"),
-                            };
-                            <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
-                                    @onclick:stopPropagation="true"
-                                    @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, cn, ver)">
-                                <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
-                                    @badgeText 📋
-                                </span>
-                            </button>
-                        }
-                        <button type="button"
-                                class="btn btn-sm btn-outline-info py-0 px-1 ms-2 text-decoration-none small"
-                                disabled="@(Host._busy || Gen.JobRunning)"
-                                title="View past takes & version comparison grid for this clip"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
-                            🎬 Takes
-                        </button>
-                        <button type="button"
-                                class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
-                                data-testid="@($"clip-delete-{cn}")"
-                                disabled="@(Host._busy || Gen.JobRunning)"
-                                title="Delete this clip (video + shot plan entry)"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => ClipForm.RequestDeleteClip(ListState._detail.SceneNumber, cn)">
-                            🗑️
-                        </button>
                     </td>
                     <td class="small">
                         @if (c.ActualDurationSeconds is double ca)
@@ -139,48 +106,47 @@
                             <span class="text-muted">—</span>
                         }
                     </td>
-                    <td class="small clip-dialogue-cell"
-                        title="@ClipDialogueTitle(c)"
-                        style="cursor:pointer;"
-                        @onclick:stopPropagation="true"
-                        @onclick="() => ClipForm.OpenClipEditor(c)">
-                        @if (!string.IsNullOrWhiteSpace(c.Speaker))
+                    <td @onclick:stopPropagation="true">
+                        @{ var (chipClass, chipText, chipTitle) = ClipStatusChip(c); }
+                        @if (c.DialogueVerification is { } ver)
                         {
-                            <strong class="text-info me-1" style="letter-spacing:0.03em;">@c.Speaker.ToUpper():</strong>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(c.Dialogue))
-                        {
-                            <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 110)</span>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(c.VisualPrompt))
-                        {
-                            <span class="text-muted fst-italic">🎬 @Scenes.Trunc(c.VisualPrompt, 110)</span>
+                            <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
+                                    data-testid="@($"clip-status-{cn}")"
+                                    @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, cn, ver)">
+                                <span class="badge @chipClass d-inline-block text-center"
+                                      style="min-width:8.5rem; cursor:pointer; padding:0.35em 0.6em; font-size:0.75rem;"
+                                      title="@chipTitle (click for the verification report)">@chipText 📋</span>
+                            </button>
                         }
                         else
                         {
-                            <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
-                        }
-                        @if (c.CharactersOnScreen.Count > 0)
-                        {
-                            <span class="ms-1 text-muted small" style="font-size:0.72rem;">(@string.Join(", ", c.CharactersOnScreen.Select(Scenes.ShortChar)))</span>
-                        }
-                    </td>
-                    <td>
-                        @if (!c.OnDisk)
-                        {
-                            <span class="badge bg-secondary-subtle text-secondary border border-secondary border-opacity-25 px-2" title="Missing clip">⚪</span>
-                        }
-                        else if (c.IsStale)
-                        {
-                            <span class="badge bg-warning text-dark">stale</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-success">ok</span>
+                            <span class="badge @chipClass d-inline-block text-center"
+                                  data-testid="@($"clip-status-{cn}")"
+                                  style="min-width:8.5rem; padding:0.35em 0.6em; font-size:0.75rem;"
+                                  title="@chipTitle">@chipText</span>
                         }
                     </td>
                 </tr>
+                @if (active)
+                {
+                    <tr class="clip-expansion">
+                        <td colspan="6" class="p-0 border-0">
+                            <ScenesClipInspector />
+                        </td>
+                    </tr>
+                }
             }
+            <tr>
+                <td colspan="6" class="border-0">
+                    <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none px-1"
+                            data-testid="clip-add"
+                            disabled="@(Host._busy || Gen.JobRunning)"
+                            title="Add a new clip to this scene's shot plan (generate its video afterward)"
+                            @onclick="ClipForm.OpenAddClipDialog">
+                        ＋ Add clip…
+                    </button>
+                </td>
+            </tr>
         </tbody>
     </table>
 </div>

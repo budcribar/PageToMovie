@@ -207,6 +207,41 @@ public partial class Scenes
 
         internal void CancelDeleteClip() => _deleteClipTarget = null;
 
+        /// <summary>Scene-menu "Delete (N) selected clips…" — one confirm for the whole checked set.</summary>
+        internal (int Scene, List<int> Clips)? _deleteClipsTarget;
+
+        internal void RequestDeleteSelectedClips(int scene, IEnumerable<int> clips)
+        {
+            var list = clips.OrderBy(x => x).ToList();
+            if (list.Count == 1) { _deleteClipTarget = (scene, list[0]); return; }
+            if (list.Count > 0) _deleteClipsTarget = (scene, list);
+        }
+
+        internal void CancelDeleteClips() => _deleteClipsTarget = null;
+
+        internal async Task ConfirmDeleteClipsAsync()
+        {
+            if (_deleteClipsTarget is not { } target) return;
+            S._busy = true;
+            S._error = null;
+            try
+            {
+                foreach (var clip in target.Clips)
+                    await S.Engine.DeleteClipAsync(S._projectId, target.Scene, clip);
+                _deleteClipsTarget = null;
+                if (_selectedClip is int sel && target.Clips.Contains(sel))
+                {
+                    _selectedClip = null;
+                    _clip = null;
+                }
+                S.ClipSel._selectedClips.Clear();
+                S._message = $"Deleted {target.Clips.Count} clip(s) from S{target.Scene:D2} — Play scene / Play WIP to refresh the assembled cut";
+                await S.List.ReloadListAsync();
+            }
+            catch (Exception ex) { S._error = ex.Message; }
+            finally { S._busy = false; }
+        }
+
         internal async Task ConfirmDeleteClipAsync()
         {
             if (_deleteClipTarget is not { } target) return;

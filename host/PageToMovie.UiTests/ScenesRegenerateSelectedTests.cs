@@ -66,7 +66,8 @@ public class ScenesRegenerateSelectedTests
             await Assertions.Expect(scene1Row).ToBeVisibleAsync(new() { Timeout = 30_000 });
             await scene1Row.Locator("input[type=checkbox]").CheckAsync();
 
-            var regenBtn = page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" });
+            // Label renamed to "Regen shot plan for selected scenes" (localized) — use the testid.
+            var regenBtn = page.GetByTestId("scenes-regenerate-selected-scenes");
             await Assertions.Expect(regenBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
             // Tooltip must reflect the scoped selection before we click (wired to _selected.Count).
             await Assertions.Expect(regenBtn).ToHaveAttributeAsync(

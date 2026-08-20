@@ -57,6 +57,36 @@ Status: ☐ open · ☑ resolved (with decision).
   check just that clip → header "Regen (1)". One regen verb, one place; card keeps AI Edit Video /
   Takes / Edit Clip Script.
 
+## Option B — BUILT 2026-08-19 (user call: "implement and test thoroughly option B")
+- Clip row = grip + checkbox + numbered expander chip + line + duration + ONE status chip
+  (generating > missing > stale [QA folds the verify score in] > verdict > ready). Row/chip click
+  expands the clip IN PLACE (ScenesClipInspector renders inside the row): autoplay player,
+  verification one-liner + diff, action bar AI Edit Video / Takes / Edit Clip Script / Fix cast
+  look, admin-only Details fold. No separate inspector panel; no per-row Play/Takes/🗑 buttons.
+- "+ Add clip…" ghost row at the table foot (opens the add-clip editor — trigger was orphaned).
+- Scene header = ▶ Play (N) / ↻ Regen (N) / 🔍 Verify (N) + ⋯ menu (Score, Screenplay drawer,
+  Audio takes, Open in editor, Delete (N) selected clips…, Delete scene…). Multi-clip delete got
+  its own confirm.
+- DRAG-AND-DROP REORDER (renumber-on-drop — the renumber engine from the insert design, built):
+  - Clips within a scene (grip ⠿; disabled while duration-sorted or a job runs). Scenes in the
+    index (disabled while filtered). `ProjectStore.ReorderClips/ReorderScenes`
+    (ProjectStore.Reorder.cs): blueprint order + contiguous numbers, two-phase file renames
+    (crash-healing .renumtmp marker) across video/history/.trash/qa/music/revoice, sidecar +
+    verification JSON content renumbered, extend-src markers deleted (stale predecessor),
+    composite + sources.json invalidated, registry rows renamed in one transaction, ONE auto-git
+    commit.
+  - Scene reorder also permutes the SCREENPLAY's fountain scene chunks (refused on scene-count
+    mismatch — no silent plan/script divergence); a blueprint-only trailing credits scene is
+    tolerated and must stay last.
+  - Client catch-up: committed manifest media_renames.jsonl (append-only, increasing ids) served
+    via GET /media-renames; ClientMediaFolderService.ApplyServerRenamesAsync replays it on Film
+    load (localStorage bookmark; renames are exact-name + skip-if-target-exists = idempotent).
+  - Endpoints: POST scenes/reorder, POST scenes/{s}/clips/reorder (owner/admin).
+  - Tests: 26 unit (ProjectReorderTests) + 3 Playwright (OptionBFilmPageTests: expansion/menu/add,
+    clip drag, scene drag) + updated InteractionTests.
+- Insert-anywhere UI is the remaining piece of the insert design (the renumber engine + manifest
+  now exist; "+ Add clip" appends — insert at position = append + drag).
+
 ## Resolved this session (for reference)
 - ☑ "Edit in Screenplay" on Film scene detail — removed (nav covers it).
 - ☑ "Show Fountain Script" — renamed "📜 Screenplay", moved to scene header.

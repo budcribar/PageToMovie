@@ -40,6 +40,67 @@ public partial class ScenesSceneIndex : PageSliceComponent
 
     internal string _filterText = "";
 
+    // ---- drag-and-drop scene reorder (renumber-on-drop: files + blueprint + screenplay) -------
+
+    private int? _dragScene;
+
+    /// <summary>Reorder needs the FULL list visible in plan order — off while filtered or busy.</summary>
+    private bool CanDragScenes =>
+        string.IsNullOrWhiteSpace(_filterText)
+        && Host.List is { HasActiveFilters: false }
+        && !Host._busy
+        && Host.Gen is { JobRunning: false };
+
+    private void HandleSceneDragStart(int sn) => _dragScene = sn;
+
+    private async Task HandleSceneDropAsync(int targetSn)
+    {
+        var drag = _dragScene;
+        _dragScene = null;
+        if (drag is not int dragSn || dragSn == targetSn || !CanDragScenes) return;
+        var list = ListState ?? Host.List;
+        if (list._scenes is not { Count: > 1 } all) return;
+
+        var order = all.OrderBy(s => s.SceneNumber).Select(s => s.SceneNumber).ToList();
+        var from = order.IndexOf(dragSn);
+        var to = order.IndexOf(targetSn);
+        if (from < 0 || to < 0) return;
+        order.RemoveAt(from);
+        order.Insert(to, dragSn);
+
+        Host._busy = true;
+        Host._error = null;
+        StateHasChanged();
+        try
+        {
+            var (ok, error) = await Engine.ReorderScenesAsync(Host._projectId, order);
+            if (!ok)
+            {
+                Host._error = error ?? "Reorder failed.";
+                return;
+            }
+            list._selected.Clear();
+            ClipSel?._selectedClips.Clear();
+            await MediaFolder.ApplyServerRenamesAsync(Host._projectId);
+            await list.ReloadListAsync();
+            if (list._selectedScene is int openSn)
+            {
+                // Scene numbers changed under the open detail — follow the dragged scene's new home.
+                var newSn = order.IndexOf(dragSn) + 1;
+                await list.OpenSceneAsync(openSn == dragSn ? newSn : Math.Min(order.Count, openSn));
+            }
+        }
+        catch (Exception ex)
+        {
+            Host._error = ex.Message;
+        }
+        finally
+        {
+            Host._busy = false;
+            StateHasChanged();
+        }
+    }
+
     internal IEnumerable<SceneSummary> FilteredScenes
     {
         get

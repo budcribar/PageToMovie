@@ -417,6 +417,49 @@ window.PageToMovieMedia = {
     },
 
     /**
+     * Replay one server-side renumber onto the local folder: copy bytes from → to, then remove
+     * the old entry. Exact-name only (no prefix fallback — a rename must never grab a cousin
+     * take file). No-op success when the source is absent or the target already exists, so
+     * replaying a manifest entry twice is harmless.
+     */
+    renameFileAsync: async function (fromPath, toPath) {
+        if (!this._root) return { success: false, error: "Media folder not connected" };
+        try {
+            const { dir: fromDir, fileName: fromName } = await this._ensurePathAsync(fromPath);
+            let fromFh;
+            try { fromFh = await fromDir.getFileHandle(fromName, { create: false }); }
+            catch (_) { return { success: true, skipped: "source missing" }; }
+            const { dir: toDir, fileName: toName } = await this._ensurePathAsync(toPath);
+            try {
+                await toDir.getFileHandle(toName, { create: false });
+                return { success: true, skipped: "target exists" };
+            } catch (_) { /* target free — proceed */ }
+            const file = await fromFh.getFile();
+            const buf = await file.arrayBuffer();
+            const wh = await toDir.getFileHandle(toName, { create: true });
+            const w = await wh.createWritable();
+            await w.write(buf);
+            await w.close();
+            await fromDir.removeEntry(fromName);
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: err.message || "rename failed" };
+        }
+    },
+
+    /** Delete one file if present (server-side renumber invalidated it, e.g. a scene composite). */
+    deleteFileAsync: async function (relativePath) {
+        if (!this._root) return { success: false, error: "Media folder not connected" };
+        try {
+            const { dir, fileName } = await this._ensurePathAsync(relativePath);
+            try { await dir.removeEntry(fileName); } catch (_) { /* already gone */ }
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: err.message || "delete failed" };
+        }
+    },
+
+    /**
      * Read a project-relative file (e.g. assets/video/scene_01_clip_01.mp4) as byte array.
      */
     getBytesAsync: async function (relativePath, minBytes) {

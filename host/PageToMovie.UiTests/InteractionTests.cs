@@ -41,7 +41,9 @@ public class InteractionTests
         try
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/scenes");
-            await page.Locator("button[title^='Delete scene']").First.ClickAsync();
+            // Delete scene lives in the scene header's ⋯ menu now (rare action).
+            await page.GetByTestId("scene-menu").ClickAsync();
+            await page.GetByTestId("scene-delete").ClickAsync();
 
             // Confirm button carries the exact label "Delete Scene" (the 🗑️ triggers are "Delete scene S..").
             var confirm = page.GetByRole(AriaRole.Button, new() { Name = "Delete Scene", Exact = true });
@@ -76,11 +78,14 @@ public class InteractionTests
         try
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/scenes");
-            // Click the first scene row's badge → opens its detail card (the "+ Add clip" control
+            // Click the first scene row's badge → opens its detail card (the "+ Add clip" ghost row
             // is always present once a scene's detail is loaded, unlike clip-select-bar which only
             // renders when a clip is missing on disk or checked).
             await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
-            // The detail header carries the per-scene Screenplay drawer toggle (the old edit-hub row is gone).
+            // The detail header keeps Play/Regen/Verify; rarer actions (Screenplay drawer, Score,
+            // deletes) fold into the ⋯ menu — open it to reach the drawer toggle.
+            await Assertions.Expect(page.GetByTestId("scene-menu")).ToBeVisibleAsync();
+            await page.GetByTestId("scene-menu").ClickAsync();
             await Assertions.Expect(page.GetByTestId("toggle-fountain-drawer")).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }

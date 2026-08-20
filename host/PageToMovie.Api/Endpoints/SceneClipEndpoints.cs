@@ -29,6 +29,16 @@ public static class SceneClipEndpoints
         // <summary>Delete a whole scene from the shot plan (persisted — removes it from the blueprint and
         // deletes the scene's on-disk media). Owner/admin only.</summary>
         app.MapDelete("/api/projects/{id}/scenes/{scene:int}", DeleteProjectsIdScenesScene);
+        // <summary>Reorder (renumber) whole scenes: body.order lists CURRENT scene numbers in their
+        // new sequence. Renames every number-keyed file, permutes the screenplay's scene chunks,
+        // appends the client rename manifest, one git commit. Owner/admin only.</summary>
+        app.MapPost("/api/projects/{id}/scenes/reorder", PostProjectsIdScenesReorder);
+        // <summary>Reorder (renumber) one scene's clips: body.order lists CURRENT clip numbers in
+        // their new sequence (result is contiguous C01..CNN). Owner/admin only.</summary>
+        app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/reorder", PostProjectsIdScenesSceneClipsReorder);
+        // <summary>Rename-manifest entries with id &gt; after — the client's local media folder
+        // replays these to catch up with server-side renumbering (reorder/insert).</summary>
+        app.MapGet("/api/projects/{id}/media-renames", GetProjectsIdMediaRenames);
         // <summary>Append a new empty scene to the shot plan. Owner/admin only.</summary>
         app.MapPost("/api/projects/{id}/scenes", PostProjectsIdScenes);
         // <summary>One-click add a prefilled (editable) end-credits scene. Owner/admin only.</summary>
@@ -886,4 +896,79 @@ public static class SceneClipEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task<IResult> PostProjectsIdScenesReorder(string id,
+    ReorderRequest body,
+    ProjectStore store,
+    MediaRegistryService registry,
+    IUserContext user,
+    IOptions<PageToMovieOptions> opts,
+    CancellationToken ct)
+    {
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can reorder scenes.", ct) is { } forbidden)
+        return forbidden;
+    try
+    {
+        var result = store.ReorderScenes(id, body.Order ?? new List<int>(), user.UserId);
+        await registry.RenamePathsAsync(id, result.MediaRenames, result.MediaDeletes, ct);
+        return Results.Ok(new { ok = true, projectId = id, renamed = result.MediaRenames.Count, deleted = result.MediaDeletes.Count, manifestId = result.ManifestId });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
+
+    private static async Task<IResult> PostProjectsIdScenesSceneClipsReorder(string id, int scene,
+    ReorderRequest body,
+    ProjectStore store,
+    MediaRegistryService registry,
+    IUserContext user,
+    IOptions<PageToMovieOptions> opts,
+    CancellationToken ct)
+    {
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can reorder clips.", ct) is { } forbidden)
+        return forbidden;
+    try
+    {
+        var result = store.ReorderClips(id, scene, body.Order ?? new List<int>(), user.UserId);
+        await registry.RenamePathsAsync(id, result.MediaRenames, result.MediaDeletes, ct);
+        return Results.Ok(new { ok = true, projectId = id, scene, renamed = result.MediaRenames.Count, deleted = result.MediaDeletes.Count, manifestId = result.ManifestId });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
+
+    private static async Task<IResult> GetProjectsIdMediaRenames(string id,
+    long after,
+    ProjectStore store,
+    IUserContext user,
+    IOptions<PageToMovieOptions> opts,
+    CancellationToken ct)
+    {
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    try
+    {
+        await store.RequireProjectAsync(id, ct);
+        var entries = store.ReadRenameManifest(id, after);
+        return Results.Text("{\"ok\":true,\"entries\":[" + string.Join(",", entries.Select(e => e.ToJsonString())) + "]}", "application/json");
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
+}
+
+/// <summary>Body for the scene/clip reorder endpoints: CURRENT numbers in their new sequence.</summary>
+public sealed class ReorderRequest
+{
+    public List<int>? Order { get; set; }
 }

@@ -1599,6 +1599,77 @@ public sealed class EngineApiClient
         return doc.RootElement.TryGetProperty("restored", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
     }
 
+    /// <summary>Reorder one scene's clips: order = CURRENT clip numbers in their new sequence.</summary>
+    public async Task<(bool Ok, string? Error)> ReorderClipsAsync(string projectId, int scene, IReadOnlyList<int> order, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var resp = await _http.PostAsJsonAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/reorder", new { order }, JsonOpts, ct);
+        return await ReadOkOrErrorAsync(resp, ct);
+    }
+
+    /// <summary>Reorder whole scenes: order = CURRENT scene numbers in their new sequence.</summary>
+    public async Task<(bool Ok, string? Error)> ReorderScenesAsync(string projectId, IReadOnlyList<int> order, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var resp = await _http.PostAsJsonAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/reorder", new { order }, JsonOpts, ct);
+        return await ReadOkOrErrorAsync(resp, ct);
+    }
+
+    private static async Task<(bool Ok, string? Error)> ReadOkOrErrorAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        var text = await resp.Content.ReadAsStringAsync(ct);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(text);
+            if (doc.RootElement.TryGetProperty("error", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.String)
+                return (false, e.GetString());
+        }
+        catch (System.Text.Json.JsonException) { /* non-JSON error body */ }
+        return (false, $"{(int)resp.StatusCode} {resp.ReasonPhrase}");
+    }
+
+    /// <summary>Rename-manifest entries after the given id — the local media folder replays these
+    /// to catch up with server-side renumbering (scene/clip reorder or insert).</summary>
+    public async Task<IReadOnlyList<MediaRenameManifestEntry>> GetMediaRenamesAsync(string projectId, long after, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        var entries = new List<MediaRenameManifestEntry>();
+        using var resp = await _http.GetAsync($"{ProjectIdRouting.ProjectApi(projectId)}/media-renames?after={after}", ct);
+        if (!resp.IsSuccessStatusCode) return entries;
+        using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+        if (!doc.RootElement.TryGetProperty("entries", out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return entries;
+        foreach (var e in arr.EnumerateArray())
+        {
+            var entry = new MediaRenameManifestEntry
+            {
+                Id = e.TryGetProperty("id", out var idEl) && idEl.TryGetInt64(out var idVal) ? idVal : 0,
+            };
+            if (e.TryGetProperty("renames", out var rn) && rn.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var r in rn.EnumerateArray())
+                {
+                    var from = r.TryGetProperty("from", out var f) ? f.GetString() : null;
+                    var to = r.TryGetProperty("to", out var t) ? t.GetString() : null;
+                    if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(to))
+                        entry.Renames.Add((from!, to!));
+                }
+            }
+            if (e.TryGetProperty("deletes", out var dl) && dl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var d in dl.EnumerateArray())
+                {
+                    if (d.GetString() is { Length: > 0 } path) entry.Deletes.Add(path);
+                }
+            }
+            if (entry.Id > 0) entries.Add(entry);
+        }
+        return entries;
+    }
+
     public async Task ActivateProjectAsync(string projectId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
@@ -4626,6 +4697,15 @@ public sealed class ProjectsDto
     public bool Ok { get; set; }
     public ProjectInfo? Active { get; set; }
     public List<ProjectInfo> Projects { get; set; } = new();
+}
+
+/// <summary>One entry of the server's committed rename manifest (media_renames.jsonl): the local
+/// media folder replays renames/deletes it has not applied yet, tracked by Id.</summary>
+public sealed class MediaRenameManifestEntry
+{
+    public long Id { get; set; }
+    public List<(string From, string To)> Renames { get; } = new();
+    public List<string> Deletes { get; } = new();
 }
 
 public sealed class VoiceApplyDto

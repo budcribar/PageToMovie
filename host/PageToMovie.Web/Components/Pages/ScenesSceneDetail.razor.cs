@@ -36,6 +36,9 @@ public partial class ScenesSceneDetail : PageSliceComponent
 
     [CascadingParameter] public Scenes.ScenesHistory? History { get; set; }
 
+    /// <summary>The scene header's ⋯ menu (Score / Screenplay / Audio takes / editor / deletes).</summary>
+    private bool _showSceneMenu;
+
     private string FinishedJobBorder
     {
         get

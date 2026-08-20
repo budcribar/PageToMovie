@@ -273,7 +273,11 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         _sidecarRestoreRan = true;
         try
         {
-            if (await MediaFolder.RestoreMissingClipSidecarsAsync(_projectId, List._scenes) > 0)
+            // Renames first: a reorder done on another machine (or before this folder connected)
+            // must land before the sidecar pass looks files up by their new names.
+            var renamed = await MediaFolder.ApplyServerRenamesAsync(_projectId);
+            var restored = await MediaFolder.RestoreMissingClipSidecarsAsync(_projectId, List._scenes);
+            if (renamed > 0 || restored > 0)
                 await List.ReloadListAsync();
         }
         catch { /* best effort */ }
