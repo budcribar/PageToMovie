@@ -5,6 +5,14 @@
 <PageTitle>@L["Adaptation.ShotPlan"]</PageTitle>
 
 <AdaptationShell Host="this" Step="shots">
+    <HeaderActions>
+        @if (Status?.Stage2 is { Stage2Ready: true, Stage2Stale: false })
+        {
+            <a class="btn btn-success btn-sm" data-testid="shots-to-scenes" href="scenes"
+               title="Create video clips from this shot plan">@L["Adaptation.OpenScenesLink"]</a>
+        }
+    </HeaderActions>
+    <ChildContent>
     @if (Status is not null)
     {
         <div class="card">
@@ -80,11 +88,6 @@
                                 @onclick="Pipeline.RunShotsAsync">
                             @ShotPlanButtonLabel(Status.Stage2)
                         </button>
-                        @if (Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
-                        {
-                            <a class="btn btn-outline-primary" data-testid="shots-to-scenes" href="scenes"
-                               title="Create video clips from this shot plan">@L["Adaptation.OpenScenesLink"]</a>
-                        }
                         <div data-testid="shots-status"
                              data-ready="@(Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale ? "true" : "false")"
                              data-scenes="@Status.Stage2.Stage2Scenes"
@@ -106,4 +109,5 @@
             </div>
         </div>
     }
+    </ChildContent>
 </AdaptationShell>

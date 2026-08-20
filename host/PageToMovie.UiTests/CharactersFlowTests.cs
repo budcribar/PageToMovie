@@ -22,8 +22,19 @@ public class CharactersFlowTests
         {
             await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl, "CharUI_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
+            var headerActions = page.Locator(".ptm-page-head__actions");
+            await Assertions.Expect(headerActions.GetByTestId("characters-status")).ToBeAttachedAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.Locator(".alert-info [data-testid=characters-to-locations]")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.Locator(".alert-info [data-testid=characters-to-shots]")).ToHaveCountAsync(0);
+            var next = headerActions.GetByTestId("characters-to-locations")
+                .Or(headerActions.GetByTestId("characters-to-shots"));
+            if (await next.CountAsync() > 0)
+                await Assertions.Expect(next.First).ToHaveClassAsync(new Regex("btn-success"));
+
             // Select the first character; its detail panel opens on the "choose a look route" state.
             await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            // Fresh extract: used faces/places are unlocked, so plan-looks stays (hidden only when all locked).
+            await Assertions.Expect(page.GetByTestId("characters-plan-looks")).ToBeVisibleAsync(new() { Timeout = 15_000 });
             await page.GetByTestId("char-list-item").First.ClickAsync();
 
             // Choose the "generate from description" route → description form appears.

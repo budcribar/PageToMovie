@@ -1,9 +1,19 @@
 @namespace PageToMovie.Web.Components
 
 <div class="ptm-page-head @CssClass">
-    <span class="ptm-adapt-kicker">@Kicker</span>
-    <h1 class="ptm-adapt-title mb-1">@Title</h1>
-    <p class="ptm-adapt-lede @LedeClass">
-        @ChildContent
-    </p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+            <span class="ptm-adapt-kicker">@Kicker</span>
+            <h1 class="ptm-adapt-title mb-1">@Title</h1>
+            <p class="ptm-adapt-lede @LedeClass">
+                @ChildContent
+            </p>
+        </div>
+        @if (Actions is not null)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 ptm-page-head__actions">
+                @Actions
+            </div>
+        }
+    </div>
 </div>

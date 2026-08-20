@@ -20,6 +20,11 @@ public partial class Characters
 
         internal List<CharacterSummary>? _chars;
 
+        internal List<LocationSummary> _locations = new();
+
+        /// <summary>False until locations have been fetched so we do not hide plan-looks early.</summary>
+        internal bool _locationsKnown;
+
         internal bool _extractingCast;
 
         internal string? _focusHint;
@@ -225,6 +230,14 @@ public partial class Characters
         internal int OperatorCastCount => CharactersForUi.Count();
 
 
+        /// <summary>
+        /// SkipAlreadyLocked plan_looks would be a no-op: every used-in-plan face and place
+        /// already has a locked look. Unknown until both lists are loaded.
+        /// </summary>
+        internal bool PlanLooksAlreadyDone =>
+            _chars is not null && _locationsKnown
+            && PlanLooksWork.AllUsedLooksLocked(_chars, _locations);
+
         /// <summary>Every cast member has look (if needed) + voice — next is shot plan or scenes.</summary>
         internal bool IsCastComplete => ComputeIsCastComplete();
 
@@ -306,6 +319,7 @@ public partial class Characters
             {
                 var dto = await S.Engine.GetCharactersAsync(S._projectId);
                 _chars = dto?.Characters ?? new List<CharacterSummary>();
+                await RefreshLocationsAsync();
                 _plates = dto?.CharacterPlates;
                 S.LookBook._imageSeedLimits = dto?.ImageSeedLimits;
                 S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -336,6 +350,7 @@ public partial class Characters
             {
                 S._error = ex.Message;
                 _chars = null;
+                _locationsKnown = false;
                 _plates = null;
                 S.LookBook._imageSeedLimits = null;
             }
@@ -349,6 +364,7 @@ public partial class Characters
             {
                 var dto = await S.Engine.GetCharactersAsync(S._projectId);
                 _chars = dto?.Characters ?? new List<CharacterSummary>();
+                await RefreshLocationsAsync();
                 _plates = dto?.CharacterPlates;
                 S.LookBook._imageSeedLimits = dto?.ImageSeedLimits;
                 S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -546,6 +562,28 @@ public partial class Characters
         }
 
 
+        private async Task RefreshLocationsAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S._projectId))
+            {
+                _locations = new();
+                _locationsKnown = true;
+                return;
+            }
+
+            try
+            {
+                var locs = await S.Engine.GetLocationsAsync(S._projectId);
+                _locations = locs?.Locations ?? new List<LocationSummary>();
+                _locationsKnown = true;
+            }
+            catch
+            {
+                // Keep the button visible rather than hiding on a failed fetch.
+                _locationsKnown = false;
+            }
+        }
+
         internal async Task ReloadSelectedCharacterAsync()
         {
             if (string.IsNullOrEmpty(S._projectId)) return;
@@ -553,6 +591,7 @@ public partial class Characters
             {
                 var dto = await S.Engine.GetCharactersAsync(S._projectId);
                 _chars = dto?.Characters ?? new List<CharacterSummary>();
+                await RefreshLocationsAsync();
                 _selected = CharactersForUi.FirstOrDefault(c =>
                     string.Equals(c.Key, _selectedKey, StringComparison.OrdinalIgnoreCase));
                 if (_selected is not null)

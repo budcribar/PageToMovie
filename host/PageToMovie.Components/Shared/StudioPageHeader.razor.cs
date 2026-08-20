@@ -14,4 +14,6 @@ public partial class StudioPageHeader
     [Parameter] public string CssClass { get; set; } = "mb-3";
     [Parameter] public string LedeClass { get; set; } = "mb-0";
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Optional top-right actions (same slot as Screenplay's green next control).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
 }

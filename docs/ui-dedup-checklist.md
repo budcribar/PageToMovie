@@ -20,7 +20,7 @@ Status: ☐ open · ☑ resolved (with decision).
 | 9 | ☑ | Open in ClipChamp / external editor | Scene ⋯ menu | Header button folded into the menu; Review page instance stays (post-review hand-off — intentional). |
 | 10 | ☑ | Score music | Scene ⋯ menu "🎵 Score" | Audio takes lives beside it IN THE SAME MENU now — one surface. |
 | 11 | ☐ | Connect media folder | Settings → Project Storage (canonical) | Film banner / Review Play tab / NavMenu reconnect / generate-gate — all REACTIVE prompts at point of need; likely keep, decide once. |
-| 12 | ☐ | Generate looks for plan | Cast page | Locations page · Estimate · Shots — one "prepare visuals" verb across four pages, still open. |
+| 12 | ☑ | Generate looks for plan | Cast + Locations pages (same `plan_looks` job) | Next-step buttons aligned to Screenplay's top green control; plan-looks button hidden once all used faces/places are locked; Estimate/Shots auto-chain unchanged. |
 | 13 | ☐ | Open Film → | Left nav + process strip | Locations/Estimate/Shots inline links — harmless nav sugar? decide once. |
 | 14 | ☐ | New project / Import toggles | Home full-studio card | Easy-start landing duplicates the toggles. |
 | 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase | Record phase repeats the action (two phases of one flow). |

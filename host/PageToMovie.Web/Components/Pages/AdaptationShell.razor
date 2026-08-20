@@ -31,6 +31,7 @@
             }
         </div>
         <div class="d-flex align-items-center gap-2">
+            @HeaderActions
             @if (!string.IsNullOrEmpty(ActiveProject.ParentProjectId))
             {
                 <span class="badge text-bg-info px-2 py-1 fs-6" title="Forked from @ActiveProject.ParentProjectId">Fork of @ActiveProject.ParentProjectId</span>

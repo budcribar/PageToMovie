@@ -65,6 +65,30 @@ public class PageSweepTests
             }
             Assert.True(await items.CountAsync() >= 2, "Mary has at least the lane and the schoolroom");
 
+            var locNext = page.GetByTestId("locations-page-actions").GetByTestId("locations-open-film");
+            await Assertions.Expect(locNext).ToBeVisibleAsync();
+            await Assertions.Expect(locNext).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("btn-success"));
+            var planLooksNeeded = await page.EvaluateAsync<bool>(@"async () => {
+                const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return true;
+                const s = JSON.parse(raw);
+                const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+                const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
+                const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
+                if (!id) return true;
+                const E = encodeURIComponent(id);
+                const chars = (await fetch('/api/projects/'+E+'/characters', {headers:h}).then(r=>r.json())).characters || [];
+                const locs = (await fetch('/api/projects/'+E+'/locations', {headers:h}).then(r=>r.json())).locations || [];
+                const used = v => v.usedInPlan !== false && v.UsedInPlan !== false;
+                const locked = v => !!(v.locked || v.Locked);
+                const faceNeed = chars.some(c => used(c) && !(c.isGroup||c.IsGroup) && !(c.voiceOnly||c.VoiceOnly) && !locked(c));
+                const locNeed = locs.some(l => used(l) && !locked(l));
+                return faceNeed || locNeed;
+            }");
+            if (planLooksNeeded)
+                await Assertions.Expect(page.GetByTestId("locations-plan-looks")).ToBeVisibleAsync();
+            else
+                await Assertions.Expect(page.GetByTestId("locations-plan-looks")).ToHaveCountAsync(0);
+
             await items.First.ClickAsync();
             // Pipeline locks plates for shots: locked plate, or (if this location is unlocked)
             // the empty-state + generate control must be present — never neither.

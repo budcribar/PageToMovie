@@ -10,6 +10,8 @@ public partial class Locations : IDisposable
 
     private string _projectId = "";
     private List<LocationSummary> _locations = new();
+    private List<CharacterSummary> _characters = new();
+    private bool _charactersKnown;
     private bool _showUnusedInPlan = false;
     private string? _selectedKey;
 
@@ -27,6 +29,41 @@ public partial class Locations : IDisposable
 
     private int NeedPlateCount =>
         LocationsForUi.Count(l => !l.Locked && !l.HasPreferred);
+
+    /// <summary>
+    /// Hide plan-looks once every used-in-plan face and place is locked (job would be a no-op).
+    /// Keep the button visible (disabled) while a plan_looks job is running.
+    /// </summary>
+    private bool PlanLooksAlreadyDone =>
+        _charactersKnown && PlanLooksWork.AllUsedLooksLocked(_characters, _locations);
+
+    private bool PlanLooksJobRunning =>
+        _job is { Status: "running" or "queued" } j
+        && string.Equals(j.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase);
+
+    private bool ShowPlanLooksButton =>
+        PlanLooksJobRunning || !PlanLooksAlreadyDone;
+
+    private async Task RefreshCharactersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId))
+        {
+            _characters = new();
+            _charactersKnown = true;
+            return;
+        }
+
+        try
+        {
+            var chars = await Engine.GetCharactersAsync(_projectId);
+            _characters = chars?.Characters ?? new List<CharacterSummary>();
+            _charactersKnown = true;
+        }
+        catch
+        {
+            _charactersKnown = false;
+        }
+    }
 
     private static string ListMeta(LocationSummary loc, bool isLocked)
     {
@@ -108,6 +145,8 @@ public partial class Locations : IDisposable
         if (string.IsNullOrWhiteSpace(_projectId))
         {
             _locations = new();
+            _characters = new();
+            _charactersKnown = true;
             _selected = null;
             _loading = false;
             return;
@@ -118,6 +157,7 @@ public partial class Locations : IDisposable
         {
             var dto = await Engine.GetLocationsAsync(_projectId);
             _locations = dto?.Locations ?? new List<LocationSummary>();
+            await RefreshCharactersAsync();
 
             // Server may have lost plates after deploy/import while the browser media folder still has them.
             if (NeedPlateCount > 0 && MediaFolder.IsConnected)
@@ -127,6 +167,7 @@ public partial class Locations : IDisposable
                 {
                     dto = await Engine.GetLocationsAsync(_projectId);
                     _locations = dto?.Locations ?? new List<LocationSummary>();
+                    await RefreshCharactersAsync();
                     _message = $"Restored {restored} set plate(s) from your media folder.";
                 }
             }
@@ -151,6 +192,7 @@ public partial class Locations : IDisposable
         {
             _error = ex.Message;
             _locations = new();
+            _charactersKnown = false;
         }
         finally
         {
@@ -180,6 +222,7 @@ public partial class Locations : IDisposable
             var restored = await TryRestorePlatesFromMediaFolderCoreAsync(silent: false);
             var dto = await Engine.GetLocationsAsync(_projectId);
             _locations = dto?.Locations ?? new List<LocationSummary>();
+            await RefreshCharactersAsync();
             if (!string.IsNullOrWhiteSpace(_selectedKey))
                 await SelectAsync(_selectedKey);
             else if (_locations.Count > 0)
