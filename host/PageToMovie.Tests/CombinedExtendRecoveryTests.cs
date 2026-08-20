@@ -293,7 +293,7 @@ public class CombinedExtendRecoveryTests
         var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
 
         Assert.True(n);
-        Assert.Equal(1, js.PrefetchSources.Count);
+        Assert.Single(js.PrefetchSources);
         Assert.Contains(js.PrefetchSources, CombinedExtendRecovery.IsRemotePlayableUrl);
         Assert.DoesNotContain(js.ProbeSources, CombinedExtendRecovery.IsRemotePlayableUrl);
         Assert.DoesNotContain(js.TrimSources, CombinedExtendRecovery.IsRemotePlayableUrl);
