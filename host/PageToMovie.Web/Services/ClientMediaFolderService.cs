@@ -445,6 +445,8 @@ public sealed class ClientMediaFolderService
             return null;
         }
 
+        // Screenplay-boundary tail, then cap to the VideoEdit catalog field (never a hardcoded 8.7).
+        var savedDurationSec = SupportedModelCatalog.CapToVideoEditInput(newDurationSec.Value);
         var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
@@ -453,7 +455,22 @@ public sealed class ClientMediaFolderService
             Changed?.Invoke();
             return null;
         }
-        return slice.Url;
+
+        if (savedDurationSec + 0.01 >= newDurationSec.Value)
+            return slice.Url;
+
+        // Keep lead-in → lead-in+cappedDuration (the first N seconds of the new screenplay clip).
+        var capped = await _js.InvokeAsync<JsTrimTailResult>(
+            "PageToMovieFfmpeg.trimHeadAsync", slice.Url, savedDurationSec, null);
+        await RevokeBlobIfAnyAsync(slice.Url);
+        if (capped is not { Success: true } || string.IsNullOrWhiteSpace(capped.Url))
+        {
+            LastStatus = $"Video-extend slice failed for {rel} " +
+                         $"({capped?.Error ?? "duration cap failed"}) — retry the clip.";
+            Changed?.Invoke();
+            return null;
+        }
+        return capped.Url;
     }
 
     private readonly record struct PreparedSaveUrl(

@@ -7,6 +7,8 @@ using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 using Xunit;
 
+// Catalog-serial: save-slice cap tests read VideoEdit MaxEditInputDurationSeconds.
+
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -14,6 +16,7 @@ namespace PageToMovie.Tests;
 /// tail as the current clip and walks backward when a leftover unsliced head still contains
 /// earlier clips — never the raw combined file as a clip.
 /// </summary>
+[Collection("catalog-serial")]
 public class CombinedExtendRecoveryTests
 {
     private const string ProjectId = "Mary19";
@@ -84,6 +87,77 @@ public class CombinedExtendRecoveryTests
         Assert.True(js.SavedFromHead(C2));
         Assert.False(js.SavedRelative(C1));
         Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+    }
+
+    [Fact]
+    public async Task C3_extended_from_combined_C2_hop_walks_full_C1_C2_C3_chain()
+    {
+        // NEW NORMAL: C3 was extended from C2's combined provider file, so the provider
+        // copy is C1+C2+C3 and C3.lead-in is the previous input duration (C1+C2).
+        // C2's sidecar lead-in is still how much of THAT file is previous (C1).
+        const double c1 = 6.0;
+        const double c2 = 5.0;
+        const double c3 = 4.0;
+        var hops = CombinedExtendRecovery.PlanPredecessorHops(c1 + c2, new[] { c1 });
+        Assert.Equal(new[] { c1 }, hops);
+
+        var (svc, js) = await ConnectAsync(providerDuration: c1 + c2 + c3);
+        var n = await svc.TrySaveSyncedMediaFileAsync(
+            ProjectId, CombinedClip(C3, leadIn: c1 + c2, predecessors: [c1]));
+
+        Assert.True(n);
+        Assert.True(js.SavedRelative(C3));
+        Assert.True(js.SavedRelative(C2));
+        Assert.True(js.SavedRelative(C1));
+        Assert.True(js.SavedFromTail(C3));
+        Assert.True(js.SavedFromTail(C2));
+        Assert.True(js.SavedFromHead(C1));
+        Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+        Assert.DoesNotContain(js.Saves, s =>
+            s.Path.Contains("clip_02", StringComparison.Ordinal) && s.Url.StartsWith("blob:head:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Screenplay_tail_under_edit_cap_is_saved_at_clip_duration()
+    {
+        SupportedModelCatalog.ReloadCatalog();
+        var cap = SupportedModelCatalog.VideoEditMaxInputDurationSeconds();
+        Assert.True(cap is > 0);
+        const double leadIn = 4.9;
+        const double clipDur = 5.0;
+        Assert.True(clipDur < cap);
+
+        var (svc, js) = await ConnectAsync(providerDuration: leadIn + clipDur);
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: leadIn));
+
+        Assert.True(n);
+        Assert.True(js.SavedFromTail(C2));
+        Assert.Contains(js.TrimKeeps, k =>
+            k.Identifier.EndsWith("trimTailAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - clipDur) < 0.05);
+        Assert.DoesNotContain(js.TrimKeeps, k =>
+            k.Identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
+        Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+    }
+
+    [Fact]
+    public async Task Screenplay_clip_over_edit_cap_is_saved_capped_to_catalog()
+    {
+        SupportedModelCatalog.ReloadCatalog();
+        var cap = SupportedModelCatalog.VideoEditMaxInputDurationSeconds();
+        Assert.True(cap is > 0);
+        const double leadIn = 5.0;
+        var screenplay = cap.Value + 3.0;
+
+        var (svc, js) = await ConnectAsync(providerDuration: leadIn + screenplay);
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: leadIn));
+
+        Assert.True(n);
+        Assert.True(js.SavedRelative(C2));
+        Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
+        Assert.Contains(js.TrimKeeps, k =>
+            k.Identifier.EndsWith("trimTailAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - screenplay) < 0.05);
+        Assert.Contains(js.TrimKeeps, k =>
+            k.Identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
     }
 
     [Fact]
@@ -195,6 +269,7 @@ public class CombinedExtendRecoveryTests
         public HashSet<string> CombinedLocalFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<(string Url, string Path)> Saves { get; } = new();
         public List<string> TrimSources { get; } = new();
+        public List<(string Identifier, double Keep)> TrimKeeps { get; } = new();
         public bool ProviderUnavailable { get; set; }
         public double ProviderDurationSeconds { get; set; } = 10;
         private readonly Dictionary<string, double> _durations = new(StringComparer.Ordinal);
@@ -263,6 +338,7 @@ public class CombinedExtendRecoveryTests
                 if (IsUnavailable(url))
                     return """{"success":false,"error":"HTTP 404"}""";
                 var keep = args.Length > 1 && double.TryParse(args[1]?.ToString(), out var k) ? k : 1;
+                TrimKeeps.Add((identifier, keep));
                 var kind = identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) ? "head" : "tail";
                 var blob = $"blob:{kind}:{++_trimSeq}";
                 _durations[blob] = keep;
