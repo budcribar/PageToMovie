@@ -130,10 +130,13 @@ public static partial class SceneClipEndpoints
         using (CatalogApiKey.PushKey(providerId, key))
         using (UserApiCallScope.Push(svc.User.UserId))
             return await MediaEndpoints.StreamProviderCopyAsync(
-                providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Video, modelId,
+                providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory,
                 req.HttpContext, ct,
-                recoverAfterProvider: (_, _, _) => Task.FromResult(
-                    MediaEndpoints.TryRecoverHostedCopy(projectDir, sceneNumber, clipNumber)));
+                new MediaEndpoints.StreamProviderCopyOptions(
+                    Video: svc.Video,
+                    Model: modelId,
+                    RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                        MediaEndpoints.TryRecoverHostedCopy(projectDir, sceneNumber, clipNumber))));
     }
 
     private static async Task<IResult> ServeXaiClipOrNotFoundAsync(

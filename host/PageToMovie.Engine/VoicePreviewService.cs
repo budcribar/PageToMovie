@@ -341,8 +341,10 @@ public sealed class VoicePreviewService
         await AppendLogSafe(onProgress, 12, "request_id=" + requestId);
 
         var videoUrl = await _video.PollForVideoUrlAsync(requestId, msg => ReportPollProgress(onProgress, msg), ct);
-        return await DownloadPreviewAsync(projectId, charKey, inputs, videoUrl, duration, model, onProgress, ct)
-            .ConfigureAwait(false);
+        return await DownloadPreviewAsync(
+            new PreviewDownloadContext(projectId, charKey, inputs, videoUrl, duration, model),
+            onProgress,
+            ct).ConfigureAwait(false);
     }
 
     private static void ReportPollProgress(Action<int, int, string>? onProgress, string msg)
@@ -355,27 +357,31 @@ public sealed class VoicePreviewService
         onProgress?.Invoke(Math.Clamp(mapped, 12, 85), 100, msg);
     }
 
+    /// <summary>Download payload for the generated sample; not voice-character inputs.</summary>
+    private readonly record struct PreviewDownloadContext(
+        string ProjectId,
+        string CharKey,
+        VoicePreviewInputs Inputs,
+        string VideoUrl,
+        int Duration,
+        string Model);
+
     private async Task<string> DownloadPreviewAsync(
-        string projectId,
-        string charKey,
-        VoicePreviewInputs inputs,
-        string videoUrl,
-        int duration,
-        string model,
+        PreviewDownloadContext ctx,
         Action<int, int, string>? onProgress,
         CancellationToken ct)
     {
         onProgress?.Invoke(88, 100, "Downloading sample…");
-        Directory.CreateDirectory(GetPreviewDir(projectId));
-        var mp4Path = GetMp4Path(projectId, charKey);
-        var metaPath = GetMetaPath(projectId, charKey);
+        Directory.CreateDirectory(GetPreviewDir(ctx.ProjectId));
+        var mp4Path = GetMp4Path(ctx.ProjectId, ctx.CharKey);
+        var metaPath = GetMetaPath(ctx.ProjectId, ctx.CharKey);
 
-        await _video.DownloadToFileAsync(videoUrl, mp4Path, model, ct);
+        await _video.DownloadToFileAsync(ctx.VideoUrl, mp4Path, ctx.Model, ct);
         if (!File.Exists(mp4Path) || new FileInfo(mp4Path).Length < 512)
             throw new InvalidOperationException("Voice sample download produced empty file.");
 
-        TryDeleteLegacyMp3(projectId, charKey);
-        await WritePreviewMetaAsync(metaPath, charKey, inputs, duration, ct).ConfigureAwait(false);
+        TryDeleteLegacyMp3(ctx.ProjectId, ctx.CharKey);
+        await WritePreviewMetaAsync(metaPath, ctx.CharKey, ctx.Inputs, ctx.Duration, ct).ConfigureAwait(false);
         onProgress?.Invoke(100, 100, "Voice sample ready");
         return mp4Path;
     }
