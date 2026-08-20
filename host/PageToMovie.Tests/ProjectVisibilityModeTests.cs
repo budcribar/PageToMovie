@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
+using PageToMovie.Web.Services;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -102,5 +104,71 @@ public class ProjectVisibilityModeTests
         {
             DeleteRoot(root);
         }
+    }
+
+    [Theory]
+    [InlineData(ProjectVisibility.Private, "Private")]
+    [InlineData(ProjectVisibility.Public, "Public")]
+    [InlineData(ProjectVisibility.Unlisted, "Unlisted")]
+    [InlineData(ProjectVisibility.Open, "Open")]
+    public void Json_roundtrips_canonical_visibility(ProjectVisibility value, string expectedName)
+    {
+        var json = JsonSerializer.Serialize(new ProjectInfo { Id = "p", VisibilityMode = value }, EngineApiClient.JsonOpts);
+        Assert.Contains($"\"visibilityMode\":\"{expectedName}\"", json, StringComparison.Ordinal);
+
+        var roundTrip = JsonSerializer.Deserialize<ProjectInfo>(json, EngineApiClient.JsonOpts);
+        Assert.NotNull(roundTrip);
+        Assert.Equal(value, roundTrip!.VisibilityMode);
+    }
+
+    [Theory]
+    [InlineData("\"publicforkable\"", ProjectVisibility.Open)]
+    [InlineData("\"PublicForkable\"", ProjectVisibility.Open)]
+    [InlineData("\"forkable\"", ProjectVisibility.Open)]
+    [InlineData("\"Forkable\"", ProjectVisibility.Open)]
+    [InlineData("\"open\"", ProjectVisibility.Open)]
+    [InlineData("\"not-a-real-mode\"", ProjectVisibility.Private)]
+    [InlineData("\"\"", ProjectVisibility.Private)]
+    [InlineData("null", ProjectVisibility.Private)]
+    public void Json_maps_aliases_and_unknown_visibility_without_throwing(string jsonValue, ProjectVisibility expected)
+    {
+        var json = $$"""{"id":"p","visibilityMode":{{jsonValue}}}""";
+        var parsed = JsonSerializer.Deserialize<ProjectInfo>(json, EngineApiClient.JsonOpts);
+        Assert.NotNull(parsed);
+        Assert.Equal(expected, parsed!.VisibilityMode);
+    }
+
+    [Fact]
+    public void Project_list_still_loads_when_one_visibility_is_unknown()
+    {
+        // WASM GetProjectsAsync deserializes this shape with EngineApiClient.JsonOpts.
+        // A single leftover alias / unknown string used to throw DeserializeUnableToConvertValue
+        // at $.projects[n].visibilityMode and drop the whole picker payload.
+        const string json = """
+            {
+              "ok": true,
+              "projects": [
+                { "id": "a", "visibilityMode": "Private" },
+                { "id": "b", "visibilityMode": "Public" },
+                { "id": "c", "visibilityMode": "Unlisted" },
+                { "id": "d", "visibilityMode": "Open" },
+                { "id": "alias", "visibilityMode": "publicforkable" },
+                { "id": "alias2", "visibilityMode": "forkable" },
+                { "id": "bad", "visibilityMode": "totally-unknown" }
+              ]
+            }
+            """;
+
+        var dto = JsonSerializer.Deserialize<ProjectsDto>(json, EngineApiClient.JsonOpts);
+        Assert.NotNull(dto);
+        Assert.True(dto!.Ok);
+        Assert.Equal(7, dto.Projects.Count);
+        Assert.Equal(ProjectVisibility.Private, dto.Projects[0].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Public, dto.Projects[1].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Unlisted, dto.Projects[2].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Open, dto.Projects[3].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Open, dto.Projects[4].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Open, dto.Projects[5].VisibilityMode);
+        Assert.Equal(ProjectVisibility.Private, dto.Projects[6].VisibilityMode);
     }
 }
