@@ -20,6 +20,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
     public const string ApiBase = SupportedModelCatalog.GoogleApiBase;
 
     private const string PartsKey = "parts";
+    private const string GenerationConfigKey = "generationConfig";
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
     private readonly GenerationErrorLogger? _errorLogger;
@@ -92,7 +93,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
                     [PartsKey] = new object[] { new Dictionary<string, object?> { ["text"] = userPrompt } },
                 },
             },
-            ["generationConfig"] = generationConfig,
+            [GenerationConfigKey] = generationConfig,
         };
         return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
             attemptNum => SendAsync(
@@ -129,7 +130,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
             {
                 new Dictionary<string, object?> { ["role"] = "user", [PartsKey] = parts },
             },
-            ["generationConfig"] = new Dictionary<string, object?>
+            [GenerationConfigKey] = new Dictionary<string, object?>
             {
                 ["temperature"] = temperature,
             },
@@ -184,7 +185,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
             // stripping it and retrying rather than maintaining a model-capability list.
             if (!resp.IsSuccessStatusCode
                 && resp.StatusCode == System.Net.HttpStatusCode.BadRequest
-                && payload.TryGetValue("generationConfig", out var gc)
+                && payload.TryGetValue(GenerationConfigKey, out var gc)
                 && gc is Dictionary<string, object?> genConfig
                 && genConfig.ContainsKey("thinkingConfig")
                 && body.Contains("hinking", StringComparison.OrdinalIgnoreCase))
@@ -192,7 +193,7 @@ public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClien
                 var retryPayload = new Dictionary<string, object?>(payload);
                 var retryGenConfig = new Dictionary<string, object?>(genConfig);
                 retryGenConfig.Remove("thinkingConfig");
-                retryPayload["generationConfig"] = retryGenConfig;
+                retryPayload[GenerationConfigKey] = retryGenConfig;
                 return await SendAsync(retryPayload, model, kind, mode, promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
             }
 

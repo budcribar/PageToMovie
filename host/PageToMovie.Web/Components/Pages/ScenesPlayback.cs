@@ -530,63 +530,77 @@ public partial class Scenes
         if (S.ClipVer._clipVersions is { Count: > 0 })
         {
             foreach (var v in S.ClipVer._clipVersions)
-            {
-                string? url = null;
-                var relPath = !string.IsNullOrEmpty(v.RelativePath)
-                    ? v.RelativePath
-                    : $"assets/video/scene_{S.ClipVer._compareSceneNumber:D2}_clip_{S.ClipVer._compareClipNumber:D2}.mp4";
-
-                if (S.MediaFolder.IsConnected)
-                {
-                    try
-                    {
-                        var local = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
-                        if (!string.IsNullOrEmpty(local))
-                        {
-                            url = local;
-                        }
-                    }
-                    catch { /* fallback to server URL */ }
-                }
-
-                if (string.IsNullOrEmpty(url))
-                {
-                    if (v.IsCurrent)
-                    {
-                        // No local copy: the server/provider copy of a video-extend clip is the combined
-                        // video — slice the previous clip's head off, same as playback does.
-                        var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == S.ClipVer._compareClipNumber);
-                        url = row is { ProviderLeadInSeconds: > 0.1 }
-                            ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, S.ClipVer._compareSceneNumber, row)
-                            : S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
-                    }
-                    else if (!string.IsNullOrEmpty(v.ProviderPlaybackUrl))
-                    {
-                        // Take recorded only by its sidecar: the server issued a proxy URL for the provider
-                        // copy; an extend take's copy is combined — slice the previous clip's head off.
-                        url = v.ProviderPlaybackUrl;
-                        if (v.ProviderLeadInSeconds > 0.1)
-                        {
-                            try
-                            {
-                                var probe = await S.Stitch.ProbeDurationAsync(url);
-                                if (probe is { } total && total > v.ProviderLeadInSeconds + 0.1)
-                                {
-                                    var sliced = await S.Stitch.TrimTailAsync(url, total - v.ProviderLeadInSeconds);
-                                    if (!string.IsNullOrWhiteSpace(sliced)) url = sliced;
-                                }
-                            }
-                            catch { /* play combined rather than nothing */ }
-                        }
-                    }
-                    else if (!string.IsNullOrEmpty(v.Mp4FileName))
-                        url = S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
-                }
-                map[v.VersionId] = url;
-            }
+                map[v.VersionId] = await ResolveCompareVideoUrlAsync(v);
         }
         _compareVideoUrls = map;
         S.StateHasChanged();
+    }
+
+    private async Task<string?> ResolveCompareVideoUrlAsync(ClipVersionItem v)
+    {
+        var url = await TryGetLocalCompareBlobUrlAsync(CompareRelativePath(v));
+        return string.IsNullOrEmpty(url) ? await ResolveCompareFallbackUrlAsync(v) : url;
+    }
+
+    private string CompareRelativePath(ClipVersionItem v) =>
+        !string.IsNullOrEmpty(v.RelativePath)
+            ? v.RelativePath
+            : $"assets/video/scene_{S.ClipVer._compareSceneNumber:D2}_clip_{S.ClipVer._compareClipNumber:D2}.mp4";
+
+    private async Task<string?> TryGetLocalCompareBlobUrlAsync(string relPath)
+    {
+        if (!S.MediaFolder.IsConnected)
+            return null;
+        try
+        {
+            var local = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
+            if (!string.IsNullOrEmpty(local))
+                return local;
+        }
+        catch { /* fallback to server URL */ }
+        return null;
+    }
+
+    private async Task<string?> ResolveCompareFallbackUrlAsync(ClipVersionItem v)
+    {
+        if (v.IsCurrent)
+            return await ResolveCurrentTakeCompareUrlAsync();
+        if (!string.IsNullOrEmpty(v.ProviderPlaybackUrl))
+            return await ResolveProviderTakeCompareUrlAsync(v);
+        if (!string.IsNullOrEmpty(v.Mp4FileName))
+            return S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+        return null;
+    }
+
+    private async Task<string?> ResolveCurrentTakeCompareUrlAsync()
+    {
+        // No local copy: the server/provider copy of a video-extend clip is the combined
+        // video — slice the previous clip's head off, same as playback does.
+        var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == S.ClipVer._compareClipNumber);
+        return row is { ProviderLeadInSeconds: > 0.1 }
+            ? await S.Stitch.ResolveServerClipUrlAsync(S._projectId, S.ClipVer._compareSceneNumber, row)
+            : S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+    }
+
+    private async Task<string?> ResolveProviderTakeCompareUrlAsync(ClipVersionItem v)
+    {
+        // Take recorded only by its sidecar: the server issued a proxy URL for the provider
+        // copy; an extend take's copy is combined — slice the previous clip's head off.
+        var url = v.ProviderPlaybackUrl;
+        if (v.ProviderLeadInSeconds <= 0.1)
+            return url;
+        try
+        {
+            var probe = await S.Stitch.ProbeDurationAsync(url);
+            if (probe is { } total && total > v.ProviderLeadInSeconds + 0.1)
+            {
+                var sliced = await S.Stitch.TrimTailAsync(url, total - v.ProviderLeadInSeconds);
+                if (!string.IsNullOrWhiteSpace(sliced))
+                    return sliced;
+            }
+        }
+        catch { /* play combined rather than nothing */ }
+        return url;
     }
 
 
