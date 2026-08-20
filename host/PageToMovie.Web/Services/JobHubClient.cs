@@ -12,6 +12,9 @@ public sealed class JobHubClient : IAsyncDisposable
     private readonly NavigationManager? _nav;
     private readonly ServerHealthState? _health;
     private HubConnection? _connection;
+    /// <summary>Identity the live connection joined the server's per-user group with — see
+    /// <see cref="OnSessionChanged"/> for why a stale one must force a reconnect.</summary>
+    private (string UserId, bool HasToken)? _connectedIdentity;
 
     public event Action<JobSnapshot>? JobUpdated;
     public event Action<string>? JobLog;
@@ -30,6 +33,36 @@ public sealed class JobHubClient : IAsyncDisposable
         _session = session;
         _nav = nav;
         _health = health;
+        if (_session is not null)
+            _session.Changed += OnSessionChanged;
+    }
+
+    private (string UserId, bool HasToken) CurrentIdentity() =>
+        (_session?.UserId ?? "local", !string.IsNullOrWhiteSpace(_session?.Token));
+
+    /// <summary>
+    /// The server groups each connection into user:{userId} at connect time, and job events go
+    /// only to that group. If the hub was started before the stored session hydrated (e.g. the
+    /// media folder's silent auto-reconnect on app start), the socket joined as "local" and this
+    /// user's JobUpdated events — including the ClientMediaUrl ticks that save each generated
+    /// clip into the local media folder — never arrive, silently. Reconnect with the real
+    /// identity as soon as the session reports it.
+    /// </summary>
+    private void OnSessionChanged()
+    {
+        if (_connection is null || _connectedIdentity == CurrentIdentity())
+            return;
+        _ = RestartWithCurrentIdentityAsync();
+    }
+
+    private async Task RestartWithCurrentIdentityAsync()
+    {
+        try
+        {
+            await StopAsync();
+            await StartAsync();
+        }
+        catch { /* optional — the next EnsureStartedAsync retries */ }
     }
 
     public async Task StartAsync(CancellationToken ct = default)
@@ -44,7 +77,8 @@ public sealed class JobHubClient : IAsyncDisposable
         }
 
         var baseUrl = ResolveApiBase().TrimEnd('/');
-        var userId = _session?.UserId ?? "local";
+        var identity = CurrentIdentity();
+        var userId = identity.UserId;
         var url = $"{baseUrl}/hubs/jobs?userId={Uri.EscapeDataString(userId)}";
 
         _connection = new HubConnectionBuilder()
@@ -83,6 +117,7 @@ public sealed class JobHubClient : IAsyncDisposable
         try
         {
             await _connection.StartAsync(ct);
+            _connectedIdentity = identity;
         }
         catch (Exception ex) when (_health is not null && ServerHealthState.IsOutageException(ex, ct))
         {
@@ -94,8 +129,16 @@ public sealed class JobHubClient : IAsyncDisposable
     /// <summary>Best-effort connect — SignalR is optional for browse-only pages, so failures are swallowed.</summary>
     public async Task EnsureStartedAsync()
     {
-        if (IsConnected) return;
-        try { await StartAsync(); } catch { /* optional */ }
+        // A connection made under a stale identity (see OnSessionChanged) counts as not started:
+        // it's in the wrong per-user group and hears none of this user's job events.
+        if (IsConnected && _connectedIdentity == CurrentIdentity()) return;
+        try
+        {
+            if (_connection is not null)
+                await StopAsync();
+            await StartAsync();
+        }
+        catch { /* optional */ }
     }
 
     private string ResolveApiBase()
@@ -115,7 +158,13 @@ public sealed class JobHubClient : IAsyncDisposable
         await _connection.StopAsync();
         await _connection.DisposeAsync();
         _connection = null;
+        _connectedIdentity = null;
     }
 
-    public async ValueTask DisposeAsync() => await StopAsync();
+    public async ValueTask DisposeAsync()
+    {
+        if (_session is not null)
+            _session.Changed -= OnSessionChanged;
+        await StopAsync();
+    }
 }
