@@ -21,7 +21,7 @@ namespace PageToMovie.Engine;
 /// generated video clips, transcribe spoken dialogue, and verify speaker identity.
 /// Runs automatically in the background when a clip finishes generating.
 /// </summary>
-public sealed class ClipDialogueVerificationService
+public sealed partial class ClipDialogueVerificationService
 {
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.IndentedCaseInsensitive;
 
@@ -80,6 +80,15 @@ public sealed class ClipDialogueVerificationService
 
     private static readonly byte[] NewLineBytes = new byte[] { (byte)'\n' };
     private const string StatusUnverified = "unverified";
+    private const string StatusVerified = "verified";
+    private const string StatusMismatch = "mismatch";
+    private const string StatusVisualDefect = "visual_defect";
+    private const string StatusNoSpeech = "no_speech";
+    private const string StatusSpeakerSwap = "speaker_swap";
+    private const string KindUnplannedSpeech = "unplanned_speech";
+    private const string KindWrongSpeaker = "wrong_speaker";
+    private const string KindWrongVoice = "wrong_voice";
+    private const string KindOther = "other";
 
     public async Task SaveVerificationAsync(string projectId, ClipDialogueVerificationResult result, CancellationToken ct = default)
     {
@@ -146,7 +155,7 @@ public sealed class ClipDialogueVerificationService
         var leadInOffsetSec = 0.0;
         if (string.IsNullOrWhiteSpace(clipPath) || !File.Exists(clipPath))
         {
-            var videoDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", "video");
+            var videoDir = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "video");
             var mat = await ClipProviderSource.TryMaterializeAsync(
                 ClipProviderSource.ReadForClip(videoDir, sceneNumber, clipNumber), ct).ConfigureAwait(false);
             if (mat is not null)
@@ -213,7 +222,7 @@ public sealed class ClipDialogueVerificationService
             TranscribedDialogue = "",
             DialogueAccuracyScore = 1.0,
             SpeakerMatch = true,
-            Status = "no_speech",
+            Status = StatusNoSpeech,
             SummaryNote = "No spoken dialogue planned for this clip.",
             VerifiedAt = DateTime.UtcNow,
         };
@@ -379,10 +388,7 @@ public sealed class ClipDialogueVerificationService
     {
         var res = Deterministic.Pronunciation.PronunciationResolver.Default.Resolve(expectedDialogue);
         if (res.Annotations.Count == 0) return "";
-        var lines = res.Annotations.Select(a =>
-            $"   - '{a.Token}' must be pronounced /{a.Ipa}/" +
-            (string.IsNullOrWhiteSpace(a.Respell) ? "" : $" (\"{a.Respell}\"" + (string.IsNullOrWhiteSpace(a.Rhymes) ? "" : $", rhymes with '{a.Rhymes}'") + ")") +
-            $" — meaning: {a.Meaning}. If it was said with the other meaning, report kind \"wrong_sense\" with word '{a.Token}'.");
+        var lines = res.Annotations.Select(FormatSenseCheckLine);
         return "   PRONUNCIATION CHECKS (words with two pronunciations — listen for the intended one):\n" + string.Join("\n", lines) + "\n";
     }
 
@@ -520,7 +526,7 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
         var accuracy = accuracyOpt ?? CalculateAccuracyScore(expectedDialogue, transcribed);
         var speakerMatch = GetJsonBool(root, "speakerMatch", "speaker_match");
         var status = GetJsonString(root, "status");
-        if (string.IsNullOrWhiteSpace(status)) status = "verified";
+        if (string.IsNullOrWhiteSpace(status)) status = StatusVerified;
         var summary = GetJsonString(root, "summaryNote", "summary_note", "summary", "notes");
 
         var issues = ParseIssues(root);
@@ -528,23 +534,9 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
             detected, expectedSpeaker, expectedSpeakerDisplayName, speakerMatch, status, accuracy);
         (accuracy, status, summary) = ApplyAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary, issues);
         if (string.IsNullOrWhiteSpace(expectedDialogue))
-        {
-            // Silent clip: the only verdicts are "silent as planned" or "picture broken".
-            var broken = issues.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase));
-            var talked = issues.Any(i => string.Equals(i.Kind, "unplanned_speech", StringComparison.OrdinalIgnoreCase))
-                         || !string.IsNullOrWhiteSpace(transcribed);
-            status = broken ? "visual_defect" : talked ? "mismatch" : "no_speech";
-            accuracy = 1.0;
-            speakerMatch = true;
-            if (string.IsNullOrWhiteSpace(detected)) detected = "None";
-            if (string.IsNullOrWhiteSpace(summary)) summary = broken ? "Picture defect found in a silent clip." : talked ? $"Speech heard in a silent clip: '{transcribed}'" : "No spoken dialogue planned; picture checked.";
-        }
+            (status, accuracy, speakerMatch, detected, summary) = ApplySilentClipVerdict(issues, transcribed, detected, summary);
 
-        var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");
-        var (speechSec, actionSec) = ClipDurationEstimator.EstimateBreakdown(expectedDialogue, clip?.VisualPrompt ?? "", "", clip?.Delivery ?? "none");
-        var durationProbe = new MediaDurationProbe(Microsoft.Extensions.Options.Options.Create(new PageToMovie.Core.Options.PageToMovieOptions()), Microsoft.Extensions.Logging.Abstractions.NullLogger<MediaDurationProbe>.Instance);
-        var actualSec = await durationProbe.TryProbeSecondsAsync(clipPath, ct).ConfigureAwait(false) ?? 0.0;
-
+        var (estSec, speechSec, actionSec, actualSec) = await ProbeClipDurationsAsync(clip, expectedDialogue, clipPath, ct).ConfigureAwait(false);
         var result = new ClipDialogueVerificationResult
         {
             SceneNumber = sceneNumber,
@@ -594,8 +586,8 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
             return (speakerMatch, status);
 
         speakerMatch = true;
-        if (string.Equals(status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
-            status = accuracy >= 0.5 ? "verified" : "mismatch";
+        if (string.Equals(status, StatusSpeakerSwap, StringComparison.OrdinalIgnoreCase))
+            status = accuracy >= 0.5 ? StatusVerified : StatusMismatch;
         return (speakerMatch, status);
     }
 
@@ -612,54 +604,27 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
         IReadOnlyList<DialogueVerificationIssue>? issues = null)
     {
         issues ??= Array.Empty<DialogueVerificationIssue>();
-        if (!string.IsNullOrWhiteSpace(expectedDialogue) && string.IsNullOrWhiteSpace(transcribed))
-        {
-            return (0.0, "mismatch", $"Expected: '{expectedDialogue}' | Heard: (no audio/speech detected) (0% match)");
-        }
+        if (TryMissingSpeechMismatch(expectedDialogue, transcribed, out var missing))
+            return missing;
         if (string.IsNullOrWhiteSpace(expectedDialogue))
             return (accuracy, status, summary);
 
         var blocking = issues.Where(i => DialogueIssueKinds.IsBlocking(i.Kind)).ToList();
         if (blocking.Count > 0)
-        {
-            var kinds = string.Join(", ", blocking.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : $" '{i.Word}'")).Distinct());
-            var newStatus = blocking.Any(i => i.Kind is "wrong_speaker" or "wrong_voice") ? "speaker_swap"
-                : blocking.Any(i => string.Equals(i.Kind, "visual_defect", StringComparison.OrdinalIgnoreCase)) ? "visual_defect"
-                : "mismatch";
+            return ApplyBlockingIssueGuards(accuracy, summary, blocking);
 
-            return (Math.Min(accuracy, 0.49), newStatus, $"{summary} | Blocking: {kinds}".Trim(' ', '|'));
-        }
-
-        var computedAcc = CalculateAccuracyScore(expectedDialogue, transcribed);
-        var onlyCosmetic = issues.Count > 0 && issues.All(i => DialogueIssueKinds.IsCosmetic(i.Kind));
-        if (computedAcc >= 0.99 && (issues.Count == 0 || onlyCosmetic))
-            accuracy = 1.0;
-        else if (computedAcc < accuracy)
-            accuracy = computedAcc;
-
-        if (accuracy < 0.5 && string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase))
-            status = "mismatch";
-        return (accuracy, status, summary);
+        return ApplyComputedAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary, issues);
     }
 
     internal static List<DialogueVerificationIssue> ParseIssues(JsonElement root)
     {
         var list = new List<DialogueVerificationIssue>();
-        if (!root.TryGetProperty("issues", out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
+        if (!root.TryGetProperty("issues", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
         foreach (var el in arr.EnumerateArray())
         {
-            if (el.ValueKind != JsonValueKind.Object) continue;
-            var kind = (el.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null)?.Trim().ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(kind)) continue;
-            if (!DialogueIssueKinds.IsBlocking(kind) && !DialogueIssueKinds.IsDegraded(kind) && !DialogueIssueKinds.IsCosmetic(kind))
-                kind = "other";
-            list.Add(new DialogueVerificationIssue
-            {
-                Kind = kind,
-                Word = el.TryGetProperty("word", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString()?.Trim() : null,
-                Detail = el.TryGetProperty("detail", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? "" : "",
-                Severity = el.TryGetProperty("severity", out var sv) && sv.ValueKind == JsonValueKind.String ? sv.GetString() ?? "minor" : "minor",
-            });
+            if (TryParseIssue(el) is { } issue)
+                list.Add(issue);
         }
         return list;
     }
@@ -682,7 +647,7 @@ Status options: 'verified' (dialogue & speaker match, picture intact), 'mismatch
     /// </summary>
     public static bool LooksTruncated(ClipDialogueVerificationResult result)
     {
-        if (string.Equals(result.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(result.Status, StatusSpeakerSwap, StringComparison.OrdinalIgnoreCase))
             return false; // wrong speaker entirely — an identity problem, not a timing one
 
         var expectedWords = ClipDurationEstimator.CountWords(result.ExpectedDialogue);
