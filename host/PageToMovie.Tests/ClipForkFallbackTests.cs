@@ -58,4 +58,51 @@ public sealed class ClipForkFallbackTests
         Assert.Contains("file_new", json);
         Assert.DoesNotContain("source_file_expires_at", json);
     }
+
+    [Fact]
+    public void ProjectDirFromVideoDir_walks_assets_video()
+    {
+        var project = Path.Combine(Path.GetTempPath(), "ptm_fork_proj_" + Guid.NewGuid().ToString("N"));
+        var video = Path.Combine(project, "assets", "video");
+        Assert.Equal(Path.GetFullPath(project), ClipForkFallback.ProjectDirFromVideoDir(video));
+    }
+
+    [Fact]
+    public void TryProtectedMp4Path_requires_prune_guard()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm_fork_fb_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var video = Path.Combine(dir, "assets", "video");
+            Directory.CreateDirectory(video);
+            File.WriteAllBytes(Path.Combine(video, "scene_01_clip_01.mp4"), new byte[2048]);
+            Assert.Null(ClipForkFallback.TryProtectedMp4Path(dir, 1, 1));
+
+            ClipForkFallback.WriteProtectedMp4(dir, 2, 3, new byte[2048]);
+            var hosted = ClipForkFallback.TryProtectedMp4Path(dir, 2, 3);
+            Assert.NotNull(hosted);
+            Assert.True(File.Exists(hosted));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void TryMarkNeeded_is_safe_and_lists()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm_fork_fb_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            ClipForkFallback.TryMarkNeeded(null, 1, 1);
+            ClipForkFallback.TryMarkNeeded(dir, 0, 1);
+            ClipForkFallback.TryMarkNeeded(dir, 4, 5);
+            Assert.Equal((4, 5), Assert.Single(ClipForkFallback.ListNeeded(dir)));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
 }

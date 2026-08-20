@@ -369,7 +369,7 @@ public sealed class GeminiVideoClient : IVideoClient
 
     /// <summary>Gemini/Veo never requests xAI-style Files API storage — file_id reuse is a
     /// Grok-only optimization (see <see cref="IVideoEditClient"/>).</summary>
-    public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) => (null, null);
+    public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
 
     public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
         ProviderHttpHelpers.DownloadToFileAsync(

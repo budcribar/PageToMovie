@@ -39,7 +39,7 @@ public class JitBenchmarkServiceTests
             return Task.CompletedTask;
         }
 
-        public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) => (null, null);
+        public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
     }
 
     private sealed class TestVisionClient : IVisionClient

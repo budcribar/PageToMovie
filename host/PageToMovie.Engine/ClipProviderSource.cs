@@ -80,8 +80,9 @@ public sealed record ClipProviderSource(
     }
 
     /// <summary>
-    /// URL first, then Files API <c>file_id</c> when the public link is empty or fails (vidgen
-    /// links expire; xAI keeps the file). Combined extend copies stay combined.
+    /// URL first (durable <c>file_output.public_url</c> or poll <c>video.url</c>), then Files
+    /// API <c>file_id</c> as a best-effort (Imagine ids are generate-only). Combined extend
+    /// copies stay combined.
     /// </summary>
     public static async Task<T?> TryOpenAsync<T>(
         string? sourceUrl,

@@ -43,15 +43,13 @@ public interface IVideoClient
     Task DownloadToFileAsync(string url, string destPath, CancellationToken ct);
 
     /// <summary>
-    /// The provider's own re-fetchable file reference (Files-API-style id + unix expiry) for a
-    /// request that already completed via <see cref="PollForVideoUrlAsync"/> — populated only when
-    /// the provider/model requested persistent storage at submit time (currently: Grok only, when
-    /// storage was requested). Returns (null, null) when unsupported, storage wasn't requested, or
-    /// the request id is unknown/already evicted. Callers persist this in the clip sidecar to allow
-    /// a later prompt-based video edit to reuse the file instead of re-uploading — purely an
-    /// optimization; the local on-disk clip file is always the fallback source of truth.
+    /// Provider-persisted handle after <see cref="PollForVideoUrlAsync"/> when storage was
+    /// requested (Grok <c>storage_options</c>). Empty when unsupported, storage wasn't granted, or
+    /// the request id is unknown. Callers persist <see cref="StoredVideoFileRef.PublicUrl"/> as
+    /// sidecar <c>source_url</c> (durable playback) and <see cref="StoredVideoFileRef.FileId"/>
+    /// for edit/extend attach. Imagine file_ids are generate-only — Files content GET is not recovery.
     /// </summary>
-    (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId);
+    StoredVideoFileRef TryGetStoredFileReference(string requestId);
 }
 
 /// <summary>Image generate / edit. Grok, Gemini, or fake — see MultiProviderImageClient.</summary>

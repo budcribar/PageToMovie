@@ -21,7 +21,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
     private readonly ILogger<FakeGrokVideoClient> _log;
     private readonly ProjectTelemetryService _telemetry;
     private readonly ConcurrentDictionary<string, string> _pending = new();
-    private readonly ConcurrentDictionary<string, (string? FileId, long? ExpiresAtUnixSeconds)> _fileRefs = new();
+    private readonly ConcurrentDictionary<string, StoredVideoFileRef> _fileRefs = new();
     private int _submitCount;
     private int _clipRoundRobin;
 
@@ -112,13 +112,15 @@ public sealed class FakeGrokVideoClient : IVideoClient
         // submit) so fakes-mode tests can exercise the video-edit file_id-reuse path without a
         // live account — a generous unexpired TTL, since exercising the "expired" branch is the
         // edit-side fake's job (FakeGrokVideoEditClient's RejectFileIdEdits knob), not this one's.
-        _fileRefs[requestId] = ("fake-file-" + Guid.NewGuid().ToString("N")[..12],
-            DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds());
+        _fileRefs[requestId] = new StoredVideoFileRef(
+            "fake-file-" + Guid.NewGuid().ToString("N")[..12],
+            DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds(),
+            PublicUrl: null);
         return "fake-fixture:" + fixture;
     }
 
-    public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) =>
-        _fileRefs.TryGetValue(requestId, out var v) ? v : (null, null);
+    public StoredVideoFileRef TryGetStoredFileReference(string requestId) =>
+        _fileRefs.TryGetValue(requestId, out var v) ? v : StoredVideoFileRef.Empty;
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
     {

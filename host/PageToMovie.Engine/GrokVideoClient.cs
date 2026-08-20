@@ -20,11 +20,17 @@ public sealed class GrokVideoClient : IVideoClient
     public const int MaxPromptLengthRetries = 5;
 
     /// <summary>
-    /// Persist the generated video on xAI Files so a later edit — or a fork with no .mp4 — can
-    /// reuse file_id. No expires_after: xAI keeps the file until we delete it.
+    /// Persist the generated video on xAI Files. <c>filename</c> is required (422 without it).
+    /// <c>public_url: true</c> asks for an unauthenticated durable link — Imagine file_ids are
+    /// generate-only and cannot be re-downloaded via Files content GET. Omit <c>expires_after</c>
+    /// so xAI keeps the file until we delete it.
     /// </summary>
-    private static Dictionary<string, object?> PermanentVideoStorageOptions() =>
-        new() { ["filename"] = $"grok-video-{Guid.NewGuid():N}.mp4" };
+    internal static Dictionary<string, object?> PermanentVideoStorageOptions() =>
+        new()
+        {
+            ["filename"] = $"grok-video-{Guid.NewGuid():N}.mp4",
+            ["public_url"] = true,
+        };
 
     private readonly HttpClient _http;
     private readonly PageToMovieOptions _opts;
@@ -36,7 +42,7 @@ public sealed class GrokVideoClient : IVideoClient
     /// when the completed job's response includes <c>video.file_output</c> (i.e. storage was
     /// requested and succeeded). In-memory only — a process restart simply means the next edit on
     /// that clip falls back to base64 upload, same as if storage had expired.</summary>
-    private readonly ConcurrentDictionary<string, (string? FileId, long? ExpiresAtUnixSeconds)> _fileRefs = new();
+    private readonly ConcurrentDictionary<string, StoredVideoFileRef> _fileRefs = new();
 
     public GrokVideoClient(
         HttpClient http,
@@ -387,8 +393,7 @@ public sealed class GrokVideoClient : IVideoClient
             ["duration"] = setup.DurationSeconds,
             ["aspect_ratio"] = ResolveAspectRatio(setup.Model, setup.AspectRatio).ToApiString(),
             ["resolution"] = setup.Resolution,
-            // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
-            // Persist to Files API (file_id). "filename" is required (422 without it).
+            // Persist to Files (file_id for edit/extend) and request public_url for playback.
             ["storage_options"] = PermanentVideoStorageOptions(),
         };
 
@@ -610,16 +615,24 @@ public sealed class GrokVideoClient : IVideoClient
 
     private void TryCacheFileOutput(string requestId, JsonElement video)
     {
+        var stored = ParseFileOutput(video);
+        if (stored.HasFileId || stored.HasPublicUrl)
+            _fileRefs[requestId] = stored;
+    }
+
+    /// <summary>Read <c>video.file_output</c> (file_id + durable public_url) from a poll body.</summary>
+    internal static StoredVideoFileRef ParseFileOutput(JsonElement video)
+    {
         if (!video.TryGetProperty("file_output", out var fileOutput) ||
             fileOutput.ValueKind != JsonValueKind.Object)
-            return;
+            return StoredVideoFileRef.Empty;
 
         var fileId = fileOutput.TryGetProperty("file_id", out var fid) ? fid.GetString() : null;
         long? expiresAt = null;
         if (fileOutput.TryGetProperty("expires_at", out var exp) && exp.TryGetInt64(out var expVal))
             expiresAt = expVal;
-        if (!string.IsNullOrWhiteSpace(fileId))
-            _fileRefs[requestId] = (fileId, expiresAt);
+        var publicUrl = fileOutput.TryGetProperty("public_url", out var pu) ? pu.GetString() : null;
+        return new StoredVideoFileRef(fileId, expiresAt, publicUrl);
     }
 
     private async Task HandlePollFailedOrExpiredAsync(
@@ -642,8 +655,8 @@ public sealed class GrokVideoClient : IVideoClient
         throw new InvalidOperationException($"Grok job {status}: {ProviderHttpHelpers.Trim(detail, 400)}");
     }
 
-    public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) =>
-        _fileRefs.TryGetValue(requestId, out var v) ? v : (null, null);
+    public StoredVideoFileRef TryGetStoredFileReference(string requestId) =>
+        _fileRefs.TryGetValue(requestId, out var v) ? v : StoredVideoFileRef.Empty;
 
     public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
         ProviderHttpHelpers.DownloadToFileAsync(_http, url, destPath, ct, _log);

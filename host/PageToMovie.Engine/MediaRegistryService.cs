@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
+using PageToMovie.Engine.Abstractions;
 
 namespace PageToMovie.Engine;
 
@@ -409,17 +410,43 @@ public sealed class MediaObjectDto
 }
 
 /// <summary>Short-lived map of opaque tokens → provider video URL and/or Files API
-/// <c>file_id</c> for client download (CORS-safe proxy). Vidgen public links expire;
-/// the file handle is the durable fallback.</summary>
+/// <c>file_id</c> for client download (CORS-safe proxy). Durable playback is
+/// <c>file_output.public_url</c> (or a Railway fork copy). Imagine file_ids are generate-only.</summary>
 public sealed class MediaProxyTicketStore
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Url, string? FileId, DateTimeOffset Exp)> _map = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Ticket> _map = new();
 
-    public string Issue(string videoUrl, TimeSpan? ttl = null, string? fileId = null)
+    private readonly record struct Ticket(
+        string Url, string? FileId, string? KeyUserId, DateTimeOffset Exp,
+        string? ProjectDir, int Scene, int Clip);
+
+    /// <summary>
+    /// Issue a proxy ticket. <paramref name="keyUserId"/> is the account whose grok key
+    /// owns the Files handle — defaults to <see cref="UserApiCallScope.UserId"/> from the
+    /// authenticated request that listed the clip (media-sync JS fetch has no JWT).
+    /// <paramref name="projectDir"/> + scene/clip let the proxy serve a Railway fork copy
+    /// or mark <c>.need-fork</c> when Imagine file_id cannot be downloaded.
+    /// </summary>
+    public string Issue(
+        string videoUrl,
+        TimeSpan? ttl = null,
+        string? fileId = null,
+        string? keyUserId = null,
+        string? projectDir = null,
+        int scene = 0,
+        int clip = 0)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var exp = DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(45));
-        _map[token] = (videoUrl, string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(), exp);
+        var owner = string.IsNullOrWhiteSpace(keyUserId) ? UserApiCallScope.UserId : keyUserId.Trim();
+        _map[token] = new Ticket(
+            videoUrl,
+            string.IsNullOrWhiteSpace(fileId) ? null : fileId.Trim(),
+            string.IsNullOrWhiteSpace(owner) ? null : owner,
+            exp,
+            string.IsNullOrWhiteSpace(projectDir) ? null : projectDir.Trim(),
+            scene,
+            clip);
         // opportunistic purge
         if (_map.Count > 500)
         {
@@ -433,14 +460,31 @@ public sealed class MediaProxyTicketStore
     }
 
     public string? TryTakeUrl(string token) =>
-        TryTake(token, out var url, out _) ? url : null;
+        TryTake(token, out var url, out _, out _) ? url : null;
 
     /// <summary>Look up a live ticket. <paramref name="url"/> may be empty when the
     /// sidecar only has <c>source_file_id</c>.</summary>
-    public bool TryTake(string token, out string? url, out string? fileId)
+    public bool TryTake(string token, out string? url, out string? fileId) =>
+        TryTake(token, out url, out fileId, out _);
+
+    public bool TryTake(string token, out string? url, out string? fileId, out string? keyUserId) =>
+        TryTake(token, out url, out fileId, out keyUserId, out _, out _, out _);
+
+    public bool TryTake(
+        string token,
+        out string? url,
+        out string? fileId,
+        out string? keyUserId,
+        out string? projectDir,
+        out int scene,
+        out int clip)
     {
         url = null;
         fileId = null;
+        keyUserId = null;
+        projectDir = null;
+        scene = 0;
+        clip = 0;
         if (!_map.TryGetValue(token, out var e)) return false;
         if (e.Exp < DateTimeOffset.UtcNow)
         {
@@ -449,6 +493,10 @@ public sealed class MediaProxyTicketStore
         }
         url = e.Url;
         fileId = e.FileId;
+        keyUserId = e.KeyUserId;
+        projectDir = e.ProjectDir;
+        scene = e.Scene;
+        clip = e.Clip;
         return true;
     }
 }

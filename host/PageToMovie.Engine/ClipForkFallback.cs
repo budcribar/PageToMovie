@@ -72,6 +72,30 @@ public static class ClipForkFallback
         File.WriteAllText(mp4 + ProtectedSuffix, "fork-fallback\n");
     }
 
+    /// <summary>{project}/assets/video → project root. Null when the path is too short.</summary>
+    public static string? ProjectDirFromVideoDir(string? videoDir)
+    {
+        if (string.IsNullOrWhiteSpace(videoDir)) return null;
+        var assets = Path.GetDirectoryName(Path.GetFullPath(videoDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+        return string.IsNullOrWhiteSpace(assets) ? null : Path.GetDirectoryName(assets);
+    }
+
+    /// <summary>Railway-hosted fork copy, only when the prune-guard marker is present.</summary>
+    public static string? TryProtectedMp4Path(string? projectDir, int scene, int clip)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir) || scene <= 0 || clip <= 0) return null;
+        var mp4 = Path.Combine(VideoDir(projectDir), Mp4FileName(scene, clip));
+        return File.Exists(mp4) && IsProtectedFromPrune(mp4) ? mp4 : null;
+    }
+
+    /// <summary>Mark .need-fork so the owner can push a local copy. Never throws.</summary>
+    public static void TryMarkNeeded(string? projectDir, int scene, int clip)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir) || scene <= 0 || clip <= 0) return;
+        try { MarkNeeded(projectDir, scene, clip); }
+        catch { /* never fail playback on a marker write */ }
+    }
+
     public static void WriteSidecarFileId(string projectDir, int scene, int clip, string fileId)
     {
         var sidecar = Path.Combine(VideoDir(projectDir), $"scene_{scene:D2}_clip_{clip:D2}.clip.json");

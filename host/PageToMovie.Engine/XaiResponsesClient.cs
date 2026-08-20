@@ -348,10 +348,8 @@ public sealed class XaiResponsesClient
         parts.Add(t.GetString() ?? "");
     }
 
-    private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
-        ApiKeyScope.Current
-        ?? (_keyProvider is not null ? await _keyProvider.GetKeyAsync(null, "grok", ct).ConfigureAwait(false) : null)
-        ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
+    private Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
+        GrokProviderHttp.ResolveApiKeyAsync(_keyProvider, ct);
 
     private async Task<string> RequireApiKeyAsync(CancellationToken ct = default) =>
         (await ResolveApiKeyAsync(ct).ConfigureAwait(false)) ?? throw new InvalidOperationException(
