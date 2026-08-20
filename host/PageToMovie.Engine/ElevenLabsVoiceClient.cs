@@ -80,7 +80,7 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
             form.Add(new StringContent("Cloned for PageToMovie character dialogue"), "description");
             var fileName = string.IsNullOrWhiteSpace(sampleFileName) ? "sample.wav" : Path.GetFileName(sampleFileName);
             var streamContent = new ByteArrayContent(sampleAudio);
-            streamContent.Headers.ContentType = new MediaTypeHeaderValue(GuessAudioMime(fileName));
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(ElevenLabsClientHelpers.GuessAudioMime(fileName));
             form.Add(streamContent, "files", fileName);
 
             using var req = new HttpRequestMessage(HttpMethod.Post, "voices/add");
@@ -91,7 +91,7 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
-                _log.LogWarning("ElevenLabs clone failed {Status}: {Body}", (int)resp.StatusCode, Trunc(body));
+                _log.LogWarning("ElevenLabs clone failed {Status}: {Body}", (int)resp.StatusCode, ElevenLabsClientHelpers.Trunc(body));
                 return new VoiceCloneResult { Ok = false, Error = FormatCloneError((int)resp.StatusCode, body) };
             }
 
@@ -164,8 +164,8 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                _log.LogWarning("ElevenLabs TTS failed {Status}: {Body}", (int)resp.StatusCode, Trunc(err));
-                return new VoiceTtsResult { Ok = false, Error = $"ElevenLabs TTS failed ({(int)resp.StatusCode}): {Trunc(err)}" };
+                _log.LogWarning("ElevenLabs TTS failed {Status}: {Body}", (int)resp.StatusCode, ElevenLabsClientHelpers.Trunc(err));
+                return new VoiceTtsResult { Ok = false, Error = $"ElevenLabs TTS failed ({(int)resp.StatusCode}): {ElevenLabsClientHelpers.Trunc(err)}" };
             }
 
             var bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
@@ -217,7 +217,7 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
-                _log.LogWarning("ElevenLabs list voices failed {Status}: {Body}", (int)resp.StatusCode, Trunc(body));
+                _log.LogWarning("ElevenLabs list voices failed {Status}: {Body}", (int)resp.StatusCode, ElevenLabsClientHelpers.Trunc(body));
                 return Array.Empty<VoiceCatalogEntry>();
             }
 
@@ -324,24 +324,6 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
         if (detail.ValueKind == JsonValueKind.String)
             return detail.GetString();
         return null;
-    }
-
-    private static string GuessAudioMime(string fileName) =>
-        Path.GetExtension(fileName).ToLowerInvariant() switch
-        {
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
-            ".m4a" or ".aac" => "audio/mp4",
-            ".ogg" => "audio/ogg",
-            ".webm" => "audio/webm",
-            _ => "application/octet-stream",
-        };
-
-    private static string Trunc(string? s, int max = 240)
-    {
-        if (string.IsNullOrEmpty(s))
-            return "";
-        return s.Length <= max ? s : s[..max] + "…";
     }
 }
 

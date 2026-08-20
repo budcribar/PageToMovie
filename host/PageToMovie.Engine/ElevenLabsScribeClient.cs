@@ -65,8 +65,8 @@ public sealed class ElevenLabsScribeClient
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
-                _log.LogWarning("Scribe STT failed {Status}: {Body}", (int)resp.StatusCode, Trunc(body));
-                return ScribeResult.Fail($"Scribe failed ({(int)resp.StatusCode}): {Trunc(body, 160)}");
+                _log.LogWarning("Scribe STT failed {Status}: {Body}", (int)resp.StatusCode, ElevenLabsClientHelpers.Trunc(body));
+                return ScribeResult.Fail($"Scribe failed ({(int)resp.StatusCode}): {ElevenLabsClientHelpers.Trunc(body, 160)}");
             }
 
             return ParseScribeResponse(body);
@@ -89,7 +89,7 @@ public sealed class ElevenLabsScribeClient
             form.Add(new StringContent(languageCode.Trim()), "language_code");
 
         var fileContent = new ByteArrayContent(audio);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(GuessAudioMime(fileName));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(ElevenLabsClientHelpers.GuessAudioMime(fileName));
         form.Add(fileContent, "file", string.IsNullOrWhiteSpace(fileName) ? "segment.wav" : Path.GetFileName(fileName));
         return form;
     }
@@ -120,24 +120,5 @@ public sealed class ElevenLabsScribeClient
         var end = w.TryGetProperty("end", out var eEl) && eEl.TryGetDouble(out var ev) ? ev : 0;
         var type = w.TryGetProperty("type", out var tyEl) ? tyEl.GetString() : "word";
         return new ScribeWord(wt, start, end, type);
-    }
-
-    private static string GuessAudioMime(string fileName) =>
-        Path.GetExtension(fileName).ToLowerInvariant() switch
-        {
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
-            ".m4a" or ".aac" => "audio/mp4",
-            ".ogg" => "audio/ogg",
-            ".webm" => "audio/webm",
-            ".mp4" => "video/mp4",
-            _ => "application/octet-stream",
-        };
-
-    private static string Trunc(string? s, int max = 240)
-    {
-        if (string.IsNullOrEmpty(s))
-            return "";
-        return s.Length <= max ? s : s[..max] + "…";
     }
 }

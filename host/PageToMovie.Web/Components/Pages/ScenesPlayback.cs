@@ -228,28 +228,13 @@ public partial class Scenes
                 return;
             }
 
-            if (urls.Count == 0)
-            {
-                S._error = $"No on-disk clips for S{sn:D2}";
-                _showScenePlayer = false;
-                _playingScene = null;
+            var stitched = await ConcatSceneClipsAsync(urls, $"No on-disk clips for S{sn:D2}");
+            if (stitched is null)
                 return;
-            }
-
-            _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
-            await S.Stitch.RevokePreviewUrlAsync();
-            var result = await S.Stitch.ConcatAsync(urls);
-            if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
-            {
-                S._error = result.Error ?? "Browser stitch failed";
-                _showScenePlayer = false;
-                _playingScene = null;
-                return;
-            }
 
             // Layer locally-synced background music (if any) under the stitched video —
             // client-side replacement for the old server-side ffmpeg mix; no-op if none synced.
-            _clientSceneUrl = await S.Stitch.MixSceneMusicAsync(S._projectId, result.Url, sn);
+            _clientSceneUrl = await S.Stitch.MixSceneMusicAsync(S._projectId, stitched, sn);
             _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _inlineCompositeKey = _sceneVideoKey;
             S._message = urls.Count == 1
@@ -258,10 +243,7 @@ public partial class Scenes
         }
         catch (Exception ex)
         {
-            S._error = ex.Message;
-            _showScenePlayer = false;
-            _playingScene = null;
-            _clientSceneUrl = null;
+            FailScenePlayer(ex.Message);
         }
         finally
         {
@@ -346,36 +328,18 @@ public partial class Scenes
                 ? S.List._detail
                 : null;
             var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail, clipNumbers: selectedClipNums);
-            if (urls.Count == 0)
-            {
-                S._error = $"No on-disk video for selected clips in S{sn:D2}";
-                _showScenePlayer = false;
-                _playingScene = null;
+            var stitched = await ConcatSceneClipsAsync(urls, $"No on-disk video for selected clips in S{sn:D2}");
+            if (stitched is null)
                 return;
-            }
 
-            _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
-            await S.Stitch.RevokePreviewUrlAsync();
-            var result = await S.Stitch.ConcatAsync(urls);
-            if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
-            {
-                S._error = result.Error ?? "Browser stitch failed";
-                _showScenePlayer = false;
-                _playingScene = null;
-                return;
-            }
-
-            _clientSceneUrl = result.Url;
+            _clientSceneUrl = stitched;
             _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _inlineCompositeKey = _sceneVideoKey;
             S._message = $"Playing {urls.Count} selected clips from S{sn:D2}";
         }
         catch (Exception ex)
         {
-            S._error = ex.Message;
-            _showScenePlayer = false;
-            _playingScene = null;
-            _clientSceneUrl = null;
+            FailScenePlayer(ex.Message);
         }
         finally
         {
@@ -383,6 +347,18 @@ public partial class Scenes
             _clientStitching = false;
             _clientStitchStatus = null;
         }
+    }
+
+    private Task<string?> ConcatSceneClipsAsync(IReadOnlyList<string> urls, string emptyError) =>
+        S.Stitch.TryConcatSceneClipsAsync(
+            urls, emptyError, status => _clientStitchStatus = status, FailScenePlayer);
+
+    private void FailScenePlayer(string error)
+    {
+        S._error = error;
+        _showScenePlayer = false;
+        _playingScene = null;
+        _clientSceneUrl = null;
     }
 
     internal async Task HideScenePlayer()

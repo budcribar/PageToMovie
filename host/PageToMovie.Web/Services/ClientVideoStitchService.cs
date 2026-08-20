@@ -264,6 +264,37 @@ public sealed class ClientVideoStitchService
     }
 
     /// <summary>
+    /// Scene-clip preview stitch used by Scenes and Review playback: empty-url fail,
+    /// combining status, revoke the previous preview blob, then concat. Page-specific
+    /// empty messages and player flags stay at the call site via <paramref name="emptyError"/>
+    /// and <paramref name="onFail"/>.
+    /// </summary>
+    public async Task<string?> TryConcatSceneClipsAsync(
+        IReadOnlyList<string> urls,
+        string emptyError,
+        Action<string> setStatus,
+        Action<string> onFail,
+        CancellationToken ct = default)
+    {
+        if (urls.Count == 0)
+        {
+            onFail(emptyError);
+            return null;
+        }
+
+        setStatus(urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…");
+        await RevokePreviewUrlAsync();
+        var result = await ConcatAsync(urls, ct);
+        if (!result.HasPlayableUrl)
+        {
+            onFail(result.StitchError);
+            return null;
+        }
+
+        return result.Url;
+    }
+
+    /// <summary>
     /// Same as <see cref="CollectAndMixSceneSegmentsAsync"/> but keeps scene numbers + relative paths
     /// for film_build EDL registration after full-film stitch.
     /// </summary>
@@ -749,6 +780,12 @@ public sealed class ClientStitchResult
 
     public static ClientStitchResult Fail(string error) =>
         new() { Success = false, Error = error };
+
+    /// <summary>True when concat produced a playable URL.</summary>
+    public bool HasPlayableUrl => Success && !string.IsNullOrWhiteSpace(Url);
+
+    /// <summary>Operator-facing stitch failure; default when the browser returned no detail.</summary>
+    public string StitchError => Error ?? "Browser stitch failed";
 }
 
 /// <summary>One scene segment used in a full-film client stitch (URL + path for film_build EDL).</summary>

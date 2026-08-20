@@ -84,7 +84,7 @@ public sealed class ElevenLabsMusicClient : IAudioClient
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            _log.LogError("ElevenLabs Music failed HTTP {Status}: {Body}", (int)resp.StatusCode, Trunc(body));
+            _log.LogError("ElevenLabs Music failed HTTP {Status}: {Body}", (int)resp.StatusCode, ElevenLabsClientHelpers.Trunc(body));
             onProgress?.Invoke($"ElevenLabs music failed: HTTP {(int)resp.StatusCode} — {ShortReason((int)resp.StatusCode, body)}");
             return null;
         }
@@ -125,7 +125,7 @@ public sealed class ElevenLabsMusicClient : IAudioClient
                     msg = m.GetString();
                 else
                     msg = null;
-                if (!string.IsNullOrWhiteSpace(msg)) return Trunc(msg, 160);
+                if (!string.IsNullOrWhiteSpace(msg)) return ElevenLabsClientHelpers.Trunc(msg, 160);
             }
         }
         catch { /* fall through */ }
@@ -135,14 +135,7 @@ public sealed class ElevenLabsMusicClient : IAudioClient
             402 => "payment required (ElevenLabs account has no credits/plan for Music)",
             403 => "forbidden (this key/plan lacks Music access)",
             422 => "invalid request",
-            _ => Trunc(body, 160),
+            _ => ElevenLabsClientHelpers.Trunc(body, 160),
         };
-    }
-
-    private static string Trunc(string? s, int max = 240)
-    {
-        if (string.IsNullOrEmpty(s))
-            return "";
-        return s.Length <= max ? s : s[..max] + "…";
     }
 }
