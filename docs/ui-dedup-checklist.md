@@ -53,6 +53,9 @@ Status: ☐ open · ☑ resolved (with decision).
     .gitignore on the next auto-commit (ProjectGitRepositoryService).
 - Film-level Generate/Regenerate merged (see #20). Row = checkbox + expander + line + duration + chip;
   delete via scene menu ("Delete (N) selected clips…"); autoplay on expand; "Edit Clip Script" / "AI Edit Video".
+- Clip-card "Regen clip" removed from the expansion card (decided 2026-08-19): single-clip regen =
+  check just that clip → header "Regen (1)". One regen verb, one place; card keeps AI Edit Video /
+  Takes / Edit Clip Script.
 
 ## Resolved this session (for reference)
 - ☑ "Edit in Screenplay" on Film scene detail — removed (nav covers it).
