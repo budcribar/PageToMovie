@@ -24,7 +24,7 @@ public class VoiceCloneApplyServiceTests : IDisposable
 
         var elHttp = new HttpClient { BaseAddress = new Uri("https://api.elevenlabs.io/v1/") };
         IVoiceClient eleven = new ElevenLabsVoiceClient(
-            elHttp, NullLogger<ElevenLabsVoiceClient>.Instance, allowMockFallback: true);
+            elHttp, NullLogger<ElevenLabsVoiceClient>.Instance, allowMockFallback: false);
 
         var falHttp = new HttpClient { BaseAddress = new Uri("https://queue.fal.run/") };
         IVoiceCloneClient fal = new FalVoiceCloneClient(falHttp, NullLogger<FalVoiceCloneClient>.Instance);
@@ -53,6 +53,7 @@ public class VoiceCloneApplyServiceTests : IDisposable
     [Fact]
     public async Task ApplyFromSample_does_not_mock_or_switch_when_eleven_key_is_missing()
     {
+        using var _ = ClearVoiceKeys();
         var p = await _store.CreateProjectAsync("tthv7", title: "Tell-Tale Heart V7");
         await _store.SaveConfigAsync(
             p.Id, JsonSerializer.SerializeToElement(new { voice_model_name = "eleven_voice_clone" }));
@@ -66,13 +67,16 @@ public class VoiceCloneApplyServiceTests : IDisposable
             previewText: "True! nervous — very, very dreadfully nervous I had been and am.");
 
         Assert.False(result.Ok);
-        Assert.Contains("cannot create Instant Voice Clones", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No working API key", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("elevenlabs", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fal", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(_store.GetVoiceCloneSamplePath(p.Id, "Character_Narrator")));
     }
 
     [Fact]
     public async Task ApplyFromSample_fal_model_without_key_fails_without_auto_fallback()
     {
+        using var _ = ClearVoiceKeys();
         var p = await _store.CreateProjectAsync("buster", title: "Buster");
         await _store.SaveConfigAsync(
             p.Id, JsonSerializer.SerializeToElement(new { voice_model_name = "fal-ai/minimax/voice-clone" }));
@@ -85,9 +89,29 @@ public class VoiceCloneApplyServiceTests : IDisposable
             sampleFileName: "voice_clone_sample.wav");
 
         Assert.False(result.Ok);
-        Assert.Contains("Fal MiniMax voice clone failed", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No working API key", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fal", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("eleven", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
         // Sample still saved for a later retry after the user fixes key/model.
         Assert.True(File.Exists(_store.GetVoiceCloneSamplePath(p.Id, "Character_Narrator")));
+    }
+
+    private static IDisposable ClearVoiceKeys()
+    {
+        string[] names = ["ElevenLabs_API_KEY", "ELEVENLABS_API_KEY", "FAL_API_KEY", "FAL_KEY"];
+        var prev = names.ToDictionary(n => n, Environment.GetEnvironmentVariable);
+        foreach (var n in names)
+            Environment.SetEnvironmentVariable(n, null);
+        return new RestoreEnv(prev);
+    }
+
+    private sealed class RestoreEnv(Dictionary<string, string?> prev) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var (k, v) in prev)
+                Environment.SetEnvironmentVariable(k, v);
+        }
     }
 
     private sealed class SimpleFactory : IHttpClientFactory
