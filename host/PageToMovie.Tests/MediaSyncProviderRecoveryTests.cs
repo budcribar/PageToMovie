@@ -289,22 +289,21 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         var token = store.Issue(
             "https://vidgen.example/ok.mp4",
             TimeSpan.FromMinutes(5),
-            new PageToMovie.Engine.MediaProxyTicket(
-                FileId: "file_live",
-                KeyUserId: "owner-id",
-                ProjectDir: "/data/projects/demo",
-                Scene: 1,
-                Clip: 2,
-                ModelId: "catalog-video-model",
-                ProviderId: "catalog-provider"));
-        Assert.True(store.TryTake(token, out var ticket));
-        Assert.Equal("file_live", ticket.FileId);
-        Assert.Equal("owner-id", ticket.KeyUserId);
-        Assert.Equal("/data/projects/demo", ticket.ProjectDir);
-        Assert.Equal(1, ticket.Scene);
-        Assert.Equal(2, ticket.Clip);
-        Assert.Equal("catalog-video-model", ticket.ModelId);
-        Assert.Equal("catalog-provider", ticket.ProviderId);
+            "file_live",
+            keyUserId: "owner-id",
+            projectDir: "/data/projects/demo",
+            scene: 1,
+            clip: 2,
+            modelId: "catalog-video-model",
+            providerId: "catalog-provider");
+        Assert.True(store.TryTake(token, out _, out var fileId, out var keyUser, out var dir, out var scene, out var clip, out var model, out var provider));
+        Assert.Equal("file_live", fileId);
+        Assert.Equal("owner-id", keyUser);
+        Assert.Equal("/data/projects/demo", dir);
+        Assert.Equal(1, scene);
+        Assert.Equal(2, clip);
+        Assert.Equal("catalog-video-model", model);
+        Assert.Equal("catalog-provider", provider);
     }
 
     [Fact]
