@@ -124,12 +124,13 @@ public static class ClipCorrectionPlanner
         List<Respelling> respellings)
     {
         foreach (var word in ver.Issues
-            .Where(i => i.Kind is "wrong_sense" or "mispronounced" && !string.IsNullOrWhiteSpace(i.Word))
+            .Where(i => i.Kind is "wrong_sense" or "mispronounced")
             .Select(issue => issue.Word))
         {
-            if (respellings.Any(r => string.Equals(r.Word, word, StringComparison.OrdinalIgnoreCase)))
+            if (string.IsNullOrWhiteSpace(word)
+                || respellings.Any(r => string.Equals(r.Word, word, StringComparison.OrdinalIgnoreCase)))
                 continue;
-            var forced = ForceSense(resolver, word!, dialogue);
+            var forced = ForceSense(resolver, word, dialogue);
             if (forced is not null) respellings.Add(forced);
         }
     }

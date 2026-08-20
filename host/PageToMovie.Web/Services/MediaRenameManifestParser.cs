@@ -44,7 +44,7 @@ internal static class MediaRenameManifestParser
             var from = r.TryGetProperty("from", out var f) ? f.GetString() : null;
             var to = r.TryGetProperty("to", out var t) ? t.GetString() : null;
             if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(to))
-                entry.Renames.Add((from!, to!));
+                entry.Renames.Add((from, to));
         }
     }
 
