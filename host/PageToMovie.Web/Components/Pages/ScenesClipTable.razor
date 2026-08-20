@@ -65,6 +65,15 @@
                                 @onclick="() => ToggleExpand(cn)">
                             C@(cn.ToString("D2")) @(active ? "▾" : "▸")
                         </button>
+                        <button type="button"
+                                class="btn btn-sm btn-success py-0 px-1 ms-1"
+                                data-testid="@($"clip-row-play-{cn}")"
+                                disabled="@(Host._busy || Gen.JobRunning || !(Playback?.CanPlayClip(ListState._detail.SceneNumber, cn) ?? false))"
+                                title="@(Playback?.ClipPlayTitle(ListState._detail.SceneNumber, cn) ?? "Play this clip")"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => Playback?.PlaySingleClipAsync(ListState._detail.SceneNumber, cn) ?? Task.CompletedTask">
+                            ▶
+                        </button>
                     </td>
                     <td class="small clip-dialogue-cell" title="@ClipDialogueTitle(c)">
                         @if (!string.IsNullOrWhiteSpace(c.Speaker))

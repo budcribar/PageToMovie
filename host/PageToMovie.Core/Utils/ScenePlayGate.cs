@@ -70,6 +70,44 @@ public static class ScenePlayGate
     }
 
     /// <summary>
+    /// Per-clip Play: only THIS clip's media. A sibling hole must not disable
+    /// a clip that has a real MP4 or a confirmed local file. Sidecar /
+    /// <c>.client.json</c> markers are not playable on their own.
+    /// </summary>
+    public static bool IsClipPlayable(bool hasServerVideo, bool hasLocalVideo = false) =>
+        hasServerVideo || hasLocalVideo;
+
+    public static bool IsClipPlayable(long sizeBytes, bool hasLocalVideo = false) =>
+        IsClipPlayable(HasServerVideo(sizeBytes), hasLocalVideo);
+
+    public static (bool CanPlay, string? DisabledReason) DecideOneClipPlay(
+        int sceneNumber,
+        int clipNumber,
+        bool hasServerVideo,
+        bool hasLocalVideo = false)
+    {
+        if (IsClipPlayable(hasServerVideo, hasLocalVideo))
+            return (true, null);
+        return (false, MissingClipDisabledReason(sceneNumber, clipNumber));
+    }
+
+    /// <summary>
+    /// When scene detail is not loaded: this clip is playable unless the scene
+    /// list marks it as missing server video (and no local file was confirmed).
+    /// Do not require the rest of the scene to be complete.
+    /// </summary>
+    public static bool IsClipPlayableFromSceneMissingList(
+        int clipNumber,
+        IReadOnlyList<int>? missingServerVideoClips,
+        bool hasLocalVideo = false)
+    {
+        if (hasLocalVideo)
+            return true;
+        var missing = missingServerVideoClips ?? Array.Empty<int>();
+        return !missing.Contains(clipNumber);
+    }
+
+    /// <summary>
     /// Scene Play / Play selected: every planned clip must be playable
     /// (server MP4 or confirmed local file). First hole wins the tooltip.
     /// </summary>

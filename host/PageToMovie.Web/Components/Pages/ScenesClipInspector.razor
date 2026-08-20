@@ -17,7 +17,7 @@
         <div class="border border-primary border-opacity-25 rounded bg-body-tertiary p-3 my-1" data-testid="clip-expansion">
             <div class="row">
                 <div class="col-md-5 mb-3">
-                    @if (ClipForm._clip.OnDisk)
+                    @if (Playback is { } play && play.CanPlayClip(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber))
                     {
                         @if (Playback._clipVideoLoading)
                         {
@@ -59,6 +59,13 @@
                 <div class="col-md-7">
                     @* One action bar — the rest of the clip's verbs live at scene level. *@
                     <div class="d-flex flex-wrap gap-1 mb-2">
+                        <button class="btn btn-sm btn-success"
+                                data-testid="clip-inspector-play"
+                                disabled="@(Host._busy || Gen.JobRunning || !(Playback?.CanPlayClip(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? false))"
+                                title="@(Playback?.ClipPlayTitle(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? "Play this clip")"
+                                @onclick="() => Playback?.PlaySingleClipAsync(ListState._detail.SceneNumber, ClipForm._clip.ClipNumber) ?? Task.CompletedTask">
+                            ▶ Play
+                        </button>
                         <button class="btn btn-sm btn-outline-primary"
                                 data-testid="clip-video-edit-open"
                                 disabled="@(Host._busy || Gen.JobRunning || !ClipForm._clip.OnDisk || Scenes.ScenesClipRegen.ClipExceedsEditDurationCap(ClipForm._clip))"

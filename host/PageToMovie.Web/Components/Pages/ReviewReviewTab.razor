@@ -152,8 +152,8 @@
                                             <div class="d-flex flex-wrap gap-1 justify-content-end">
                                                 <button class="btn btn-sm btn-success"
                                                         data-testid="@($"review-play-scene-{sn}")"
-                                                        disabled="@(Host._busy || jobs.JobRunning || (s.ClipsOnDisk == 0 && !s.CompositeExists))"
-                                                        title="Play scene (browser stitch from clips)"
+                                                        disabled="@(Host._busy || jobs.JobRunning || !playback.CanPlayScene(sn))"
+                                                        title="@playback.ScenePlayTitle(sn)"
                                                         @onclick="() => playback.PlaySceneAsync(sn)">
                                                     ▶ Play
                                                 </button>
@@ -246,6 +246,7 @@
                             var key = $"S{sel:D2}C{cn:D2}";
                             var st = autoReview._reviews.TryGetValue(key, out var r) ? r : "—";
                             var onDisk = list.ClipOnDisk(sel, cn);
+                            var playable = list.ClipIsPlayable(sel, cn);
                             var autoBusy = autoReview.IsAutoReviewRunning(sel, cn);
                             var draft = autoReview.GetLocalDraft(sel, cn);
                             var editing = autoReview._editKey == key;
@@ -265,7 +266,7 @@
                                 <div class="btn-group btn-group-sm mt-1 flex-wrap">
                                     <button class="btn btn-sm btn-success"
                                             data-testid="@($"review-play-clip-{sel}-{cn}")"
-                                            disabled="@(Host._busy || !onDisk)"
+                                            disabled="@(Host._busy || !playable)"
                                             title="Play this clip"
                                             @onclick="() => playback.PlayClipAsync(sel, cn)">▶ Play</button>
                                     <button class="btn btn-outline-primary"

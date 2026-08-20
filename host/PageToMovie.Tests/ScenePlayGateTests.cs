@@ -101,6 +101,52 @@ public class ScenePlayGateTests
 
         var sceneGate = ScenePlayGate.DecideScenePlay(2, clipCount: 4, missingServerVideoClips: new[] { 3 });
         Assert.False(sceneGate.CanPlay);
+
+        var present = ScenePlayGate.DecideOneClipPlay(2, 1, hasServerVideo: true);
+        Assert.True(present.CanPlay);
+        Assert.Null(present.DisabledReason);
+    }
+
+    [Fact]
+    public void DecideOneClipPlay_enabled_for_present_clip_when_sibling_is_missing()
+    {
+        var hole = ScenePlayGate.DecideScenePlay(2, clipCount: 4, missingServerVideoClips: new[] { 3 });
+        Assert.False(hole.CanPlay);
+        Assert.Contains("S02 C03", hole.DisabledReason, StringComparison.Ordinal);
+
+        var clip1 = ScenePlayGate.DecideOneClipPlay(2, 1, hasServerVideo: true);
+        var clip2 = ScenePlayGate.DecideOneClipPlay(2, 2, hasServerVideo: false, hasLocalVideo: true);
+        Assert.True(clip1.CanPlay);
+        Assert.True(clip2.CanPlay);
+    }
+
+    [Fact]
+    public void DecideOneClipPlay_disabled_for_sidecar_only_clip()
+    {
+        Assert.False(ScenePlayGate.IsClipPlayable(sizeBytes: 120));
+        var (canPlay, reason) = ScenePlayGate.DecideOneClipPlay(2, 3, hasServerVideo: false);
+        Assert.False(canPlay);
+        Assert.Contains("S02 C03", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IsClipPlayableFromSceneMissingList_does_not_require_the_rest_of_the_scene()
+    {
+        var missing = (IReadOnlyList<int>)new[] { 3 };
+        Assert.True(ScenePlayGate.IsClipPlayableFromSceneMissingList(1, missing));
+        Assert.True(ScenePlayGate.IsClipPlayableFromSceneMissingList(2, missing));
+        Assert.False(ScenePlayGate.IsClipPlayableFromSceneMissingList(3, missing));
+        Assert.True(ScenePlayGate.IsClipPlayableFromSceneMissingList(3, missing, hasLocalVideo: true));
+    }
+
+    [Fact]
+    public void DecideScenePlay_enabled_when_every_clip_exists()
+    {
+        var (canPlay, reason) = ScenePlayGate.DecideScenePlay(
+            2, clipCount: 4, missingServerVideoClips: Array.Empty<int>());
+        Assert.True(canPlay);
+        Assert.Null(reason);
+        Assert.True(ScenePlayGate.DecideOneClipPlay(2, 3, hasServerVideo: true).CanPlay);
     }
 
     [Fact]
