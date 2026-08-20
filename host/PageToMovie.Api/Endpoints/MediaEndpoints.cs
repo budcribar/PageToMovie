@@ -322,9 +322,11 @@ public static class MediaEndpoints
         var videoDir = Path.GetDirectoryName(fullPath);
         ClipFileNaming.TryParseSceneClip(Path.GetFileName(fullPath), out var scene, out var clip);
         return await StreamProviderCopyAsync(
-            src.SourceUrl, src.SourceFileId, httpFactory, xai, httpContext, ct, logFactory,
-            recoverAfterProvider: (_, _, _) => Task.FromResult(
-                TryRecoverHostedCopy(ClipForkFallback.ProjectDirFromVideoDir(videoDir), scene, clip)));
+            src.SourceUrl, src.SourceFileId, httpFactory, xai, httpContext, ct,
+            new StreamProviderCopyOptions(
+                LogFactory: logFactory,
+                RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                    TryRecoverHostedCopy(ClipForkFallback.ProjectDirFromVideoDir(videoDir), scene, clip))));
     }
 
     private static string ContentTypeForMediaExtension(string fullPath)
@@ -456,16 +458,19 @@ public static class MediaEndpoints
     }
 }
 
-    private static async Task<IResult> GetMediaProxyToken(string token,
-    MediaProxyTicketStore tickets,
-    IHttpClientFactory httpFactory,
-    XaiResponsesClient? xai,
-    IUserApiKeyProvider keys,
-    ILoggerFactory logFactory,
-    HttpContext httpContext,
-    CancellationToken ct)
+    private sealed record MediaProxyTokenServices(
+        MediaProxyTicketStore Tickets,
+        IHttpClientFactory HttpFactory,
+        XaiResponsesClient? Xai,
+        IUserApiKeyProvider Keys,
+        HttpContext HttpContext);
+
+    private static async Task<IResult> GetMediaProxyToken(
+        string token,
+        [AsParameters] MediaProxyTokenServices svc,
+        CancellationToken ct)
     {
-    if (!tickets.TryTake(token, out var url, out var fileId, out var keyUserId,
+    if (!svc.Tickets.TryTake(token, out var url, out var fileId, out var keyUserId,
             out var projectDir, out var scene, out var clip)
         || (string.IsNullOrWhiteSpace(url) && string.IsNullOrWhiteSpace(fileId)))
         return Results.NotFound(new { ok = false, error = "Media ticket expired or invalid" });
@@ -475,13 +480,15 @@ public static class MediaEndpoints
 
     // Resolve first, then Push on this caller's ExecutionContext. Pushing inside an
     // async helper does not stick — ApiKeyScope is AsyncLocal and is restored after await.
-    var grokKey = await ResolveTicketGrokKeyAsync(keys, keyUserId, ct).ConfigureAwait(false);
+    var grokKey = await ResolveTicketGrokKeyAsync(svc.Keys, keyUserId, ct).ConfigureAwait(false);
     using (ApiKeyScope.Push(grokKey))
     using (UserApiCallScope.Push(keyUserId))
         return await StreamProviderCopyAsync(
-            url, fileId, httpFactory, xai, httpContext, ct, logFactory,
-            recoverAfterProvider: (_, _, _) => Task.FromResult(
-                TryRecoverHostedCopy(projectDir, scene, clip)));
+            url, fileId, svc.HttpFactory, svc.Xai, svc.HttpContext, ct,
+            new StreamProviderCopyOptions(
+                LogFactory: svc.HttpContext.RequestServices.GetService<ILoggerFactory>(),
+                RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                    TryRecoverHostedCopy(projectDir, scene, clip))));
 }
 
     /// <summary>
@@ -497,6 +504,11 @@ public static class MediaEndpoints
         return !string.IsNullOrWhiteSpace(fromUser) ? fromUser : ApiKeyScope.Current;
     }
 
+    /// <summary>Optional logger and Railway hosted-copy recovery for the DI wrapper.</summary>
+    internal sealed record StreamProviderCopyOptions(
+        ILoggerFactory? LogFactory = null,
+        Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
+
     /// <summary>
     /// Stream the provider copy: durable public URL first, then xAI Files <c>file_id</c>
     /// (best-effort — Imagine ids are generate-only). Combined-extend slicing/hop-walk is
@@ -509,16 +521,28 @@ public static class MediaEndpoints
         XaiResponsesClient? xai,
         HttpContext httpContext,
         CancellationToken ct,
-        ILoggerFactory? logFactory = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null) =>
+        StreamProviderCopyOptions? options = null) =>
         StreamProviderCopyAsync(
             url,
             fileId,
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
             (id, token) => TryOpenXaiFileAsync(xai, id, httpContext, token),
             ct,
-            logFactory?.CreateLogger("MediaProxy"),
-            recoverAfterProvider);
+            options?.LogFactory?.CreateLogger("MediaProxy"),
+            options?.RecoverAfterProvider);
+
+    /// <summary>Named <paramref name="recoverAfterProvider"/> form used by scene-clip streaming.</summary>
+    internal static Task<IResult> StreamProviderCopyAsync(
+        string? url,
+        string? fileId,
+        IHttpClientFactory httpFactory,
+        XaiResponsesClient? xai,
+        HttpContext httpContext,
+        CancellationToken ct,
+        Func<string?, Exception?, CancellationToken, Task<IResult?>> recoverAfterProvider) =>
+        StreamProviderCopyAsync(
+            url, fileId, httpFactory, xai, httpContext, ct,
+            new StreamProviderCopyOptions(RecoverAfterProvider: recoverAfterProvider));
 
     /// <summary>Test hook: URL then file_id openers. A file_id failure is a visible error,
     /// not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/> is the
@@ -617,8 +641,14 @@ public static class MediaEndpoints
             fileDownloadName: "clip.mp4");
     }
 
-    private static string TrimForError(string s, int n) =>
-        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n];
+    private static string TrimForError(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s))
+            return "";
+        if (s.Length <= n)
+            return s;
+        return s[..n];
+    }
 
     private static IResult? TryServeDataUrl(string url)
     {
