@@ -21,6 +21,17 @@
     var canGenerate = (Host.IsSimpleFilm || (selCount > 0 && list.CastReady)) && !Host.Gen.JobRunning;
     var genDisabled = Host._busy || Host.Gen.JobRunning || list.SelectedLockedByOther
                       || (!Host.IsSimpleFilm && (selCount == 0 || !list.CastReady));
+    var playSelectedDisabled = Host._busy
+        || (Playback?._clientStitching ?? false)
+        || !(Playback?.CanPlaySelected ?? false);
+    var verifyDialogueDisabled = Host._busy
+        || Host.Gen.JobRunning
+        || (Dialogue?._verifyingClip ?? false)
+        || !(Dialogue?.SelectedScenesHaveClipsToVerify ?? false);
+    var checkedSceneWord = selCount == 1 ? "scene" : "scenes";
+    var rebuildShotPlanTitle = selCount > 0
+        ? $"Regenerate the shot plan for only the {selCount} checked {checkedSceneWord} from the screenplay (others untouched)"
+        : "Check the scene(s) to re-plan first — Select all rebuilds the whole shot plan";
 }
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="scene-index">
@@ -202,7 +213,7 @@ else
             <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
                 <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 flex-grow-1 text-nowrap" style="font-size:0.75rem;"
                         data-testid="scenes-play-selected"
-                        disabled="@(Host._busy || (Playback?._clientStitching == true) || !(Playback?.CanPlaySelected == true))"
+                        disabled="@playSelectedDisabled"
                         title="@PlaySelectedTitle"
                         @onclick="() => Playback?.PlaySelectedAsync() ?? Task.CompletedTask">
                     ▶ @L["ScenesPage.PlaySelected"]@(selCount > 0 ? $" ({selCount})" : "")
@@ -219,7 +230,7 @@ else
                                          SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
                                          TestId="scenes-verify-dialogue-cap">
                     <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 text-nowrap" style="font-size:0.75rem;"
-                            disabled="@(Host._busy || Host.Gen.JobRunning || (Dialogue?._verifyingClip == true) || !(Dialogue?.SelectedScenesHaveClipsToVerify == true))"
+                            disabled="@verifyDialogueDisabled"
                             title="@VerifyDialogueTitle"
                             @onclick="() => Dialogue?.VerifySelectedScenesDialogueAsync() ?? Task.CompletedTask">
                         🔍 @L["ScenesPage.VerifySceneDialogue"]@(selCount > 0 ? $" ({selCount})" : "")
@@ -251,9 +262,7 @@ else
         <div class="d-flex flex-wrap align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-50 small">
             <button type="button" class="btn btn-link btn-sm py-0 px-1 text-decoration-none text-muted"
                     disabled="@(Host._busy || Host.Gen.JobRunning)"
-                    title="@(selCount > 0
-                        ? $"Regenerate the shot plan for only the {selCount} checked scene{(selCount == 1 ? "" : "s")} from the screenplay (others untouched)"
-                        : "Check the scene(s) to re-plan first — Select all rebuilds the whole shot plan")"
+                    title="@rebuildShotPlanTitle"
                     data-testid="scenes-regenerate-selected-scenes"
                     @onclick="list.RegenerateSelectedScenesAsync">
                 📝 @L["ScenesPage.RebuildShotPlan"]
