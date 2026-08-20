@@ -30,6 +30,15 @@ Status: ☐ open · ☑ resolved (with decision).
 | 20 | ☑ | Generate vs Regenerate (film level) | ONE "Generate (N scenes)…" button; scope radio in the confirm: "Missing clips only" (default) vs "All clips (new takes)" with per-scope cost | Toolbar "🔄 Regenerate (N)" (`ScenesSceneIndex.razor:214`) folds into it. Scene-header "Regen (N) selected clips" is NOT part of this — checked clips always exist. Decided 2026-08-19 (mockup). |
 | 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" (`Demo.FilmCard.razor:113`) | Home easy-start story list fork (same action, different surface — may be intentional) |
 
+## Feature decisions from the mockup review (2026-08-19)
+- Insert scene / insert clip at ANY position (not just append). Design decided: decouple ORDER from
+  NUMBER — blueprint carries scene order + per-scene clip order; an inserted clip takes the next free
+  number but sits where placed; stitch/Film/Review/extend-resolution iterate in order; no file renames.
+  The clip after an insertion point goes stale (new predecessor) — expected. NOT BUILT YET (needs go-ahead;
+  touches every OrderBy(SceneNumber/ClipNumber) site in Engine/Web).
+- Film-level Generate/Regenerate merged (see #20). Row = checkbox + expander + line + duration + chip;
+  delete via scene menu ("Delete (N) selected clips…"); autoplay on expand; "Edit Clip Script" / "AI Edit Video".
+
 ## Resolved this session (for reference)
 - ☑ "Edit in Screenplay" on Film scene detail — removed (nav covers it).
 - ☑ "Show Fountain Script" — renamed "📜 Screenplay", moved to scene header.
