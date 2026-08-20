@@ -32,11 +32,33 @@ public class AppShellTests
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/");
 
-            await page.Locator("a[href='/demo']").First.ClickAsync();
+            await page.GetByTestId("nav-demo").ClickAsync();
             await Assertions.Expect(page).ToHaveURLAsync(new Regex("/demo", RegexOptions.None, CommonRegex.Timeout));
 
             await page.Locator("a[href='/configuration']").First.ClickAsync();
             await Assertions.Expect(page).ToHaveURLAsync(new Regex("/configuration", RegexOptions.None, CommonRegex.Timeout));
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Home_demo_films_heading_is_the_single_gallery_link()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/");
+
+            var heading = page.GetByTestId("home-demo-films-heading");
+            await Assertions.Expect(heading).ToHaveCountAsync(1);
+            await Assertions.Expect(heading).ToBeVisibleAsync(new() { Timeout = 20_000 });
+            await Assertions.Expect(heading).ToHaveAttributeAsync("href", "/demo");
+            await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "Demo films", Exact = true })).ToHaveCountAsync(1);
+            await Assertions.Expect(page.GetByTestId("home-open-demo-gallery")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByTestId("home-demo-films-card")).ToHaveCountAsync(1);
+
+            await heading.ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/demo", RegexOptions.None, CommonRegex.Timeout));
         }
         finally { await ctx.CloseAsync(); }
     }

@@ -1,24 +1,18 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Home — demo films showcase card *@
+@* Page-local to Home — demo films showcase card. Heading is the /demo link. *@
 @inject IAppLocalizer L
 @using PageToMovie.Core.Util
 @using Microsoft.AspNetCore.Components
 
-@code {
-    [Parameter] public bool Inline { get; set; }
-}
-
-@if (Inline)
-{
-    @if (Host.Costs._publicDemos.Count > 0)
-    {
-        <div class="home-showcase-inline pt-2 mt-2 border-top border-secondary border-opacity-25" data-testid="home-demo-films-card">
-            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
-                <span class="small fw-semibold text-secondary text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.05em;">@L["Home.DemoFilms"]</span>
-                <a href="/demo" class="btn btn-sm btn-link text-decoration-none px-0 py-0 flex-shrink-0" style="font-size: 0.78rem;" data-testid="home-open-demo-gallery">
-                    @L["Home.OpenGallery"] →
-                </a>
-            </div>
+<div class="card home-showcase-card mb-2" data-testid="home-demo-films-card">
+    <div class="card-body py-2 px-3">
+        <a href="/demo"
+           class="home-showcase-heading small fw-semibold text-secondary text-uppercase text-decoration-none"
+           data-testid="home-demo-films-heading">
+            @L["Home.DemoFilms"]<span class="home-showcase-heading__arrow" aria-hidden="true"> →</span>
+        </a>
+        @if (Host.Costs._publicDemos.Count > 0)
+        {
             <div class="home-showcase-thumbs" aria-label="Recent demo films">
                 @foreach (var d in Host.Costs._publicDemos.Take(4))
                 {
@@ -44,47 +38,6 @@
                     </a>
                 }
             </div>
-        </div>
-    }
-}
-else
-{
-    <div class="card home-showcase-card mb-2" data-testid="home-demo-films-card">
-        <div class="card-body py-2 px-3">
-            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
-                <span class="small fw-semibold text-secondary text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.05em;">@L["Home.DemoFilms"]</span>
-                <a href="/demo" class="btn btn-sm btn-primary flex-shrink-0" data-testid="home-open-demo-gallery">
-                    @L["Home.OpenGallery"]
-                </a>
-            </div>
-            @if (Host.Costs._publicDemos.Count > 0)
-            {
-                <div class="home-showcase-thumbs" aria-label="Recent demo films">
-                    @foreach (var d in Host.Costs._publicDemos.Take(4))
-                    {
-                        var yt = YouTubeVideoId.Extract(d.YoutubeId) ?? YouTubeVideoId.Extract(d.YoutubeUrl);
-                        var href = DemoHref(yt, d);
-                        var thumb = yt is not null
-                            ? YouTubeVideoId.ThumbnailUrl(yt, "mqdefault")
-                            : null;
-                        <a class="home-showcase-thumb"
-                           href="@href"
-                           target="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "_blank" : null)"
-                           rel="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "noopener noreferrer" : null)"
-                           title="@d.Title">
-                            @if (thumb is not null)
-                            {
-                                <img src="@thumb" alt="" loading="lazy" />
-                            }
-                            else
-                            {
-                                <span class="home-showcase-thumb__ph" aria-hidden="true">▶</span>
-                            }
-                            <span class="home-showcase-thumb__label">@d.Title</span>
-                        </a>
-                    }
-                </div>
-            }
-        </div>
+        }
     </div>
-}
+</div>

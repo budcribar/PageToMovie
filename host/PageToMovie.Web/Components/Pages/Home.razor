@@ -116,15 +116,12 @@ else
     }
 }
 
-@* Standalone demo films card only when not in full studio mode *@
-@if (!Session.IsLoggedIn || Projects.ShowEasyHome)
-{
-    <CascadingValue Value="this" IsFixed="true">
-        <CascadingValue Value="Costs" IsFixed="true">
-            <HomeDemoFilmsCard />
-        </CascadingValue>
+@* One Home surface for demo films — heading links to /demo. *@
+<CascadingValue Value="this" IsFixed="true">
+    <CascadingValue Value="Costs" IsFixed="true">
+        <HomeDemoFilmsCard />
     </CascadingValue>
-}
+</CascadingValue>
 
 
 <ProjectCollaboratorsModal IsOpen="Projects._showCollaboratorsModal" ProjectId="Projects._collaboratorsProjectId" OnClose="Projects.CloseCollaboratorsModal" />
