@@ -286,6 +286,7 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
     internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {
         await TryRestoreSidecarsOnceAsync();
+        await Playback.RefreshLocalPlayableAsync();
         if (Playback._showScenePlayer && Playback._playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
         {
             await Playback.PlaySceneCompositeAsync(sn);

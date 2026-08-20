@@ -44,11 +44,22 @@ window.PageToMovieFfmpeg = {
         }
     },
 
+    _clipLabelFromUrl: function (url) {
+        if (typeof url !== "string") return "";
+        const m = /\/scenes\/(\d+)\/clips\/(\d+)\//i.exec(url);
+        if (!m) return "";
+        const scene = String(Number(m[1])).padStart(2, "0");
+        const clip = String(Number(m[2])).padStart(2, "0");
+        return "S" + scene + " C" + clip;
+    },
+
     _safeFetchFile: async function (url) {
         if (typeof url === "string" && !url.startsWith("blob:") && !url.startsWith("data:")) {
             const res = await fetch(url);
             if (!res.ok) {
-                throw new Error("Clip video missing (" + res.status + " " + res.statusText + "). Please generate clip first.");
+                const label = this._clipLabelFromUrl(url);
+                const named = label ? (label + ": ") : "";
+                throw new Error(named + "clip video missing (" + res.status + " " + (res.statusText || "") + "). Generate those clips first or connect the media folder.");
             }
             const buf = await res.arrayBuffer();
             return new Uint8Array(buf);

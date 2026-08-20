@@ -1,5 +1,6 @@
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Web.Services;
 
@@ -37,6 +38,7 @@ public sealed class ClientVideoStitchService
         // BrowserMediaPath can append a fresh ?mt= media token. Ensure one exists BEFORE building URLs —
         // otherwise the raw ffmpeg fetch hits the authenticated endpoint with no token and gets a 401.
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
+        BeginSkippedCollect();
         var urls = new List<string>();
         foreach (var sn in sceneNumbers.Distinct().OrderBy(x => x))
         {
@@ -44,6 +46,7 @@ public sealed class ClientVideoStitchService
             await AppendSceneMediaUrlsAsync(urls, projectId, sn, sceneList, ct);
         }
 
+        FinishSkippedCollect();
         return urls;
     }
 
@@ -72,7 +75,13 @@ public sealed class ClientVideoStitchService
             return;
         }
 
-        if (await TryAppendOnDiskClipUrlsAsync(urls, projectId, sn, detail))
+        var skipped = await TryAppendAllPlayableClipUrlsAsync(urls, projectId, sn, detail, ct);
+        if (skipped.Count > 0)
+        {
+            NoteSkippedClips(skipped);
+            return;
+        }
+        if (skipped.Count == 0 && (detail?.Clips?.Count ?? 0) > 0)
             return;
 
         // Fallback: if no atomic clips on disk for this scene, use composite if available
@@ -92,31 +101,34 @@ public sealed class ClientVideoStitchService
         }
     }
 
-    private async Task<bool> TryAppendOnDiskClipUrlsAsync(
-        List<string> urls, string projectId, int sn, SceneDetail? detail)
+    /// <summary>
+    /// Resolve every planned clip, or add none. A scene with a hole must not stitch the rest.
+    /// Returns the labels of clips that were not playable (empty when all resolved or no clips).
+    /// </summary>
+    private async Task<List<string>> TryAppendAllPlayableClipUrlsAsync(
+        List<string> urls, string projectId, int sn, SceneDetail? detail, CancellationToken ct)
     {
-        var clips = detail?.Clips?
-            .Where(c => c.OnDisk)
-            .OrderBy(c => c.ClipNumber)
-            .ToList();
-
+        var clips = detail?.Clips?.OrderBy(c => c.ClipNumber).ToList();
         if (clips is not { Count: > 0 })
-            return false;
+            return new List<string>();
 
+        var resolved = new List<string>(clips.Count);
+        var missing = new List<string>();
         foreach (var c in clips)
         {
-            var fileName = string.IsNullOrWhiteSpace(c.FileName)
-                ? $"scene_{sn:D2}_clip_{c.ClipNumber:D2}.mp4"
-                : c.FileName;
-
-            var local = _media is null
-                ? null
-                : await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}");
-            // No local file: the server/provider copy of a video-extend clip is the combined video —
-            // ResolveServerClipUrlAsync slices the previous clip's head off first.
-            urls.Add(local ?? await ResolveServerClipUrlAsync(projectId, sn, c));
+            var url = await TryResolvePlayableClipUrlAsync(projectId, sn, c, includeServerFallback: true, ct)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(url))
+                resolved.Add(url);
+            else
+                missing.Add(ScenePlayGate.FormatClipLabel(sn, c.ClipNumber));
         }
-        return true;
+
+        if (missing.Count > 0)
+            return missing;
+
+        urls.AddRange(resolved);
+        return missing;
     }
 
     /// <summary>
@@ -167,6 +179,35 @@ public sealed class ClientVideoStitchService
     /// <summary>Why the last segment collection dropped a scene (stitch/fetch failure), or null.</summary>
     public string? LastCollectError { get; private set; }
 
+    /// <summary>S## C## labels skipped during the last collect (holes / unreachable).</summary>
+    public IReadOnlyList<string> LastSkippedClipLabels { get; private set; } = Array.Empty<string>();
+
+    private readonly List<string> _skippedClipLabels = new();
+
+    private void BeginSkippedCollect()
+    {
+        LastCollectError = null;
+        _skippedClipLabels.Clear();
+        LastSkippedClipLabels = Array.Empty<string>();
+    }
+
+    private void NoteSkippedClips(IEnumerable<string> labels)
+    {
+        foreach (var label in labels)
+        {
+            if (!string.IsNullOrWhiteSpace(label) && !_skippedClipLabels.Contains(label, StringComparer.Ordinal))
+                _skippedClipLabels.Add(label);
+        }
+        LastSkippedClipLabels = _skippedClipLabels.ToList();
+    }
+
+    private void FinishSkippedCollect()
+    {
+        LastSkippedClipLabels = _skippedClipLabels.ToList();
+        if (_skippedClipLabels.Count > 0 && string.IsNullOrWhiteSpace(LastCollectError))
+            LastCollectError = FormatMissingClipPlayError(_skippedClipLabels, _media?.IsConnected == true);
+    }
+
     /// <summary>On-disk clip URLs for one scene (ordered).</summary>
     /// <remarks>
     /// <see cref="ClipSummary.OnDisk"/> is true for a local-folder <c>.client.json</c> marker as well
@@ -180,9 +221,10 @@ public sealed class ClientVideoStitchService
         SceneDetail? detail = null,
         CancellationToken ct = default,
         bool includeServerFallback = true,
-        IEnumerable<int>? clipNumbers = null)
+        IEnumerable<int>? clipNumbers = null,
+        bool requireAllPlannedClips = false)
     {
-        LastCollectError = null;
+        BeginSkippedCollect();
         // Ensure a fresh ?mt= media token before any ClipVideoUrl fallback (see CollectSceneMediaUrlsAsync).
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
         if (detail is null)
@@ -193,22 +235,37 @@ public sealed class ClientVideoStitchService
         var clipSet = clipNumbers?.ToHashSet();
         var list = new List<string>();
         var missing = new List<string>();
-        var query = detail.Clips.Where(c => c.OnDisk);
-        if (clipSet is not null && clipSet.Count > 0)
-            query = query.Where(c => clipSet.Contains(c.ClipNumber));
+        IEnumerable<ClipSummary> query;
+        if (clipSet is { Count: > 0 })
+        {
+            query = clipSet.OrderBy(n => n).Select(n =>
+                detail.Clips.FirstOrDefault(c => c.ClipNumber == n)
+                ?? new ClipSummary { ClipNumber = n, OnDisk = false });
+        }
+        else if (requireAllPlannedClips)
+        {
+            query = detail.Clips.OrderBy(c => c.ClipNumber);
+        }
+        else
+        {
+            query = detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber);
+        }
 
-        foreach (var clipRow in query.OrderBy(c => c.ClipNumber))
+        foreach (var clipRow in query)
         {
             var url = await TryResolvePlayableClipUrlAsync(
                 projectId, sceneNumber, clipRow, includeServerFallback, ct).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(url))
                 list.Add(url);
             else
-                missing.Add($"S{sceneNumber:D2}C{clipRow.ClipNumber:D2}");
+                missing.Add(ScenePlayGate.FormatClipLabel(sceneNumber, clipRow.ClipNumber));
         }
 
         if (missing.Count > 0)
+        {
+            NoteSkippedClips(missing);
             LastCollectError = FormatMissingClipPlayError(missing, _media?.IsConnected == true);
+        }
         return list;
     }
 
@@ -245,7 +302,7 @@ public sealed class ClientVideoStitchService
         return await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}").ConfigureAwait(false);
     }
 
-    /// <summary>Operator-facing copy when an OnDisk clip has no local blob and no server mp4.</summary>
+    /// <summary>Operator-facing copy when a clip has no local blob and no server mp4.</summary>
     internal static string FormatMissingClipPlayError(IReadOnlyList<string> missingKeys, bool mediaFolderConnected)
     {
         var listed = string.Join(", ", missingKeys);
@@ -356,11 +413,13 @@ public sealed class ClientVideoStitchService
         CancellationToken ct = default)
     {
         var segments = new List<ClientWipSegment>();
-        LastCollectError = null;
+        BeginSkippedCollect();
+        await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
         foreach (var sn in sceneNumbers.Distinct().OrderBy(x => x))
         {
             ct.ThrowIfCancellationRequested();
-            var sceneUrls = await CollectSceneMediaUrlsAsync(projectId, new[] { sn }, sceneList, staleScenes, ct);
+            var sceneUrls = new List<string>();
+            await AppendSceneMediaUrlsAsync(sceneUrls, projectId, sn, sceneList, ct);
             if (sceneUrls.Count == 0)
                 continue;
 
@@ -373,7 +432,10 @@ public sealed class ClientVideoStitchService
                 if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
                 {
                     // Remember why: "no clips" and "could not stitch the clips" are different problems.
-                    LastCollectError = $"S{sn:D2}: {concat?.Error ?? "browser stitch failed"}";
+                    var why = concat?.Error ?? "browser stitch failed";
+                    LastCollectError = why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
+                        ? why
+                        : $"S{sn:D2}: {why}";
                     continue;
                 }
                 sceneUrl = concatUrl;
@@ -387,6 +449,7 @@ public sealed class ClientVideoStitchService
                 RelativeSrc = $"assets/video/scene_{sn:D2}.mp4",
             });
         }
+        FinishSkippedCollect();
         return segments;
     }
 

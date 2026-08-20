@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
+using PageToMovie.Core.Utils;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -59,6 +60,9 @@ public partial class Scenes
 
 
     internal string? _clientStitchStatus;
+
+    /// <summary>Local MP4 confirmed via media-folder stat (not just a connected folder).</summary>
+    internal readonly Dictionary<(int Scene, int Clip), bool> _localVideoReady = new();
 
 
 
@@ -128,12 +132,97 @@ public partial class Scenes
 
 
 
+    internal bool HasCachedLocalVideo(int scene, int clip) =>
+        _localVideoReady.TryGetValue((scene, clip), out var ok) && ok;
+
+    internal (bool CanPlay, string? Reason) DecideScenePlay(int sn)
+    {
+        if (sn <= 0)
+            return (false, "Open a scene first");
+
+        var detail = S.List._detail;
+        if (detail is { SceneNumber: var dsn, Clips: { Count: > 0 } } && dsn == sn)
+        {
+            var missing = detail.Clips
+                .Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes))
+                .Select(c => c.ClipNumber)
+                .ToList();
+            return ScenePlayGate.DecideScenePlay(
+                sn, detail.ClipCount, missing, cn => HasCachedLocalVideo(sn, cn), detail.CompositeExists);
+        }
+
+        var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
+        if (summary is null)
+            return (false, $"S{sn:D2} has no clips yet");
+        return ScenePlayGate.DecideScenePlay(
+            sn,
+            summary.ClipCount,
+            summary.ClipsMissingServerVideo,
+            cn => HasCachedLocalVideo(sn, cn),
+            summary.CompositeExists);
+    }
+
+    internal (bool CanPlay, string? Reason) DecideOpenScenePlay()
+    {
+        var sn = S.List._detail?.SceneNumber ?? S.List._selectedScene ?? 0;
+        return DecideScenePlay(sn);
+    }
+
+    internal bool CanPlayOpenScene => DecideOpenScenePlay().CanPlay;
+
+    internal string OpenScenePlayTitle
+    {
+        get
+        {
+            var decided = DecideOpenScenePlay();
+            return decided.CanPlay
+                ? "Play the checked clips (all when none are checked)"
+                : decided.Reason ?? "Scene is not ready to play";
+        }
+    }
+
+    internal async Task RefreshLocalPlayableAsync()
+    {
+        _localVideoReady.Clear();
+        if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
+            return;
+
+        var needed = new HashSet<(int Scene, int Clip)>();
+        if (S.List._scenes is { Count: > 0 })
+        {
+            foreach (var s in S.List._scenes)
+            {
+                foreach (var cn in s.ClipsMissingServerVideo)
+                    needed.Add((s.SceneNumber, cn));
+            }
+        }
+        if (S.List._detail?.Clips is { Count: > 0 } clips)
+        {
+            var sn = S.List._detail.SceneNumber;
+            foreach (var c in clips.Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes)))
+                needed.Add((sn, c.ClipNumber));
+        }
+
+        foreach (var (scene, clip) in needed)
+        {
+            var rel = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
+            _localVideoReady[(scene, clip)] = found && size >= ScenePlayGate.MinPlayableVideoBytes;
+        }
+    }
+
     internal async Task PlaySceneCompositeAsync(int sn)
     {
         // S._busy flips true synchronously, before the first await — see PlaySceneAsync's comment
         // in Review.razor for why (a fast second click otherwise slips past this guard and races
         // the first over shared local blob caches).
         if (S._busy || _clientStitching) return;
+        var gate = DecideScenePlay(sn);
+        if (!gate.CanPlay)
+        {
+            S._error = gate.Reason;
+            return;
+        }
         S._busy = true;
         try
         {
@@ -218,7 +307,13 @@ public partial class Scenes
             SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
                 ? S.List._detail
                 : null;
-            var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail);
+            var urls = await S.Stitch.CollectClipUrlsAsync(
+                S._projectId, sn, detail, requireAllPlannedClips: true);
+            if (S.Stitch.LastSkippedClipLabels.Count > 0)
+            {
+                FailScenePlayer(ScenePlayGate.FormatPlayFailedError("clips", S.Stitch.LastSkippedClipLabels));
+                return;
+            }
             if (urls.Count == 0 && compositeOk)
             {
                 // Stale composite still playable
@@ -311,6 +406,13 @@ public partial class Scenes
             return;
         }
 
+        var gate = DecideScenePlay(sn);
+        if (!gate.CanPlay)
+        {
+            S._error = gate.Reason;
+            return;
+        }
+
         S._busy = true;
         _clientStitching = true;
         S._error = null;
@@ -328,6 +430,11 @@ public partial class Scenes
                 ? S.List._detail
                 : null;
             var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail, clipNumbers: selectedClipNums);
+            if (S.Stitch.LastSkippedClipLabels.Count > 0)
+            {
+                FailScenePlayer(ScenePlayGate.FormatPlayFailedError("clips", S.Stitch.LastSkippedClipLabels));
+                return;
+            }
             var stitched = await ConcatSceneClipsAsync(urls, $"No on-disk video for selected clips in S{sn:D2}");
             if (stitched is null)
                 return;
@@ -405,19 +512,26 @@ public partial class Scenes
 
 
 
-    /// <summary>True when selection has at least one scene to play (or local media folder connected).</summary>
-    internal bool CanPlaySelected
+    /// <summary>True when every selected scene has every planned clip actually playable.</summary>
+    internal bool CanPlaySelected => DecidePlaySelected().CanPlay;
+
+    internal string PlaySelectedDisabledReason =>
+        DecidePlaySelected().Reason ?? "Select one or more scenes first";
+
+    internal (bool CanPlay, string? Reason) DecidePlaySelected()
     {
-        get
-        {
-            if (S.List._selected.Count == 0 || S.List._scenes is null)
-                return false;
-            if (S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing)
-                return true;
-            return S.List._scenes.Any(s =>
-                S.List._selected.Contains(s.SceneNumber)
-                && (s.CompositeExists || s.ClipsOnDisk > 0));
-        }
+        if (S.List._selected.Count == 0 || S.List._scenes is null)
+            return (false, "Select one or more scenes first");
+
+        var selected = S.List._scenes
+            .Where(s => S.List._selected.Contains(s.SceneNumber))
+            .Select(s => (
+                s.SceneNumber,
+                s.ClipCount,
+                (IReadOnlyList<int>)(s.ClipsMissingServerVideo ?? new List<int>()),
+                s.CompositeExists))
+            .ToList();
+        return ScenePlayGate.DecidePlaySelected(selected, HasCachedLocalVideo);
     }
 
 
@@ -450,10 +564,18 @@ public partial class Scenes
             _clientStitchStatus = "Collecting media…";
             var urls = await S.Stitch.CollectAndMixSceneSegmentsAsync(
                 S._projectId, _previewScenes, S.List._scenes, stale);
+            if (S.Stitch.LastSkippedClipLabels.Count > 0)
+            {
+                S._error = ScenePlayGate.FormatPlayFailedError("scenes", S.Stitch.LastSkippedClipLabels);
+                _showPreviewPlayer = false;
+                return;
+            }
             if (urls.Count == 0)
             {
                 S._error = S.Stitch.LastCollectError is { Length: > 0 } why
-                    ? $"Could not play the selected scenes — {why}"
+                    ? (why.Contains("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
+                        ? $"Could not play the selected scenes — {why}"
+                        : ScenePlayGate.FormatPlayFailedError("scenes", new[] { why }))
                     : "No composites or on-disk clips for the selected scenes";
                 _showPreviewPlayer = false;
                 return;

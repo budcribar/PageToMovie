@@ -949,6 +949,12 @@ public sealed class SceneSummary
     public int ClipCount { get; set; }
     public int ClipsOnDisk { get; set; }
     public bool ClipsComplete { get; set; }
+    /// <summary>
+    /// Planned clip numbers with no real server MP4 (size &lt; 1KB). A
+    /// <c>.client.json</c> / sidecar marker alone stays in this list — scene Play
+    /// must not treat those as finished. Empty when every planned clip has server video.
+    /// </summary>
+    public List<int> ClipsMissingServerVideo { get; set; } = new();
     /// <summary>E5/E6: count of on-disk clips that look stale vs plan/QA.</summary>
     public int StaleClipCount { get; set; }
     /// <summary>True when any clip is stale or composite dirty.</summary>

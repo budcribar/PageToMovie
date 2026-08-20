@@ -78,8 +78,9 @@
                Everything rarer lives behind the ⋯ menu — one grammar, fewer competing buttons. *@
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button class="btn btn-sm btn-success"
-                        disabled="@(Host._busy || Gen.JobRunning || (ListState._detail.ClipsOnDisk == 0 && !ListState._detail.CompositeExists))"
-                        title="Play the checked clips (all when none are checked)"
+                        data-testid="scene-header-play"
+                        disabled="@(Host._busy || Gen.JobRunning || !(Playback?.CanPlayOpenScene ?? false))"
+                        title="@Playback.OpenScenePlayTitle"
                         @onclick="() => Playback.PlaySelectedClipsInSceneAsync(ListState._detail.SceneNumber)">
                     ▶ Play@(ClipSel._selectedClips.Count > 0 ? $" ({ClipSel._selectedClips.Count})" : "")
                 </button>

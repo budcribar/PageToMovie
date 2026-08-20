@@ -99,6 +99,7 @@ public sealed class SceneListCache
         clone.LockReason = null;
         clone.CharactersOnScreen ??= new();
         clone.LocationIds ??= new();
+        clone.ClipsMissingServerVideo ??= new();
         return clone;
     }
 
