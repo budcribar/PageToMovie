@@ -80,9 +80,9 @@ public sealed record ClipProviderSource(
     }
 
     /// <summary>
-    /// URL first (durable <c>file_output.public_url</c> or poll <c>video.url</c>), then Files
-    /// API <c>file_id</c> as a best-effort (Imagine ids are generate-only). Combined extend
-    /// copies stay combined.
+    /// URL first, then Files <c>file_id</c> via the caller’s opener
+    /// (<see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> on the media proxy).
+    /// Combined extend copies stay combined.
     /// </summary>
     public static async Task<T?> TryOpenAsync<T>(
         string? sourceUrl,

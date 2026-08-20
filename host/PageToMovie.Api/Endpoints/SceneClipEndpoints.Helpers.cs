@@ -25,7 +25,7 @@ public static partial class SceneClipEndpoints
         IUserContext User,
         IOptions<PageToMovieOptions> Opts,
         IHttpClientFactory HttpFactory,
-        XaiResponsesClient? Xai);
+        XaiResponsesClient Xai);
 
     public sealed record ClipReorderServices(
         ProjectStore Store,
@@ -131,7 +131,7 @@ public static partial class SceneClipEndpoints
         string id, int sceneNumber, int clipNumber, string? parentId, string? fileId,
         ClipVideoServices svc, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(fileId) || svc.Xai is null)
+        if (string.IsNullOrWhiteSpace(fileId))
         {
             await MarkForkFallbackNeededAsync(svc.Store, id, parentId, sceneNumber, clipNumber, ct);
             return Results.NotFound(new { ok = false, error = "clip video not found" });
