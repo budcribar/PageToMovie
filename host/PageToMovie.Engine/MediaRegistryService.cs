@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Engine;
 
@@ -242,7 +243,7 @@ public sealed class MediaRegistryService
         EnsureInitialized();
         using var conn = new SqliteConnection(ConnectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
-        using var tx = conn.BeginTransaction();
+        using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
 
         const string tmpPrefix = "renumtmp::";
         foreach (var r in renames)
@@ -260,7 +261,7 @@ public sealed class MediaRegistryService
         foreach (var r in renames)
         {
             var to = r.To.Replace('\\', '/');
-            var m = System.Text.RegularExpressions.Regex.Match(
+            var m = CommonRegex.Match(
                 Path.GetFileName(to), @"^scene_(\d{2,})(?:_clip_(\d{2,}))?(?=[._])");
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -284,7 +285,7 @@ public sealed class MediaRegistryService
             cmd.Parameters.AddWithValue("@path", d.Replace('\\', '/'));
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
-        tx.Commit();
+        await tx.CommitAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<MediaObjectDto?> TryGetAsync(string projectId, string relativePath, CancellationToken ct = default)

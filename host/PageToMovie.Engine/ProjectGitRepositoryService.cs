@@ -66,6 +66,7 @@ namespace PageToMovie.Engine
         private const string SyncRemoteName = "sync-origin";
         private const string GithubRemoteName = "github-projects";
         private const string DefaultAuthor = "PageToMovie";
+        private const string ProjectJsonFileName = "project.json";
 
         /// <summary>
         /// Video/audio binaries never belong in the project's own Git history — they live in the
@@ -284,7 +285,7 @@ namespace PageToMovie.Engine
         /// merge instead of conflicting on every file (unrelated histories have no base).
         /// No-op when the fork already has commits or the parent has none.
         /// </summary>
-        public void AdoptParentHistory(string forkProjectPath, string parentProjectPath)
+        public static void AdoptParentHistory(string forkProjectPath, string parentProjectPath)
         {
             if (!Repository.IsValid(forkProjectPath) || !Repository.IsValid(parentProjectPath))
                 return;
@@ -292,10 +293,7 @@ namespace PageToMovie.Engine
             if (repo.Head.Tip is not null)
                 return; // already has history — never rewrite it
             var branchName = repo.Head.FriendlyName; // unborn HEAD still names its target branch
-            var remote = repo.Network.Remotes[SyncRemoteName]
-                         ?? repo.Network.Remotes.Add(SyncRemoteName, parentProjectPath);
-            if (!string.Equals(remote.Url, parentProjectPath, StringComparison.OrdinalIgnoreCase))
-                repo.Network.Remotes.Update(SyncRemoteName, r => r.Url = parentProjectPath);
+            var remote = EnsureSyncRemote(repo, parentProjectPath);
             try
             {
                 Commands.Fetch(repo, SyncRemoteName, remote.FetchRefSpecs.Select(s => s.Specification), null, null);
@@ -319,31 +317,18 @@ namespace PageToMovie.Engine
 
         public Task<GitMergeResult> SyncForkFromOriginAsync(string forkProjectPath, string parentProjectPath)
         {
-            if (string.IsNullOrWhiteSpace(forkProjectPath) || !Directory.Exists(forkProjectPath))
-                throw new DirectoryNotFoundException($"Fork project directory not found: {forkProjectPath}");
-            if (string.IsNullOrWhiteSpace(parentProjectPath) || !Directory.Exists(parentProjectPath))
-                throw new DirectoryNotFoundException($"Parent project directory not found: {parentProjectPath}");
+            ThrowIfMissingProjectDir(forkProjectPath, "Fork");
+            ThrowIfMissingProjectDir(parentProjectPath, "Parent");
 
             EnsureRepository(forkProjectPath);
             EnsureRepository(parentProjectPath);
 
-            using (var parentCheck = new Repository(parentProjectPath))
-            {
-                if (parentCheck.Head.Tip is null)
-                {
-                    return Task.FromResult(new GitMergeResult
-                    {
-                        Success = false,
-                        Message = "Parent project has no commits yet — nothing to sync.",
-                    });
-                }
-            }
+            var emptyParent = ParentHasNoCommitsResult(parentProjectPath);
+            if (emptyParent is not null)
+                return Task.FromResult(emptyParent);
 
             using var repo = new Repository(forkProjectPath);
-            var remote = repo.Network.Remotes[SyncRemoteName]
-                         ?? repo.Network.Remotes.Add(SyncRemoteName, parentProjectPath);
-            if (!string.Equals(remote.Url, parentProjectPath, StringComparison.OrdinalIgnoreCase))
-                repo.Network.Remotes.Update(SyncRemoteName, r => r.Url = parentProjectPath);
+            var remote = EnsureSyncRemote(repo, parentProjectPath);
 
             try
             {
@@ -363,7 +348,7 @@ namespace PageToMovie.Engine
 
                 // The fork's project.json is its IDENTITY (id/owner/parent/visibility) — origin's
                 // copy must never merge into it. Pin it to "ours" across the merge.
-                var identityPath = Path.Combine(forkProjectPath, "project.json");
+                var identityPath = Path.Combine(forkProjectPath, ProjectJsonFileName);
                 var identityJson = File.Exists(identityPath) ? File.ReadAllText(identityPath) : null;
 
                 var signature = new Signature(DefaultAuthor, "noreply@pagetomovie.local", DateTimeOffset.UtcNow);
@@ -374,59 +359,12 @@ namespace PageToMovie.Engine
                 });
 
                 if (mergeResult.Status == MergeStatus.Conflicts)
-                {
-                    // Resolve a project.json conflict as ours; other conflicts stay manual.
-                    if (identityJson is not null &&
-                        repo.Index.Conflicts.Any(c => string.Equals(
-                            c.Ours?.Path ?? c.Theirs?.Path ?? c.Ancestor?.Path, "project.json", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        File.WriteAllText(identityPath, identityJson);
-                        Commands.Stage(repo, "project.json");
-                    }
-                    if (!repo.Index.Conflicts.Any())
-                    {
-                        // project.json was the only conflict — finish the merge commit (MERGE_HEAD
-                        // is still set, so this records both parents).
-                        var mergeCommit = repo.Commit("Synced latest changes from origin.", signature, signature);
-                        return Task.FromResult(new GitMergeResult
-                        {
-                            Success = true,
-                            HasConflicts = false,
-                            CommitHash = mergeCommit.Sha,
-                            Message = "Synced latest changes from origin (fork identity kept).",
-                        });
-                    }
-                    var conflictCount = repo.Index.Conflicts.Count();
-                    _logger.LogWarning(
-                        "Sync-from-origin left {Count} conflicted path(s) in {Path}", conflictCount, forkProjectPath);
-                    return Task.FromResult(new GitMergeResult
-                    {
-                        Success = false,
-                        HasConflicts = true,
-                        Message = $"{conflictCount} file(s) need manual conflict resolution before this can be committed.",
-                        RemainingConflictPaths = repo.Index.Conflicts
-                            .Select(c => c.Ours?.Path ?? c.Theirs?.Path ?? c.Ancestor?.Path ?? "?")
-                            .Where(p => p != "?").Distinct().ToList(),
-                    });
-                }
+                    return Task.FromResult(ResolveSyncConflicts(repo, forkProjectPath, identityJson, identityPath, signature));
 
-                // Clean merge — but if origin's project.json edits slipped in, put the fork's own
-                // identity back as a follow-up commit.
-                if (identityJson is not null && mergeResult.Status != MergeStatus.UpToDate
-                    && File.Exists(identityPath) && !string.Equals(File.ReadAllText(identityPath), identityJson, StringComparison.Ordinal))
-                {
-                    File.WriteAllText(identityPath, identityJson);
-                    Commands.Stage(repo, "project.json");
-                    repo.Commit("Keep fork project identity after origin sync", signature, signature);
-                }
+                RestoreForkIdentityAfterCleanMerge(repo, identityJson, identityPath, mergeResult.Status, signature);
 
                 var headSha = repo.Head.Tip?.Sha ?? "";
-                var message = mergeResult.Status switch
-                {
-                    MergeStatus.UpToDate => "Already up to date with origin.",
-                    MergeStatus.FastForward => "Fast-forwarded to origin (no local changes to preserve).",
-                    _ => "Synced latest changes from origin.",
-                };
+                var message = SyncMergeStatusMessage(mergeResult.Status);
                 _logger.LogInformation("Synced fork {Fork} from origin {Parent}: {Status}", forkProjectPath, parentProjectPath, mergeResult.Status);
                 return Task.FromResult(new GitMergeResult
                 {
@@ -441,6 +379,99 @@ namespace PageToMovie.Engine
                 try { repo.Network.Remotes.Remove(SyncRemoteName); } catch { /* best effort cleanup */ }
             }
         }
+
+        private static void ThrowIfMissingProjectDir(string path, string label)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                throw new DirectoryNotFoundException($"{label} project directory not found: {path}");
+        }
+
+        private static GitMergeResult? ParentHasNoCommitsResult(string parentProjectPath)
+        {
+            using var parentCheck = new Repository(parentProjectPath);
+            if (parentCheck.Head.Tip is not null)
+                return null;
+            return new GitMergeResult
+            {
+                Success = false,
+                Message = "Parent project has no commits yet — nothing to sync.",
+            };
+        }
+
+        private static Remote EnsureSyncRemote(Repository repo, string parentProjectPath)
+        {
+            var remote = repo.Network.Remotes[SyncRemoteName]
+                         ?? repo.Network.Remotes.Add(SyncRemoteName, parentProjectPath);
+            if (!string.Equals(remote.Url, parentProjectPath, StringComparison.OrdinalIgnoreCase))
+                repo.Network.Remotes.Update(SyncRemoteName, r => r.Url = parentProjectPath);
+            return repo.Network.Remotes[SyncRemoteName] ?? remote;
+        }
+
+        private GitMergeResult ResolveSyncConflicts(
+            Repository repo,
+            string forkProjectPath,
+            string? identityJson,
+            string identityPath,
+            Signature signature)
+        {
+            // Resolve a project.json conflict as ours; other conflicts stay manual.
+            if (identityJson is not null &&
+                repo.Index.Conflicts.Any(c => string.Equals(
+                    c.Ours?.Path ?? c.Theirs?.Path ?? c.Ancestor?.Path, ProjectJsonFileName, StringComparison.OrdinalIgnoreCase)))
+            {
+                File.WriteAllText(identityPath, identityJson);
+                Commands.Stage(repo, ProjectJsonFileName);
+            }
+            if (!repo.Index.Conflicts.Any())
+            {
+                // project.json was the only conflict — finish the merge commit (MERGE_HEAD
+                // is still set, so this records both parents).
+                var mergeCommit = repo.Commit("Synced latest changes from origin.", signature, signature);
+                return new GitMergeResult
+                {
+                    Success = true,
+                    HasConflicts = false,
+                    CommitHash = mergeCommit.Sha,
+                    Message = "Synced latest changes from origin (fork identity kept).",
+                };
+            }
+            var conflictCount = repo.Index.Conflicts.Count();
+            _logger.LogWarning(
+                "Sync-from-origin left {Count} conflicted path(s) in {Path}", conflictCount, forkProjectPath);
+            return new GitMergeResult
+            {
+                Success = false,
+                HasConflicts = true,
+                Message = $"{conflictCount} file(s) need manual conflict resolution before this can be committed.",
+                RemainingConflictPaths = repo.Index.Conflicts
+                    .Select(c => c.Ours?.Path ?? c.Theirs?.Path ?? c.Ancestor?.Path ?? "?")
+                    .Where(p => p != "?").Distinct().ToList(),
+            };
+        }
+
+        private static void RestoreForkIdentityAfterCleanMerge(
+            Repository repo,
+            string? identityJson,
+            string identityPath,
+            MergeStatus status,
+            Signature signature)
+        {
+            if (identityJson is null || status == MergeStatus.UpToDate)
+                return;
+            if (!File.Exists(identityPath) || string.Equals(File.ReadAllText(identityPath), identityJson, StringComparison.Ordinal))
+                return;
+            File.WriteAllText(identityPath, identityJson);
+            Commands.Stage(repo, ProjectJsonFileName);
+            repo.Commit("Keep fork project identity after origin sync", signature, signature);
+        }
+
+        private static string SyncMergeStatusMessage(MergeStatus status) =>
+            status switch
+            {
+                MergeStatus.UpToDate => "Already up to date with origin.",
+                MergeStatus.FastForward => "Fast-forwarded to origin (no local changes to preserve).",
+                _ => "Synced latest changes from origin.",
+            };
 
         /// <summary>
         /// Sync-from-origin then auto-resolve text/JSON conflicts with <see cref="AutoTextMerger"/>.

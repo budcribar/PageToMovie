@@ -1907,7 +1907,7 @@ public sealed partial class ProjectStore
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
             // Adopt the parent's history first: "Sync origin" is a real 3-way merge and needs a
             // shared merge base — a fresh unrelated repo made every later sync a wall of conflicts.
-            git.AdoptParentHistory(newDir, sourceDir);
+            ProjectGitRepositoryService.AdoptParentHistory(newDir, sourceDir);
             await git.CommitProjectStateAsync(newDir, newOwnerUserId, "Initial fork state").ConfigureAwait(false);
         }
         catch { /* non-fatal */ }
