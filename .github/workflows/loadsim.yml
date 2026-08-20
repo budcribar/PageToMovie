@@ -52,7 +52,8 @@ jobs:
           export PageToMovie__Fakes__VideoDelayMs=50
           export ASPNETCORE_ENVIRONMENT=Development
           export ASPNETCORE_URLS=http://127.0.0.1:5088
-          nohup dotnet run --project PageToMovie.Api --no-build -c Release > /tmp/pagetomovie-api.log 2>&1 &
+          # Skip launchSettings (localhost can bind IPv6 and fail with EACCES on GHA).
+          nohup dotnet run --project PageToMovie.Api --no-build -c Release --no-launch-profile --urls http://127.0.0.1:5088 > /tmp/pagetomovie-api.log 2>&1 &
           echo $! > /tmp/pagetomovie-api.pid
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:5088/health >/dev/null; then
