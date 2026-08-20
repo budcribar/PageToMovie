@@ -19,9 +19,9 @@ public static class UncastOnScreenPolicy
 {
     public enum Verdict { TextOnlyExtra, MustBeCast }
 
-    public sealed record Decision(string Key, Verdict Verdict, int ClipAppearances, bool SpeaksInClip)
+    public sealed record Decision(string Key, Verdict Kind, int ClipAppearances, bool SpeaksInClip)
     {
-        public bool TextOnly => Verdict == Verdict.TextOnlyExtra;
+        public bool TextOnly => Kind == Verdict.TextOnlyExtra;
     }
 
     /// <summary>Decide for one un-cast on-screen key of <paramref name="clipEl"/> within <paramref name="blueprintRoot"/>.</summary>
@@ -60,33 +60,59 @@ public static class UncastOnScreenPolicy
     /// <summary>Number of clips across the whole shot plan whose <c>characters_on_screen</c> names <paramref name="key"/>.</summary>
     public static int CountClipsOnScreen(JsonElement blueprintRoot, string key)
     {
-        var count = 0;
         try
         {
             if (blueprintRoot.ValueKind != JsonValueKind.Object) return 0;
             if (!blueprintRoot.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Array)
                 return 0;
-            foreach (var s in scenes.EnumerateArray())
-            {
-                if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
-                    continue;
-                foreach (var c in clips.EnumerateArray())
-                {
-                    if (!c.TryGetProperty("characters_on_screen", out var cos) || cos.ValueKind != JsonValueKind.Array)
-                        continue;
-                    foreach (var x in cos.EnumerateArray())
-                    {
-                        if (x.ValueKind == JsonValueKind.String
-                            && string.Equals(x.GetString()?.Trim(), key, StringComparison.OrdinalIgnoreCase))
-                        {
-                            count++;
-                            break;
-                        }
-                    }
-                }
-            }
+            return CountKeyInScenes(scenes, key);
         }
         catch { /* malformed plan: treat as unknown → 0 */ }
+        return 0;
+    }
+
+    private static int CountKeyInScenes(JsonElement scenes, string key)
+    {
+        var count = 0;
+        foreach (var s in scenes.EnumerateArray())
+        {
+            if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+                continue;
+            count += CountKeyInClips(clips, key);
+        }
         return count;
+    }
+
+    private static int CountKeyInClips(JsonElement clips, string key)
+    {
+        var count = 0;
+        foreach (var c in clips.EnumerateArray())
+        {
+            if (ClipListsKeyOnScreen(c, key))
+                count++;
+        }
+        return count;
+    }
+
+    private static bool ClipListsKeyOnScreen(JsonElement clip, string key)
+    {
+        if (!clip.TryGetProperty("characters_on_screen", out var cos) || cos.ValueKind != JsonValueKind.Array)
+            return false;
+        foreach (var x in cos.EnumerateArray())
+        {
+            if (x.ValueKind == JsonValueKind.String
+                && string.Equals(x.GetString()?.Trim(), key, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+}
+
+/// <summary>Keeps <c>Decision.Verdict</c> compiling for existing callers after the S3218 rename to <see cref="UncastOnScreenPolicy.Decision.Kind"/>.</summary>
+public static class UncastOnScreenDecisionExtensions
+{
+    extension(UncastOnScreenPolicy.Decision decision)
+    {
+        public UncastOnScreenPolicy.Verdict Verdict => decision.Kind;
     }
 }

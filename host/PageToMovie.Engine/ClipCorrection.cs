@@ -60,63 +60,104 @@ public static class ClipCorrectionPlanner
     {
         resolver ??= PronunciationResolver.Default;
         var reasons = new List<string>();
-        string? speakerLock = null;
         var status = (ver.Status ?? "").Trim().ToLowerInvariant();
         var kinds = new HashSet<string>(ver.Issues.Select(i => (i.Kind ?? "").ToLowerInvariant()));
 
-        if ((!ver.SpeakerMatch || status == "speaker_swap" || kinds.Contains("wrong_speaker") || kinds.Contains("wrong_voice"))
-            && !string.IsNullOrWhiteSpace(ver.ExpectedSpeaker))
-        {
-            speakerLock = ver.ExpectedSpeaker.Trim();
-            reasons.Add(kinds.Contains("wrong_voice") && !kinds.Contains("wrong_speaker")
-                ? $"wrong voice for {ver.ExpectedSpeaker} (re-lock voice identity)"
-                : $"wrong speaker (heard {ver.DetectedSpeaker ?? "?"}, expected {ver.ExpectedSpeaker})");
-        }
-
-        var respellings = new List<Respelling>();
-        var wordsWrong = status is "mismatch" || ver.DialogueAccuracyScore < 0.995
-                         || kinds.Contains("wrong_sense") || kinds.Contains("mispronounced");
-        if (wordsWrong && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue))
-        {
-            var res = resolver.Resolve(ver.ExpectedDialogue);
-            foreach (var a in res.Annotations.Where(a => !string.IsNullOrWhiteSpace(a.Respell)))
-            {
-                respellings.Add(new Respelling(a.Token, a.Respell!, a.Rhymes, a.Meaning));
-            }
-            // A verifier issue that names the word wins even if the resolver was unsure.
-            foreach (var issue in ver.Issues.Where(i => i.Kind is "wrong_sense" or "mispronounced" && !string.IsNullOrWhiteSpace(i.Word)))
-            {
-                if (respellings.Any(r => string.Equals(r.Word, issue.Word, StringComparison.OrdinalIgnoreCase)))
-                    continue;
-                var forced = ForceSense(resolver, issue.Word!, ver.ExpectedDialogue);
-                if (forced is not null) respellings.Add(forced);
-            }
-            if (respellings.Count > 0)
-                reasons.Add("pronunciation: " + string.Join(", ", respellings.Select(r => $"{r.Word}→{r.Respell}")));
-        }
-
-        // Cut off before the last word: the clip was too short for the line — buy seconds, not luck.
-        var extraSec = 0;
-        if (kinds.Contains("cut_off"))
-        {
-            extraSec = CutOffExtraSeconds;
-            reasons.Add($"line cut off → +{extraSec}s");
-        }
-
-        // Line not spoken / different words: say the whole line, and only that line, clearly.
-        var emphasize = kinds.Contains("missing_line") || kinds.Contains("wrong_words") || status == "no_speech";
-        if (emphasize)
-            reasons.Add(status == "no_speech" ? "no speech heard → whole-line emphasis" : "line missing/wrong words → whole-line emphasis");
-
-        // Usable but flagged: fix the delivery rather than the words.
-        string? deliveryCue = null;
-        if (kinds.Contains("robotic_delivery") || kinds.Contains("timing"))
-        {
-            deliveryCue = NaturalDeliveryCue;
-            reasons.Add(kinds.Contains("timing") ? "timing off → delivery cue" : "robotic delivery → delivery cue");
-        }
+        var speakerLock = TrySpeakerLock(ver, status, kinds, reasons);
+        var respellings = CollectRespellings(ver, resolver, status, kinds, reasons);
+        var extraSec = ExtraSecondsForCutOff(kinds, reasons);
+        var emphasize = ShouldEmphasizeWholeLine(status, kinds, reasons);
+        var deliveryCue = DeliveryCueFor(kinds, reasons);
 
         return new ClipCorrection(speakerLock, respellings, reasons, extraSec, emphasize, deliveryCue);
+    }
+
+    private static string? TrySpeakerLock(
+        ClipDialogueVerificationResult ver, string status, HashSet<string> kinds, List<string> reasons)
+    {
+        if ((ver.SpeakerMatch && status != "speaker_swap" && !kinds.Contains("wrong_speaker") && !kinds.Contains("wrong_voice"))
+            || string.IsNullOrWhiteSpace(ver.ExpectedSpeaker))
+            return null;
+
+        reasons.Add(SpeakerLockReason(ver, kinds));
+        return ver.ExpectedSpeaker.Trim();
+    }
+
+    private static string SpeakerLockReason(ClipDialogueVerificationResult ver, HashSet<string> kinds)
+    {
+        if (kinds.Contains("wrong_voice") && !kinds.Contains("wrong_speaker"))
+            return $"wrong voice for {ver.ExpectedSpeaker} (re-lock voice identity)";
+        return $"wrong speaker (heard {ver.DetectedSpeaker ?? "?"}, expected {ver.ExpectedSpeaker})";
+    }
+
+    private static List<Respelling> CollectRespellings(
+        ClipDialogueVerificationResult ver,
+        PronunciationResolver resolver,
+        string status,
+        HashSet<string> kinds,
+        List<string> reasons)
+    {
+        var respellings = new List<Respelling>();
+        if (!WordsNeedRespelling(ver, status, kinds) || string.IsNullOrWhiteSpace(ver.ExpectedDialogue))
+            return respellings;
+
+        var dialogue = ver.ExpectedDialogue;
+        foreach (var a in resolver.Resolve(dialogue).Annotations.Where(a => !string.IsNullOrWhiteSpace(a.Respell)))
+            respellings.Add(new Respelling(a.Token, a.Respell!, a.Rhymes, a.Meaning));
+
+        // A verifier issue that names the word wins even if the resolver was unsure.
+        AddForcedIssueRespellings(ver, resolver, dialogue, respellings);
+
+        if (respellings.Count > 0)
+            reasons.Add("pronunciation: " + string.Join(", ", respellings.Select(r => $"{r.Word}→{r.Respell}")));
+        return respellings;
+    }
+
+    private static bool WordsNeedRespelling(ClipDialogueVerificationResult ver, string status, HashSet<string> kinds) =>
+        status is "mismatch" || ver.DialogueAccuracyScore < 0.995
+        || kinds.Contains("wrong_sense") || kinds.Contains("mispronounced");
+
+    private static void AddForcedIssueRespellings(
+        ClipDialogueVerificationResult ver,
+        PronunciationResolver resolver,
+        string dialogue,
+        List<Respelling> respellings)
+    {
+        foreach (var word in ver.Issues
+            .Where(i => i.Kind is "wrong_sense" or "mispronounced" && !string.IsNullOrWhiteSpace(i.Word))
+            .Select(issue => issue.Word))
+        {
+            if (respellings.Any(r => string.Equals(r.Word, word, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var forced = ForceSense(resolver, word!, dialogue);
+            if (forced is not null) respellings.Add(forced);
+        }
+    }
+
+    private static int ExtraSecondsForCutOff(HashSet<string> kinds, List<string> reasons)
+    {
+        // Cut off before the last word: the clip was too short for the line — buy seconds, not luck.
+        if (!kinds.Contains("cut_off")) return 0;
+        reasons.Add($"line cut off → +{CutOffExtraSeconds}s");
+        return CutOffExtraSeconds;
+    }
+
+    private static bool ShouldEmphasizeWholeLine(string status, HashSet<string> kinds, List<string> reasons)
+    {
+        // Line not spoken / different words: say the whole line, and only that line, clearly.
+        var emphasize = kinds.Contains("missing_line") || kinds.Contains("wrong_words") || status == "no_speech";
+        if (!emphasize) return false;
+        reasons.Add(status == "no_speech" ? "no speech heard → whole-line emphasis" : "line missing/wrong words → whole-line emphasis");
+        return true;
+    }
+
+    private static string? DeliveryCueFor(HashSet<string> kinds, List<string> reasons)
+    {
+        // Usable but flagged: fix the delivery rather than the words.
+        if (!kinds.Contains("robotic_delivery") && !kinds.Contains("timing"))
+            return null;
+        reasons.Add(kinds.Contains("timing") ? "timing off → delivery cue" : "robotic delivery → delivery cue");
+        return NaturalDeliveryCue;
     }
 
     /// <summary>The verifier flagged a specific word; pick the best sense even below the resolver's confidence bar.</summary>

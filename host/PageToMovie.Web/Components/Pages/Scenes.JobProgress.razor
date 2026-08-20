@@ -27,7 +27,7 @@
                 }
             </div>
             <div class="progress mb-2" style="height:8px;">
-                <div class="progress-bar @(running ? "progress-bar-striped progress-bar-animated" : job?.Status is "done" ? "bg-success" : "bg-warning")"
+                <div class="progress-bar @ProgressBarClass(running, job)"
                      role="progressbar" style="width:@(Math.Clamp(percent, 2, 100))%"></div>
             </div>
             @if (!running && job is not null && !string.IsNullOrWhiteSpace(job.Message))
@@ -37,7 +37,7 @@
             <div class="small text-secondary mb-1">Log</div>
             <pre class="p-2 mb-0 rounded bg-black border border-secondary text-light small font-monospace"
                  style="max-height:40vh; overflow-y:auto; white-space:pre-wrap;"
-                 data-testid="job-modal-log" @ref="_logEl">@(log.Count == 0 ? (running ? "Waiting for the first status…" : "(no log)") : string.Join("\n", log.TakeLast(200)))</pre>
+                 data-testid="job-modal-log" @ref="_logEl">@LogPreview(log, running)</pre>
         </ChildContent>
         <Footer>
             @if (running)
@@ -62,6 +62,20 @@
 
     private ElementReference _logEl;
     [Inject] private Microsoft.JSInterop.IJSRuntime JS { get; set; } = default!;
+
+    private static string ProgressBarClass(bool running, JobSnapshot? job)
+    {
+        if (running) return "progress-bar-striped progress-bar-animated";
+        if (job?.Status is "done") return "bg-success";
+        return "bg-warning";
+    }
+
+    private static string LogPreview(IReadOnlyList<string> log, bool running)
+    {
+        if (log.Count > 0) return string.Join("\n", log.TakeLast(200));
+        if (running) return "Waiting for the first status…";
+        return "(no log)";
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

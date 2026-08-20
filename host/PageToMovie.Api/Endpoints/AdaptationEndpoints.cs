@@ -399,7 +399,7 @@ public static class AdaptationEndpoints
         var cast = await TryExtractCastAsync(id, castService, chat, ct);
         // One line per sign-off with the project it landed on (the UI suite reads this to tell a
         // "sign-off went to project A, shot plan ran on project B" race from a real extraction failure).
-        Console.Error.WriteLine($"[sign-off] {id}: ok scenes={result.SceneCount} characters={result.CharacterCount} user={user.UserId} cast={(cast is null ? "n/a" : System.Text.Json.JsonSerializer.Serialize(cast))}");
+        await Console.Error.WriteLineAsync($"[sign-off] {id}: ok scenes={result.SceneCount} characters={result.CharacterCount} user={user.UserId} cast={(cast is null ? "n/a" : System.Text.Json.JsonSerializer.Serialize(cast))}");
         return Results.Ok(new
         {
             ok = true,
@@ -450,7 +450,7 @@ public static class AdaptationEndpoints
             // Visible skip: an unconfigured chat client at sign-off is the one path that leaves a
             // project with an approved screenplay and no cast (seen intermittently in UI runs while
             // the per-project config write is still in flight). Say so instead of returning nothing.
-            Console.Error.WriteLine($"[sign-off] {id}: cast extraction skipped — chat client not configured");
+            await Console.Error.WriteLineAsync($"[sign-off] {id}: cast extraction skipped — chat client not configured");
             return new { ok = false, skipped = "chat_not_configured", error = "Cast extraction skipped: no chat model configured at sign-off." };
         }
         try

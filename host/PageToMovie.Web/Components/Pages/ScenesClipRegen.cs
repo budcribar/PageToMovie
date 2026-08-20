@@ -105,36 +105,36 @@ public partial class Scenes
             var charactersToUpload = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var locationsToUpload = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var sceneNums = targets.Select(t => t.Scene).Distinct();
-            foreach (var sn in sceneNums)
+            foreach (var sn in targets.Select(t => t.Scene).Distinct())
             {
                 var d = await GetSceneDetailCachedAsync(sn, detailCache);
                 if (d is null) continue;
-                if (!string.IsNullOrWhiteSpace(d.PrimaryLocationId))
-                    locationsToUpload.Add(d.PrimaryLocationId);
-
-                if (d.Clips is not null)
-                {
-                    foreach (var c in d.Clips)
-                    {
-                        if (c.CharactersOnScreen is not null)
-                        {
-                            foreach (var ch in c.CharactersOnScreen)
-                                if (!string.IsNullOrWhiteSpace(ch))
-                                    charactersToUpload.Add(ch);
-                        }
-                    }
-                }
+                CollectLocationKey(d, locationsToUpload);
+                CollectCharacterKeys(d, charactersToUpload);
             }
 
             foreach (var locKey in locationsToUpload)
-            {
                 await UploadLocationPlateIfAvailableLocallyAsync(locKey);
-            }
 
             foreach (var charKey in charactersToUpload)
-            {
                 await UploadCharacterPlateIfAvailableLocallyAsync(charKey);
+        }
+
+        private static void CollectLocationKey(SceneDetail d, HashSet<string> locationsToUpload)
+        {
+            if (!string.IsNullOrWhiteSpace(d.PrimaryLocationId))
+                locationsToUpload.Add(d.PrimaryLocationId);
+        }
+
+        private static void CollectCharacterKeys(SceneDetail d, HashSet<string> charactersToUpload)
+        {
+            if (d.Clips is null) return;
+            foreach (var ch in d.Clips
+                .Where(c => c.CharactersOnScreen is not null)
+                .SelectMany(c => c.CharactersOnScreen)
+                .Where(name => !string.IsNullOrWhiteSpace(name)))
+            {
+                charactersToUpload.Add(ch);
             }
         }
 
