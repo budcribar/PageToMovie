@@ -61,7 +61,7 @@ public class ClipExtendSourceTests : IDisposable
     public void Standalone_C1_file_id_is_the_C2_extend_input()
     {
         var choice = ClipExtendSource.SelectFromPredecessor(
-            new ClipProviderSource("https://vidgen.example/c1.mp4", "file_c1", leadInSeconds: 0, durationSeconds: 6.0));
+            new ClipProviderSource("https://vidgen.example/c1.mp4", "file_c1", LeadInSeconds: 0, DurationSeconds: 6.0));
 
         Assert.Equal("file_c1", choice.FileId);
         Assert.Equal(6.0, choice.InputDurationSeconds);
@@ -74,10 +74,10 @@ public class ClipExtendSourceTests : IDisposable
         var c2 = new ClipProviderSource(
             "https://vidgen.example/c1c2.mp4",
             "file_c1_c2",
-            leadInSeconds: 6.0,
-            durationSeconds: 5.0,
-            clipStartSeconds: 6.0,
-            clipStopSeconds: 11.0);
+            LeadInSeconds: 6.0,
+            DurationSeconds: 5.0,
+            ClipStartSeconds: 6.0,
+            ClipStopSeconds: 11.0);
 
         var choice = ClipExtendSource.SelectFromPredecessor(c2);
         Assert.Equal("file_c1_c2", choice.FileId);
@@ -99,7 +99,7 @@ public class ClipExtendSourceTests : IDisposable
     {
         var cap = EditCap();
         var choice = ClipExtendSource.SelectFromPredecessor(
-            new ClipProviderSource(null, "file_combined", leadInSeconds: 5.0, durationSeconds: cap + 4.0));
+            new ClipProviderSource(null, "file_combined", LeadInSeconds: 5.0, DurationSeconds: cap + 4.0));
 
         Assert.True(choice.HasInput);
         Assert.Equal("file_combined", choice.FileId);
