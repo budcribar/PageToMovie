@@ -22,18 +22,18 @@ public class FalVideoClientTests
     }
 
     [Fact]
-    public void ParseTaggedRequestId_ParsesFalPrefix()
+    public void Catalog_provider_id_tags_fal_request_without_a_hardcoded_prefix()
     {
-        var (provider, id) = MultiProviderVideoClient.ParseTaggedRequestId("fal:req_123456789");
-        Assert.Equal(ModelProviderFamily.Fal, provider);
-        Assert.Equal("req_123456789", id);
-    }
+        var fal = SupportedModelCatalog.Find("hunyuan-video", ModelCapability.Video);
+        Assert.NotNull(fal);
+        var providerId = SupportedModelCatalog.NormalizeProviderId(fal.ProviderId);
+        Assert.False(string.IsNullOrWhiteSpace(providerId));
 
-    [Fact]
-    public void InferProviderFromDownloadUrl_RecognizesFalDomains()
-    {
-        Assert.Equal(ModelProviderFamily.Fal, MultiProviderVideoClient.InferProviderFromDownloadUrl("https://fal.media/files/monkey/abc.mp4"));
-        Assert.Equal(ModelProviderFamily.Fal, MultiProviderVideoClient.InferProviderFromDownloadUrl("https://queue.fal.run/fal-ai/hunyuan-video/123.mp4"));
+        var tagged = MultiProviderVideoClient.TagRequestId(providerId, "req_123456789");
+        Assert.True(MultiProviderVideoClient.TrySplitTaggedRequestId(
+            tagged, new[] { providerId }, out var parsed, out var raw));
+        Assert.Equal(providerId, parsed);
+        Assert.Equal("req_123456789", raw);
     }
 
     [Theory]

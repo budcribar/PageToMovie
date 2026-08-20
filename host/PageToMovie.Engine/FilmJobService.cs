@@ -5957,7 +5957,7 @@ public sealed class FilmJobService
         // return a local fixture scheme that DownloadToFileAsync resolves on disk.
         try
         {
-            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Ct).ConfigureAwait(false);
+            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Model, ctx.Ct).ConfigureAwait(false);
             var bytesLength = File.Exists(mp4Path) ? new FileInfo(mp4Path).Length : 0;
             if (bytesLength > 0)
             {

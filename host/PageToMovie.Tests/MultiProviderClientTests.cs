@@ -1,6 +1,7 @@
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
+using PageToMovie.Engine.Abstractions;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -12,6 +13,7 @@ namespace PageToMovie.Tests;
 /// what their private Resolve() methods call — this exercises the same decision without
 /// needing to construct a full HttpClient-backed client graph).
 /// </summary>
+[Collection("catalog-serial")]
 public class MultiProviderClientTests
 {
     // ── Anthropic response parsing ──────────────────────────────────────────
@@ -185,53 +187,144 @@ public class MultiProviderClientTests
         Assert.Equal(expected, provider);
     }
 
-    // ── Video dispatcher request-id tagging (submit → poll must route consistently) ──
+    // ── Video dispatcher: model id → catalog providerId → IVideoClient map ──
 
     [Fact]
-    public void Video_request_id_tag_roundtrips_gemini()
+    public void Video_routes_by_catalog_provider_id_not_family_default()
     {
-        var (provider, id) = MultiProviderVideoClient.ParseTaggedRequestId("gemini:models/veo-3.1/operations/abc123");
-        Assert.Equal(ModelProviderFamily.Google, provider);
-        Assert.Equal("models/veo-3.1/operations/abc123", id);
+        var xai = CatalogXaiVideo();
+        var other = CatalogNonXaiVideo();
+        var xaiClient = new StubVideoClient();
+        var otherClient = new StubVideoClient();
+        var facade = new MultiProviderVideoClient(new Dictionary<string, IVideoClient>
+        {
+            [xai.ProviderId] = xaiClient,
+            [other.ProviderId] = otherClient,
+        });
+
+        Assert.Same(xaiClient, facade.ResolveClientForModel(xai.Id));
+        Assert.Same(otherClient, facade.ResolveClientForModel(other.Id));
+        Assert.NotSame(xaiClient, facade.ResolveClientForModel(other.Id));
     }
 
     [Fact]
-    public void Video_request_id_tag_roundtrips_grok()
+    public void Video_unregistered_catalog_provider_throws_instead_of_defaulting()
     {
-        var (provider, id) = MultiProviderVideoClient.ParseTaggedRequestId("grok:req_abc123");
-        Assert.Equal(ModelProviderFamily.Xai, provider);
-        Assert.Equal("req_abc123", id);
+        var xai = CatalogXaiVideo();
+        var other = CatalogNonXaiVideo();
+        var xaiClient = new StubVideoClient();
+        var facade = new MultiProviderVideoClient(new Dictionary<string, IVideoClient>
+        {
+            [xai.ProviderId] = xaiClient,
+        });
+
+        var ex = Assert.Throws<InvalidOperationException>(() => facade.ResolveClientForModel(other.Id));
+        Assert.Contains(SupportedModelCatalog.NormalizeProviderId(other.ProviderId), ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Same(xaiClient, facade.ResolveClientForModel(xai.Id));
     }
 
     [Fact]
-    public void Video_untagged_request_id_defaults_to_grok()
+    public async Task Video_submit_tags_with_catalog_provider_id_and_poll_strips_it()
     {
-        // Pre-dispatcher ids never had a colon prefix — must not be misrouted to Gemini.
-        var (provider, id) = MultiProviderVideoClient.ParseTaggedRequestId("req_legacy_no_tag");
-        Assert.Equal(ModelProviderFamily.Xai, provider);
-        Assert.Equal("req_legacy_no_tag", id);
+        var xai = CatalogXaiVideo();
+        var stub = new StubVideoClient { SubmitId = "req_abc123" };
+        var facade = new MultiProviderVideoClient(new Dictionary<string, IVideoClient>
+        {
+            [xai.ProviderId] = stub,
+        });
+
+        var tagged = await facade.SubmitGenerationAsync(
+            "p", 4, "720p", xai.Id, CancellationToken.None);
+        var providerId = SupportedModelCatalog.NormalizeProviderId(xai.ProviderId);
+        Assert.Equal(providerId + ":req_abc123", tagged);
+
+        await facade.PollForVideoUrlAsync(tagged, null, CancellationToken.None);
+        Assert.Equal("req_abc123", stub.LastPolledId);
     }
 
-    // ── Download routing by URL host (no cross-provider fallback) ──
-
-    [Theory]
-    [InlineData("https://api.x.ai/v1/videos/abc/content", ModelProviderFamily.Xai)]
-    [InlineData("https://cdn.x.ai/media/clip.mp4", ModelProviderFamily.Xai)]
-    [InlineData("https://generativelanguage.googleapis.com/v1beta/files/xyz", ModelProviderFamily.Google)]
-    [InlineData("https://storage.googleapis.com/bucket/video.mp4", ModelProviderFamily.Google)]
-    [InlineData("https://lh3.googleusercontent.com/a/video", ModelProviderFamily.Google)]
-    public void Video_download_url_infers_provider(string url, ModelProviderFamily expected)
+    [Fact]
+    public void Video_tagged_request_id_splits_only_when_prefix_is_a_catalog_provider()
     {
-        Assert.Equal(expected, MultiProviderVideoClient.InferProviderFromDownloadUrl(url));
+        var xai = CatalogXaiVideo();
+        var other = CatalogNonXaiVideo();
+        var known = new[] { xai.ProviderId, other.ProviderId };
+
+        Assert.True(MultiProviderVideoClient.TrySplitTaggedRequestId(
+            SupportedModelCatalog.NormalizeProviderId(other.ProviderId) + ":models/veo-3.1/operations/abc123",
+            known, out var provider, out var raw));
+        Assert.Equal(SupportedModelCatalog.NormalizeProviderId(other.ProviderId), provider);
+        Assert.Equal("models/veo-3.1/operations/abc123", raw);
+
+        Assert.False(MultiProviderVideoClient.TrySplitTaggedRequestId(
+            "req_legacy_no_tag", known, out _, out _));
+        Assert.False(MultiProviderVideoClient.TrySplitTaggedRequestId(
+            "not-a-provider:req", known, out _, out _));
     }
 
-    [Theory]
-    [InlineData("https://cdn.example.com/unsigned.mp4")]
-    [InlineData("not-a-url")]
-    [InlineData("")]
-    [InlineData(null)]
-    public void Video_download_url_unknown_host_returns_null(string? url)
+    [Fact]
+    public async Task Video_download_uses_catalog_model_not_url_host()
     {
-        Assert.Null(MultiProviderVideoClient.InferProviderFromDownloadUrl(url));
+        var xai = CatalogXaiVideo();
+        var other = CatalogNonXaiVideo();
+        var xaiClient = new StubVideoClient();
+        var otherClient = new StubVideoClient();
+        var facade = new MultiProviderVideoClient(new Dictionary<string, IVideoClient>
+        {
+            [xai.ProviderId] = xaiClient,
+            [other.ProviderId] = otherClient,
+        });
+
+        await facade.DownloadToFileAsync("https://cdn.example.com/unsigned.mp4", Path.GetTempFileName(), other.Id, CancellationToken.None);
+        Assert.Equal(1, otherClient.DownloadCalls);
+        Assert.Equal(0, xaiClient.DownloadCalls);
+    }
+
+    private static SupportedModelEntry CatalogXaiVideo()
+    {
+        var api = SupportedModelCatalog.XaiApiBase;
+        var hit = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .First(m => m.Enabled
+                && !string.IsNullOrWhiteSpace(m.ApiBase)
+                && string.Equals(m.ApiBase.TrimEnd('/'), api.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+        return hit;
+    }
+
+    private static SupportedModelEntry CatalogNonXaiVideo()
+    {
+        var xai = CatalogXaiVideo();
+        return SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .First(m => m.Enabled
+                && !string.Equals(
+                    SupportedModelCatalog.NormalizeProviderId(m.ProviderId),
+                    SupportedModelCatalog.NormalizeProviderId(xai.ProviderId),
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class StubVideoClient : IVideoClient
+    {
+        public bool IsConfigured { get; set; } = true;
+        public string SubmitId { get; set; } = "req_stub";
+        public string LastPolledId { get; private set; } = "";
+        public int DownloadCalls { get; private set; }
+
+        public Task<string> SubmitGenerationAsync(
+            string prompt, int durationSeconds, string resolution, string model, CancellationToken ct,
+            IReadOnlyList<string>? referenceImagePaths = null, string? startFrameImagePath = null,
+            string? continueFromVideoPath = null, string? aspectRatio = null, string? extendSourceFileId = null)
+            => Task.FromResult(SubmitId);
+
+        public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct)
+        {
+            LastPolledId = requestId;
+            return Task.FromResult("https://example.test/clip.mp4");
+        }
+
+        public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
+        {
+            DownloadCalls++;
+            return Task.CompletedTask;
+        }
+
+        public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
     }
 }

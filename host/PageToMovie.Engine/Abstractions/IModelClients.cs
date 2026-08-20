@@ -1,9 +1,19 @@
 namespace PageToMovie.Engine.Abstractions;
 
-/// <summary>Video generate / poll / download. Grok, Gemini (Veo), or fake — see MultiProviderVideoClient.</summary>
+/// <summary>
+/// Video generate / poll / download. Product code depends on this contract and the
+/// catalog-routed facade — never a concrete adapter type.
+/// </summary>
 public interface IVideoClient
 {
     bool IsConfigured { get; }
+
+    /// <summary>
+    /// Catalog <c>providers[].id</c> this adapter serves, from
+    /// <c>SupportedModelCatalog.ProviderIdForApiBase</c> (or the model row's <c>providerId</c>).
+    /// Empty on facades and fakes that are not map values.
+    /// </summary>
+    string CatalogProviderId => "";
 
     /// <param name="referenceImagePaths">
     /// Character/style refs for reference-to-video (<c>reference_images</c>).
@@ -41,6 +51,14 @@ public interface IVideoClient
         CancellationToken ct);
 
     Task DownloadToFileAsync(string url, string destPath, CancellationToken ct);
+
+    /// <summary>
+    /// Same as <see cref="DownloadToFileAsync(string, string, CancellationToken)"/>, routed by
+    /// catalog <paramref name="model"/> when the caller still has it (the product path).
+    /// Default: ignore model and call the two-arg form.
+    /// </summary>
+    Task DownloadToFileAsync(string url, string destPath, string? model, CancellationToken ct) =>
+        DownloadToFileAsync(url, destPath, ct);
 
     /// <summary>
     /// Provider-persisted handle after <see cref="PollForVideoUrlAsync"/> when storage was

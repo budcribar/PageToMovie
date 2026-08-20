@@ -63,6 +63,8 @@ public sealed class GrokVideoClient : IVideoClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(GrokProviderHttp.ResolveApiKey());
 
+    public string CatalogProviderId => SupportedModelCatalog.ProviderIdForApiBase(ApiBase);
+
     /// <param name="referenceImagePaths">Character/style refs → API <c>reference_images</c> + prompt <c>&lt;IMAGE_n&gt;</c> tags.</param>
     /// <param name="startFrameImagePath">Optional first-frame still (image-to-video). Prefer video continue when possible.</param>
     /// <param name="continueFromVideoPath">Previous clip MP4 — uses <c>/videos/extensions</c> (official continue).</param>
