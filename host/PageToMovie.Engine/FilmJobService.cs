@@ -5080,12 +5080,12 @@ public sealed class FilmJobService
             ct.ThrowIfCancellationRequested();
             var (outcome, ver) = await TryQaVerifyAsync(dialogueQa, projectId, req.Scene, cn, ct)
                 .ConfigureAwait(false);
-            if (outcome != QaVerifyOutcome.NeedsRegen)
+            if (outcome != QaVerifyOutcome.NeedsRegen || ver is null)
                 break;
 
             // Targeted retry: change what the verifier said was wrong, not just re-roll the dice.
-            var correction = ClipCorrectionPlanner.Plan(ver!);
-            await AppendLogAsync(FormatQaRegenLog(req.Scene, cn, ver!, qaAttempt, qaMaxRetries, correction));
+            var correction = ClipCorrectionPlanner.Plan(ver);
+            await AppendLogAsync(FormatQaRegenLog(req.Scene, cn, ver, qaAttempt, qaMaxRetries, correction));
             await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct, correction)
                 .ConfigureAwait(false);
             carryoverPaddingSec = await GenerateOneClipAsync(
