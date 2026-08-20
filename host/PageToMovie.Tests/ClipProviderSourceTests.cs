@@ -234,6 +234,58 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task TryOpenAsync_file_id_throw_falls_back_to_url()
+    {
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "https://vidgen.example/public.mp4",
+            "file_dead",
+            (_, _) => Task.FromResult<string?>("from-url"),
+            (_, _) => throw new InvalidOperationException(
+                "xAI file content HTTP 500: Failed to retrieve file"),
+            CancellationToken.None);
+        Assert.Equal("from-url", opened);
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_file_id_throw_and_url_fail_rethrows_both()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ClipProviderSource.TryOpenAsync(
+                "https://vidgen.example/dead.mp4",
+                "file_dead",
+                (_, _) => Task.FromResult<string?>(null),
+                (_, _) => throw new InvalidOperationException(
+                    "xAI file content HTTP 500: Failed to retrieve file"),
+                CancellationToken.None));
+        Assert.Contains("500", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Failed to retrieve file", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(ClipProviderSource.SourceUrlAlsoFailedPrefix, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_file_id_throw_caps_hanging_url()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ClipProviderSource.TryOpenAsync(
+                "https://vidgen.example/hang.mp4",
+                "file_dead",
+                async (_, ct) =>
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                    return "should-not";
+                },
+                (_, _) => throw new InvalidOperationException(
+                    "xAI file content HTTP 500: Failed to retrieve file"),
+                CancellationToken.None,
+                TimeSpan.FromMilliseconds(50)));
+        sw.Stop();
+        Assert.Contains("500", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(ClipProviderSource.SourceUrlAlsoFailedPrefix, ex.Message, StringComparison.Ordinal);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public async Task TryOpenAsync_file_id_null_caps_hanging_url()
     {
         var urlHits = 0;

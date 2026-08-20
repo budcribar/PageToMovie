@@ -552,9 +552,10 @@ public static class MediaEndpoints
     /// Stream the provider copy: catalog-routed <see cref="IVideoClient"/> stored-file
     /// path first when <c>file_id</c> is set (xAI models reuse
     /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> — the only Files
-    /// content GET), then the public URL capped so a dead vidgen link cannot hang
-    /// the 10-minute media-proxy client. Combined-extend slicing/hop-walk is
-    /// unchanged — the same bytes (combined file) are streamed either way.
+    /// content GET). A Files GET that throws or returns null still tries the public
+    /// URL, capped so a dead vidgen link cannot hang the 10-minute media-proxy
+    /// client. Combined-extend slicing/hop-walk is unchanged — the same bytes
+    /// (combined file) are streamed either way.
     /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
@@ -587,9 +588,11 @@ public static class MediaEndpoints
             url, fileId, httpFactory, httpContext, ct,
             new StreamProviderCopyOptions(Video: video, Model: model));
 
-    /// <summary>Test hook: URL then file_id openers. A file_id failure is a visible error,
-    /// not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/> is the
-    /// Railway hosted-copy / <c>.need-fork</c> path when the provider file cannot be downloaded.</summary>
+    /// <summary>Test hook: file_id first, then <c>source_url</c>. A Files content GET that
+    /// throws or returns null still tries the public URL (short timeout when a file_id
+    /// was present). Both failing is a visible 502 with the provider status and the URL
+    /// miss — not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/>
+    /// is the Railway hosted-copy / <c>.need-fork</c> path after both provider pointers miss.</summary>
     internal static async Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,

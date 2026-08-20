@@ -117,11 +117,20 @@ public sealed record ClipProviderSource(
     }
 
     /// <summary>
+    /// Phrase appended when Files <c>file_id</c> failed and <c>source_url</c> also
+    /// missed, so a 502 can show both (provider status + URL failure).
+    /// </summary>
+    public const string SourceUrlAlsoFailedPrefix = "source_url also failed";
+
+    /// <summary>
     /// Files <c>file_id</c> first when present (catalog-routed
     /// <c>IVideoClient.OpenStoredFileStreamAsync</c>; xAI adapters reuse
     /// <c>XaiResponsesClient.OpenFileContentStreamAsync</c>), then the public URL.
-    /// A dead <c>source_url</c> is capped at <see cref="PublicUrlTimeoutWhenFileIdPresent"/>
-    /// so it cannot block the Files content GET. Combined extend copies stay combined.
+    /// A Files content GET that throws or returns null (500/404/etc.) still tries
+    /// <c>source_url</c>. A dead vidgen link is capped at
+    /// <see cref="PublicUrlTimeoutWhenFileIdPresent"/> so it cannot hang. When
+    /// both fail after a file_id throw, the exception keeps the provider status
+    /// and names the URL miss. Combined extend copies stay combined.
     /// </summary>
     public static async Task<T?> TryOpenAsync<T>(
         string? sourceUrl,
@@ -131,14 +140,25 @@ public sealed record ClipProviderSource(
         CancellationToken ct,
         TimeSpan? publicUrlTimeoutWhenFileIdPresent = null) where T : class
     {
+        Exception? fileIdError = null;
         if (!string.IsNullOrWhiteSpace(sourceFileId))
         {
-            var fromFile = await openFileId(sourceFileId, ct).ConfigureAwait(false);
-            if (fromFile is not null) return fromFile;
+            try
+            {
+                var fromFile = await openFileId(sourceFileId, ct).ConfigureAwait(false);
+                if (fromFile is not null) return fromFile;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                fileIdError = ex;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            if (fileIdError is not null) throw fileIdError;
             return null;
+        }
 
         using var urlCts = !string.IsNullOrWhiteSpace(sourceFileId)
             ? CancellationTokenSource.CreateLinkedTokenSource(ct)
@@ -146,14 +166,40 @@ public sealed record ClipProviderSource(
         if (urlCts is not null)
             urlCts.CancelAfter(publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent);
         var urlCt = urlCts?.Token ?? ct;
+
+        Exception? urlError = null;
+        T? fromUrl = null;
         try
         {
-            return await openUrl(sourceUrl, urlCt).ConfigureAwait(false);
+            fromUrl = await openUrl(sourceUrl, urlCt).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (urlCts is not null && !ct.IsCancellationRequested)
         {
-            return null;
+            if (fileIdError is null) return null;
+            urlError = new TimeoutException("source_url timed out");
+            fromUrl = null;
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (fileIdError is null) throw;
+            urlError = ex;
+            fromUrl = null;
+        }
+
+        if (fromUrl is not null) return fromUrl;
+        if (fileIdError is not null)
+            throw CombineFileIdAndUrlErrors(fileIdError, urlError);
+        return null;
+    }
+
+    internal static Exception CombineFileIdAndUrlErrors(Exception fileIdError, Exception? urlError)
+    {
+        var urlPart = urlError?.Message;
+        if (string.IsNullOrWhiteSpace(urlPart))
+            urlPart = "source_url returned no stream";
+        return new InvalidOperationException(
+            fileIdError.Message.TrimEnd() + "; " + SourceUrlAlsoFailedPrefix + ": " + urlPart,
+            fileIdError);
     }
 
     /// <summary>

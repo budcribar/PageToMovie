@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
+using PageToMovie.Engine;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -301,6 +302,54 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         var keys = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         ApiPipeline.SeedCatalogApiBaseKey(keys, "", "should-not-land");
         Assert.Empty(keys);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_file_id_500_falls_back_to_source_url()
+    {
+        var urlHits = 0;
+        var fileHits = 0;
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://files.x.ai/p/public.mp4",
+            "file_dead",
+            (_, _) =>
+            {
+                urlHits++;
+                return Task.FromResult<IResult?>(Results.Bytes(new byte[] { 9, 8, 7, 6 }, "video/mp4"));
+            },
+            (_, _) =>
+            {
+                fileHits++;
+                throw new InvalidOperationException(
+                    "xAI file content HTTP 500: Failed to retrieve file");
+            },
+            CancellationToken.None);
+
+        Assert.Equal(1, fileHits);
+        Assert.Equal(1, urlHits);
+        Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
+        Assert.DoesNotContain("502", ErrorOf(result), StringComparison.Ordinal);
+        Assert.DoesNotContain("Provider file download failed", ErrorOf(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamProviderCopy_file_id_500_and_url_fail_mentions_both()
+    {
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://vidgen.example/expired.mp4",
+            "file_dead",
+            (_, _) => Task.FromResult<IResult?>(null),
+            (_, _) => throw new InvalidOperationException(
+                "xAI file content HTTP 500: Failed to retrieve file"),
+            CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status502BadGateway, StatusOf(result));
+        var err = ErrorOf(result);
+        Assert.Contains("Provider file download failed", err, StringComparison.Ordinal);
+        Assert.Contains("500", err, StringComparison.Ordinal);
+        Assert.Contains("Failed to retrieve file", err, StringComparison.Ordinal);
+        Assert.Contains(ClipProviderSource.SourceUrlAlsoFailedPrefix, err, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"File not found\"", err, StringComparison.Ordinal);
     }
 
     [Fact]
