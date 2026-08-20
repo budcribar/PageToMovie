@@ -572,11 +572,7 @@ public partial class Scenes
             }
             if (urls.Count == 0)
             {
-                S._error = S.Stitch.LastCollectError is { Length: > 0 } why
-                    ? (why.Contains("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
-                        ? $"Could not play the selected scenes — {why}"
-                        : ScenePlayGate.FormatPlayFailedError("scenes", new[] { why }))
-                    : "No composites or on-disk clips for the selected scenes";
+                S._error = FormatEmptySelectedCollectError(S.Stitch.LastCollectError);
                 _showPreviewPlayer = false;
                 return;
             }
@@ -608,6 +604,18 @@ public partial class Scenes
             _clientStitching = false;
             _clientStitchStatus = null;
         }
+    }
+
+    private static string FormatEmptySelectedCollectError(string? lastCollectError)
+    {
+        if (lastCollectError is not { Length: > 0 })
+            return "No composites or on-disk clips for the selected scenes";
+
+        if (lastCollectError.Contains("S", StringComparison.Ordinal)
+            && lastCollectError.Contains(" C", StringComparison.Ordinal))
+            return $"Could not play the selected scenes — {lastCollectError}";
+
+        return ScenePlayGate.FormatPlayFailedError("scenes", new[] { lastCollectError });
     }
 
 
