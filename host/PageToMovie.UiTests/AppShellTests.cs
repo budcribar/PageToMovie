@@ -64,6 +64,38 @@ public class AppShellTests
     }
 
     [Fact]
+    public async Task Demo_film_card_has_one_youtube_watch_control()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/demo");
+
+            await Assertions.Expect(page.Locator(".demo-card-title-link")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.Locator(".demo-yt-open-link")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByText("Watch on YouTube ↗")).ToHaveCountAsync(0);
+
+            var cards = page.GetByTestId("demo-card");
+            var cardCount = await cards.CountAsync();
+            for (var i = 0; i < cardCount; i++)
+            {
+                var card = cards.Nth(i);
+                await Assertions.Expect(card.Locator("h2.demo-card-title a")).ToHaveCountAsync(0);
+
+                var watch = card.GetByTestId("demo-watch-link");
+                var watchCount = await watch.CountAsync();
+                Assert.InRange(watchCount, 0, 1);
+                if (watchCount == 1)
+                {
+                    await Assertions.Expect(watch).ToHaveClassAsync(new Regex("demo-yt-thumb-link"));
+                    await Assertions.Expect(watch.Locator(".visually-hidden")).ToHaveTextAsync("Watch on YouTube");
+                }
+            }
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task Home_has_no_unexpected_console_errors()
     {
         var (ctx, page) = await _fx.NewPageAsync();
