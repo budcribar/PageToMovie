@@ -15,7 +15,7 @@ using PageToMovie.Engine.ModelBacked;
 
 namespace PageToMovie.Api;
 
-public static class SceneClipEndpoints
+public static partial class SceneClipEndpoints
 {
     public static IEndpointRouteBuilder MapSceneClipEndpoints(this IEndpointRouteBuilder app)
     {
@@ -436,49 +436,26 @@ public static class SceneClipEndpoints
 }
 
     private static async Task<IResult> PostProjectsIdScenesSceneClipsClipSidecar(
-        string id, int scene, int clip, HttpContext httpContext, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
+        string id, int scene, int clip, HttpContext httpContext,
+        [AsParameters] SidecarServices svc, CancellationToken ct)
     {
-        if (AuthGate.RequireLogin(user, opts) is { } denied)
+        if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
             return denied;
         string body;
         using (var reader = new StreamReader(httpContext.Request.Body))
             body = await reader.ReadToEndAsync(ct);
-        if (body.Length > 256 * 1024)
-            return Results.BadRequest(new { ok = false, error = "sidecar too large" });
-        System.Text.Json.JsonDocument doc;
-        try { doc = System.Text.Json.JsonDocument.Parse(body); }
-        catch { return Results.BadRequest(new { ok = false, error = "sidecar must be JSON" }); }
-        using (doc)
-        {
-            var r = doc.RootElement;
-            if (r.ValueKind != System.Text.Json.JsonValueKind.Object
-                || !((r.TryGetProperty("source_url", out var u) && u.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(u.GetString()))
-                     || (r.TryGetProperty("source_file_id", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(f.GetString()))))
-                return Results.BadRequest(new { ok = false, error = "sidecar carries no provider pointer (source_url / source_file_id)" });
-            if (r.TryGetProperty("scene", out var sc) && sc.TryGetInt32(out var scN) && scN != scene
-                || r.TryGetProperty("clip", out var cl) && cl.TryGetInt32(out var clN) && clN != clip)
-                return Results.BadRequest(new { ok = false, error = "sidecar scene/clip does not match the route" });
-        }
-        var projectDir = await store.GetProjectDirAsync(id, ct);
-        var videoDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
-        Directory.CreateDirectory(videoDir);
-        // Never overwrite a sidecar that still has a provider pointer — the server copy is newer-or-equal.
-        if (ClipProviderSource.ReadForClip(videoDir, scene, clip) is { HasProviderCopy: true })
-            return Results.Ok(new { ok = true, restored = false, reason = "server already has a sidecar" });
-        var dest = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_01.clip.json");
-        await File.WriteAllTextAsync(dest, body, ct);
-        // Stray markers the old register left for synced sidecars (…clip.json.client.json) — drop them.
-        foreach (var stray in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}*.clip.json.client.json"))
-        {
-            try { File.Delete(stray); } catch { /* best effort */ }
-        }
-        store.InvalidateSceneListCache(id);
-        Console.Error.WriteLine($"[sidecar] restored {id} S{scene:D2}C{clip:D2} from the browser's media folder");
-        return Results.Ok(new { ok = true, restored = true });
+        if (ValidateSidecarBody(body, scene, clip) is { } bad)
+            return bad;
+        return await RestoreSidecarAsync(id, scene, clip, body, svc.Store, ct);
     }
 
-    private static async Task<IResult> PostProjectsIdScenesSceneClipsClipUpload(string id, int scene, int clip, string? kind, double? seconds, HttpContext httpContext, ProjectStore store, IServiceProvider services, CancellationToken ct)
+    private static async Task<IResult> PostProjectsIdScenesSceneClipsClipUpload(
+        string id, int scene, int clip, string? kind, double? seconds,
+        [AsParameters] ClipUploadServices svc, CancellationToken ct)
     {
+    var httpContext = svc.HttpContext;
+    var store = svc.Store;
+    var services = svc.Services;
     if (!httpContext.Request.HasFormContentType)
         return Results.BadRequest(new { ok = false, error = "Form data expected." });
 
@@ -646,57 +623,14 @@ public static class SceneClipEndpoints
     private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberVideo(
         string id, int sceneNumber, int clipNumber,
         HttpRequest req,
-        ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
-        IHttpClientFactory httpFactory,
-        XaiResponsesClient? xai,
+        [AsParameters] ClipVideoServices svc,
         CancellationToken ct)
     {
-    if (AuthGate.RequireLogin(user, opts) is { } denied)
+    if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
         return denied;
     try
     {
-        var (path, parentId) = await ResolveClipVideoPathWithParentAsync(
-            store, id, sceneNumber, clipNumber, ct);
-        var fileId = store.TryReadClipSourceFileId(id, sceneNumber, clipNumber)
-            ?? (string.IsNullOrWhiteSpace(parentId) ? null : store.TryReadClipSourceFileId(parentId, sceneNumber, clipNumber));
-        var exists = path is not null || !string.IsNullOrWhiteSpace(fileId);
-        if (HttpMethods.IsHead(req.Method))
-            return exists ? Results.Ok() : Results.NotFound();
-
-        if (path is not null)
-            return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
-
-        // No server file: stream the provider copy (sidecar source_url) the same way /media/file does.
-        // A video-extend clip's provider copy is the combined video — say how much head is the
-        // previous clip so the browser slices it (the fakes' fixture: copies are served from disk).
-        var providerSrc = ClipProviderSource.ReadForClip(Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "video"), sceneNumber, clipNumber);
-        if (providerSrc?.SourceUrl is { Length: > 0 } srcUrl)
-        {
-            if (MediaEndpoints.TryServeFixtureUrl(srcUrl) is { } fixtureResult)
-                return fixtureResult;
-            if (Uri.TryCreate(srcUrl, UriKind.Absolute, out var up) && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
-            {
-                if (providerSrc.IsCombined)
-                    req.HttpContext.Response.Headers[MediaEndpoints.LeadInHeader] = providerSrc.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-                return await MediaEndpoints.ProxyUpstreamMediaAsync(srcUrl, httpFactory, req.HttpContext, ct);
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(fileId) || xai is null)
-        {
-            await MarkForkFallbackNeededAsync(store, id, parentId, sceneNumber, clipNumber, ct);
-            return Results.NotFound(new { ok = false, error = "clip video not found" });
-        }
-        try
-        {
-            var stream = await xai.OpenFileContentStreamAsync(fileId, ct);
-            return Results.Stream(stream, SpecializedMimeType.VideoMp4.ToMimeTypeString());
-        }
-        catch
-        {
-            await MarkForkFallbackNeededAsync(store, id, parentId, sceneNumber, clipNumber, ct);
-            return Results.NotFound(new { ok = false, error = "clip video not found" });
-        }
+        return await ServeClipVideoAsync(id, sceneNumber, clipNumber, req, svc, ct);
     }
     catch (Exception ex)
     {
@@ -923,20 +857,17 @@ public static class SceneClipEndpoints
 
     private static async Task<IResult> PostProjectsIdScenesSceneClipsReorder(string id, int scene,
     ReorderRequest body,
-    ProjectStore store,
-    MediaRegistryService registry,
-    IUserContext user,
-    IOptions<PageToMovieOptions> opts,
+    [AsParameters] ClipReorderServices svc,
     CancellationToken ct)
     {
-    if (AuthGate.RequireLogin(user, opts) is { } denied)
+    if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
         return denied;
-    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can reorder clips.", ct) is { } forbidden)
+    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, svc.Store, svc.User, "Only the project owner or an admin can reorder clips.", ct) is { } forbidden)
         return forbidden;
     try
     {
-        var result = store.ReorderClips(id, scene, body.Order ?? new List<int>(), user.UserId);
-        await registry.RenamePathsAsync(id, result.MediaRenames, result.MediaDeletes, ct);
+        var result = svc.Store.ReorderClips(id, scene, body.Order ?? new List<int>(), svc.User.UserId);
+        await svc.Registry.RenamePathsAsync(id, result.MediaRenames, result.MediaDeletes, ct);
         return Results.Ok(new { ok = true, projectId = id, scene, renamed = result.MediaRenames.Count, deleted = result.MediaDeletes.Count, manifestId = result.ManifestId });
     }
     catch (Exception ex)
