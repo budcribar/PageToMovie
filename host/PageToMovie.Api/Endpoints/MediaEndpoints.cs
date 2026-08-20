@@ -339,8 +339,10 @@ public static class MediaEndpoints
         var videoDir = Path.GetDirectoryName(fullPath);
         ClipFileNaming.TryParseSceneClip(Path.GetFileName(fullPath), out var scene, out var clip);
         return await StreamProviderCopyAsync(
-            src.SourceUrl, src.SourceFileId, httpFactory, video, model, httpContext, ct,
+            src.SourceUrl, src.SourceFileId, httpFactory, httpContext, ct,
             new StreamProviderCopyOptions(
+                Video: video,
+                Model: model,
                 LogFactory: logFactory,
                 RecoverAfterProvider: (_, _, _) => Task.FromResult(
                     TryRecoverHostedCopy(ClipForkFallback.ProjectDirFromVideoDir(videoDir), scene, clip))));
@@ -506,8 +508,10 @@ public static class MediaEndpoints
     using (CatalogApiKey.PushKey(providerId, key))
     using (UserApiCallScope.Push(keyUserId))
         return await StreamProviderCopyAsync(
-            url, fileId, svc.HttpFactory, svc.Video, modelId, svc.HttpContext, ct,
+            url, fileId, svc.HttpFactory, svc.HttpContext, ct,
             new StreamProviderCopyOptions(
+                Video: svc.Video,
+                Model: modelId,
                 LogFactory: svc.LogFactory,
                 RecoverAfterProvider: (_, _, _) => Task.FromResult(
                     TryRecoverHostedCopy(projectDir, scene, clip))));
@@ -529,8 +533,13 @@ public static class MediaEndpoints
         return CatalogApiKey.GetKeyAsync(keys, keyUserId, provider, ct);
     }
 
-    /// <summary>Optional logger and Railway hosted-copy recovery for the DI wrapper.</summary>
+    /// <summary>
+    /// Catalog-routed stored-file client plus optional logger and Railway
+    /// hosted-copy recovery for the DI wrapper.
+    /// </summary>
     internal sealed record StreamProviderCopyOptions(
+        IVideoClient Video,
+        string? Model = null,
         ILoggerFactory? LogFactory = null,
         Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
 
@@ -545,21 +554,21 @@ public static class MediaEndpoints
         string? url,
         string? fileId,
         IHttpClientFactory httpFactory,
-        IVideoClient video,
-        string? model,
         HttpContext httpContext,
         CancellationToken ct,
-        StreamProviderCopyOptions? options = null) =>
+        StreamProviderCopyOptions options) =>
         StreamProviderCopyAsync(
             url,
             fileId,
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
-            (id, token) => TryOpenStoredFileAsync(video, model, id, httpContext, token),
+            (id, token) => TryOpenStoredFileAsync(options.Video, options.Model, id, httpContext, token),
             ct,
-            options?.LogFactory?.CreateLogger("MediaProxy"),
-            options?.RecoverAfterProvider);
+            options.LogFactory?.CreateLogger("MediaProxy"),
+            options.RecoverAfterProvider);
 
-    /// <summary>Named <paramref name="recoverAfterProvider"/> form used by scene-clip streaming.</summary>
+    /// <summary>
+    /// Positional <paramref name="video"/> / <paramref name="model"/> form used by tests.
+    /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
@@ -567,11 +576,10 @@ public static class MediaEndpoints
         IVideoClient video,
         string? model,
         HttpContext httpContext,
-        CancellationToken ct,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>> recoverAfterProvider) =>
+        CancellationToken ct) =>
         StreamProviderCopyAsync(
-            url, fileId, httpFactory, video, model, httpContext, ct,
-            new StreamProviderCopyOptions(RecoverAfterProvider: recoverAfterProvider));
+            url, fileId, httpFactory, httpContext, ct,
+            new StreamProviderCopyOptions(Video: video, Model: model));
 
     /// <summary>Test hook: URL then file_id openers. A file_id failure is a visible error,
     /// not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/> is the
