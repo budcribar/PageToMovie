@@ -129,16 +129,7 @@ public static class MediaEndpoints
     HttpContext httpContext,
     CancellationToken ct)
     {
-    var ticketValid = false;
-    if (!string.IsNullOrWhiteSpace(ticket))
-    {
-        var target = tickets.TryTakeUrl(ticket);
-        if (target is not null && string.Equals(target, $"{id}:{path}", StringComparison.OrdinalIgnoreCase))
-        {
-            ticketValid = true;
-        }
-    }
-
+    var ticketValid = IsValidMediaTicket(id, path, ticket, tickets);
     if (!ticketValid && AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     try
@@ -148,50 +139,94 @@ public static class MediaEndpoints
             return Results.BadRequest(new { ok = false, error = "path parameter required" });
 
         var projectDir = await store.GetProjectDirAsync(id, ct);
-        var cleanRelPath = path.TrimStart('/', '\\').Replace('\\', '/');
-
-        var fullPath = Path.GetFullPath(Path.Combine(projectDir, cleanRelPath.Replace('/', Path.DirectorySeparatorChar)));
-        var fullProjDir = Path.GetFullPath(projectDir);
-        if (!fullPath.StartsWith(fullProjDir, StringComparison.OrdinalIgnoreCase))
+        if (!TryResolveSafeMediaPath(projectDir, path, out var fullPath))
             return Results.BadRequest(new { ok = false, error = "Invalid media path" });
 
         if (!File.Exists(fullPath))
-        {
-            // Clips do not live on the server: a generated clip is provider-hosted (sidecar
-            // source_url) until the browser saves it locally. Stream it through, never store it.
-            if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-            {
-                var src = ClipProviderSource.ReadForMp4(fullPath);
-                var upstream = src?.SourceUrl;
-                // Fakes: the "provider" is a local fixture file — serve it like the proxy does.
-                if (!string.IsNullOrWhiteSpace(upstream) && TryServeFixture(upstream) is { } fixtureServed)
-                    return fixtureServed;
-                if (!string.IsNullOrWhiteSpace(upstream) && Uri.TryCreate(upstream, UriKind.Absolute, out var up)
-                    && (up.Scheme == Uri.UriSchemeHttps || up.Scheme == Uri.UriSchemeHttp))
-                {
-                    // Video-extend clip: the provider copy is the combined video (previous clip + this
-                    // one). Never stream that as-is — drop the recorded lead-in on a temp copy first.
-                    if (src!.IsCombined)
-                    {
-                        var mat = await ClipProviderSource.TryMaterializeAsync(src, ct);
-                        if (mat is { IsStandalone: true })
-                        {
-                            var fs = new FileStream(mat.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
-                            return Results.Stream(fs, contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
-                        }
-                        ClipProviderSource.TryDelete(mat?.Path);
-                        // No native ffmpeg on this host (production): stream the combined copy and say
-                        // so — the browser (ClipSummary.ProviderLeadInSeconds) slices the head off.
-                        httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-                    }
-                    return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
-                }
-            }
-            return Results.NotFound(new { ok = false, error = "File not found" });
-        }
+            return await ServeMissingMediaAsync(fullPath, httpFactory, httpContext, ct);
 
+        return Results.File(fullPath, ContentTypeForMediaExtension(fullPath), Path.GetFileName(fullPath), enableRangeProcessing: true);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
+
+    private static bool IsValidMediaTicket(string id, string path, string? ticket, MediaProxyTicketStore tickets)
+    {
+        if (string.IsNullOrWhiteSpace(ticket))
+            return false;
+        var target = tickets.TryTakeUrl(ticket);
+        return target is not null && string.Equals(target, $"{id}:{path}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryResolveSafeMediaPath(string projectDir, string path, out string fullPath)
+    {
+        var cleanRelPath = path.TrimStart('/', '\\').Replace('\\', '/');
+        fullPath = Path.GetFullPath(Path.Combine(projectDir, cleanRelPath.Replace('/', Path.DirectorySeparatorChar)));
+        var fullProjDir = Path.GetFullPath(projectDir);
+        return fullPath.StartsWith(fullProjDir, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<IResult> ServeMissingMediaAsync(
+        string fullPath, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+    {
+        // Clips do not live on the server: a generated clip is provider-hosted (sidecar
+        // source_url) until the browser saves it locally. Stream it through, never store it.
+        if (fullPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+        {
+            var served = await TryServeMissingMp4Async(fullPath, httpFactory, httpContext, ct);
+            if (served is not null)
+                return served;
+        }
+        return Results.NotFound(new { ok = false, error = "File not found" });
+    }
+
+    private static async Task<IResult?> TryServeMissingMp4Async(
+        string fullPath, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
+    {
+        var src = ClipProviderSource.ReadForMp4(fullPath);
+        var upstream = src?.SourceUrl;
+        // Fakes: the "provider" is a local fixture file — serve it like the proxy does.
+        if (!string.IsNullOrWhiteSpace(upstream) && TryServeFixture(upstream) is { } fixtureServed)
+            return fixtureServed;
+        if (string.IsNullOrWhiteSpace(upstream)
+            || !Uri.TryCreate(upstream, UriKind.Absolute, out var up)
+            || (up.Scheme != Uri.UriSchemeHttps && up.Scheme != Uri.UriSchemeHttp))
+            return null;
+
+        // Video-extend clip: the provider copy is the combined video (previous clip + this
+        // one). Never stream that as-is — drop the recorded lead-in on a temp copy first.
+        if (src!.IsCombined)
+        {
+            var standalone = await TryStreamStandaloneCombinedAsync(src, httpContext, ct);
+            if (standalone is not null)
+                return standalone;
+        }
+        return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
+    }
+
+    private static async Task<IResult?> TryStreamStandaloneCombinedAsync(
+        ClipProviderSource src, HttpContext httpContext, CancellationToken ct)
+    {
+        var mat = await ClipProviderSource.TryMaterializeAsync(src, ct);
+        if (mat is { IsStandalone: true })
+        {
+            var fs = new FileStream(mat.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            return Results.Stream(fs, contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
+        }
+        ClipProviderSource.TryDelete(mat?.Path);
+        // No native ffmpeg on this host (production): stream the combined copy and say
+        // so — the browser (ClipSummary.ProviderLeadInSeconds) slices the head off.
+        httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        return null;
+    }
+
+    private static string ContentTypeForMediaExtension(string fullPath)
+    {
         var ext = Path.GetExtension(fullPath).ToLowerInvariant();
-        var contentType = ext switch
+        return ext switch
         {
             ".mp4" => SpecializedMimeType.VideoMp4.ToMimeTypeString(),
             ".json" => JsonKeys.ApplicationJson,
@@ -203,14 +238,7 @@ public static class MediaEndpoints
             ".webm" => "audio/webm",
             _ => SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString()
         };
-
-        return Results.File(fullPath, contentType, Path.GetFileName(fullPath), enableRangeProcessing: true);
     }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
-    }
-}
 
     private static async Task<IResult> PostProjectsIdMediaRegister(string id,
     MediaRegisterRequest body,

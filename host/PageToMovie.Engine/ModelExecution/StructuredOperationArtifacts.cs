@@ -29,9 +29,12 @@ public static class StructuredOperationArtifacts
             // validation ("Required model data 'projectId' is missing" on the Review page).
             JsonElement item = default;
             var found = false;
-            foreach (var prop in doc.RootElement.EnumerateObject())
+            foreach (var prop in doc.RootElement.EnumerateObject()
+                .Where(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
-                if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase)) { item = prop.Value; found = true; break; }
+                item = prop.Value;
+                found = true;
+                break;
             }
             if (!found || IsEmpty(item))
                 issues.Add(new("missing_required_data", $"Required model data '{name}' is missing.", $"$.{name}"));

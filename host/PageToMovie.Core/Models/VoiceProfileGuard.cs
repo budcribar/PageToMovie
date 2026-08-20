@@ -36,8 +36,9 @@ public static class VoiceProfileGuard
         if (string.IsNullOrWhiteSpace(voiceProfile)) return "voice profile";
         var sex = StatesSex(voiceProfile); var age = StatesAge(voiceProfile);
         if (sex && age) return null;
-        return !sex && !age ? "voice profile must state sex and age (e.g. 'Adult male, 40s')"
-             : !sex ? "voice profile must state male/female" : "voice profile must state an age";
+        if (!sex && !age) return "voice profile must state sex and age (e.g. 'Adult male, 40s')";
+        if (!sex) return "voice profile must state male/female";
+        return "voice profile must state an age";
     }
 
     public const string MissingSexWarning =

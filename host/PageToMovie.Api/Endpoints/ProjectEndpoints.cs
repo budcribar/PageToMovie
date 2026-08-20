@@ -193,7 +193,7 @@ public static class ProjectEndpoints
     // (that is the last project any account activated and leaks across logins).
     var active = ProjectOwnership.PickActiveInList(list, userActiveId);
     if (active is not null && !string.Equals(active.Id, userActiveId, StringComparison.OrdinalIgnoreCase))
-        Console.Error.WriteLine($"[projects] user={user.UserId} pointer={userActiveId ?? "(none)"} not in list ({list.Count}: {string.Join(",", list.Select(p => p.Id))}) → active={active.Id}");
+        await Console.Error.WriteLineAsync($"[projects] user={user.UserId} pointer={userActiveId ?? "(none)"} not in list ({list.Count}: {string.Join(",", list.Select(p => p.Id))}) → active={active.Id}");
     await ReconcileActiveProjectAsync(user, userDb, userActiveId, active, ct);
     return Results.Ok(new { ok = true, active, projects = list });
 }

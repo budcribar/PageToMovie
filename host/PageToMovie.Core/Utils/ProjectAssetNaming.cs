@@ -19,7 +19,7 @@ public static class ProjectAssetNaming
             k = "unknown_location";
         if (k.EndsWith(RefPngSuffix, StringComparison.OrdinalIgnoreCase))
             return k;
-        return $"{k}_ref.png";
+        return k + RefPngSuffix;
     }
 
     /// <summary>Canonical locked character reference filename: <c>{char_key_lower}_ref.png</c>.</summary>
@@ -31,7 +31,7 @@ public static class ProjectAssetNaming
             k = "unknown_character";
         if (k.EndsWith(RefPngSuffix, StringComparison.OrdinalIgnoreCase))
             return k;
-        return $"{k}_ref.png";
+        return k + RefPngSuffix;
     }
 
     /// <summary>
@@ -46,7 +46,7 @@ public static class ProjectAssetNaming
             if (string.IsNullOrWhiteSpace(name)) return;
             name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
             if (!name.EndsWith(RefPngSuffix, StringComparison.OrdinalIgnoreCase))
-                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
+                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + RefPngSuffix;
             if (seen.Add(name))
                 list.Add(name);
         }
@@ -57,7 +57,7 @@ public static class ProjectAssetNaming
         {
             var bare = raw[LocationPrefix.Length..];
             Add(LocationRefFileName(bare));
-            Add(bare + "_ref.png");
+            Add(bare + RefPngSuffix);
         }
         else
         {
@@ -78,7 +78,7 @@ public static class ProjectAssetNaming
             if (string.IsNullOrWhiteSpace(name)) return;
             name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
             if (!name.EndsWith(RefPngSuffix, StringComparison.OrdinalIgnoreCase))
-                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
+                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + RefPngSuffix;
             if (seen.Add(name))
                 list.Add(name);
         }
@@ -89,7 +89,7 @@ public static class ProjectAssetNaming
         {
             var bare = raw[CharacterPrefix.Length..];
             Add(CharacterRefFileName(bare));
-            Add(bare + "_ref.png");
+            Add(bare + RefPngSuffix);
         }
         else
         {

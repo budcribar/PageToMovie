@@ -147,7 +147,7 @@ public sealed class GrokVideoClient : IVideoClient
                 model, durationSeconds, isExtensionMode: true);
 
         var (videoUri, startUri, refObjs) = await EncodeSubmitMediaAsync(
-            hasContinue, hasStart, continueFromVideoPath, extendSourceFileId, startFrameImagePath, refs, ct).ConfigureAwait(false);
+            hasContinue, hasStart, startFrameImagePath, refs, ct).ConfigureAwait(false);
 
         var promptHardCap = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video)
             .MaxPromptLength
@@ -206,8 +206,6 @@ public sealed class GrokVideoClient : IVideoClient
     private static async Task<(string? VideoUri, string? StartUri, List<object?>? RefObjs)> EncodeSubmitMediaAsync(
         bool hasContinue,
         bool hasStart,
-        string? continueFromVideoPath,
-        string? extendSourceFileId,
         string? startFrameImagePath,
         List<string> refs,
         CancellationToken ct)

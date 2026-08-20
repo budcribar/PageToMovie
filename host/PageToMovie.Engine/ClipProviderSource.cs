@@ -20,7 +20,7 @@ public sealed record ClipProviderSource(string? SourceUrl, string? SourceFileId,
 
     public const string LeadInProperty = "provider_lead_in_seconds";
 
-    private static readonly Regex ClipNameRx = new(@"scene_(\d{2})_clip_(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ClipNameRx = new(@"scene_(\d{2})_clip_(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     /// <summary>Newest sidecar for the clip in <paramref name="videoDir"/>, or null.</summary>
