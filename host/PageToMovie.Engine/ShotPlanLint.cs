@@ -23,14 +23,21 @@ public static class ShotPlanLint
         {
             var k = Regex.Escape(key);
             var dressed = Regex.IsMatch(visual, $@"\b{k}\s+still\s+wears\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
-            // characters_on_screen legitimately carries the VO speaker (how the line's speaker is attached;
-            // gen-time cast filtering drops voice-only keys) — only the PROSE is the fault.
             var listedOnScreen =
                 Regex.IsMatch(visual, $@"also on screen:[^.<]*\b{k}\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
                 || Regex.IsMatch(visual, $@"\b{k}\s+is\s+on\s+screen\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
             if (dressed || listedOnScreen)
+            {
+                string how;
+                if (listedOnScreen && dressed)
+                    how = "lists it on screen and dresses it";
+                else if (listedOnScreen)
+                    how = "lists it on screen";
+                else
+                    how = "gives it a wardrobe";
                 findings.Add(new Finding("voice_only_on_screen",
-                    $"{key} is voice-only but the plan {(listedOnScreen && dressed ? "lists it on screen and dresses it" : listedOnScreen ? "lists it on screen" : "gives it a wardrobe")} — rebuild the shot plan"));
+                    $"{key} is voice-only but the plan {how} — rebuild the shot plan"));
+            }
         }
         return findings;
     }

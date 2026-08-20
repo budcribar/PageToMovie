@@ -190,11 +190,11 @@ public sealed partial class ProjectStore
     // ---- filename mapping ------------------------------------------------------------------
 
     private static readonly Regex SceneClipNameRegex = new(
-        @"^scene_(\d{2,})_clip_(\d{2,})(?=[._])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        @"^scene_(\d{2,})_clip_(\d{2,})(?=[._])", RegexOptions.Compiled | RegexOptions.IgnoreCase, CommonRegex.Timeout);
     private static readonly Regex SceneOnlyNameRegex = new(
-        @"^scene_(\d{2,})(?=[._])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        @"^scene_(\d{2,})(?=[._])", RegexOptions.Compiled | RegexOptions.IgnoreCase, CommonRegex.Timeout);
     private static readonly Regex ExtendSrcNameRegex = new(
-        @"^_extend_src_s(\d{2,})c(\d{2,})(?=\.)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        @"^_extend_src_s(\d{2,})c(\d{2,})(?=\.)", RegexOptions.Compiled | RegexOptions.IgnoreCase, CommonRegex.Timeout);
 
     /// <summary>New file name for a clip renumber within one scene, or null when untouched.</summary>
     internal static string? MapClipFileName(string fileName, int scene, IReadOnlyDictionary<int, int> map)
@@ -288,17 +288,22 @@ public sealed partial class ProjectStore
     /// </summary>
     private static void FixRenamedJsonContents(string projectDir, IReadOnlyList<MediaRenameEntry> renames)
     {
-        foreach (var r in renames)
+        foreach (var to in renames.Select(r => r.To))
         {
-            var name = Path.GetFileName(r.To);
+            var name = Path.GetFileName(to);
             var m = SceneClipNameRegex.Match(name);
             var sOnly = m.Success ? null : SceneOnlyNameRegex.Match(name);
-            int? scene = m.Success ? int.Parse(m.Groups[1].Value)
-                : sOnly is { Success: true } ? int.Parse(sOnly.Groups[1].Value) : null;
+            int? scene;
+            if (m.Success)
+                scene = int.Parse(m.Groups[1].Value);
+            else if (sOnly is { Success: true })
+                scene = int.Parse(sOnly.Groups[1].Value);
+            else
+                scene = null;
             int? clip = m.Success ? int.Parse(m.Groups[2].Value) : null;
             if (scene is null) continue;
 
-            var path = Path.Combine(projectDir, r.To.Replace('/', Path.DirectorySeparatorChar));
+            var path = Path.Combine(projectDir, to.Replace('/', Path.DirectorySeparatorChar));
             if (name.EndsWith(StoreLit.ClipJsonSuffix, StringComparison.OrdinalIgnoreCase))
                 RewriteJsonNumberFields(path, ("scene", scene.Value), ("clip", clip ?? 0));
             else if (name.EndsWith("_dialogue_verification.json", StringComparison.OrdinalIgnoreCase))
@@ -326,19 +331,14 @@ public sealed partial class ProjectStore
     /// <summary>Clip order changed ⇒ the stitched scene video and its sources list are wrong.</summary>
     private static List<string> DeleteSceneCompositeArtifacts(string projectDir, int scene)
     {
-        var deletes = new List<string>();
-        foreach (var rel in new[]
+        return new[]
         {
             $"{StoreLit.Assets}/{StoreLit.Video}/scene_{scene:D2}.mp4",
             $"{StoreLit.Assets}/{StoreLit.Video}/scene_{scene:D2}_complete.mp4",
             $"{StoreLit.Assets}/{StoreLit.Video}/scene_{scene:D2}.mp4.sources.json",
             $"{StoreLit.Assets}/{StoreLit.Scenes}/scene_{scene:D2}.mp4",
             $"{StoreLit.Assets}/{StoreLit.Scenes}/scene_{scene:D2}_complete.mp4",
-        })
-        {
-            if (TryDeleteProjectFile(projectDir, rel)) deletes.Add(rel);
-        }
-        return deletes;
+        }.Where(rel => TryDeleteProjectFile(projectDir, rel)).ToList();
     }
 
     private static bool TryDeleteProjectFile(string projectDir, string relPath)
@@ -435,19 +435,7 @@ public sealed partial class ProjectStore
     internal static List<string> SplitFountainSceneChunks(string text, out string prefix)
     {
         var lines = text.Split('\n');
-        var starts = new List<int>();
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var trimmed = lines[i].TrimEnd('\r').Trim();
-            if (trimmed.Length == 0) continue;
-            var prevBlank = i == 0 || string.IsNullOrWhiteSpace(lines[i - 1].TrimEnd('\r'));
-            if (!prevBlank) continue;
-            var forced = trimmed.Length > 1 && trimmed[0] == '.' && char.IsLetterOrDigit(trimmed[1]);
-            var next = i + 1 < lines.Length ? lines[i + 1].TrimEnd('\r') : "";
-            var nextOk = string.IsNullOrWhiteSpace(next) || next.TrimStart().StartsWith('='); // blank / page-tag / synopsis
-            if (forced || (PageToMovie.Fountain.FountainLexer.IsSceneHeadingStart(trimmed) && nextOk))
-                starts.Add(i);
-        }
+        var starts = CollectFountainSceneHeadingStarts(lines);
 
         // Guard against drift from the real parser: the counts must agree or we refuse to split.
         var parsedCount = PageToMovie.Fountain.FountainParser.Parse(text).Elements
@@ -456,7 +444,46 @@ public sealed partial class ProjectStore
             throw new InvalidOperationException(
                 $"Screenplay scene detection disagrees with the parser ({starts.Count} vs {parsedCount}) — cannot safely reorder scenes in the screenplay text.");
 
-        prefix = starts.Count == 0 ? text : string.Join('\n', lines[..starts[0]]) + (starts[0] > 0 ? "\n" : "");
+        prefix = FountainScenePrefix(text, lines, starts);
+        return BuildFountainSceneChunks(lines, starts);
+    }
+
+    private static List<int> CollectFountainSceneHeadingStarts(string[] lines)
+    {
+        var starts = new List<int>();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (IsFountainSceneHeadingLine(lines, i))
+                starts.Add(i);
+        }
+        return starts;
+    }
+
+    private static bool IsFountainSceneHeadingLine(string[] lines, int i)
+    {
+        var trimmed = lines[i].TrimEnd('\r').Trim();
+        if (trimmed.Length == 0) return false;
+        if (i > 0 && !string.IsNullOrWhiteSpace(lines[i - 1].TrimEnd('\r'))) return false;
+        if (trimmed.Length > 1 && trimmed[0] == '.' && char.IsLetterOrDigit(trimmed[1]))
+            return true;
+        if (!PageToMovie.Fountain.FountainLexer.IsSceneHeadingStart(trimmed))
+            return false;
+        var next = i + 1 < lines.Length ? lines[i + 1].TrimEnd('\r') : "";
+        return string.IsNullOrWhiteSpace(next) || next.TrimStart().StartsWith('='); // blank / page-tag / synopsis
+    }
+
+    private static string FountainScenePrefix(string text, string[] lines, IReadOnlyList<int> starts)
+    {
+        if (starts.Count == 0)
+            return text;
+        var prefix = string.Join('\n', lines[..starts[0]]);
+        if (starts[0] > 0)
+            prefix += "\n";
+        return prefix;
+    }
+
+    private static List<string> BuildFountainSceneChunks(string[] lines, IReadOnlyList<int> starts)
+    {
         var chunks = new List<string>();
         for (var c = 0; c < starts.Count; c++)
         {

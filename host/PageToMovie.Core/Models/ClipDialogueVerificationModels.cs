@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 
 namespace PageToMovie.Core.Models;
@@ -75,12 +76,15 @@ public sealed class DialogueVerificationIssue
 /// flagged. Cosmetic: notes only — a line with only cosmetic issues is a 100% line.</summary>
 public static class DialogueIssueKinds
 {
-    public static readonly HashSet<string> Blocking = new(StringComparer.OrdinalIgnoreCase)
-        { "wrong_speaker", "wrong_words", "wrong_sense", "cut_off", "missing_line", "visual_defect", "unplanned_speech", "wrong_voice" };
-    public static readonly HashSet<string> Degraded = new(StringComparer.OrdinalIgnoreCase)
-        { "unclear_audio", "robotic_delivery", "timing" };
-    public static readonly HashSet<string> Cosmetic = new(StringComparer.OrdinalIgnoreCase)
-        { "mispronounced", "extra_word", "missing_word", "accent" };
+    public static readonly FrozenSet<string> Blocking = FrozenSet.ToFrozenSet(
+        ["wrong_speaker", "wrong_words", "wrong_sense", "cut_off", "missing_line", "visual_defect", "unplanned_speech", "wrong_voice"],
+        StringComparer.OrdinalIgnoreCase);
+    public static readonly FrozenSet<string> Degraded = FrozenSet.ToFrozenSet(
+        ["unclear_audio", "robotic_delivery", "timing"],
+        StringComparer.OrdinalIgnoreCase);
+    public static readonly FrozenSet<string> Cosmetic = FrozenSet.ToFrozenSet(
+        ["mispronounced", "extra_word", "missing_word", "accent"],
+        StringComparer.OrdinalIgnoreCase);
 
     public static bool IsBlocking(string? kind) => kind is not null && Blocking.Contains(kind);
     public static bool IsDegraded(string? kind) => kind is not null && Degraded.Contains(kind);
