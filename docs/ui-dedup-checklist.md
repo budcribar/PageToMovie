@@ -28,7 +28,7 @@ Status: ☐ open · ☑ resolved (with decision).
 | 17 | ☐ | Watch a demo film on YouTube | Card thumbnail overlay | Title link + "Watch on YouTube ↗" — still three links per card. |
 | 18 | ☐ | Open the demo gallery | Left-nav "Demo" | Home demo-films card renders "Open gallery" twice with the same testid. |
 | 19 | ☐ | Fork a demo ("open story") | Demo card "Fork" | Easy-start story list fork (may be intentional dual surface). NOTE: forkable now requires the new Open visibility (B2) — previously-Public projects need re-marking. |
-| 20 | ☐→☑ decided | Generate vs Regenerate (film level) | ONE "Generate (N scenes)…" with scope radio in the confirm (Missing only / All as new takes) | DECIDED 2026-08-19, NOT YET BUILT — toolbar "🔄 Regenerate (N)" still exists (`ScenesSceneIndex.razor:214`); the last unimplemented piece of the mockup. |
+| 20 | ☑ shipped | Generate vs Regenerate (film level) | ONE "Generate" with scope radio in the confirm (Missing only / All as new takes) | SHIPPED 2026-08-20 — toolbar "🔄 Regenerate (N)" removed; combined confirm is `Scenes.GenerateConfirm.razor` (scope radio + resolution/cost/admin model). |
 
 ## Feature decisions from the mockup review (2026-08-19)
 - Insert scene / insert clip at ANY position (not just append). DESIGN (revised 2026-08-19, user call:

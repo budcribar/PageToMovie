@@ -19,6 +19,9 @@ public class ScenesTests
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Film", Exact = true })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Generate Batch" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Add scene" })).ToBeVisibleAsync();
+            // Film-level Regenerated spend button is gone (#20) — shot-plan rebuild keeps its testid.
+            await Assertions.Expect(page.GetByTestId("scenes-regenerate-selected")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = new Regex("Verify Scene") })).ToBeVisibleAsync();
             // Label is localized ("Regen shot plan for selected scenes") — target the stable testid.
             await Assertions.Expect(page.GetByTestId("scenes-regenerate-selected-scenes")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Filters" })).ToBeVisibleAsync();

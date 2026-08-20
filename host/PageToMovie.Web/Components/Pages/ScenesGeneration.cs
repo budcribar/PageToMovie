@@ -78,14 +78,14 @@ public partial class Scenes
 
     // Batch-generate confirm modal: resolution + cost decided at the moment of spend.
     internal bool _showGenerateConfirm;
+    /// <summary>True = re-render every clip in the selection as a new take (today's Regenerated).
+    /// False = fill missing clips only (today's Generate).</summary>
+    internal bool _generateForceAllTakes;
     /// <summary>Live progress modal — opened the moment a clip/scene/batch job is requested so the
     /// user sees something immediately (the card at the top of the page is easy to miss).</summary>
     internal bool _showJobModal;
     internal void OpenJobModal() => _showJobModal = true;
     internal void HideJobModal() => _showJobModal = false;
-
-    // Batch-regenerate confirm modal: single confirmation prompt for all selected scenes.
-    internal bool _showRegenerateConfirm;
 
 
 
@@ -857,6 +857,9 @@ public partial class Scenes
         if (S.List._selected.Count == 0) return;
         if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
         if (!await EnsureMediaFolderForVideoAsync()) return;
+        // Nothing missing → default to All as new takes so the operator is not sent to a
+        // removed Regenerated button. Require an explicit scene selection either way.
+        _generateForceAllTakes = S.ClipSel.EstimateSelectedClips() == 0;
         _showGenerateConfirm = true;
         await S.List.RefreshCostEstimateAsync();
     }
@@ -938,31 +941,6 @@ public partial class Scenes
 
     internal void CloseGenerateConfirm() => _showGenerateConfirm = false;
 
-    internal async Task OpenRegenerateConfirmAsync()
-    {
-        if (S.IsSimpleFilm)
-        {
-            await StartSimpleMovieAsync();
-            return;
-        }
-        if (S.List._selected.Count == 0)
-        {
-            S.List.SelectAll();
-        }
-        if (S.List._selected.Count == 0) return;
-        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
-        _showRegenerateConfirm = true;
-        await S.List.RefreshCostEstimateAsync();
-    }
-
-    internal void CloseRegenerateConfirm() => _showRegenerateConfirm = false;
-
-    internal async Task ConfirmRegenerateBatchAsync()
-    {
-        _showRegenerateConfirm = false;
-        await StartBatchForceSelectedAsync();
-    }
-
 
 
 
@@ -1016,6 +994,7 @@ public partial class Scenes
         S._error = null;
         S._message = null;
         _showAdminJobLog = false;
+        ResetLiveProgressFloor();
         try
         {
             // Same split as the fill-holes batch: credits render in the browser, the rest is one server job.
@@ -1026,8 +1005,11 @@ public partial class Scenes
                 await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             if (list.Count > 0)
             {
+                var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
+                    ? _selectedVideoModel
+                    : null;
                 OpenJobModal();
-                await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, takeTrigger: VideoTakeKinds.StaleRegen);
+                await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.StaleRegen);
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
             }
@@ -1043,7 +1025,10 @@ public partial class Scenes
     internal async Task ConfirmGenerateAsync()
     {
         _showGenerateConfirm = false;
-        await StartBatchAsync();
+        if (_generateForceAllTakes)
+            await StartBatchForceSelectedAsync();
+        else
+            await StartBatchAsync();
     }
 
 

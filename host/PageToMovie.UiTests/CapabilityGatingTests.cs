@@ -39,7 +39,7 @@ public class CapabilityGatingTests
             // CapabilityLockedControl, which — with video off — surfaces the "Set up →" deep link.
             await Assertions.Expect(page.GetByTestId("scenes-generate-batch")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("scenes-generate-batch-cap-setup-link")).ToBeVisibleAsync();
-            // Verify Scene Dialogue (video review) is gated the same way (review forced off).
+            // Verify Scene (video review) is gated the same way (review forced off).
             await Assertions.Expect(page.GetByTestId("scenes-verify-dialogue-cap-setup-link")).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }

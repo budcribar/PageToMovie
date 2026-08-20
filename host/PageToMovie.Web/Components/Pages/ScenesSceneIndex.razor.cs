@@ -31,7 +31,7 @@ public partial class ScenesSceneIndex : PageSliceComponent
         get
         {
             if (Dialogue?.SelectedScenesHaveClipsToVerify == true)
-                return "Check the spoken words in each finished clip against the screenplay";
+                return "Check each finished clip against the screenplay";
             if (Host.List._selected.Count == 0)
                 return "Select one or more scenes with finished clips first";
             return "Selected scenes have no finished clips to check yet";

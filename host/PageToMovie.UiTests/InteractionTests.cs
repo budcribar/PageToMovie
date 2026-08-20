@@ -35,6 +35,39 @@ public class InteractionTests
     }
 
     [Fact]
+    public async Task Generate_confirm_offers_scope_radio_and_regenerate_toolbar_is_gone()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/scenes");
+            await Assertions.Expect(page.GetByTestId("scenes-regenerate-selected")).ToHaveCountAsync(0);
+
+            await page.GetByTestId("scenes-select-all").CheckAsync();
+            await page.GetByTestId("scenes-generate-batch").ClickAsync();
+
+            var modal = page.GetByTestId("generate-confirm-modal");
+            await Assertions.Expect(modal).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            var missing = page.GetByTestId("generate-confirm-scope-missing");
+            var allTakes = page.GetByTestId("generate-confirm-scope-all");
+            await Assertions.Expect(missing).ToBeVisibleAsync();
+            await Assertions.Expect(allTakes).ToBeVisibleAsync();
+            // Seeded project usually has every clip; then Missing is disabled and All is the default.
+            if (await missing.IsDisabledAsync())
+                await Assertions.Expect(allTakes).ToBeCheckedAsync();
+            else
+                await Assertions.Expect(missing).ToBeCheckedAsync();
+            await Assertions.Expect(page.GetByTestId("generate-confirm-resolution")).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByTestId("generate-confirm-cost")).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByTestId("generate-confirm-go")).ToBeEnabledAsync();
+
+            await page.GetByRole(AriaRole.Button, new() { Name = "Cancel", Exact = true }).ClickAsync();
+            await Assertions.Expect(modal).ToBeHiddenAsync();
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task Delete_scene_modal_opens_and_cancels_without_deleting()
     {
         var (ctx, page) = await _fx.NewPageAsync();

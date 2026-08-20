@@ -7,6 +7,10 @@ public partial class Scenes_GenerateConfirm
 {
     [Parameter] public bool Visible { get; set; }
     [Parameter] public int EstimatedClips { get; set; }
+    [Parameter] public int MissingClipCount { get; set; }
+    [Parameter] public int AllClipCount { get; set; }
+    [Parameter] public bool ForceAllTakes { get; set; }
+    [Parameter] public EventCallback<bool> ForceAllTakesChanged { get; set; }
     [Parameter] public int SelectedCount { get; set; }
     [Parameter] public bool ResolutionLocked { get; set; }
     [Parameter] public string? ResolutionLock { get; set; }
@@ -34,4 +38,7 @@ public partial class Scenes_GenerateConfirm
 
     private Task OnModelChange(ChangeEventArgs e) =>
         SelectedVideoModelChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    private Task SetScopeAsync(bool forceAllTakes) =>
+        ForceAllTakes == forceAllTakes ? Task.CompletedTask : ForceAllTakesChanged.InvokeAsync(forceAllTakes);
 }
