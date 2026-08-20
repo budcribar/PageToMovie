@@ -85,10 +85,13 @@ public static class MediaEndpoints
 
     /// <summary>One provider-recovery row in the media sync list (serialized camelCase alongside
     /// the regular anonymous entries). <c>ProviderRecovery</c> tells the client to download only
-    /// when the clip is missing locally — size/hash are unknown until the provider copy lands.</summary>
+    /// when the clip is missing locally — size/hash are unknown until the provider copy lands.
+    /// <c>ProviderLeadInSeconds</c> &gt; 0 marks a combined video-extend copy: its head repeats
+    /// the previous clip, and the client must slice the new tail out before saving (the API host
+    /// never trims).</summary>
     public sealed record ProviderRecoverySyncEntry(
         string RelativePath, string FileName, long SizeBytes, string? Sha256,
-        bool IsMp4, string StreamUrl, bool ProviderRecovery);
+        bool IsMp4, string StreamUrl, bool ProviderRecovery, double ProviderLeadInSeconds);
 
     private static readonly Regex ClipSidecarNameRx = new(
         @"^scene_(\d{2})_clip_(\d{2}).*\.clip\.json$",
@@ -98,8 +101,8 @@ public static class MediaEndpoints
     /// Clips whose bytes exist on neither server disk nor (necessarily) the client, but whose
     /// newest sidecar still points at the provider copy (<c>source_url</c>): offered through the
     /// same proxy-ticket stream so a client sync can self-heal a missed live save. Combined
-    /// video-extend copies are skipped — their head repeats the previous clip and the API host
-    /// never trims. <paramref name="issueTicket"/> maps a provider URL to a proxy token.
+    /// video-extend copies carry their sidecar's lead-in so the client can slice the new tail
+    /// out before saving. <paramref name="issueTicket"/> maps a provider URL to a proxy token.
     /// </summary>
     public static List<ProviderRecoverySyncEntry> CollectProviderRecoveryEntries(
         string videoDir, Func<string, string> issueTicket)
@@ -125,7 +128,7 @@ public static class MediaEndpoints
                 continue;
 
             var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
-            if (src is null || string.IsNullOrWhiteSpace(src.SourceUrl) || src.IsCombined)
+            if (src is null || string.IsNullOrWhiteSpace(src.SourceUrl))
                 continue;
 
             var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
@@ -136,7 +139,8 @@ public static class MediaEndpoints
                 Sha256: null,
                 IsMp4: true,
                 StreamUrl: $"/api/media/proxy/{issueTicket(src.SourceUrl)}",
-                ProviderRecovery: true));
+                ProviderRecovery: true,
+                ProviderLeadInSeconds: src.IsCombined ? src.LeadInSeconds : 0));
         }
         return entries;
     }

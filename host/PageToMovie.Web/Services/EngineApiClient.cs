@@ -5440,6 +5440,9 @@ public sealed class ProjectMediaSyncFile
     /// <summary>The server has no bytes for this clip — StreamUrl proxies the provider copy named
     /// by its sidecar. Download only when the file is missing locally (size/hash are unknown).</summary>
     public bool ProviderRecovery { get; set; }
+    /// <summary>&gt; 0 on a combined video-extend provider copy: its head repeats the previous
+    /// clip, so the new tail must be sliced out (ffmpeg.wasm) before the save.</summary>
+    public double ProviderLeadInSeconds { get; set; }
 }
 
 public sealed class ModelsCatalogResponse

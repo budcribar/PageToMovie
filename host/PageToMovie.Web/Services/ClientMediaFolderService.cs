@@ -415,17 +415,29 @@ public sealed class ClientMediaFolderService
         if (extendSourceSec is not { } srcSec || srcSec <= 0.1)
             return (url, null, false);
 
+        var sliced = await SliceCombinedProviderVideoAsync(url, srcSec, rel);
+        return sliced is null ? (url, null, true) : (sliced, sliced, false);
+    }
+
+    /// <summary>
+    /// Slice the new tail out of a combined provider video whose head is <paramref name="leadInSec"/>
+    /// seconds of the previous clip. Returns the sliced blob URL (caller revokes), or null on any
+    /// failure — callers must NOT save the raw combined file, or the previous clip's footage and
+    /// lines land inside this one. Shared by live extend saves and provider-recovery sync.
+    /// </summary>
+    private async Task<string?> SliceCombinedProviderVideoAsync(string url, double leadInSec, string rel)
+    {
         var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
         var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
-        var newDurationSec = combinedSec is { } c && c > srcSec + 0.1 ? c - srcSec : (double?)null;
+        var newDurationSec = combinedSec is { } c && c > leadInSec + 0.1 ? c - leadInSec : (double?)null;
         if (newDurationSec is null)
         {
             // Could not probe, or the file is no longer than its lead-in: saving it unsliced would
             // put the previous clip (footage AND lines) into this one. Fail loudly instead.
             LastStatus = $"Video-extend slice failed for {rel} " +
-                         $"(duration probe {(probe is { Success: true } ? $"{probe.Seconds:F1}s vs {srcSec:F1}s lead-in" : "failed")}) — retry the clip.";
+                         $"(duration probe {(probe is { Success: true } ? $"{probe.Seconds:F1}s vs {leadInSec:F1}s lead-in" : "failed")}) — retry the clip.";
             Changed?.Invoke();
-            return (url, null, true);
+            return null;
         }
 
         var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
@@ -434,9 +446,9 @@ public sealed class ClientMediaFolderService
             LastStatus = $"Video-extend slice failed for {rel} " +
                          $"({slice?.Error ?? "duration probe failed"}) — retry the clip.";
             Changed?.Invoke();
-            return (url, null, true);
+            return null;
         }
-        return (slice.Url, slice.Url, false);
+        return slice.Url;
     }
 
     private readonly record struct PreparedSaveUrl(
@@ -1013,15 +1025,36 @@ public sealed class ClientMediaFolderService
         if (string.IsNullOrWhiteSpace(file.StreamUrl))
             return false;
 
+        // A combined video-extend provider copy carries the previous clip at its head — slice
+        // the new tail out first, exactly like the live extend save. Never save it raw.
+        var urlToSave = file.StreamUrl;
+        string? sliceBlobUrl = null;
+        if (file.ProviderRecovery && file.ProviderLeadInSeconds > 0.1)
+        {
+            sliceBlobUrl = await SliceCombinedProviderVideoAsync(
+                file.StreamUrl, file.ProviderLeadInSeconds, file.RelativePath);
+            if (sliceBlobUrl is null)
+                return false;
+            urlToSave = sliceBlobUrl;
+        }
+
         // Client-only prefixed path for the shared local folder; the manifest's bare
         // file.RelativePath (not saved.RelativePath, echoed back prefixed) is what the
         // server expects in RegisterMediaAsync below.
         var clientPath = $"{projectId}/{file.RelativePath}";
-        var saved = await _js.InvokeAsync<JsSaveResult>(
-            "PageToMovieMedia.saveFromUrlAsync",
-            file.StreamUrl,
-            clientPath,
-            null);
+        JsSaveResult? saved;
+        try
+        {
+            saved = await _js.InvokeAsync<JsSaveResult>(
+                "PageToMovieMedia.saveFromUrlAsync",
+                urlToSave,
+                clientPath,
+                null);
+        }
+        finally
+        {
+            await RevokeBlobIfAnyAsync(sliceBlobUrl);
+        }
 
         if (saved is not { Success: true } || string.IsNullOrWhiteSpace(saved.Sha256))
             return false;

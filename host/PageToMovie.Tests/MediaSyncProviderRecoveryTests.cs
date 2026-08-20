@@ -66,16 +66,32 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     }
 
     [Fact]
-    public void Combined_extend_copies_and_urlless_sidecars_are_skipped()
+    public void Combined_extend_copy_carries_its_lead_in_for_the_client_slice()
     {
-        // Combined extend video: its head repeats the previous clip; the API host never trims.
+        // Combined extend video: its head repeats the previous clip — the entry must carry the
+        // sidecar's lead-in so the client slices the new tail out before saving (the API host
+        // never trims).
         WriteSidecar(2, 1, 1, "https://vidgen.example/combined.mp4", leadIn: 4.9);
-        // No provider pointer at all (e.g. an imported clip).
-        WriteSidecar(2, 2, 1, sourceUrl: null);
 
         var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
 
-        Assert.Empty(entries);
+        var e = Assert.Single(entries);
+        Assert.Equal(4.9, e.ProviderLeadInSeconds, 3);
+        Assert.True(e.ProviderRecovery);
+    }
+
+    [Fact]
+    public void Urlless_sidecars_are_skipped_and_plain_clips_carry_no_lead_in()
+    {
+        // No provider pointer at all (e.g. an imported clip) → not recoverable.
+        WriteSidecar(2, 2, 1, sourceUrl: null);
+        WriteSidecar(2, 3, 1, "https://vidgen.example/plain.mp4");
+
+        var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, _ => "tok");
+
+        var e = Assert.Single(entries);
+        Assert.Equal("assets/video/scene_02_clip_03.mp4", e.RelativePath);
+        Assert.Equal(0, e.ProviderLeadInSeconds, 3);
     }
 
     [Fact]
