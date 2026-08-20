@@ -142,7 +142,8 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
     </div>
 }
 
-@if (Playback._showClipPlayer && Playback._playingClipScene is int clipSn && Playback._playingClipNum is int clipCn)
+@if (Playback._showClipPlayer && Playback._playingClipScene is int clipSn && Playback._playingClipNum is int clipCn
+     && !string.IsNullOrEmpty(Playback._clientClipUrl))
 {
     <div class="card mb-3 border-info">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -155,17 +156,28 @@ else if (Playback._showScenePlayer && Playback._clientStitching)
         <div class="card-body py-2">
             <video controls playsinline autoplay
                    style="width:100%;max-height:50vh;background:#000;border-radius:0.35rem;"
-                   src="@Playback.ClipServerSrc(clipSn, clipCn)"
+                   src="@Playback._clientClipUrl"
                    @key="Playback._clipVideoKey"
                    onloadeddata="this.play().catch(function(){})">
                 @L["ReviewPage.Html5VideoNotSupported"]
             </video>
             <p class="small text-muted mb-0 mt-2">
-                <a href="@Engine.ClipVideoUrl(Host._projectId, clipSn, clipCn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
-                · after regen, <strong>Play scene</strong> stitches the updated cut in the browser
+                @if (!Playback._clientClipUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+                {
+                    <a href="@Engine.ClipVideoUrl(Host._projectId, clipSn, clipCn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
+                    <span> · after regen, <strong>Play scene</strong> stitches the updated cut in the browser</span>
+                }
             </p>
         </div>
     </div>
+}
+else if (!string.IsNullOrEmpty(Playback._clipPlayError))
+{
+    <InlineAlert Message="@Playback._clipPlayError"
+                 Dismissible="true"
+                 CssClass="mb-3"
+                 OnDismiss="Playback.ClearClipPlayError"
+                 data-testid="review-clip-play-error" />
 }
 
     <div class="card mb-3 border-success shadow-lg text-white" style="background-color: #0f172a !important; border-color: #10b981 !important;">

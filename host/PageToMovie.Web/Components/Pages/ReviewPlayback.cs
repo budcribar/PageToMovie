@@ -27,6 +27,10 @@ public partial class Review
 
         internal string? _clientWipUrl;
 
+        internal string? _clientClipUrl;
+
+        internal string? _clipPlayError;
+
         internal string? _clipServerSrcCached;
 
         internal long _clipVideoKey;
@@ -271,6 +275,7 @@ public partial class Review
             S._busy = true;
             try
             {
+                _clipPlayError = null;
                 S.List._activeTab = ReviewTab.Play;
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
@@ -426,6 +431,7 @@ public partial class Review
             S._busy = true;
             try
             {
+                _clipPlayError = null;
                 _showClipPlayer = false;
                 S.List._activeTab = ReviewTab.Play;
                 await RefreshWipMetaAsync();
@@ -582,14 +588,95 @@ public partial class Review
         }
 
 
-        internal void PlayClip(int scene, int clip)
+        /// <summary>
+        /// Play one clip using the same local-first resolution as scene Play:
+        /// media-folder blob, else a reachable server URL. Never points the
+        /// player at a 404 <c>ClipVideoUrl</c>.
+        /// </summary>
+        internal async Task PlayClipAsync(int scene, int clip)
         {
-            _playingClipScene = scene;
-            _playingClipNum = clip;
-            _showClipPlayer = true;
-            _clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            S._message = $"Playing S{scene:D2}C{clip:D2}";
+            if (S._busy || _clientStitching) return;
+            S._busy = true;
+            try
+            {
+                _clipPlayError = null;
+                S._error = null;
+                SceneDetail? detail = S.List._selectedDetail is { SceneNumber: var dsn } && dsn == scene
+                    ? S.List._selectedDetail
+                    : null;
+                var urls = await S.Stitch.CollectClipUrlsAsync(
+                    S._projectId, scene, detail, clipNumbers: new[] { clip });
+                var decided = DecideClipPlay(
+                    urls, S.Stitch.LastCollectError, scene, clip, S.MediaFolder.IsConnected);
+                if (decided.Src is null)
+                {
+                    FailClipPlayer(decided.Error);
+                    return;
+                }
+
+                _clientClipUrl = decided.Src;
+                _playingClipScene = scene;
+                _playingClipNum = clip;
+                _showWipPlayer = false;
+                _showScenePlayer = false;
+                _showClipPlayer = true;
+                _clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S._message = $"Playing S{scene:D2}C{clip:D2}";
+            }
+            catch (Exception ex)
+            {
+                FailClipPlayer(FriendlyClipPlayError(scene, clip, ex.Message, S.MediaFolder.IsConnected));
+            }
+            finally
+            {
+                S._busy = false;
+            }
         }
+
+        /// <summary>
+        /// Local-first collect result → playable src, or a friendly in-card error and no src.
+        /// A 404 server URL is never returned: <see cref="ClientVideoStitchService.CollectClipUrlsAsync"/>
+        /// only yields a local blob or a reachable server URL.
+        /// </summary>
+        internal static (string? Src, string? Error) DecideClipPlay(
+            IReadOnlyList<string> urls,
+            string? collectError,
+            int scene,
+            int clip,
+            bool mediaFolderConnected)
+        {
+            var src = urls.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+            if (!string.IsNullOrWhiteSpace(src))
+                return (src, null);
+            return (null, FriendlyClipPlayError(scene, clip, collectError, mediaFolderConnected));
+        }
+
+        internal static string FriendlyClipPlayError(
+            int scene, int clip, string? collectError, bool mediaFolderConnected)
+        {
+            if (LooksLikeHttpMissing(collectError))
+            {
+                return $"S{scene:D2}C{clip:D2} clip video is missing. Connect your local media folder if the clips are on this computer, or generate them again.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(collectError))
+                return collectError;
+            return ClientVideoStitchService.FormatMissingClipPlayError(
+                new[] { $"S{scene:D2}C{clip:D2}" }, mediaFolderConnected);
+        }
+
+        private void FailClipPlayer(string? error)
+        {
+            _clipPlayError = string.IsNullOrWhiteSpace(error)
+                ? FriendlyClipPlayError(_playingClipScene ?? 0, _playingClipNum ?? 0, null, S.MediaFolder.IsConnected)
+                : error;
+            _showClipPlayer = false;
+            _playingClipScene = null;
+            _playingClipNum = null;
+            _clientClipUrl = null;
+        }
+
+        internal void ClearClipPlayError() => _clipPlayError = null;
 
 
         internal void HideClipPlayer()
@@ -597,6 +684,8 @@ public partial class Review
             _showClipPlayer = false;
             _playingClipScene = null;
             _playingClipNum = null;
+            _clientClipUrl = null;
+            _clipPlayError = null;
         }
 
 

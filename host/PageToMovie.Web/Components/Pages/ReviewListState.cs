@@ -198,6 +198,7 @@ public partial class Review
         {
             _selectedScene = null;
             _selectedDetail = null;
+            S.Playback.ClearClipPlayError();
             S.AutoReview.CloseApplyPanel();
         }
 
