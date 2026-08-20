@@ -39,6 +39,18 @@ Status: ☐ open · ☑ resolved (with decision).
   sidecar restore). Renumber highest-first + idempotent for crash safety. Clip after the insertion point
   goes stale (new predecessor). ID-named files + map rejected for now (migration of every naming
   convention; revisit only if inserts become frequent). NOT BUILT YET.
+  - GitHub-repo interaction (reviewed 2026-08-19): the per-project repo tracks only small JSON/text
+    (media binaries are git-ignored), so a renumber pass renames tiny text blobs — cheap, and git's
+    rename detection keeps per-file history across it. Rules: (1) the whole renumber lands as ONE
+    auto-git commit ("Insert scene 03: renumbered S03–S05 → S04–S06") so any clone/fork sees the
+    rename atomically, never a half-renumbered tree; (2) the client rename manifest is COMMITTED
+    project state (append-only log, e.g. source/renames.jsonl) so forks and other machines' local
+    media folders can replay renames they missed — each entry carries a monotonically increasing id,
+    clients remember the last id applied; (3) manifest entries are never rewritten, only appended.
+  - Prerequisite fixed 2026-08-19: the project .gitignore ignored ALL of assets/video/, which hid the
+    clip sidecars (the only provider-video pointers) from the repo — a GitHub restore came back with
+    zero clips. Now only media binaries (*.mp4 etc.) are ignored; existing repos self-heal their
+    .gitignore on the next auto-commit (ProjectGitRepositoryService).
 - Film-level Generate/Regenerate merged (see #20). Row = checkbox + expander + line + duration + chip;
   delete via scene menu ("Delete (N) selected clips…"); autoplay on expand; "Edit Clip Script" / "AI Edit Video".
 

@@ -69,12 +69,13 @@ namespace PageToMovie.Engine
 
         /// <summary>
         /// Video/audio binaries never belong in the project's own Git history — they live in the
-        /// client's local media folder (see host README "Client Media Storage"). Keeps each
-        /// project's repo small enough to actually diff/merge.
+        /// client's local media folder (see host README "Client Media Storage"). Only the binaries:
+        /// the server keeps no media, so the .clip.json sidecars under assets/video/ are the
+        /// project's only pointers to the provider-hosted videos and MUST be tracked — ignoring
+        /// the whole directory made a repo restore come back with no clips at all.
         /// </summary>
         private static readonly string[] IgnoredGlobs =
         {
-            "assets/video/",
             "*.mp4",
             "*.webm",
             "*.mov",
@@ -727,7 +728,15 @@ namespace PageToMovie.Engine
                 || !string.Equals(Path.GetFileName(gitignorePath), gitignoreName, StringComparison.Ordinal))
                 throw new InvalidOperationException("Invalid gitignore path.");
             if (!File.Exists(gitignorePath))
+            {
                 File.WriteAllText(gitignorePath, string.Join("\n", IgnoredGlobs) + "\n");
+                return;
+            }
+            // Self-heal repos created when the whole video dir was ignored: that entry hides the
+            // clip sidecars (the only pointers to provider-hosted video) from the repo.
+            var lines = File.ReadAllLines(gitignorePath);
+            if (lines.Any(l => l.Trim() == "assets/video/"))
+                File.WriteAllLines(gitignorePath, lines.Where(l => l.Trim() != "assets/video/"));
         }
 
         private static void EnsureRepository(string projectPath)

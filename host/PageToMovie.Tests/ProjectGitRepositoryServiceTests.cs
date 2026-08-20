@@ -169,6 +169,62 @@ namespace PageToMovie.Tests
         }
 
         [Fact]
+        public async Task CommitProjectStateAsync_tracks_clip_sidecars_under_video_dir()
+        {
+            // Sidecars are the project's only pointers to provider-hosted video — a repo that
+            // ignored all of assets/video/ restored with no clips at all.
+            var dir = NewTempDir("ptm_git");
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(dir, "assets", "video"));
+                File.WriteAllText(Path.Combine(dir, "project.json"), """{"id":"Demo"}""");
+                File.WriteAllText(
+                    Path.Combine(dir, "assets", "video", "scene_01_clip_01_take_01.clip.json"),
+                    """{"source_url":"https://example.test/v.mp4"}""");
+                File.WriteAllText(Path.Combine(dir, "assets", "video", "scene_01_clip_01.mp4"), "fake video bytes");
+
+                var service = NewService();
+                await service.CommitProjectStateAsync(dir, "Alice", "Initial");
+
+                using var repo = new Repository(dir);
+                Assert.NotNull(repo.Head.Tip["assets/video/scene_01_clip_01_take_01.clip.json"]);
+                Assert.Null(repo.Head.Tip["assets/video/scene_01_clip_01.mp4"]);
+            }
+            finally
+            {
+                DeleteDir(dir);
+            }
+        }
+
+        [Fact]
+        public async Task CommitProjectStateAsync_heals_legacy_gitignore_that_hid_the_video_dir()
+        {
+            var dir = NewTempDir("ptm_git");
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(dir, "assets", "video"));
+                File.WriteAllText(Path.Combine(dir, "project.json"), """{"id":"Demo"}""");
+                File.WriteAllText(Path.Combine(dir, ".gitignore"),
+                    "assets/video/\n*.mp4\n*.webm\n*.mov\n*.wav\n*.avi\n");
+                File.WriteAllText(
+                    Path.Combine(dir, "assets", "video", "scene_01_clip_01_take_01.clip.json"),
+                    """{"source_url":"https://example.test/v.mp4"}""");
+
+                var service = NewService();
+                await service.CommitProjectStateAsync(dir, "Alice", "Initial");
+
+                Assert.DoesNotContain("assets/video/",
+                    File.ReadAllLines(Path.Combine(dir, ".gitignore")).Select(l => l.Trim()));
+                using var repo = new Repository(dir);
+                Assert.NotNull(repo.Head.Tip["assets/video/scene_01_clip_01_take_01.clip.json"]);
+            }
+            finally
+            {
+                DeleteDir(dir);
+            }
+        }
+
+        [Fact]
         public async Task SyncForkFromOriginAsync_fails_cleanly_when_parent_has_no_commits()
         {
             var fork = NewTempDir("ptm_fork");
