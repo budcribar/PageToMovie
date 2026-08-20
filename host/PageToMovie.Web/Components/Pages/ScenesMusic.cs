@@ -172,9 +172,12 @@ public partial class Scenes
 
             var fileName = Path.GetFileName(clientRelativePath);
             await S.JS.InvokeVoidAsync("PageToMovieMedia.downloadFromUrlAsync", clientUrl, fileName);
-            await S.InvokeAsync(() =>
+            await S.InvokeAsync(async () =>
             {
                 S._message = $"Background music for Scene {sceneNum:D2} downloaded.";
+                // The registry row lands AFTER the job's terminal reload — refresh the list now or
+                // the scene's 🎵 marker and "Audio takes" entry stay hidden until re-navigation.
+                await S.List.ReloadListAsync();
                 S.StateHasChanged();
             });
         }

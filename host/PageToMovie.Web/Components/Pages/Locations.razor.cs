@@ -91,7 +91,14 @@ public partial class Locations : IDisposable
         await LoadAsync();
     }
 
-    private void OnProjectChanged() => _ = InvokeAsync(LoadAsync);
+    // Re-render AFTER the reload finishes: a bare InvokeAsync(LoadAsync) leaves the last render at
+    // _loading == true (fire-and-forget completion doesn't re-render), freezing the page on
+    // "Loading locations…" whenever readiness refresh fires Changed right after navigation.
+    private void OnProjectChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
 
     private async Task LoadAsync()
     {

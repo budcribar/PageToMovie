@@ -57,6 +57,7 @@ public static class ProjectIdRouting
         "leases",
         "locations",
         "media",
+        "media-renames",
         "movie",
         "presence",
         "push",

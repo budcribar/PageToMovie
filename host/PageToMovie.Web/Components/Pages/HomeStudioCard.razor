@@ -91,10 +91,12 @@
                                 @if (!string.IsNullOrWhiteSpace(p.ParentProjectId) && canManage)
                                 {
                                     <a class="btn btn-sm btn-outline-warning"
+                                       data-testid="home-fork-diff"
                                        href="projects/@id/review-contribution?originProjectId=@p.ParentProjectId">
                                         Diff
                                     </a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                            data-testid="home-sync-origin"
                                             @onclick="() => Host.Projects.SyncOriginAsync(id, p.ParentProjectId)">
                                         Sync origin
                                     </button>

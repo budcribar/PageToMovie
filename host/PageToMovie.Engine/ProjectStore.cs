@@ -1786,7 +1786,7 @@ public sealed partial class ProjectStore
         var (newId, newDir) = CreateForkDirectory(source, newOwnerUserId);
         CopyForkFiles(source.Path, newDir, ct);
         await RewriteForkProjectMetaAsync(newDir, newId, source, newOwnerUserId, ct).ConfigureAwait(false);
-        await TryCommitForkGitAsync(newDir, newOwnerUserId).ConfigureAwait(false);
+        await TryCommitForkGitAsync(newDir, source.Path, newOwnerUserId).ConfigureAwait(false);
 
         InvalidateReadCaches(null);
         return await RequireProjectAsync(newId, ct).ConfigureAwait(false);
@@ -1860,7 +1860,7 @@ public sealed partial class ProjectStore
                 continue;
             var rel = Path.GetRelativePath(sourcePath, file);
             if (rel.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, 2)[0] == ".git")
-                continue; // never copy the source's own Git history into the fork
+                continue; // history is adopted via fetch in TryCommitForkGitAsync, not raw file copy
 
             var destPath = Path.Combine(newDir, rel);
             if (Path.GetDirectoryName(destPath) is { } dir)
@@ -1897,13 +1897,16 @@ public sealed partial class ProjectStore
             metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
     }
 
-    private static async Task TryCommitForkGitAsync(string newDir, string newOwnerUserId)
+    private static async Task TryCommitForkGitAsync(string newDir, string sourceDir, string newOwnerUserId)
     {
         try
         {
             ProjectGitRepositoryService.EnsureRepositoryAt(newDir);
             var git = new ProjectGitRepositoryService(
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
+            // Adopt the parent's history first: "Sync origin" is a real 3-way merge and needs a
+            // shared merge base — a fresh unrelated repo made every later sync a wall of conflicts.
+            git.AdoptParentHistory(newDir, sourceDir);
             await git.CommitProjectStateAsync(newDir, newOwnerUserId, "Initial fork state").ConfigureAwait(false);
         }
         catch { /* non-fatal */ }

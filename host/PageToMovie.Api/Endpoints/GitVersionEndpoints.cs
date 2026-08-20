@@ -484,7 +484,7 @@ public static class GitVersionEndpoints
         return Results.BadRequest(new { ok = false, error = "parentProjectId required" });
     try
     {
-        await store.RequireProjectAsync(id, ct);
+        var target = await store.RequireProjectAsync(id, ct);
         await store.RequireProjectAsync(body.ParentProjectId, ct);
         if (!await store.CanUserPublishDemoAsync(id, user.UserId, user.IsAdmin, ct))
         {
@@ -506,6 +506,14 @@ public static class GitVersionEndpoints
         {
             res = await git.SyncForkFromOriginAsync(
                 targetDir, originDir);
+        }
+        if (res.Success)
+        {
+            // The merge rewrote project files on disk behind the store's caches — drop them or the
+            // Film/Screenplay pages keep serving the pre-merge plan. Use the NORMALIZED id: the
+            // route id may still carry %2F, which would miss the cache keys.
+            store.InvalidateSceneListCache(target.Id);
+            store.InvalidateReadCaches(target.Id);
         }
         return Results.Ok(new
         {

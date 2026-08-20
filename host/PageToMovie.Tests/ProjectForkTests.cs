@@ -131,6 +131,54 @@ public class ProjectForkTests
     }
 
     [Fact]
+    public async Task Fork_shares_history_and_sync_origin_merges_disjoint_edits_keeping_identity()
+    {
+        var (store, root) = MakeStore();
+        try
+        {
+            var git = new ProjectGitRepositoryService(
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
+
+            var source = await store.CreateProjectAsync("Original", ownerUserId: "owner1");
+            await store.SetProjectVisibilityModeAsync(source.Id, "Open");
+            var sourceDir = source.Path;
+            Directory.CreateDirectory(Path.Combine(sourceDir, "source"));
+            await File.WriteAllTextAsync(Path.Combine(sourceDir, "source", "screenplay.fountain"),
+                "INT. A - DAY\n\nAlpha line.\n\nINT. B - DAY\n\nBeta line.\n");
+            await git.CommitProjectStateAsync(sourceDir, "owner1", "Origin baseline");
+
+            var fork = await store.ForkProjectAsync(source.Id, "collaborator1");
+
+            // Disjoint edits: origin changes scene A's line, fork changes scene B's line.
+            var originDraft = Path.Combine(sourceDir, "source", "screenplay.fountain");
+            await File.WriteAllTextAsync(originDraft,
+                (await File.ReadAllTextAsync(originDraft)).Replace("Alpha line.", "Alpha line, revised by origin."));
+            await git.CommitProjectStateAsync(sourceDir, "owner1", "Origin edit");
+
+            var forkDraft = Path.Combine(fork.Path, "source", "screenplay.fountain");
+            await File.WriteAllTextAsync(forkDraft,
+                (await File.ReadAllTextAsync(forkDraft)).Replace("Beta line.", "Beta line, revised by fork."));
+            await git.CommitProjectStateAsync(fork.Path, "collaborator1", "Fork edit");
+
+            var identityBefore = await File.ReadAllTextAsync(Path.Combine(fork.Path, "project.json"));
+
+            var res = await git.SyncForkFromOriginAsync(fork.Path, sourceDir);
+
+            Assert.True(res.Success, "sync failed: " + res.Message);
+            Assert.False(res.HasConflicts, "disjoint edits must merge cleanly (shared history): " + res.Message);
+            var merged = await File.ReadAllTextAsync(forkDraft);
+            Assert.Contains("revised by origin", merged);
+            Assert.Contains("revised by fork", merged);
+            // The fork's identity file never takes origin content.
+            Assert.Equal(identityBefore, await File.ReadAllTextAsync(Path.Combine(fork.Path, "project.json")));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task ForkProjectAsync_throws_for_unknown_source_project()
     {
         var (store, root) = MakeStore();
