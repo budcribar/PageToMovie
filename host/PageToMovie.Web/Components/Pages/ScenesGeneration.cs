@@ -21,6 +21,7 @@ public partial class Scenes
 
     private const string StatusRunning = "running";
     private const string StatusQueued = "queued";
+    private const string StatusError = "error";
     private const string KindBatch = "batch";
     private const string KindRemux = "remux";
     private const string KindScene = "scene";
@@ -178,7 +179,7 @@ public partial class Scenes
             return !S.Session.IsAdmin &&
                    job is { } live &&
                    IsScenesWorkflowJob(live.Kind) &&
-                   string.Equals(live.Status, "error", StringComparison.OrdinalIgnoreCase);
+                   string.Equals(live.Status, StatusError, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -302,7 +303,7 @@ public partial class Scenes
             if (S.Session.IsAdmin)
                 await RefreshMyJobsAsync();
 
-            if (snap.Status is "done" or "partial" or "error" or "cancelled")
+            if (snap.Status is "done" or "partial" or StatusError or "cancelled")
                 await HandleTerminalJobAsync(snap);
             else if (ShouldRefreshSceneListWhileRunning(snap))
                 await SoftReloadListLiveAsync();
@@ -317,8 +318,8 @@ public partial class Scenes
         _lastListRefreshScene = null;
         _lastListRefreshMessage = null;
         S._message = null;
-        // Progress modal: a clean finish closes itself (the clips are right there in the table);
-        // error / partial / cancelled stay up so the outcome is read, not missed.
+        // Progress modal: a clean finish closes itself (the clips are right there in the table).
+        // Error, partial, and cancelled stay up so the outcome is read, not missed.
         if (snap.Status == "done")
             _showJobModal = false;
         await SoftReloadAsync();
@@ -489,7 +490,7 @@ public partial class Scenes
         }
         // No StateHasChanged while running — Index/Total come from JobUpdated; avoid thrashing UI on every log line.
         if (_job is not null &&
-            (_job.Status is "done" or "partial" or "error" or "cancelled"))
+            (_job.Status is "done" or "partial" or StatusError or "cancelled"))
             _ = S.InvokeAsync(S.StateHasChanged);
     }
 
@@ -514,7 +515,7 @@ public partial class Scenes
             _job = live;
             return;
         }
-        j.Status = "error";
+        j.Status = StatusError;
         j.FinishedAt = DateTimeOffset.UtcNow;
         j.Message = "Lost track of this job — the server restarted while it was queued (deploy). Nothing was generated; start it again.";
         j.Error = j.Message;
@@ -912,11 +913,7 @@ public partial class Scenes
                 S._projectId,
                 charKey: charKey,
                 onProgress: s => { S._message = s; _ = S.InvokeAsync(S.StateHasChanged); });
-            if (res.Ok)
-                S._message = $"{res.ClipsDubbed} scene(s) in your voice"
-                             + (res.ClipsFailed > 0 ? $" · {res.ClipsFailed} skipped" : "");
-            else
-                S._error = res.Error ?? VoiceSubstitutionOverlayGate.ReviewRequiredMessage;
+            ApplySimpleMovieDubResult(res);
         }
         catch (Exception ex)
         {
@@ -926,6 +923,15 @@ public partial class Scenes
         {
             S._busy = false;
         }
+    }
+
+    private void ApplySimpleMovieDubResult(DubMovieResult res)
+    {
+        if (res.Ok)
+            S._message = $"{res.ClipsDubbed} scene(s) in your voice"
+                         + (res.ClipsFailed > 0 ? $" · {res.ClipsFailed} skipped" : "");
+        else
+            S._error = res.Error ?? VoiceSubstitutionOverlayGate.ReviewRequiredMessage;
     }
 
 

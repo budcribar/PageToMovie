@@ -1374,22 +1374,31 @@ public sealed class Stage2PlannerService
     {
         if (beats.Count < 2) return beats;
         var result = new List<Dictionary<string, object?>>(beats);
-        for (var i = 0; i < result.Count - 1; i++)
+        var i = 0;
+        while (i < result.Count - 1)
         {
             var b1 = result[i];
             var b2 = result[i + 1];
             if (!IsSilentPreludePair(b1, b2) || !SameOrEmptyBeatLocation(b1, b2) || !VoRepeatsAction(b1, b2))
+            {
+                i++;
                 continue;
+            }
             MergeSilentPreludeVisual(b1, b2);
             PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
             b2[Keys.OwnClip] = true; // the action keeps its own shot; the line rides on it
             result.RemoveAt(i);
-            i--; // re-check the merged beat against what follows
+            // Re-check the merged beat against what follows (do not advance).
         }
         return result;
     }
 
-    private static string Short(string? hash) => string.IsNullOrEmpty(hash) ? "(none)" : hash.Length > 8 ? hash[..8] : hash;
+    private static string Short(string? hash)
+    {
+        if (string.IsNullOrEmpty(hash))
+            return "(none)";
+        return hash.Length > 8 ? hash[..8] : hash;
+    }
 
     private static bool IsOwnClip(Dictionary<string, object?> beat) =>
         beat.TryGetValue(Keys.OwnClip, out var v) && v is true;
@@ -1404,7 +1413,7 @@ public sealed class Stage2PlannerService
     }
 
     private static string NormalizeVisual(string s) =>
-        System.Text.RegularExpressions.Regex.Replace(s.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
+        CommonRegex.Replace(s.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
 
     private static bool IsSilentPreludePair(Dictionary<string, object?> b1, Dictionary<string, object?> b2)
     {
@@ -2321,7 +2330,7 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?>? charSeeds = null)
     {
         var found = new List<string>();
-        TryTakeOnScreenCastList(beat, found, charSeeds);
+        TryTakeOnScreenCastList(beat, found);
 
         var veText = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var ve) ? ve : null) ?? "";
         AddCharacterKeysFromText(found, veText);
@@ -2336,22 +2345,15 @@ public sealed class Stage2PlannerService
         return found;
     }
 
-    private static bool TryTakeOnScreenCastList(
+    private static void TryTakeOnScreenCastList(
         Dictionary<string, object?> beat,
-        List<string> found,
-        Dictionary<string, object?>? charSeeds)
+        List<string> found)
     {
         if (beat.TryGetValue(Keys.CharactersOnScreen, out var cos) && cos is List<object?> cosList && cosList.Count > 0)
         {
             foreach (var x in cosList)
                 AddCharacterKey(found, x?.ToString());
-            // Short-circuit only when at least one found character is actually on screen.
-            // If every character listed is a never_on_screen voice-only role, fall through
-            // and also scan visual_event prose for additional visible characters.
-            return found.Any(k => !IsNeverOnScreenCharacter(k, charSeeds));
         }
-
-        return false;
     }
 
     private static void PromoteNamesFromCastSeeds(

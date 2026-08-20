@@ -5085,13 +5085,8 @@ public sealed class FilmJobService
 
             // Targeted retry: change what the verifier said was wrong, not just re-roll the dice.
             var correction = ClipCorrectionPlanner.Plan(ver!);
-            var issueText = ver!.Issues.Count > 0
-                ? " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word)))
-                : "";
-            await AppendLogAsync(
-                $"  [QA] S{req.Scene:D2}C{cn} {ver.Status}{issueText} — auto-regen {qaAttempt}/{qaMaxRetries}" +
-                (correction.IsEmpty ? " (plain re-roll)" : $" with correction: {string.Join("; ", correction.Reasons)}") + "…");
-            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct, correction)
+            await AppendLogAsync(FormatQaRegenLog(req.Scene, cn, ver!, qaAttempt, qaMaxRetries, correction));
+            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver!, qaAttempt, ct, correction)
                 .ConfigureAwait(false);
             carryoverPaddingSec = await GenerateOneClipAsync(
                 projectId, projectDir, req.Scene, cn, clip, resolution, ct,
@@ -5101,17 +5096,41 @@ public sealed class FilmJobService
                 takeKindOverride: VideoTakeKinds.QaAuto,
                 correction: correction.IsEmpty ? null : correction);
             if (qaAttempt == qaMaxRetries)
-            {
-                // Last retry spent: verify the final take once more so the outcome is known and the
-                // user is told what is still wrong (not left to discover it in the review).
-                var (finalOutcome, finalVer) = await TryQaVerifyAsync(dialogueQa, projectId, req.Scene, cn, ct)
+                await VerifyFinalQaAttemptAsync(dialogueQa, projectId, req.Scene, cn, qaMaxRetries, ct)
                     .ConfigureAwait(false);
-                if (finalOutcome == QaVerifyOutcome.NeedsRegen && finalVer is not null)
-                    await EscalateQaFailureAsync(projectId, req.Scene, cn, finalVer, qaMaxRetries, ct).ConfigureAwait(false);
-            }
         }
         return carryoverPaddingSec;
     }
+
+    private static string FormatQaRegenLog(
+        int scene, int cn, ClipDialogueVerificationResult ver, int qaAttempt, int qaMaxRetries, ClipCorrection correction)
+    {
+        var how = correction.IsEmpty
+            ? " (plain re-roll)"
+            : $" with correction: {string.Join("; ", correction.Reasons)}";
+        return $"  [QA] S{scene:D2}C{cn} {ver.Status}{FormatQaIssueList(ver)} — auto-regen {qaAttempt}/{qaMaxRetries}{how}…";
+    }
+
+    private async Task VerifyFinalQaAttemptAsync(
+        ClipDialogueVerificationService? dialogueQa,
+        string projectId,
+        int scene,
+        int cn,
+        int qaMaxRetries,
+        CancellationToken ct)
+    {
+        // Last retry spent: verify the final take once more so the outcome is known and the
+        // user is told what is still wrong (not left to discover it in the review).
+        var (finalOutcome, finalVer) = await TryQaVerifyAsync(dialogueQa, projectId, scene, cn, ct)
+            .ConfigureAwait(false);
+        if (finalOutcome == QaVerifyOutcome.NeedsRegen && finalVer is not null)
+            await EscalateQaFailureAsync(projectId, scene, cn, finalVer, qaMaxRetries, ct).ConfigureAwait(false);
+    }
+
+    private static string FormatQaIssueList(ClipDialogueVerificationResult ver) =>
+        ver.Issues.Count == 0
+            ? ""
+            : " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word)));
 
     /// <summary>Retries exhausted and the clip still fails: say exactly what is wrong (by tier) in the
     /// job log and record a learning event so the (issue → corrections → outcome) triple is complete.</summary>
@@ -5120,9 +5139,13 @@ public sealed class FilmJobService
     {
         var blocking = ver.Issues.Where(i => DialogueIssueKinds.IsBlocking(i.Kind)).Select(DescribeIssue).Distinct().ToList();
         var degraded = ver.Issues.Where(i => DialogueIssueKinds.IsDegraded(i.Kind)).Select(DescribeIssue).Distinct().ToList();
-        var what = blocking.Count > 0 ? "blocking: " + string.Join(", ", blocking)
-            : degraded.Count > 0 ? "degraded: " + string.Join(", ", degraded)
-            : ver.Status;
+        string what;
+        if (blocking.Count > 0)
+            what = "blocking: " + string.Join(", ", blocking);
+        else if (degraded.Count > 0)
+            what = "degraded: " + string.Join(", ", degraded);
+        else
+            what = ver.Status;
         await AppendLogAsync(
             $"  [QA] ⚠ S{scene:D2}C{cn} still failing after {retries} auto-retr{(retries == 1 ? "y" : "ies")} ({what}) — needs your review: " +
             "regenerate with a different take, edit the line, or revoice it.");
@@ -5134,7 +5157,7 @@ public sealed class FilmJobService
                 Type = "qa_escalated",
                 Scene = scene,
                 Clip = cn,
-                Note = ver.Status + (ver.Issues.Count > 0 ? " issues=" + string.Join(",", ver.Issues.Select(i => i.Kind + (string.IsNullOrWhiteSpace(i.Word) ? "" : ":" + i.Word))) : ""),
+                Note = ver.Status + FormatQaIssueList(ver),
                 Outcome = $"after_{retries}_retries",
                 JobId = Snapshot.JobId,
                 ActionTaken = "needs_user_review",
@@ -6052,12 +6075,12 @@ public sealed class FilmJobService
             if (serverTrimmed)
                 await AppendLogAsync($"  [Media] keeping trimmed {Path.GetFileName(mp4Path)} on the server until your browser saves it (provider copy is the combined extend video)");
             else
-                await DeleteTransientServerClipAsync(ctx, mp4Path).ConfigureAwait(false);
+                await DeleteTransientServerClipAsync(mp4Path).ConfigureAwait(false);
         }
         return (overrunSec, serverTrimmed);
     }
 
-    private async Task DeleteTransientServerClipAsync(ClipGenContext ctx, string mp4Path)
+    private async Task DeleteTransientServerClipAsync(string mp4Path)
     {
         try
         {
