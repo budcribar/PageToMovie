@@ -207,6 +207,33 @@
                     </button>
                 </div>
                 <div class="card-body">
+                    @if (!string.IsNullOrEmpty(playback._clipPlayError))
+                    {
+                        <InlineAlert Message="@playback._clipPlayError"
+                                     Dismissible="true"
+                                     CssClass="mb-2"
+                                     OnDismiss="playback.ClearClipPlayError"
+                                     data-testid="review-clip-play-error" />
+                    }
+                    @if (playback._showClipPlayer
+                         && playback._playingClipScene == sel
+                         && playback._playingClipNum is int playCn
+                         && !string.IsNullOrEmpty(playback._clientClipUrl))
+                    {
+                        <div class="mb-3" data-testid="review-clip-inline-player">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small text-muted">C@(playCn.ToString("D2"))</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="playback.HideClipPlayer">@L["Common.Hide"]</button>
+                            </div>
+                            <video controls playsinline autoplay
+                                   style="width:100%;max-height:50vh;background:#000;border-radius:0.35rem;"
+                                   src="@playback._clientClipUrl"
+                                   @key="playback._clipVideoKey"
+                                   onloadeddata="this.play().catch(function(){})">
+                            </video>
+                        </div>
+                    }
                     <div class="mb-2">
                         <label class="form-label small">Note (required to Pass after auto-review fail)</label>
                         <input class="form-control form-control-sm" @bind="autoReview._note" disabled="@Host._busy"
@@ -236,9 +263,11 @@
                                     }
                                 </div>
                                 <div class="btn-group btn-group-sm mt-1 flex-wrap">
-                                    <button class="btn btn-outline-dark" disabled="@(Host._busy || !onDisk)"
+                                    <button class="btn btn-sm btn-success"
+                                            data-testid="@($"review-play-clip-{sel}-{cn}")"
+                                            disabled="@(Host._busy || !onDisk)"
                                             title="Play this clip"
-                                            @onclick="() => playback.PlayClip(sel, cn)">▶</button>
+                                            @onclick="() => playback.PlayClipAsync(sel, cn)">▶ Play</button>
                                     <button class="btn btn-outline-primary"
                                             data-testid="@($"review-auto-{sel}-{cn}")"
                                             data-scene="@sel"
