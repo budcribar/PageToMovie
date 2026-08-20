@@ -117,7 +117,7 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task Materialize_url_404_falls_back_to_file_id()
+    public async Task Materialize_file_id_present_skips_url()
     {
         var src = new ClipProviderSource("https://vidgen.example/expired.mp4", "file_live", 0, 8);
         var urlHits = 0;
@@ -140,14 +140,14 @@ public sealed class ClipProviderSourceTests : IDisposable
         {
             Assert.NotNull(mat);
             Assert.True(mat!.IsStandalone);
-            Assert.Equal(1, urlHits);
+            Assert.Equal(0, urlHits);
             Assert.Equal(1, fileHits);
         }
         finally { ClipProviderSource.TryDelete(mat?.Path); }
     }
 
     [Fact]
-    public async Task Materialize_url_success_does_not_call_file_id()
+    public async Task Materialize_file_id_null_falls_back_to_url()
     {
         var src = new ClipProviderSource("https://vidgen.example/fresh.mp4", "file_unused", 0, 8);
         var fileHits = 0;
@@ -163,7 +163,7 @@ public sealed class ClipProviderSourceTests : IDisposable
         try
         {
             Assert.NotNull(mat);
-            Assert.Equal(0, fileHits);
+            Assert.Equal(1, fileHits);
         }
         finally { ClipProviderSource.TryDelete(mat?.Path); }
     }
@@ -193,21 +193,67 @@ public sealed class ClipProviderSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task TryOpenAsync_url_success_skips_file_id()
+    public async Task TryOpenAsync_file_id_present_skips_url()
     {
-        var fileHits = 0;
+        var urlHits = 0;
         var opened = await ClipProviderSource.TryOpenAsync(
             "https://vidgen.example/ok.mp4",
-            "file_unused",
-            (url, _) => Task.FromResult<string?>(url),
+            "file_live",
             (_, _) =>
             {
-                fileHits++;
-                return Task.FromResult<string?>("nope");
+                urlHits++;
+                return Task.FromResult<string?>("from-url");
             },
+            (id, _) => Task.FromResult<string?>(id),
             CancellationToken.None);
-        Assert.Equal("https://vidgen.example/ok.mp4", opened);
-        Assert.Equal(0, fileHits);
+        Assert.Equal("file_live", opened);
+        Assert.Equal(0, urlHits);
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_hanging_url_with_file_id_uses_file_id_quickly()
+    {
+        var urlHits = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "https://vidgen.example/hang.mp4",
+            "file_live",
+            async (_, ct) =>
+            {
+                urlHits++;
+                await Task.Delay(Timeout.Infinite, ct);
+                return (string?)null;
+            },
+            (id, _) => Task.FromResult<string?>(id),
+            CancellationToken.None,
+            TimeSpan.FromMilliseconds(50));
+        sw.Stop();
+        Assert.Equal("file_live", opened);
+        Assert.Equal(0, urlHits);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task TryOpenAsync_file_id_null_caps_hanging_url()
+    {
+        var urlHits = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var opened = await ClipProviderSource.TryOpenAsync(
+            "https://vidgen.example/hang.mp4",
+            "file_unused",
+            async (_, ct) =>
+            {
+                urlHits++;
+                await Task.Delay(Timeout.Infinite, ct);
+                return "should-not";
+            },
+            (_, _) => Task.FromResult<string?>(null),
+            CancellationToken.None,
+            TimeSpan.FromMilliseconds(50));
+        sw.Stop();
+        Assert.Null(opened);
+        Assert.Equal(1, urlHits);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2));
     }
 
     [Fact]

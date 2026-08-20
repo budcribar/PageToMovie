@@ -126,7 +126,7 @@ public sealed class XaiFileContentDownloadTests
             Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
         }
 
-        Assert.Equal("media-proxy", urls.LastName);
+        Assert.Null(urls.LastName);
         Assert.Equal(HttpMethod.Get, files.Method);
         Assert.Equal("/v1/files/file_1ed4c54f-2edd-485b-8d35-5f31c854132a/content", files.Path);
         Assert.Equal("xai-from-ticket", files.Auth?.Parameter);

@@ -11,6 +11,7 @@ namespace PageToMovie.Web.Services;
 public sealed class ClientMediaFolderService
 {
     private const string ProbeDurationJs = "PageToMovieFfmpeg.probeDurationAsync";
+    private const string PrefetchToBlobJs = "PageToMovieFfmpeg.prefetchToBlobUrlAsync";
 
     private readonly IJSRuntime _js;
     private readonly EngineApiClient _api;
@@ -430,6 +431,29 @@ public sealed class ClientMediaFolderService
     /// </summary>
     private async Task<string?> SliceCombinedProviderVideoAsync(string url, double leadInSec, string rel)
     {
+        string? prefetch = null;
+        var playable = url;
+        if (CombinedExtendRecovery.IsRemotePlayableUrl(url))
+        {
+            prefetch = await PrefetchToBlobUrlAsync(url);
+            if (prefetch is null)
+                return null;
+            playable = prefetch;
+        }
+
+        try
+        {
+            return await SliceCombinedPlayableAsync(playable, leadInSec, rel);
+        }
+        finally
+        {
+            if (prefetch is not null)
+                await RevokeBlobIfAnyAsync(prefetch);
+        }
+    }
+
+    private async Task<string?> SliceCombinedPlayableAsync(string url, double leadInSec, string rel)
+    {
         var probe = await ProbeDurationAsync(url);
         var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
         var newDurationSec = combinedSec is { } c && CombinedExtendRecovery.IsLocalDurationCombined(c, leadInSec)
@@ -439,9 +463,10 @@ public sealed class ClientMediaFolderService
         {
             // Could not probe, or the file is no longer than its lead-in: saving it unsliced would
             // put the previous clip (footage AND lines) into this one. Fail loudly instead.
-            LastStatus = $"Video-extend slice failed for {rel} " +
-                         $"(duration probe {(probe is { Success: true } ? $"{probe.Seconds:F1}s vs {leadInSec:F1}s lead-in" : "failed")}) — retry the clip.";
-            Changed?.Invoke();
+            var probeDetail = probe is { Success: true }
+                ? $"{probe.Seconds:F1}s vs {leadInSec:F1}s lead-in"
+                : (string.IsNullOrWhiteSpace(probe?.Error) ? "failed" : probe.Error);
+            NoteMediaFailure($"Video-extend slice failed for {rel} (duration probe {probeDetail}) — retry the clip.");
             return null;
         }
 
@@ -450,9 +475,8 @@ public sealed class ClientMediaFolderService
         var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
-            LastStatus = $"Video-extend slice failed for {rel} " +
-                         $"({slice?.Error ?? "duration probe failed"}) — retry the clip.";
-            Changed?.Invoke();
+            NoteMediaFailure($"Video-extend slice failed for {rel} " +
+                             $"({slice?.Error ?? "duration probe failed"}) — retry the clip.");
             return null;
         }
 
@@ -465,9 +489,8 @@ public sealed class ClientMediaFolderService
         await RevokeBlobIfAnyAsync(slice.Url);
         if (capped is not { Success: true } || string.IsNullOrWhiteSpace(capped.Url))
         {
-            LastStatus = $"Video-extend slice failed for {rel} " +
-                         $"({capped?.Error ?? "duration cap failed"}) — retry the clip.";
-            Changed?.Invoke();
+            NoteMediaFailure($"Video-extend slice failed for {rel} " +
+                             $"({capped?.Error ?? "duration cap failed"}) — retry the clip.");
             return null;
         }
         return capped.Url;
@@ -1066,6 +1089,7 @@ public sealed class ClientMediaFolderService
         Changed?.Invoke();
 
         var count = 0;
+        string? lastError = null;
         for (var i = 0; i < outOfDateFiles.Count; i++)
         {
             var file = outOfDateFiles[i];
@@ -1075,9 +1099,14 @@ public sealed class ClientMediaFolderService
             Changed?.Invoke();
             if (await TrySaveSyncedMediaFileAsync(projectId, file))
                 count++;
+            else if (!string.IsNullOrWhiteSpace(LastStatus)
+                     && !LastStatus.StartsWith("Downloading ", StringComparison.Ordinal))
+                lastError = LastStatus;
         }
 
-        LastStatus = $"Media folder synced: {count} missing/updated file(s) saved on local disk";
+        LastStatus = lastError is null
+            ? $"Media folder synced: {count} missing/updated file(s) saved on local disk"
+            : $"Media folder synced: {count} of {outOfDateFiles.Count} file(s). Last error: {lastError}";
         Changed?.Invoke();
         return count;
     }
@@ -1113,6 +1142,14 @@ public sealed class ClientMediaFolderService
             var combinedUrl = CombinedExtendRecovery.PreferCombinedSource(localCombinedUrl, file.StreamUrl);
             if (string.IsNullOrWhiteSpace(combinedUrl))
                 return false;
+            if (CombinedExtendRecovery.IsRemotePlayableUrl(combinedUrl))
+            {
+                var blob = await PrefetchToBlobUrlAsync(combinedUrl);
+                if (blob is null)
+                    return false;
+                revoke.Add(blob);
+                combinedUrl = blob;
+            }
 
             var hops = CombinedExtendRecovery.PlanPredecessorHops(
                 file.ProviderLeadInSeconds, file.PredecessorLeadInSeconds);
@@ -1201,6 +1238,27 @@ public sealed class ClientMediaFolderService
     private ValueTask<JsProbeResult> ProbeDurationAsync(string url) =>
         _js.InvokeAsync<JsProbeResult>(ProbeDurationJs, url);
 
+    /// <summary>
+    /// One network GET of a proxy / provider URL into a blob. Probe and trim must use the
+    /// blob — never <c>_safeFetchFile</c> the same StreamUrl twice (combined-extend tickets).
+    /// </summary>
+    private async Task<string?> PrefetchToBlobUrlAsync(string url)
+    {
+        var fetched = await _js.InvokeAsync<JsTrimTailResult>(PrefetchToBlobJs, url);
+        if (fetched is { Success: true } && !string.IsNullOrWhiteSpace(fetched.Url))
+            return fetched.Url;
+        NoteMediaFailure(string.IsNullOrWhiteSpace(fetched?.Error)
+            ? "Provider copy download failed"
+            : fetched.Error);
+        return null;
+    }
+
+    private void NoteMediaFailure(string message)
+    {
+        LastStatus = message;
+        Changed?.Invoke();
+    }
+
     private async Task<bool> HeadDurationIsCombinedAsync(string url, double leadInSec)
     {
         var probe = await ProbeDurationAsync(url);
@@ -1236,9 +1294,8 @@ public sealed class ClientMediaFolderService
         var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimHeadAsync", url, keep, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
-            LastStatus = $"Video-extend previous-clip split failed for {rel} " +
-                         $"({slice?.Error ?? "duration probe failed"}) — previous clip left missing.";
-            Changed?.Invoke();
+            NoteMediaFailure($"Video-extend previous-clip split failed for {rel} " +
+                             $"({slice?.Error ?? "duration probe failed"}) — previous clip left missing.");
             return null;
         }
         return slice.Url;
@@ -1262,7 +1319,12 @@ public sealed class ClientMediaFolderService
             clientPath,
             null);
         if (saved is not { Success: true } || string.IsNullOrWhiteSpace(saved.Sha256))
+        {
+            NoteMediaFailure(string.IsNullOrWhiteSpace(saved?.Error)
+                ? $"Could not save {Path.GetFileName(relativePath)}"
+                : $"{Path.GetFileName(relativePath)}: {saved.Error}");
             return false;
+        }
 
         await _api.RegisterMediaAsync(projectId, new MediaRegisterRequest
         {
@@ -1342,6 +1404,7 @@ public sealed class ClientMediaFolderService
     {
         public bool Success { get; set; } = false;
         public double Seconds { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsUploadResult

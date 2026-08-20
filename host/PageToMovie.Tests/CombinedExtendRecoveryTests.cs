@@ -71,6 +71,16 @@ public class CombinedExtendRecoveryTests
     }
 
     [Fact]
+    public void IsRemotePlayableUrl_is_false_for_blob_and_data()
+    {
+        Assert.True(CombinedExtendRecovery.IsRemotePlayableUrl(ProviderUrl));
+        Assert.True(CombinedExtendRecovery.IsRemotePlayableUrl("https://vidgen.example/c.mp4"));
+        Assert.False(CombinedExtendRecovery.IsRemotePlayableUrl("blob:local-combined/x"));
+        Assert.False(CombinedExtendRecovery.IsRemotePlayableUrl("data:video/mp4;base64,AA"));
+        Assert.False(CombinedExtendRecovery.IsRemotePlayableUrl(null));
+    }
+
+    [Fact]
     public async Task C2_combined_writes_C1_head_and_C2_tail()
     {
         var (svc, js) = await ConnectAsync(providerDuration: 10);
@@ -271,6 +281,42 @@ public class CombinedExtendRecoveryTests
         Assert.False(js.SavedRelative(C1));
         Assert.False(js.SavedRelative(C2));
         Assert.DoesNotContain(C1, js.LocalFiles);
+        Assert.Contains("502", svc.LastStatus ?? "", StringComparison.Ordinal);
+        Assert.Contains("Provider file download failed", svc.LastStatus ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Combined_extend_fetches_stream_url_once()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
+
+        Assert.True(n);
+        Assert.Single(js.PrefetchSources);
+        Assert.Contains(js.PrefetchSources, CombinedExtendRecovery.IsRemotePlayableUrl);
+        Assert.DoesNotContain(js.ProbeSources, CombinedExtendRecovery.IsRemotePlayableUrl);
+        Assert.DoesNotContain(js.TrimSources, CombinedExtendRecovery.IsRemotePlayableUrl);
+    }
+
+    [Fact]
+    public async Task Plain_recovery_502_body_reaches_LastStatus()
+    {
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+        js.ProviderUnavailable = true;
+
+        var n = await svc.TrySaveSyncedMediaFileAsync(ProjectId, new ProjectMediaSyncFile
+        {
+            RelativePath = C1,
+            FileName = Path.GetFileName(C1),
+            IsMp4 = true,
+            StreamUrl = ProviderUrl,
+            ProviderRecovery = true,
+        });
+
+        Assert.False(n);
+        Assert.Contains("502", svc.LastStatus ?? "", StringComparison.Ordinal);
+        Assert.Contains("Provider file download failed", svc.LastStatus ?? "", StringComparison.Ordinal);
     }
 
     [Fact]
@@ -334,6 +380,8 @@ public class CombinedExtendRecoveryTests
         public HashSet<string> LocalFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> CombinedLocalFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<(string Url, string Path)> Saves { get; } = new();
+        public List<string> PrefetchSources { get; } = new();
+        public List<string> ProbeSources { get; } = new();
         public List<string> TrimSources { get; } = new();
         public List<(string Identifier, double Keep)> TrimKeeps { get; } = new();
         public bool ProviderUnavailable { get; set; }
@@ -394,8 +442,23 @@ public class CombinedExtendRecoveryTests
                 return """{"success":false}""";
             }
 
+            if (identifier == "PageToMovieFfmpeg.prefetchToBlobUrlAsync")
+            {
+                var url = Arg(args, 0);
+                PrefetchSources.Add(url);
+                if (IsUnavailable(url))
+                    return """{"success":false,"error":"clip video missing (HTTP 502 Bad Gateway {\"ok\":false,\"error\":\"Provider file download failed: xAI file content HTTP 401\"})."}""";
+                var blob = $"blob:prefetch:{++_trimSeq}";
+                _durations[blob] = ProviderDurationSeconds;
+                return $"{{\"success\":true,\"url\":\"{blob}\"}}";
+            }
+
             if (identifier == "PageToMovieFfmpeg.probeDurationAsync")
-                return Probe(Arg(args, 0));
+            {
+                var url = Arg(args, 0);
+                ProbeSources.Add(url);
+                return Probe(url);
+            }
 
             if (identifier is "PageToMovieFfmpeg.trimTailAsync" or "PageToMovieFfmpeg.trimHeadAsync")
             {
@@ -416,6 +479,8 @@ public class CombinedExtendRecoveryTests
                 var url = Arg(args, 0);
                 var path = Arg(args, 1);
                 Saves.Add((url, path));
+                if (IsUnavailable(url))
+                    return """{"success":false,"error":"Download failed HTTP 502 Bad Gateway {\"ok\":false,\"error\":\"Provider file download failed: xAI file content HTTP 401\"}"}""";
                 if (IsCombinedSource(url))
                     return """{"success":false,"error":"refused to save combined file as a clip"}""";
                 var rel = StripProject(path);

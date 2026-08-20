@@ -26,6 +26,13 @@ public sealed record ClipProviderSource(
     public bool HasProviderCopy => !string.IsNullOrWhiteSpace(SourceUrl) || !string.IsNullOrWhiteSpace(SourceFileId);
     public bool IsCombined => LeadInSeconds > 0.1;
 
+    /// <summary>
+    /// When <see cref="SourceFileId"/> is present, cap the public-URL hop so a dead
+    /// vidgen <c>public_url</c> cannot sit on the media-proxy client's 10-minute
+    /// timeout before Files <c>GET /v1/files/{id}/content</c> is tried.
+    /// </summary>
+    public static readonly TimeSpan PublicUrlTimeoutWhenFileIdPresent = TimeSpan.FromSeconds(4);
+
     public const string LeadInProperty = "provider_lead_in_seconds";
     public const string ClipStartProperty = "provider_clip_start_seconds";
     public const string ClipStopProperty = "provider_clip_stop_seconds";
@@ -110,31 +117,48 @@ public sealed record ClipProviderSource(
     }
 
     /// <summary>
-    /// URL first, then Files <c>file_id</c> via the caller’s opener
-    /// (catalog-routed <c>IVideoClient.OpenStoredFileStreamAsync</c> on the media proxy;
-    /// xAI adapters reuse <c>XaiResponsesClient.OpenFileContentStreamAsync</c>).
-    /// Combined extend copies stay combined.
+    /// Files <c>file_id</c> first when present (catalog-routed
+    /// <c>IVideoClient.OpenStoredFileStreamAsync</c>; xAI adapters reuse
+    /// <c>XaiResponsesClient.OpenFileContentStreamAsync</c>), then the public URL.
+    /// A dead <c>source_url</c> is capped at <see cref="PublicUrlTimeoutWhenFileIdPresent"/>
+    /// so it cannot block the Files content GET. Combined extend copies stay combined.
     /// </summary>
     public static async Task<T?> TryOpenAsync<T>(
         string? sourceUrl,
         string? sourceFileId,
         Func<string, CancellationToken, Task<T?>> openUrl,
         Func<string, CancellationToken, Task<T?>> openFileId,
-        CancellationToken ct) where T : class
+        CancellationToken ct,
+        TimeSpan? publicUrlTimeoutWhenFileIdPresent = null) where T : class
     {
-        if (!string.IsNullOrWhiteSpace(sourceUrl))
-        {
-            var fromUrl = await openUrl(sourceUrl, ct).ConfigureAwait(false);
-            if (fromUrl is not null) return fromUrl;
-        }
         if (!string.IsNullOrWhiteSpace(sourceFileId))
-            return await openFileId(sourceFileId, ct).ConfigureAwait(false);
-        return null;
+        {
+            var fromFile = await openFileId(sourceFileId, ct).ConfigureAwait(false);
+            if (fromFile is not null) return fromFile;
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+            return null;
+
+        using var urlCts = !string.IsNullOrWhiteSpace(sourceFileId)
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+        if (urlCts is not null)
+            urlCts.CancelAfter(publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent);
+        var urlCt = urlCts?.Token ?? ct;
+        try
+        {
+            return await openUrl(sourceUrl, urlCt).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (urlCts is not null && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     /// <summary>
-    /// Bring the clip's bytes to a temp file from the provider copy (<c>source_url</c>, then
-    /// <c>source_file_id</c> when the public link is empty or 404s). Combined extend files stay
+    /// Bring the clip's bytes to a temp file from the provider copy (<c>source_file_id</c>
+    /// first when present, then <c>source_url</c> with a short timeout). Combined extend files stay
     /// combined — the API host never spawns native ffmpeg. The copy is returned with
     /// <see cref="Materialized.LeadInSecondsRemaining"/> set so the consumer can offset
     /// (dialogue verify / duration probe) instead of trimming. The browser slices playback via
