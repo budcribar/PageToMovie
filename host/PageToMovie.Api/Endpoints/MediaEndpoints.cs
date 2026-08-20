@@ -476,14 +476,23 @@ public static class MediaEndpoints
         return TryProxyUpstreamMediaAsync(url, httpFactory, httpContext, ct);
     }
 
+    private const string LocalUrlPrefix = "local:";
+    private const string FixtureUrlPrefix = "fixture:";
+
     private static bool TryParseFixturePath(string url, out string path)
     {
         path = "";
-        var isLocal = url.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
-        if (!isLocal && !url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
-            return false;
-        path = isLocal ? url["local:".Length..] : url["fixture:".Length..];
-        return path.Length > 0;
+        if (url.StartsWith(LocalUrlPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = url[LocalUrlPrefix.Length..];
+            return path.Length > 0;
+        }
+        if (url.StartsWith(FixtureUrlPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            path = url[FixtureUrlPrefix.Length..];
+            return path.Length > 0;
+        }
+        return false;
     }
 
     private static async Task<IResult?> TryOpenXaiFileAsync(
@@ -539,11 +548,9 @@ public static class MediaEndpoints
     {
         // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
         // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
-        // "local:" is the same serving path (legacy tickets); jobs no longer issue trimmed copies.
-        var isLocal = url.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
-        if (!isLocal && !url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+        // local: is the same serving path (legacy tickets); jobs no longer issue trimmed copies.
+        if (!TryParseFixturePath(url, out var fixturePath))
             return null;
-        var fixturePath = isLocal ? url["local:".Length..] : url["fixture:".Length..];
         if (!File.Exists(fixturePath))
             return Results.NotFound(new { ok = false, error = "Fixture file not found" });
         var fixtureCtype = Path.GetExtension(fixturePath).ToLowerInvariant() switch
