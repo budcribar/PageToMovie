@@ -29,6 +29,8 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 | 14 | PageSmokeTests (+7 routes) | /locations, /dialogue-timing, /simple-revoice, /simple-voice, /cost/breakdown, /account/costs, /about hydrate without console errors | ✅ |
 | 15 | VoiceLockConsistencyTests.Film_page_cast_lock_tracks_narrator_voice_profile_edits | Regression guard for the 2026-08-19 live bug: Film-page cast lock follows narrator voice-profile edits in both directions (sexless profile unlocks, pinned sex+age re-locks) | ✅ |
 
+| 16 | ScreenplayBeatDepthTests.Add_beat_pick_speaker_type_line_delete_beat_and_persist | Structured editor: add Dialogue beat, cast dropdown speaker pick, line entry, beat delete, autosave persistence across full reload | ✅ |
+
 ## Bugs found (and status)
 
 | # | Bug | Found by | Status |
@@ -47,7 +49,8 @@ Teacher / Children + a SILENT lamb, 5 scenes; the same shape as the real Mary19 
 - ~~Two users on ONE project~~ ✅ (#11) · ~~Locations page~~ ✅ (#12) · ~~Dialogue-timing~~ ✅ (#12)
   · ~~Screenplay outline reorder~~ ✅ (#13) · ~~revoice/voice/cost page smoke~~ ✅ (#14)
   · ~~voice-lock consistency~~ ✅ (#15)
-- Screenplay editor depth: beat add/delete/reorder, location modal, character dropdown, transitions.
+- ~~Screenplay beat add/delete + character dropdown~~ ✅ (#16); still open: beat drag-reorder,
+  location modal, transition presets.
 - Characters: pick-a-voice through the UI controls (API-level covered by #15), style override
   interplay (StyleOverrideTests covers the gate itself).
 - Configuration page: remaining fields (a known-failing 9:16 autosave test predates this campaign).
