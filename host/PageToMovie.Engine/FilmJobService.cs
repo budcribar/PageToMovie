@@ -5086,7 +5086,7 @@ public sealed class FilmJobService
             // Targeted retry: change what the verifier said was wrong, not just re-roll the dice.
             var correction = ClipCorrectionPlanner.Plan(ver!);
             await AppendLogAsync(FormatQaRegenLog(req.Scene, cn, ver!, qaAttempt, qaMaxRetries, correction));
-            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver!, qaAttempt, ct, correction)
+            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct, correction)
                 .ConfigureAwait(false);
             carryoverPaddingSec = await GenerateOneClipAsync(
                 projectId, projectDir, req.Scene, cn, clip, resolution, ct,

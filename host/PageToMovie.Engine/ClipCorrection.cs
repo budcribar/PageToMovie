@@ -129,7 +129,7 @@ public static class ClipCorrectionPlanner
         {
             if (respellings.Any(r => string.Equals(r.Word, word, StringComparison.OrdinalIgnoreCase)))
                 continue;
-            var forced = ForceSense(resolver, word!, dialogue);
+            var forced = ForceSense(resolver, word, dialogue);
             if (forced is not null) respellings.Add(forced);
         }
     }
