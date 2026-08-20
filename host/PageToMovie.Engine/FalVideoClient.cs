@@ -213,7 +213,7 @@ public sealed class FalVideoClient : IVideoClient
 
     /// <summary>Fal never requests xAI-style Files API storage — file_id reuse is a Grok-only
     /// optimization (see <see cref="IVideoEditClient"/>).</summary>
-    public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) => (null, null);
+    public StoredVideoFileRef TryGetStoredFileReference(string requestId) => StoredVideoFileRef.Empty;
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
     {

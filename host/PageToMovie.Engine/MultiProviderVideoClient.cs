@@ -86,7 +86,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
         return client.DownloadToFileAsync(url, destPath, ct);
     }
 
-    public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId)
+    public StoredVideoFileRef TryGetStoredFileReference(string requestId)
     {
         var (client, id) = Resolve(requestId);
         return client.TryGetStoredFileReference(id);

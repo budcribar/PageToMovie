@@ -20,6 +20,19 @@ public static class ClipFileNaming
     public static bool IsExactClipFileName(string? fileName) =>
         !string.IsNullOrEmpty(fileName) && ExactClipNameRe.IsMatch(fileName);
 
+    /// <summary>Parse <c>scene_SS_clip_CC[.mp4]</c> (optional take suffix) into scene/clip numbers.</summary>
+    public static bool TryParseSceneClip(string? fileName, out int scene, out int clip)
+    {
+        scene = 0;
+        clip = 0;
+        if (string.IsNullOrWhiteSpace(fileName)) return false;
+        var m = ExactClipNameRe.Match(fileName);
+        if (!m.Success) return false;
+        scene = int.Parse(m.Groups[1].Value);
+        clip = int.Parse(m.Groups[2].Value);
+        return true;
+    }
+
     private static bool RegexSceneOnly(string name) =>
         CommonRegex.IsMatch(name, @"^scene_\d{2}\.mp4$", RegexOptions.IgnoreCase);
 

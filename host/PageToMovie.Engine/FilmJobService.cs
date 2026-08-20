@@ -6190,11 +6190,10 @@ public sealed class FilmJobService
         {
             var projDir = await _projects.GetProjectDirAsync(
                 Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId, ctx.Ct).ConfigureAwait(false);
-            // xAI Files API reference for this exact clip, when generation requested
-            // storage and it succeeded (see GrokVideoClient's storage_options) — lets a
-            // later "AI Edit" reuse the file instead of re-uploading. Absent for
-            // non-Grok providers or when storage wasn't granted; never required.
-            var (sourceFileId, sourceFileExpiresAt) = _grok.TryGetStoredFileReference(requestId);
+            // Storage handle when generation requested storage_options (Grok): public_url is
+            // the durable playback link; file_id is for later edit/extend attach. Imagine
+            // file_ids are generate-only — do not treat Files content GET as recovery.
+            var stored = _grok.TryGetStoredFileReference(requestId);
             var generated = (double)duration;
             var savedSlice = ClipExtendSource.SavedSliceDurationSeconds(generated);
             double? clipStart = null;
@@ -6216,13 +6215,12 @@ public sealed class FilmJobService
                 durationSeconds: savedSlice,
                 sha256: "",
                 sizeBytes: 0,
-                // Persist the provider-hosted video URL so an exported project can be re-hydrated
-                // by another user on import (xAI/Grok URLs are long-lived). Provider is resolved
-                // from the model via the catalog (SSoT) rather than hardcoded.
-                sourceUrl: url,
+                // Prefer file_output.public_url (durable) over the poll video.url (vidgen expires).
+                // Provider is resolved from the model via the catalog (SSoT) rather than hardcoded.
+                sourceUrl: stored.DurableSourceUrl(url),
                 sourceProvider: SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).ProviderId,
-                sourceFileId: sourceFileId,
-                sourceFileExpiresAtUnixSeconds: sourceFileExpiresAt,
+                sourceFileId: stored.FileId,
+                sourceFileExpiresAtUnixSeconds: stored.ExpiresAtUnixSeconds,
                 providerLeadInSeconds: providerLeadInSeconds,
                 providerClipStartSeconds: clipStart,
                 providerClipStopSeconds: clipStop,

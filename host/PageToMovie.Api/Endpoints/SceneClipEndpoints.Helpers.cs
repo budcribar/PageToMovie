@@ -113,15 +113,18 @@ public static partial class SceneClipEndpoints
         // when the public link 404s) the same way /media/file and /media/proxy do.
         // A video-extend clip's provider copy is the combined video — say how much head is the
         // previous clip so the browser slices it (the fakes' fixture: copies are served from disk).
+        var projectDir = await svc.Store.GetProjectDirAsync(id, ct);
         var providerSrc = ClipProviderSource.ReadForClip(
-            Path.Combine(await svc.Store.GetProjectDirAsync(id, ct), "assets", "video"), sceneNumber, clipNumber);
+            Path.Combine(projectDir, "assets", "video"), sceneNumber, clipNumber);
         if (providerSrc is null || !providerSrc.HasProviderCopy)
             return null;
         if (providerSrc.IsCombined)
             req.HttpContext.Response.Headers[MediaEndpoints.LeadInHeader] =
                 providerSrc.LeadInSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         return await MediaEndpoints.StreamProviderCopyAsync(
-            providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Xai, req.HttpContext, ct);
+            providerSrc.SourceUrl, providerSrc.SourceFileId, svc.HttpFactory, svc.Xai, req.HttpContext, ct,
+            recoverAfterProvider: (_, _, _) => Task.FromResult(
+                MediaEndpoints.TryRecoverHostedCopy(projectDir, sceneNumber, clipNumber)));
     }
 
     private static async Task<IResult> ServeXaiClipOrNotFoundAsync(
@@ -138,10 +141,19 @@ public static partial class SceneClipEndpoints
             var stream = await svc.Xai.OpenFileContentStreamAsync(fileId, ct);
             return Results.Stream(stream, SpecializedMimeType.VideoMp4.ToMimeTypeString());
         }
-        catch
+        catch (Exception ex)
         {
+            // Imagine file_ids are generate-only. Surface the xAI error; Railway is the fallback.
+            if (MediaEndpoints.TryRecoverHostedCopy(
+                    await svc.Store.GetProjectDirAsync(id, ct), sceneNumber, clipNumber) is { } hosted)
+                return hosted;
             await MarkForkFallbackNeededAsync(svc.Store, id, parentId, sceneNumber, clipNumber, ct);
-            return Results.NotFound(new { ok = false, error = "clip video not found" });
+            return Results.Json(
+                new { ok = false, error = "Provider file download failed: " + TrimForPlaybackError(ex.Message) },
+                statusCode: StatusCodes.Status502BadGateway);
         }
     }
+
+    private static string TrimForPlaybackError(string s, int n = 400) =>
+        string.IsNullOrEmpty(s) ? "" : s.Length <= n ? s : s[..n];
 }

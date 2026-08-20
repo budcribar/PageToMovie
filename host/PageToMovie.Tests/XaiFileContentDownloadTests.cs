@@ -7,8 +7,8 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Files content download is the durable recovery path when a vidgen public URL 404s:
-/// GET https://api.x.ai/v1/files/{file_id}/content with the same Bearer key that owns the file.
+/// Files content GET is best-effort (Imagine file_ids are generate-only). When we do call it,
+/// use the same Bearer key that owns the file — do not fall back to a null-user env key.
 /// </summary>
 [Collection("env-serial")]
 public sealed class XaiFileContentDownloadTests
