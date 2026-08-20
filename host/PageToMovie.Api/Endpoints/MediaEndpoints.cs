@@ -196,31 +196,15 @@ public static class MediaEndpoints
             || (up.Scheme != Uri.UriSchemeHttps && up.Scheme != Uri.UriSchemeHttp))
             return null;
 
-        // Video-extend clip: the provider copy is the combined video (previous clip + this
-        // one). Never stream that as-is — drop the recorded lead-in on a temp copy first.
+        // Video-extend clip: the provider copy is the combined video. Stream it and advertise
+        // the lead-in so the browser (ClipSummary.ProviderLeadInSeconds / ffmpeg.wasm) slices
+        // the head. The API host never downloads to trim with native ffmpeg.
         if (src!.IsCombined)
         {
-            var standalone = await TryStreamStandaloneCombinedAsync(src, httpContext, ct);
-            if (standalone is not null)
-                return standalone;
+            httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString(
+                "0.###", System.Globalization.CultureInfo.InvariantCulture);
         }
         return await ProxyUpstreamMediaAsync(upstream, httpFactory, httpContext, ct);
-    }
-
-    private static async Task<IResult?> TryStreamStandaloneCombinedAsync(
-        ClipProviderSource src, HttpContext httpContext, CancellationToken ct)
-    {
-        var mat = await ClipProviderSource.TryMaterializeAsync(src, ct);
-        if (mat is { IsStandalone: true })
-        {
-            var fs = new FileStream(mat.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
-            return Results.Stream(fs, contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
-        }
-        ClipProviderSource.TryDelete(mat?.Path);
-        // No native ffmpeg on this host (production): stream the combined copy and say
-        // so — the browser (ClipSummary.ProviderLeadInSeconds) slices the head off.
-        httpContext.Response.Headers[LeadInHeader] = src.LeadInSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-        return null;
     }
 
     private static string ContentTypeForMediaExtension(string fullPath)
@@ -394,7 +378,7 @@ public static class MediaEndpoints
         return Results.Bytes(dataBytes, contentType: dataCtype, fileDownloadName: "track" + ext);
     }
 
-    /// <summary>Serve a fixture:/local: URL from disk (fakes / server-trimmed extend clip); null for other URLs.</summary>
+    /// <summary>Serve a fixture:/local: URL from disk (fakes fixtures); null for other URLs.</summary>
     internal static IResult? TryServeFixtureUrl(string url) => TryServeFixture(url);
 
     private static IResult? TryServeFixture(string url)
@@ -402,8 +386,7 @@ public static class MediaEndpoints
     {
         // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
         // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
-        // "local:" — a server-side file the job wants the browser to save (a lead-in-trimmed extend clip
-        // whose provider copy is the combined video). Same serving path as a fakes fixture.
+        // "local:" is the same serving path (legacy tickets); jobs no longer issue trimmed copies.
         var isLocal = url.StartsWith("local:", StringComparison.OrdinalIgnoreCase);
         if (!isLocal && !url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
             return null;
