@@ -21,7 +21,7 @@ Status: ☐ open · ☑ resolved (with decision).
 | 10 | ☑ | Score music | Scene ⋯ menu "🎵 Score" | Audio takes lives beside it IN THE SAME MENU now — one surface. |
 | 11 | ☐ | Connect media folder | Settings → Project Storage (canonical) | Film banner / Review Play tab / NavMenu reconnect / generate-gate — all REACTIVE prompts at point of need; likely keep, decide once. |
 | 12 | ☑ | Generate looks for plan | Cast + Locations pages (same `plan_looks` job) | Next-step buttons aligned to Screenplay's top green control; plan-looks button hidden once all used faces/places are locked; Estimate/Shots auto-chain unchanged. |
-| 13 | ☐ | Open Film → | Left nav + process strip | Locations/Estimate/Shots inline links — harmless nav sugar? decide once. |
+| 13 | ☑ | Open Film → | Left nav + process strip | KEEP ALL THREE (2026-08-20, user): different jobs, not duplicates. Left nav = jump from anywhere. Process strip = pipeline map (step 6 Film). Page header green next button (Locations Open Film, Shots Open Scenes) = same next-step control as Screenplay → Cast (aligned in PR 147). Estimate has no next-nav (its greens start generate). No code / left-nav / StudioProcessStrip change. |
 | 14 | ☐ | New project / Import toggles | Home full-studio card | Easy-start landing duplicates the toggles. |
 | 15 | ☐ | Make movie (simple path) | SimpleVoice movie phase | Record phase repeats the action (two phases of one flow). |
 | 16 | ☑ | Verification report open | Row status chip (one chip: busy/missing/stale/verdict) opens the report | Expansion keeps only a small "report" link next to the heard-vs-expected diff — consistent pair, by design. |
