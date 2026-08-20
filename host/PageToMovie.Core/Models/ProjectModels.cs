@@ -1,11 +1,12 @@
 
 
 using System;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace PageToMovie.Core.Models;
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
+[JsonConverter(typeof(ProjectVisibilityJsonConverter))]
 public enum ProjectVisibility
 {
     Private = 0,
@@ -44,6 +45,32 @@ public static class ProjectVisibilityExtensions
         ProjectVisibility.Unlisted => "Unlisted",
         _ => "Private"
     };
+}
+
+/// <summary>
+/// JSON read uses <see cref="ProjectVisibilityExtensions.ParseProjectVisibility"/> so leftover
+/// aliases (publicforkable/forkable) and unknown stored strings map instead of throwing and
+/// killing a whole project list. Write is the canonical Private/Public/Unlisted/Open names.
+/// </summary>
+public sealed class ProjectVisibilityJsonConverter : JsonConverter<ProjectVisibility>
+{
+    public override ProjectVisibility Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+            return ProjectVisibilityExtensions.ParseProjectVisibility(reader.GetString());
+        if (reader.TokenType == JsonTokenType.Number &&
+            reader.TryGetInt32(out var val) &&
+            Enum.IsDefined(typeof(ProjectVisibility), val))
+        {
+            return (ProjectVisibility)val;
+        }
+        return ProjectVisibility.Private;
+    }
+
+    public override void Write(Utf8JsonWriter writer, ProjectVisibility value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToClientString());
+    }
 }
 
 public sealed class ProjectInfo
