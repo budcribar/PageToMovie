@@ -84,6 +84,25 @@ public static class CatalogApiKey
         return !string.IsNullOrWhiteSpace(fromUser) ? fromUser : ApiKeyScope.Get(provider) ?? ApiKeyScope.Current;
     }
 
+    /// <summary>
+    /// First non-empty environment variable named on the video model's catalog row — the
+    /// server-level account key. May differ from a user's stored key, and provider file
+    /// handles (xAI Files) are only retrievable by the account that created them, so
+    /// retrieval callers try both. Null when the row names no set env variable.
+    /// </summary>
+    public static string? FirstEnvKeyForVideo(string? modelId)
+    {
+        var entry = SupportedModelCatalog.Find(modelId, ModelCapability.Video)
+            ?? SupportedModelCatalog.Find(modelId, ModelCapability.VideoEdit);
+        foreach (var env in entry?.RequiredEnvKeys ?? Array.Empty<string>())
+        {
+            var value = Environment.GetEnvironmentVariable(env);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return null;
+    }
+
     public static IDisposable PushKey(string? providerId, string? key)
     {
         var provider = SupportedModelCatalog.NormalizeProviderId(providerId);
