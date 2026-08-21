@@ -301,6 +301,10 @@ window.PageToMovieMedia = {
      * FormData — used for video-extend continuity uploads (see ClientMediaFolderService /
      * trimTailAsync) so a locally-trimmed clip never has to round-trip through Blazor interop as
      * a byte[] just to reach the server.
+     *
+     * uploadUrl must already carry the short-lived media token (?mt=) — the same query auth
+     * media GET URLs use. This helper cannot send Authorization; a bare /upload POST 403s
+     * under RequireLogin (ProjectAccessMiddleware treats the caller as the anonymous default).
      */
     uploadUrlToServerAsync: async function (url, uploadUrl) {
         try {

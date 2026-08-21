@@ -453,6 +453,10 @@ public static partial class SceneClipEndpoints
         string id, int scene, int clip, string? kind, double? seconds,
         [AsParameters] ClipUploadServices svc, CancellationToken ct)
     {
+    // Accepts the same short-lived media token (?mt=, token_use=media) that media GET
+    // URLs already carry — JwtHeaderMiddleware authenticates it before this runs.
+    if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
+        return denied;
     var httpContext = svc.HttpContext;
     var store = svc.Store;
     if (!httpContext.Request.HasFormContentType)

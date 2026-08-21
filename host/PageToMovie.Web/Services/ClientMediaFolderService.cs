@@ -996,6 +996,8 @@ public sealed class ClientMediaFolderService
 
     /// <summary>
     /// Push local copies for clips marked .need-fork on this project. Returns how many uploaded.
+    /// Uses <see cref="EngineApiClient"/> (session Bearer + X-User-Id) — not the JS
+    /// <c>uploadUrlToServerAsync</c> helper — so this path is already authenticated.
     /// </summary>
     internal async Task<int> PushDeadFileIdClipsAsync(string projectId)
     {
@@ -1470,7 +1472,8 @@ public sealed class ClientMediaFolderService
             if (trim is not { Success: true } || string.IsNullOrWhiteSpace(trim.Url)) return false;
             trimUrl = trim.Url;
 
-            var uploadUrl = EngineApiClient.ClipUploadUrl(projectId, scene, clip, kind: "extend-source") + $"&seconds={trim.KeptSec.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            var uploadUrl = await _api.ClipUploadBrowserUrlAsync(
+                projectId, scene, clip, kind: "extend-source", seconds: trim.KeptSec);
             var up = await _js.InvokeAsync<JsUploadResult>(
                 "PageToMovieMedia.uploadUrlToServerAsync", trimUrl, uploadUrl);
             if (up is not { Success: true }) return false;

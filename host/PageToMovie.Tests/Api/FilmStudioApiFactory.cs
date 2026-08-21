@@ -8,9 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace PageToMovie.Tests.Api;
 
 /// <summary>In-process API host with fakes + isolated temp workspace.</summary>
-public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Api.Program>
+public class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Api.Program>
 {
     private readonly string _workspace;
+
+    /// <summary>When true, matches production: mutations require a JWT (Bearer or ?mt= media token).
+    /// Default false so existing X-User-Id-only tests keep working.</summary>
+    protected virtual bool RequireLogin => false;
 
     public PageToMovieApiFactory()
     {
@@ -43,7 +47,7 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
                 ["PageToMovie:UseFakes"] = "true",
                 ["PageToMovie:EnableReadCaches"] = "true",
                 ["PageToMovie:Auth:AllowDevBypass"] = "true",
-                ["PageToMovie:Auth:RequireLogin"] = "false",
+                ["PageToMovie:Auth:RequireLogin"] = RequireLogin ? "true" : "false",
                 ["PageToMovie:Auth:AdminUsername"] = "admin",
                 ["PageToMovie:Auth:AdminPassword"] = "admin",
                 ["PageToMovie:Auth:DefaultUserId"] = "test-user",
@@ -66,7 +70,7 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
                 o.UseFakes = true;
                 o.EnableReadCaches = true;
                 o.Auth ??= new AuthOptions();
-                o.Auth.RequireLogin = false;
+                o.Auth.RequireLogin = RequireLogin;
                 o.Auth.AdminUserIds ??= new List<string>();
                 if (!o.Auth.AdminUserIds.Contains(AdminFixtureUserId, StringComparer.OrdinalIgnoreCase))
                     o.Auth.AdminUserIds.Add(AdminFixtureUserId);
@@ -107,4 +111,14 @@ public sealed class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Ap
         }
         catch { /* temp */ }
     }
+}
+
+/// <summary>
+/// Same isolated fakes host as <see cref="PageToMovieApiFactory"/>, with production
+/// <c>Auth:RequireLogin</c> on. Use for tests that must prove JWT / <c>?mt=</c> auth
+/// (X-User-Id alone is not enough).
+/// </summary>
+public sealed class RequireLoginApiFactory : PageToMovieApiFactory
+{
+    protected override bool RequireLogin => true;
 }
