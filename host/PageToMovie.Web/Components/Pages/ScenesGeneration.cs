@@ -84,8 +84,94 @@ public partial class Scenes
     /// <summary>Live progress modal — opened the moment a clip/scene/batch job is requested so the
     /// user sees something immediately (the card at the top of the page is easy to miss).</summary>
     internal bool _showJobModal;
-    internal void OpenJobModal() => _showJobModal = true;
+
+    internal const string PreparingDefaultMessage = "Preparing…";
+    internal const string PreparingExtendMessage = "Preparing previous clip for extend…";
+    internal const string UploadingPredecessorMessage = "Uploading predecessor…";
+    internal const string UploadingReferencesMessage = "Uploading reference pictures…";
+
+    /// <summary>
+    /// Show the Generating popup immediately after cheap gates (cast / folder / already-running).
+    /// Uses a local snapshot so the card is not empty or a leftover Waiting job while predecessor
+    /// prep (plate upload, MP4 upload, ffmpeg trim + extend-source POST) still runs.
+    /// </summary>
+    internal void OpenJobModal(
+        string? preparingMessage = null,
+        string kind = KindScene,
+        int? scene = null,
+        int? clip = null)
+    {
+        if (IsLocalPreparingJob(_job))
+        {
+            if (!string.IsNullOrWhiteSpace(preparingMessage))
+                SetPreparingMessage(preparingMessage);
+        }
+        else
+            _job = CreateLocalPreparingJob(preparingMessage ?? PreparingDefaultMessage, kind, scene, clip);
+        _showJobModal = true;
+    }
+
+    internal async Task OpenJobModalAndPaintAsync(
+        string? preparingMessage = null,
+        string kind = KindScene,
+        int? scene = null,
+        int? clip = null)
+    {
+        OpenJobModal(preparingMessage, kind, scene, clip);
+        try { await S.InvokeAsync(S.StateHasChanged); }
+        catch { S.StateHasChanged(); }
+    }
+
     internal void HideJobModal() => _showJobModal = false;
+
+    internal static JobSnapshot CreateLocalPreparingJob(
+        string message,
+        string kind = KindScene,
+        int? scene = null,
+        int? clip = null)
+    {
+        var snap = new JobSnapshot
+        {
+            Kind = kind,
+            Status = StatusRunning,
+            Message = message,
+            Scene = scene,
+            Clip = clip,
+            StartedAt = DateTimeOffset.UtcNow,
+        };
+        snap.Log.Add(message);
+        return snap;
+    }
+
+    internal static bool IsLocalPreparingJob(JobSnapshot? job) =>
+        job is { } j &&
+        string.IsNullOrEmpty(j.JobId) &&
+        (string.Equals(j.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(j.Status, StatusQueued, StringComparison.OrdinalIgnoreCase));
+
+    internal void SetPreparingMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        if (_job is null)
+            _job = CreateLocalPreparingJob(message);
+        else if (IsLocalPreparingJob(_job))
+        {
+            _job.Message = message;
+            if (_job.Log.Count == 0 || !string.Equals(_job.Log[^1], message, StringComparison.Ordinal))
+                _job.Log.Add(message);
+        }
+    }
+
+    internal void FailLocalPreparingJob(string message)
+    {
+        if (!IsLocalPreparingJob(_job)) return;
+        _job!.Status = StatusError;
+        _job.Message = message;
+        _job.Error = message;
+        _job.FinishedAt = DateTimeOffset.UtcNow;
+        if (_job.Log.Count == 0 || !string.Equals(_job.Log[^1], message, StringComparison.Ordinal))
+            _job.Log.Add(message);
+    }
 
 
 
@@ -200,6 +286,10 @@ public partial class Scenes
     /// <summary>Short outcome label for the live bar (no provider / path / status dump).</summary>
     internal static string LiveGenStatusLabel(JobSnapshot job)
     {
+        // Local pre-server snapshot: show what prep is doing, not "Waiting…" / "Generating…".
+        if (IsLocalPreparingJob(job) && !string.IsNullOrWhiteSpace(job.Message))
+            return job.Message;
+
         if (string.Equals(job.Status, StatusQueued, StringComparison.OrdinalIgnoreCase))
             return "Waiting…";
 
@@ -586,12 +676,17 @@ public partial class Scenes
         _pendingRegenScene = sn;
         try
         {
+            await OpenJobModalAndPaintAsync(PreparingDefaultMessage, KindScene, scene: sn);
             await EnsureHubAsync();
             await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, resolution: _genResolution);
             _job = (await S.Engine.GetJobAsync())?.Job;
         }
-        catch (Exception ex) { S._error = ex.Message; }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            FailLocalPreparingJob(ex.Message);
+        }
         finally { S._busy = false; _pendingRegenScene = null; }
     }
 
@@ -618,6 +713,7 @@ public partial class Scenes
         S._error = null;
         try
         {
+            await OpenJobModalAndPaintAsync(PreparingDefaultMessage, KindScene, scene: sn);
             await EnsureHubAsync();
             var targets = stale.Select(cn => (sn, cn)).ToList();
             // force via clip batch
@@ -626,7 +722,11 @@ public partial class Scenes
                 _job = (await S.Engine.GetJobAsync())?.Job;
             S._message = $"Regenerating {stale.Count} stale clip(s) in S{sn:D2}…";
         }
-        catch (Exception ex) { S._error = ex.Message; }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            FailLocalPreparingJob(ex.Message);
+        }
         finally { S._busy = false; }
     }
 
@@ -652,6 +752,7 @@ public partial class Scenes
         _pendingRegenScene = sn;
         try
         {
+            await OpenJobModalAndPaintAsync(PreparingDefaultMessage, KindScene, scene: sn);
             await EnsureHubAsync();
             await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: true, resolution: _genResolution);
@@ -659,7 +760,11 @@ public partial class Scenes
             var jobs = await S.Engine.GetJobAsync();
             _job = jobs?.Job;
         }
-        catch (Exception ex) { S._error = ex.Message; }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            FailLocalPreparingJob(ex.Message);
+        }
         finally { S._busy = false; _pendingRegenScene = null; }
     }
 
@@ -694,7 +799,11 @@ public partial class Scenes
         {
             await RunSelectedBatchAsync().ConfigureAwait(false);
         }
-        catch (Exception ex) { S._error = ex.Message; }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            FailLocalPreparingJob(ex.Message);
+        }
         finally { S._busy = false; }
     }
 
@@ -710,21 +819,21 @@ public partial class Scenes
     private async Task RunSelectedBatchAsync()
     {
         var list = S.List._selected.OrderBy(x => x).ToList();
-        await EnsureHubAsync();
 
         var creditsScenes = list.Where(IsCreditsSceneNum).ToList();
         var videoScenes = list.Where(sn => !creditsScenes.Contains(sn)).ToList();
 
-        foreach (var sn in videoScenes)
-            await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
         if (videoScenes.Count > 0)
         {
+            // Credits-only selections have no server job (browser-rendered card) — do not open
+            // the Generating modal there. For video work, open first so prep is not a dead UI.
+            await OpenJobModalAndPaintAsync(PreparingDefaultMessage, KindBatch);
+            await EnsureHubAsync();
+            foreach (var sn in videoScenes)
+                await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
                 ? _selectedVideoModel
                 : null;
-            // The progress modal follows a SERVER job; a credits-only selection has none (the card is
-            // rendered in the browser) — opening the modal there showed a stale "Waiting…" snapshot.
-            OpenJobModal();
             await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
             var jobs = await S.Engine.GetJobAsync();
             _job = jobs?.Job;
@@ -1000,15 +1109,15 @@ public partial class Scenes
             // Same split as the fill-holes batch: credits render in the browser, the rest is one server job.
             var creditsScenes = S.List._selected.Where(IsCreditsSceneNum).OrderBy(x => x).ToList();
             var list = S.List._selected.Where(sn => !IsCreditsSceneNum(sn)).OrderBy(x => x).ToList();
-            await EnsureHubAsync();
-            foreach (var sn in list)
-                await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             if (list.Count > 0)
             {
+                await OpenJobModalAndPaintAsync(PreparingDefaultMessage, KindBatch);
+                await EnsureHubAsync();
+                foreach (var sn in list)
+                    await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
                 var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
                     ? _selectedVideoModel
                     : null;
-                OpenJobModal();
                 await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.StaleRegen);
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
@@ -1018,7 +1127,11 @@ public partial class Scenes
             if (creditsScenes.Count > 0)
                 await SoftReloadAsync();
         }
-        catch (Exception ex) { S._error = ex.Message; }
+            catch (Exception ex)
+        {
+            S._error = ex.Message;
+            FailLocalPreparingJob(ex.Message);
+        }
         finally { S._busy = false; }
     }
 

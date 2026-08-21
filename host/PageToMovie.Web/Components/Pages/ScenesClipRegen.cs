@@ -113,6 +113,10 @@ public partial class Scenes
                 CollectCharacterKeys(d, charactersToUpload);
             }
 
+            if (locationsToUpload.Count == 0 && charactersToUpload.Count == 0)
+                return;
+
+            S.Gen.SetPreparingMessage(Scenes.ScenesGeneration.UploadingReferencesMessage);
             foreach (var locKey in locationsToUpload)
                 await UploadLocationPlateIfAvailableLocallyAsync(locKey);
 
@@ -199,7 +203,7 @@ public partial class Scenes
             var localBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sn, prevClipNum);
             if (localBytes is not { Length: >= 1024 }) return;
 
-            S._message = $"Uploading local predecessor S{sn:D2}C{prevClipNum:D2} to server…";
+            S.Gen.SetPreparingMessage(Scenes.ScenesGeneration.UploadingPredecessorMessage);
             S.StateHasChanged();
             await S.Engine.UploadClipAsync(S._projectId, sn, prevClipNum, localBytes);
         }
@@ -211,6 +215,8 @@ public partial class Scenes
                 sceneDetail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)?.Continuation,
                 "extend_previous", StringComparison.OrdinalIgnoreCase);
             if (!wantsExtend) return;
+            S.Gen.SetPreparingMessage(Scenes.ScenesGeneration.PreparingExtendMessage);
+            S.StateHasChanged();
             // Best-effort: a false return just means no extend-source file appears on the
             // server, so it falls back to today's fresh-gen behavior — never blocks generation.
             await S.MediaFolder.PrepareExtendSourceAsync(S._projectId, sn, cn, maxInputSeconds);
@@ -309,15 +315,19 @@ public partial class Scenes
             try
             {
                 var targets = S.ClipSel._selectedClips.OrderBy(c => c).Select(c => (Scene: sn, Clip: c)).ToList();
+                await S.Gen.OpenJobModalAndPaintAsync(Scenes.ScenesGeneration.PreparingDefaultMessage, scene: sn);
                 await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(targets);
-                S.Gen.OpenJobModal();
                 S.Gen._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution);
                 S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S.Gen._genResolution}…";
                 S.ClipSel._selectedClips.Clear();
                 S.StateHasChanged();
             }
-            catch (Exception ex) { S._error = ex.Message; }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                S.Gen.FailLocalPreparingJob(ex.Message);
+            }
             finally { S._busy = false; S.Gen._pendingRegenScene = null; }
         }
 
@@ -361,9 +371,9 @@ public partial class Scenes
             S._error = null;
             S._message = null;
             S.Gen._pendingRegenScene = sn;
-            S.Gen.OpenJobModal();
             try
             {
+                await S.Gen.OpenJobModalAndPaintAsync(Scenes.ScenesGeneration.PreparingDefaultMessage, scene: sn, clip: cn);
                 await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(new List<(int Scene, int Clip)> { (sn, cn) });
                 await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S.Gen._genResolution, takeTrigger: VideoTakeKinds.UserRegen);
@@ -373,7 +383,11 @@ public partial class Scenes
                 var jobs = await S.Engine.GetJobAsync();
                 S.Gen._job = jobs?.Job;
             }
-            catch (Exception ex) { S._error = ex.Message; }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                S.Gen.FailLocalPreparingJob(ex.Message);
+            }
             finally { S._busy = false; S.Gen._pendingRegenScene = null; }
         }
 
@@ -403,6 +417,7 @@ public partial class Scenes
             S._message = null;
             try
             {
+                await S.Gen.OpenJobModalAndPaintAsync("Preparing clip for edit…", scene: sn, clip: cn);
                 await S.Gen.EnsureHubAsync();
                 await UploadClipForEditIfMissingOnServerAsync(sn, cn);
                 await S.Engine.StartVideoEditAsync(S._projectId, sn, cn, _videoEditPromptText.Trim());
@@ -410,7 +425,11 @@ public partial class Scenes
                 var jobs = await S.Engine.GetJobAsync();
                 S.Gen._job = jobs?.Job;
             }
-            catch (Exception ex) { S._error = ex.Message; }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                S.Gen.FailLocalPreparingJob(ex.Message);
+            }
             finally { S._busy = false; }
         }
 
