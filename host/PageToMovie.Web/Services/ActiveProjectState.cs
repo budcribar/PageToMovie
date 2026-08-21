@@ -100,11 +100,15 @@ public sealed class ActiveProjectState
             {
                 // Identity first: an identity-less /api/projects answers for the anonymous user and
                 // falls back to the first project in the list — the wrong project, silently.
+                // Also skip the GET entirely while anonymous (login page 401).
                 await engine.EnsureSessionHydratedAsync().ConfigureAwait(false);
-                var projs = await engine.GetProjectsAsync(ct).ConfigureAwait(false);
-                var active = projs?.Active;
-                if (active?.Id is { Length: > 0 } id)
-                    Set(id, active.Label ?? active.Title ?? id);
+                if (engine.CanListProjects)
+                {
+                    var projs = await engine.GetProjectsAsync(ct).ConfigureAwait(false);
+                    var active = projs?.Active;
+                    if (active?.Id is { Length: > 0 } id)
+                        Set(id, active.Label ?? active.Title ?? id);
+                }
             }
             await EnsureLoadedAsync(engine, force: true, ct: ct).ConfigureAwait(false);
         }

@@ -43,11 +43,10 @@ public static class AuthEndpoints
         // Used by <c>?me=SECRET</c> bootstrap on Railway (not localhost-only).
         // </summary>
         app.MapPost("/api/auth/operator-override", PostAuthOperatorOverride);
-        // DEV ONLY: fakes-mode login bypass. When the whole server runs on fakes
-        // (PageToMovie:UseFakes), the WASM UI calls this on boot to auto-sign-in a deterministic dev user
-        // so the app is browsable end-to-end without a login screen. Hard-gated on UseFakes at BOTH the
-        // endpoint (returns 404) and the service (IssueDevFakesLogin fails closed) — a real (non-fakes)
-        // deployment can never mint a session here.
+        // Always registered (including production). The WASM UI probes this on boot.
+        // Fakes-on: deterministic dev-user session. Fakes-off: HTTP 200 + Ok=false, no token —
+        // a successful negative so the browser does not log a 404. IssueDevFakesLogin fails closed
+        // so a real deployment can never mint a session here.
         app.MapPost("/api/auth/dev-login", PostAuthDevLogin);
         app.MapGet("/api/auth/me", GetAuthMe);
         return app;
@@ -268,12 +267,13 @@ public static class AuthEndpoints
     return Results.Ok(result);
 }
 
-    private static IResult PostAuthDevLogin(IAdminAuthService auth, IOptions<PageToMovieOptions> opts)
+    private static IResult PostAuthDevLogin(IAdminAuthService auth)
     {
-    if (!opts.Value.UseFakes)
-        return Results.NotFound();
+    // Always 200 + LoginResponse. Fakes-off is Ok=false / no token (not 404) so the WASM
+    // boot probe is not a failed request in the browser console. The service is the gate:
+    // IssueDevFakesLogin never mints a session unless UseFakes is on.
     var result = auth.IssueDevFakesLogin();
-    return result.Ok ? Results.Ok(result) : Results.NotFound();
+    return Results.Ok(result);
 }
 
     private static async Task<IResult> GetAuthMe(IUserContext user, UserDatabaseService userDb)

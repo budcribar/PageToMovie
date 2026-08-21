@@ -344,11 +344,12 @@ public partial class MainLayout : IDisposable
     }
 
     /// <summary>
-    /// Dev-only login bypass: when the server runs with fakes enabled it exposes
-    /// <c>POST /api/auth/dev-login</c>, which returns a deterministic dev-user session so the whole
-    /// UI is browsable without signing in. In any real deployment the endpoint 404s and this is a
-    /// silent no-op, so the normal login gate still applies. The server is the sole authority for
-    /// whether fakes mode is on — this cannot be forced on from the client.
+    /// Dev-only login bypass: the WASM client always probes <c>POST /api/auth/dev-login</c> on boot.
+    /// When the server runs with fakes enabled it returns a deterministic dev-user session so the
+    /// whole UI is browsable without signing in. In any real deployment the endpoint returns HTTP 200
+    /// with <c>Ok=false</c> and no token — a silent no-op, so the normal login gate still applies.
+    /// The server is the sole authority for whether fakes mode is on — this cannot be forced on
+    /// from the client.
     /// </summary>
     private async Task TryBootstrapFakesDevLoginAsync()
     {

@@ -324,4 +324,21 @@ public class ActiveProjectStateReadinessTests
         Assert.Equal("Demo", state.ProjectId);
         Assert.DoesNotContain(handler.Requests, u => u.AbsolutePath == "/api/projects");
     }
+
+    [Fact]
+    public async Task RefreshFromServer_does_not_get_projects_while_anonymous()
+    {
+        // Login-page boot (NavMenu → RefreshFromServerAsync) must not GET /api/projects
+        // before sign-in — production answers 401 and the browser logs it.
+        var handler = new StubHandler(HttpStatusCode.Unauthorized, """{ "ok": false }""");
+        var session = new AdminSessionService(js: null);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var engine = new EngineApiClient(http, session);
+        var state = new ActiveProjectState();
+
+        await state.RefreshFromServerAsync(engine);
+
+        Assert.False(state.HasProject);
+        Assert.DoesNotContain(handler.Requests, u => u.AbsolutePath == "/api/projects");
+    }
 }

@@ -122,3 +122,27 @@ public sealed class RequireLoginApiFactory : PageToMovieApiFactory
 {
     protected override bool RequireLogin => true;
 }
+
+/// <summary>
+/// Isolated host with fake provider clients (never hits paid APIs) but
+/// <c>PageToMovie:UseFakes</c> off — the production auth gate for
+/// <c>POST /api/auth/dev-login</c> (HTTP 200 + Ok=false, no session).
+/// </summary>
+public sealed class ProductionDevLoginApiFactory : PageToMovieApiFactory
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PageToMovie:UseFakes"] = "false",
+            });
+        });
+        builder.ConfigureServices(services =>
+        {
+            services.PostConfigure<PageToMovieOptions>(o => o.UseFakes = false);
+        });
+    }
+}
