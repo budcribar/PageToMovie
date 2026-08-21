@@ -5,16 +5,17 @@ using Microsoft.Playwright;
 namespace PageToMovie.UiTests;
 
 /// <summary>
-/// Browser <c>fetch</c> to the extend-source upload endpoint under the default UI host
-/// (<c>Auth:RequireLogin</c> on). Mirrors production: same-origin POST with no Authorization
-/// and no X-User-Id must 403; the same POST with <c>?mt=</c> (token_use=media) must succeed.
+/// Browser <c>fetch</c> to the extend-source upload endpoint on a host with
+/// <c>Auth:RequireLogin</c> on and a non-admin anonymous default user. Mirrors production:
+/// same-origin POST with no Authorization and no X-User-Id must 403; the same POST with
+/// <c>?mt=</c> (token_use=media) must succeed.
 /// </summary>
-[Collection("ui")]
+[Collection("ui-require-login")]
 public sealed class ExtendSourceUploadAuthUiTests
 {
-    private readonly AppFixture _fx;
+    private readonly RequireLoginUiFixture _fx;
 
-    public ExtendSourceUploadAuthUiTests(AppFixture fx) => _fx = fx;
+    public ExtendSourceUploadAuthUiTests(RequireLoginUiFixture fx) => _fx = fx;
 
     [Fact]
     public async Task Js_style_extend_source_post_is_forbidden_without_mt_and_ok_with_media_token()
@@ -23,10 +24,16 @@ public sealed class ExtendSourceUploadAuthUiTests
         try
         {
             await page.GotoAsync(_fx.BaseUrl + "/?admin=1", new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60_000 });
-            await page.GetByTestId("nav-studio").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
+            await page.WaitForFunctionAsync(
+                "() => { const r = sessionStorage.getItem('PageToMovie.admin.session'); return !!(r && JSON.parse(r).Token); }",
+                null,
+                new() { Timeout = 60_000 });
 
-            var projectId = await Ui.ServerActiveProjectIdAsync(page);
-            Assert.False(string.IsNullOrWhiteSpace(projectId), "seeded UI host must have an active project");
+            var created = await Ui.ApiFetchAsync(page, "/api/projects", "POST",
+                "{\"name\":\"ExtendAuthUi\",\"title\":\"Extend Auth UI\"}");
+            using var createdDoc = JsonDocument.Parse(created);
+            var projectId = createdDoc.RootElement.GetProperty("active").GetProperty("id").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(projectId), created);
 
             var resultJson = await page.EvaluateAsync<string>(@"async (projectId) => {
                 const raw = sessionStorage.getItem('PageToMovie.admin.session');
