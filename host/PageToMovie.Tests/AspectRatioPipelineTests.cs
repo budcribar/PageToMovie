@@ -28,6 +28,20 @@ public class AspectRatioPipelineTests
         Assert.Equal(expectedRatio, actual);
     }
 
+    [Theory]
+    [InlineData("illustrated_picture_book", VisualMediumStyles.LabelIllustrated)]
+    [InlineData("picture_book", VisualMediumStyles.LabelIllustrated)]
+    [InlineData("photoreal_live_action", VisualMediumStyles.LabelPhotoreal)]
+    [InlineData("stylized_3d_animated", VisualMediumStyles.LabelStylized3d)]
+    [InlineData("other", VisualMediumStyles.LabelOther)]
+    [InlineData("auto", VisualMediumStyles.LabelAuto)]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void VisualMediumStyles_DisplayLabel_matches_look_copy(string? medium, string expected)
+    {
+        Assert.Equal(expected, VisualMediumStyles.DisplayLabel(medium));
+    }
+
     [Fact]
     public void ProjectVisionMeta_DefaultAspectRatio_matches_VisualMediumStyles()
     {

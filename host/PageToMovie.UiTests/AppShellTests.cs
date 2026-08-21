@@ -74,6 +74,8 @@ public class AppShellTests
             await Assertions.Expect(page.Locator(".demo-card-title-link")).ToHaveCountAsync(0);
             await Assertions.Expect(page.Locator(".demo-yt-open-link")).ToHaveCountAsync(0);
             await Assertions.Expect(page.GetByText("Watch on YouTube ↗")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.Locator(".demo-card-chips")).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByText("cinematic short film", new() { IgnoreCase = true })).ToHaveCountAsync(0);
 
             var cards = page.GetByTestId("demo-card");
             var cardCount = await cards.CountAsync();
@@ -89,6 +91,9 @@ public class AppShellTests
                 {
                     await Assertions.Expect(watch).ToHaveClassAsync(new Regex("demo-yt-thumb-link"));
                     await Assertions.Expect(watch.Locator(".visually-hidden")).ToHaveTextAsync("Watch on YouTube");
+                    var play = watch.GetByTestId("demo-yt-play");
+                    await Assertions.Expect(play).ToHaveCountAsync(1);
+                    await Assertions.Expect(card.Locator("[data-testid=demo-yt-play]")).ToHaveCountAsync(1);
                 }
             }
         }
