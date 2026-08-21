@@ -19,7 +19,9 @@ public static partial class SceneClipEndpoints
     public sealed record ClipUploadServices(
         HttpContext HttpContext,
         ProjectStore Store,
-        IServiceProvider Services);
+        IServiceProvider Services,
+        IUserContext User,
+        IOptions<PageToMovieOptions> Opts);
 
     public sealed record ClipVideoServices(
         ProjectStore Store,

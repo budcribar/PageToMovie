@@ -394,6 +394,43 @@ public sealed class MultiUserLeaseFixture : AppFixture
 public sealed class MultiUserLeaseCollection : ICollectionFixture<MultiUserLeaseFixture> { }
 
 /// <summary>
+/// Isolated host with production <c>Auth:RequireLogin</c> on and a non-admin anonymous
+/// default user. Development appsettings mark <c>local</c> as admin, so a tokenless JS
+/// fetch on the shared UI host is not a 403 — this fixture is what proves the production
+/// extend-source upload gap and the <c>?mt=</c> fix.
+/// </summary>
+public sealed class RequireLoginUiFixture : AppFixture
+{
+    private readonly string _workspace;
+
+    public RequireLoginUiFixture()
+    {
+        _workspace = Path.Combine(Path.GetTempPath(), "ptm-reqlogin-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(_workspace, "projects"));
+    }
+
+    protected override int DefaultPort => 5085;
+    protected override bool HonorEnvBaseUrl => false;
+    protected override bool SeedReadyProject => false;
+    protected override string WorkspaceRoot => _workspace;
+    protected override IReadOnlyDictionary<string, string> ExtraEnv => new Dictionary<string, string>
+    {
+        ["PageToMovie__Auth__RequireLogin"] = "true",
+        ["PageToMovie__Auth__DefaultUserId"] = "anon-ui-test",
+        ["PageToMovie__EnableReadCaches"] = "false",
+    };
+
+    public override async Task DisposeAsync()
+    {
+        await base.DisposeAsync();
+        try { Directory.Delete(_workspace, recursive: true); } catch { /* best effort */ }
+    }
+}
+
+[CollectionDefinition("ui-require-login")]
+public sealed class RequireLoginUiCollection : ICollectionFixture<RequireLoginUiFixture> { }
+
+/// <summary>
 /// A host on its own port with a fresh, empty temp workspace dedicated to the Home project-management
 /// suite (create / pick / rename / delete / visibility / import). Kept separate from the pipeline
 /// fixture so those tests' create/delete churn can't disturb the pipeline suite's active project —

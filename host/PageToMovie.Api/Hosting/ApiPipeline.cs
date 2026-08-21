@@ -15,6 +15,11 @@ internal static class ApiPipeline
 {
     public static async Task UseFilmStudioPipelineAsync(this WebApplication app)
     {
+        // Authenticate before ACL: ProjectAccessMiddleware reads IUserContext, which only
+        // sees a JWT (Authorization Bearer or short-lived ?mt= media token) after this runs.
+        // JS media uploads (extend-source) send ?mt= and no X-User-Id — they 403 if ACL
+        // runs first and treats the caller as the anonymous default user.
+        app.UseMiddleware<JwtHeaderMiddleware>();
         app.UseMiddleware<ProjectAccessMiddleware>();
         // Rewrite owner/Name → owner%2FName happens in the access middleware. Routing
         // already ran once on the original path; rematch so {id} captures the composite id.
@@ -55,7 +60,6 @@ internal static class ApiPipeline
         await SeedBundledDemosAsync(app);
 
         app.UseMiddleware<HttpRequestMetricsMiddleware>();
-        app.UseMiddleware<JwtHeaderMiddleware>();
         UsePerRequestApiKeyScope(app);
         app.MapHub<JobHub>("/hubs/jobs");
     }

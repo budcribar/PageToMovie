@@ -3073,6 +3073,25 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/upload" +
         (string.IsNullOrEmpty(kind) ? "" : $"?kind={Uri.EscapeDataString(kind)}");
 
+    /// <summary>
+    /// Browser POST target for a clip upload. Same path as <see cref="ClipUploadUrl"/> plus the
+    /// short-lived media token (<c>?mt=</c>, <c>token_use=media</c>) media GET URLs already carry.
+    /// JS <c>fetch</c> cannot send the session Bearer; without <c>mt=</c> the server ACL 403s.
+    /// </summary>
+    public async Task<string> ClipUploadBrowserUrlAsync(
+        string projectId, int scene, int clip, string? kind = null, double? seconds = null,
+        CancellationToken ct = default)
+    {
+        await EnsureMediaAccessAsync(ct).ConfigureAwait(false);
+        var url = ClipUploadUrl(projectId, scene, clip, kind);
+        if (seconds is { } s)
+        {
+            url += (url.Contains('?', StringComparison.Ordinal) ? "&" : "?")
+                   + "seconds=" + s.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return BrowserMediaPath(url);
+    }
+
     /// <summary>Queues background-music generation for a scene (job-tracked, client saves the
     /// resulting audio segment(s) — same pattern as clip/credits generation). Returns the queued
     /// job snapshot (JobId) so a caller doing several of these in a row can wait for each to
