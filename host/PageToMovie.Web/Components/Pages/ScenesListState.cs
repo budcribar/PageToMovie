@@ -344,6 +344,71 @@ public partial class Scenes
 
     internal void RequestDeleteScene(int sn) => _deleteSceneTarget = sn;
 
+    /// <summary>
+    /// Drop a scene from the in-memory list and any selection/detail that pointed at it.
+    /// Bound a/b totals on Film (scene-index summary, per-row clips, <c>data-scene-count</c> /
+    /// <c>data-clip-count</c>) are derived from <see cref="_scenes"/> and <see cref="MovieReadiness"/>.
+    /// </summary>
+    internal void ApplyDeletedSceneLocally(int sn)
+    {
+        _scenes?.RemoveAll(s => s.SceneNumber == sn);
+        _selected.Remove(sn);
+        ReconcileSelectedSceneWithList();
+    }
+
+    /// <summary>
+    /// After the shot-plan list changes (delete, reload), drop a selected/open scene that
+    /// is no longer in <see cref="_scenes"/> and pick a neighbor so detail + counts stay aligned.
+    /// Does not invent a selection when none was open (first-load still uses OpenSceneAsync).
+    /// </summary>
+    internal void ReconcileSelectedSceneWithList()
+    {
+        if (_scenes is null || _scenes.Count == 0)
+        {
+            ClearOpenScene();
+            return;
+        }
+
+        var selectedStillPresent = _selectedScene is int cur && _scenes.Any(s => s.SceneNumber == cur);
+        if (selectedStillPresent)
+        {
+            if (_detail is { } d && _scenes.All(s => s.SceneNumber != d.SceneNumber))
+                _detail = null;
+            return;
+        }
+
+        if (_selectedScene is int deleted)
+        {
+            _selectedScene = NeighborSceneNumber(deleted);
+            if (_detail is not null && (_selectedScene is null || _detail.SceneNumber != _selectedScene))
+                _detail = null;
+            ClearOpenClip();
+        }
+    }
+
+    /// <summary>Next remaining scene after <paramref name="deleted"/>, or the last remaining one.</summary>
+    internal int? NeighborSceneNumber(int deleted)
+    {
+        if (_scenes is null || _scenes.Count == 0) return null;
+        var nums = _scenes.Select(s => s.SceneNumber).OrderBy(n => n).ToList();
+        var next = nums.FirstOrDefault(n => n > deleted);
+        return next > 0 ? next : nums[^1];
+    }
+
+    private void ClearOpenScene()
+    {
+        _selectedScene = null;
+        _detail = null;
+        ClearOpenClip();
+    }
+
+    private void ClearOpenClip()
+    {
+        S.ClipForm._selectedClip = null;
+        S.ClipForm._clip = null;
+        S.ClipSel._selectedClips.Clear();
+    }
+
 
 
     internal async Task ConfirmDeleteSceneAsync()
@@ -362,9 +427,14 @@ public partial class Scenes
                 S._error = res.Error ?? "Could not delete the scene.";
                 return;
             }
-            _selected.Remove(sn);
+            // Immediate: drop the row and recompute a/b totals before the server round-trip,
+            // and drop stale detail if the open scene was the one deleted (SoftReload used to
+            // 404 that detail and leave ClipCount / ClipsOnDisk on the old SceneDetail).
+            ApplyDeletedSceneLocally(sn);
             S._message = res.Message ?? $"Deleted Scene {sn:D2}";
-            await S.Gen.SoftReloadAsync();
+            await ReloadListAsync();
+            // List cache can briefly lag; keep the dropped scene out of bound totals.
+            ApplyDeletedSceneLocally(sn);
         }
         catch (Exception ex)
         {
@@ -518,6 +588,7 @@ public partial class Scenes
             _scenes = dto?.Scenes ?? new List<SceneSummary>();
             // Drop selections that no longer exist
             _selected.RemoveWhere(sn => _scenes.All(s => s.SceneNumber != sn));
+            ReconcileSelectedSceneWithList();
             if (_selectedScene is null && _scenes.Count > 0)
             {
                 await OpenSceneAsync(_scenes[0].SceneNumber);
