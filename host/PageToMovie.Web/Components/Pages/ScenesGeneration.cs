@@ -164,8 +164,8 @@ public partial class Scenes
 
     internal void FailLocalPreparingJob(string message)
     {
-        if (!IsLocalPreparingJob(_job)) return;
-        _job!.Status = StatusError;
+        if (_job is null || !IsLocalPreparingJob(_job)) return;
+        _job.Status = StatusError;
         _job.Message = message;
         _job.Error = message;
         _job.FinishedAt = DateTimeOffset.UtcNow;
