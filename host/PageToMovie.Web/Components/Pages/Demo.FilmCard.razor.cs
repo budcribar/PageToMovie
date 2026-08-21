@@ -57,14 +57,18 @@ public partial class Demo_FilmCard
         }
     }
 
-    private static string AboutText(DemoListItem d)
+    /// <summary>
+    /// Gallery blurb is the project's stored Look (visual medium). Do not invent a look
+    /// or fall back to a generic cinematic line when Look is missing.
+    /// </summary>
+    internal static string AboutText(DemoListItem d)
     {
-        if (!string.IsNullOrWhiteSpace(d.Description))
-            return d.Description.Trim();
-        var title = !string.IsNullOrWhiteSpace(d.Title) ? d.Title.Trim() : d.ProjectId?.Trim();
-        if (!string.IsNullOrWhiteSpace(title))
-            return $"A cinematic short film adaptation of “{title}” produced with PageToMovie.";
-        return "A cinematic short film adaptation produced with PageToMovie.";
+        if (!string.IsNullOrWhiteSpace(d.Look))
+            return d.Look.Trim();
+        if (!string.IsNullOrWhiteSpace(d.VisualMedium)
+            && !string.Equals(d.VisualMedium.Trim(), "auto", StringComparison.OrdinalIgnoreCase))
+            return d.VisualMedium.Trim();
+        return "Short film.";
     }
 
     private static string? ResolveYoutubeId(DemoListItem d)
@@ -86,18 +90,6 @@ public partial class Demo_FilmCard
             return null;
         var id = YouTubeVideoId.Extract(s);
         return id is not null ? YouTubeVideoId.WatchUrl(id) : uri.AbsoluteUri;
-    }
-
-    private static string RelativeDate(DateTimeOffset when)
-    {
-        var local = when.ToLocalTime();
-        var span = DateTimeOffset.Now - when;
-        if (span.TotalMinutes < 2) return "Just now";
-        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays < 1) return $"{(int)span.TotalHours}h ago";
-        if (span.TotalDays < 14) return $"{(int)span.TotalDays}d ago";
-        if (local.Year == DateTime.Now.Year) return local.ToString("MMM d");
-        return local.ToString("MMM d, yyyy");
     }
 
     private static bool IdentitiesMatch(string? a, string? b)

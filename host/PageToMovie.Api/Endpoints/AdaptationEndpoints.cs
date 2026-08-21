@@ -8,6 +8,7 @@ using PageToMovie.Core.Auth;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.Collaboration;
@@ -496,11 +497,11 @@ public static class AdaptationEndpoints
             visualMedium = medium,
             options = new[]
             {
-                new { id = ProjectVisionMeta.MediumAuto, label = "Auto (infer from book)" },
-                new { id = ProjectVisionMeta.MediumPhotoreal, label = "Photoreal / live action" },
-                new { id = ProjectVisionMeta.MediumIllustrated, label = "Picture book / illustrated" },
-                new { id = ProjectVisionMeta.MediumStylized3d, label = "Stylized 3D animation" },
-                new { id = ProjectVisionMeta.MediumOther, label = "Other / stylized" },
+                new { id = ProjectVisionMeta.MediumAuto, label = VisualMediumStyles.DisplayLabel(ProjectVisionMeta.MediumAuto) },
+                new { id = ProjectVisionMeta.MediumPhotoreal, label = VisualMediumStyles.DisplayLabel(ProjectVisionMeta.MediumPhotoreal) },
+                new { id = ProjectVisionMeta.MediumIllustrated, label = VisualMediumStyles.DisplayLabel(ProjectVisionMeta.MediumIllustrated) },
+                new { id = ProjectVisionMeta.MediumStylized3d, label = VisualMediumStyles.DisplayLabel(ProjectVisionMeta.MediumStylized3d) },
+                new { id = ProjectVisionMeta.MediumOther, label = VisualMediumStyles.DisplayLabel(ProjectVisionMeta.MediumOther) },
             },
         });
     }

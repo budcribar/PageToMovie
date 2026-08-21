@@ -27,7 +27,7 @@
                 {
                     <span class="demo-yt-thumb-fallback" aria-hidden="true"></span>
                 }
-                <span class="demo-yt-play" aria-hidden="true">▶</span>
+                <span class="demo-yt-play" aria-hidden="true" data-testid="demo-yt-play">▶</span>
                 <span class="visually-hidden">Watch on YouTube</span>
             </a>
         }
@@ -41,18 +41,11 @@
     <div class="demo-card-body">
         <header class="demo-card-header">
             <h2 class="demo-card-title mb-0">@Film.Title</h2>
-            <div class="demo-card-chips mt-2">
-                @if (!string.IsNullOrWhiteSpace(Film.ProjectId))
-                {
-                    <span class="demo-chip" title="Studio project">@Film.ProjectId</span>
-                }
-                <span class="demo-chip demo-chip-muted">@RelativeDate(Film.CreatedAt)</span>
-            </div>
         </header>
 
         <div class="demo-card-about">
             <h3 class="demo-about-label">About this film</h3>
-            <p class="demo-about-text">@About</p>
+            <p class="demo-about-text" data-testid="demo-about">@About</p>
         </div>
 
         <footer class="demo-card-footer">

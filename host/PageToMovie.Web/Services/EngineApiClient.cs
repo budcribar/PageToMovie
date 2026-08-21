@@ -5283,6 +5283,10 @@ public sealed class DemoListItem
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public string? Description { get; set; }
+    /// <summary>Operator-facing Look label from the studio project's visual medium (e.g. Picture book / illustrated).</summary>
+    public string? Look { get; set; }
+    /// <summary>Stored visual-medium token when the source project still exists.</summary>
+    public string? VisualMedium { get; set; }
     public string? ProjectId { get; set; }
     public string? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

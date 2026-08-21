@@ -7,6 +7,7 @@ using PageToMovie.Core.Auth;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.Collaboration;
@@ -278,12 +279,30 @@ internal static class ApiEndpointHelpers
         return SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString();
     }
 
+    /// <summary>
+    /// Gallery Look copy from the studio project's stored visual medium.
+    /// Auto / missing is not a look — callers should omit the blurb rather than invent one.
+    /// </summary>
+    public static (string? Look, string? VisualMedium) ResolveDemoLook(string? projectDir)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir))
+            return (null, null);
+        var medium = ProjectVisionMeta.GetAdaptationMediumPreference(projectDir);
+        if (string.IsNullOrWhiteSpace(medium)
+            || string.Equals(medium, ProjectVisionMeta.MediumAuto, StringComparison.OrdinalIgnoreCase))
+            return (null, null);
+        var label = VisualMediumStyles.DisplayLabel(medium);
+        return (string.IsNullOrWhiteSpace(label) ? null : label, medium);
+    }
+
     public static object DemoPublicDto(
         DemoCatalogService.DemoEntry d,
         int upvoteCount = 0,
         bool upvotedByMe = false,
         bool canFork = false,
-        string visibilityMode = "Private")
+        string visibilityMode = "Private",
+        string? look = null,
+        string? visualMedium = null)
     {
         string? youtubeWatchUrl;
         if (string.IsNullOrWhiteSpace(d.YoutubeId))
@@ -320,6 +339,8 @@ internal static class ApiEndpointHelpers
             d.YoutubeLikeCount,
             d.YoutubeViewCount,
             visibilityMode,
+            look,
+            visualMedium,
         };
     }
 

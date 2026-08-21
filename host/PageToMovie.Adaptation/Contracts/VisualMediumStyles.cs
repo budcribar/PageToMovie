@@ -31,6 +31,29 @@ public static class VisualMediumStyles
         "STYLE LOCK: stylized 3D animated children's feature look — coherent CG medium for all cast; " +
         "not photoreal live-action, not flat 2D doodle";
 
+    public const string LabelAuto = "Auto (infer from book)";
+    public const string LabelPhotoreal = "Photoreal / live action";
+    public const string LabelIllustrated = "Picture book / illustrated";
+    public const string LabelStylized3d = "Stylized 3D animation";
+    public const string LabelOther = "Other / stylized";
+
+    /// <summary>Operator-facing Look label for a visual-medium token (canonical or alias).</summary>
+    public static string DisplayLabel(string? medium)
+    {
+        var s = (medium ?? "").Trim();
+        if (string.IsNullOrEmpty(s)) return "";
+        var key = s.ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
+        if (IsAutoToken(key)) return LabelAuto;
+        return NormalizeMedium(s) switch
+        {
+            MediumPhotoreal => LabelPhotoreal,
+            MediumIllustrated => LabelIllustrated,
+            MediumStylized3d => LabelStylized3d,
+            MediumOther => LabelOther,
+            _ => s,
+        };
+    }
+
     /// <summary>Default STYLE LOCK prose for an already-normalized medium token.</summary>
     public static string StyleLockFor(string normalizedMedium) => normalizedMedium switch
     {

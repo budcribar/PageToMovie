@@ -65,6 +65,7 @@ public static class DemoEndpoints
     var mine = await upvotes.GetUpvotedSetAsync(user.UserId, ids, ct);
 
     var visibilityMap = new Dictionary<string, string>();
+    var lookMap = new Dictionary<string, (string? Look, string? VisualMedium)>(StringComparer.OrdinalIgnoreCase);
     var forkableProjectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     foreach (var d in list.Where(x => !string.IsNullOrWhiteSpace(x.ProjectId)))
     {
@@ -75,6 +76,8 @@ public static class DemoEndpoints
             {
                 visibilityMap[d.Id] = proj.VisibilityMode.ToString();
                 forkableProjectIds.Add(d.ProjectId!);
+                var dir = await store.GetProjectDirAsync(d.ProjectId!, ct);
+                lookMap[d.Id] = ApiEndpointHelpers.ResolveDemoLook(dir);
             }
         }
         catch { /* project lookup is best-effort for the public gallery */ }
@@ -98,18 +101,25 @@ public static class DemoEndpoints
             lastSuccessUtc = channelSync.LastSuccessUtc,
             lastError = channelSync.LastError,
         },
-        demos = ordered.Select(d => ApiEndpointHelpers.DemoPublicDto(
-            d,
-            counts.GetValueOrDefault(d.Id),
-            mine.Contains(d.Id),
-            canFork: d.ProjectId is { Length: > 0 } pid && forkableProjectIds.Contains(pid),
-            visibilityMode: visibilityMap.GetValueOrDefault(d.Id, "Private"))),
+        demos = ordered.Select(d =>
+        {
+            lookMap.TryGetValue(d.Id, out var look);
+            return ApiEndpointHelpers.DemoPublicDto(
+                d,
+                counts.GetValueOrDefault(d.Id),
+                mine.Contains(d.Id),
+                canFork: d.ProjectId is { Length: > 0 } pid && forkableProjectIds.Contains(pid),
+                visibilityMode: visibilityMap.GetValueOrDefault(d.Id, "Private"),
+                look: look.Look,
+                visualMedium: look.VisualMedium);
+        }),
     });
 }
 
     private static async Task<IResult> GetDemosDemoId(string demoId,
     DemoCatalogService demos,
     DemoUpvoteService upvotes,
+    ProjectStore store,
     IUserContext user,
     CancellationToken ct)
     {
@@ -120,6 +130,7 @@ public static class DemoEndpoints
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     var count = await upvotes.GetCountAsync(demoId, ct);
     var me = await upvotes.HasUpvotedAsync(demoId, user.UserId, ct);
+    var look = await TryResolveDemoLookAsync(store, d.ProjectId, ct);
     if (user.IsAdmin)
     {
         return Results.Ok(new
@@ -130,7 +141,7 @@ public static class DemoEndpoints
             upvotedByMe = me,
         });
     }
-    return Results.Ok(new { ok = true, demo = ApiEndpointHelpers.DemoPublicDto(d, count, me) });
+    return Results.Ok(new { ok = true, demo = ApiEndpointHelpers.DemoPublicDto(d, count, me, look: look.Look, visualMedium: look.VisualMedium) });
 }
 
     private static async Task<IResult> PostDemosDemoIdUpvote(string demoId,
@@ -675,6 +686,21 @@ public static class DemoEndpoints
                 ct);
         }
         catch { /* non-fatal */ }
+    }
+
+    private static async Task<(string? Look, string? VisualMedium)> TryResolveDemoLookAsync(
+        ProjectStore store, string? projectId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(projectId)) return (null, null);
+        try
+        {
+            var dir = await store.GetProjectDirAsync(projectId, ct);
+            return ApiEndpointHelpers.ResolveDemoLook(dir);
+        }
+        catch
+        {
+            return (null, null);
+        }
     }
 
     private static async Task<DemoCatalogService.DemoEntry> EnsureDemoPublicAsync(
