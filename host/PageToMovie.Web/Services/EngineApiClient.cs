@@ -392,8 +392,8 @@ public sealed class EngineApiClient
 
     /// <summary>
     /// DEV ONLY: fakes-mode login bypass. Returns a deterministic dev-user session when the server
-    /// runs with fakes enabled (the endpoint exists only then); returns null in any real deployment
-    /// (endpoint 404s), so the caller falls through to the normal login gate.
+    /// runs with fakes enabled. In any real deployment the endpoint returns HTTP 200 with
+    /// <c>Ok=false</c> and no token, so the caller treats it as a silent no-op.
     /// </summary>
     public async Task<LoginResponse?> TryDevLoginAsync(CancellationToken ct = default)
     {
@@ -403,7 +403,8 @@ public sealed class EngineApiClient
             using var resp = await _http.SendAsync(req, ct);
             if (!resp.IsSuccessStatusCode)
                 return null;
-            return await resp.Content.ReadFromJsonAsync<LoginResponse>(JsonOpts, ct);
+            return await resp.Content.ReadFromJsonAsync<LoginResponse>(JsonOpts, ct)
+                ?? new LoginResponse { Ok = false };
         }
         catch
         {
@@ -1581,9 +1582,22 @@ public sealed class EngineApiClient
 
     public async Task<ProjectsDto?> GetProjectsAsync(CancellationToken ct = default)
     {
+        // Project inventory requires sign-in. Do not GET /api/projects while anonymous
+        // (the login screen would otherwise log a 401). Callers without a bound session
+        // (unit tests) still hit the endpoint.
+        await EnsureSessionHydratedAsync().ConfigureAwait(false);
+        if (!CanListProjects)
+            return new ProjectsDto { Ok = true, Projects = new List<ProjectInfo>() };
+
         SyncIdentityHeaders();
         return await _http.GetFromJsonAsync<ProjectsDto>("/api/projects", JsonOpts, ct);
     }
+
+    /// <summary>
+    /// True when this client may list <c>/api/projects</c>. A bound session that is not signed in
+    /// must not probe the endpoint (login-page 401). No bound session (tests) is allowed through.
+    /// </summary>
+    public bool CanListProjects => _session is null || _session.IsLoggedIn;
 
     /// <summary>Push a clip sidecar from the media folder to a server that lost it. True when restored.</summary>
     public async Task<bool> RestoreClipSidecarAsync(string projectId, int scene, int clip, string sidecarJson, CancellationToken ct = default)

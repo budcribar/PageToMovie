@@ -75,7 +75,9 @@ public partial class NavMenu : IDisposable
             _sessionUserId = Session.UserId;
             Session.Changed += OnSessionChanged;
             ActiveProject.Changed += OnProjectChanged;
-            await ActiveProject.RefreshFromServerAsync(Engine);
+            // Project inventory requires sign-in — do not GET /api/projects on the login screen.
+            if (Session.IsLoggedIn)
+                await ActiveProject.RefreshFromServerAsync(Engine);
             await RefreshThemeAsync();
             await MediaFolder.TryReconnectAsync();
             StateHasChanged();
