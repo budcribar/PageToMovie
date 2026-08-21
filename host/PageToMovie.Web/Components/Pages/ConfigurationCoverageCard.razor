@@ -1,16 +1,19 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Configuration — studio API coverage card (starts collapsed) *@
+@* Page-local to Configuration — studio API coverage (button + @if; starts open). *@
 @using Microsoft.AspNetCore.Components
 
 <div class="card mb-3" id="api-keys" data-testid="studio-coverage-card">
-    <details class="ptm-cfg-section" open="@IsStudioOpen">
-        <summary class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary"
-                 data-testid="config-section-coverage"
-                 @onclick="ToggleStudioCoverage"
-                 @onclick:preventDefault="true">
+    <div class="ptm-cfg-section" open="@(IsStudioOpen ? "open" : null)">
+        <button type="button"
+                class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary w-100 text-start"
+                style="appearance: none; -webkit-appearance: none; color: inherit;"
+                data-testid="config-section-coverage"
+                aria-expanded="@(IsStudioOpen ? "true" : "false")"
+                aria-controls="studio-coverage-body"
+                @onclick="ToggleStudioCoverage">
             <span>Studio coverage</span>
             @{
-                var cov = Coverage.BuildCoverageRows();
+                var cov = Cov.BuildCoverageRows();
                 var needed = cov.Count(c => c.Required && !c.OptionalOff);
                 var ready = cov.Count(c => c.Required && !c.OptionalOff && c.KeyReady);
                 var missing = cov.Where(c => c.Required && !c.OptionalOff && !c.KeyReady).ToList();
@@ -23,15 +26,17 @@
             {
                 <span class="badge text-bg-warning text-dark">@missing.Count missing · @ready/@needed ready</span>
             }
-        </summary>
-        <div class="card-body">
+        </button>
+        @if (IsStudioOpen)
+        {
+        <div class="card-body" id="studio-coverage-body">
             <p class="small text-muted mb-3">
                 For each job: choose a <strong>provider</strong> (who holds the key), then a <strong>model</strong> from that provider.
                 Add a provider only when you need another key. Model lists only show what that provider can run.
                 <span class="d-block mt-1">Video review is optional — Script & planning (e.g. xAI) is enough to write a screenplay; review only unlocks QA on clips.</span>
             </p>
 
-            <InlineAlert Message="@Keys._apiKeyFeedback" Variant="success" CssClass="py-2 px-3 small" />
+            <InlineAlert Message="@KeyActions._apiKeyFeedback" Variant="success" CssClass="py-2 px-3 small" />
 
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0" data-testid="capability-coverage">
@@ -47,9 +52,9 @@
                     <tbody>
                         @foreach (var c in cov)
                         {
-                            var providers = Coverage.ProvidersForCoverage(c.Id).ToList();
-                            var providerModels = Coverage.ModelsForCoverageProvider(c.Id, c.ProviderId).ToList();
-                            var editing = string.Equals(Coverage._coverageEditId, c.Id, StringComparison.OrdinalIgnoreCase);
+                            var providers = Cov.ProvidersForCoverage(c.Id).ToList();
+                            var providerModels = Cov.ModelsForCoverageProvider(c.Id, c.ProviderId).ToList();
+                            var editing = string.Equals(Cov._coverageEditId, c.Id, StringComparison.OrdinalIgnoreCase);
                             var isOptionalJob = c.Id is "music" or "voice" or "review";
                             <tr @key="@($"cov-row-{c.Id}")" class="@(c.OptionalOff ? "opacity-75" : "")" data-testid="coverage-@c.Id">
                                 <td>
@@ -72,7 +77,7 @@
                                                 data-testid="coverage-provider-@c.Id"
                                                 disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
                                                 value="@provSelected"
-                                                @onchange="e => Coverage.OnCoverageProviderChangedAsync(c.Id, e.Value?.ToString())">
+                                                @onchange="e => Cov.OnCoverageProviderChangedAsync(c.Id, e.Value?.ToString())">
                                             @if (string.IsNullOrWhiteSpace(provSelected)
                                                  || !providers.Any(pr => string.Equals(
                                                      SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
@@ -122,14 +127,14 @@
                                     }
                                     @if (showModelPicker && modelChoices.Count > 0 && (!string.IsNullOrWhiteSpace(c.ProviderId) || isOptionalJob))
                                     {
-                                        var modelSelected = Coverage.GetCoverageModelId(c.Id);
+                                        var modelSelected = Cov.GetCoverageModelId(c.Id);
                                         @* Remount model list only when the provider (option set) changes. *@
                                         <select class="form-select form-select-sm"
                                                 @key="@($"cov-model-{c.Id}-{SupportedModelCatalog.NormalizeProviderId(c.ProviderId)}")"
                                                 data-testid="coverage-model-@c.Id"
                                                 disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
                                                 value="@modelSelected"
-                                                @onchange="e => Coverage.OnCoverageModelChangedAsync(c.Id, e.Value?.ToString())">
+                                                @onchange="e => Cov.OnCoverageModelChangedAsync(c.Id, e.Value?.ToString())">
                                             @if (string.IsNullOrWhiteSpace(c.ProviderId) && isOptionalJob)
                                             {
                                                 <option value="none">Off — pick a provider to enable</option>
@@ -193,9 +198,8 @@
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary"
                                                 data-testid="coverage-add-provider-@c.Id"
-                                                disabled="@Host._busy"
                                                 title="Add another provider key for this job"
-                                                @onclick="() => Keys.BeginAddProvider(c.Id)"
+                                                @onclick="() => KeyActions.BeginAddProvider(c.Id)"
                                                 @onclick:stopPropagation="true">
                                             Add provider
                                         </button>
@@ -204,8 +208,7 @@
                                             <button type="button"
                                                     class="btn btn-sm btn-primary"
                                                     data-testid="coverage-add-key-@c.Id"
-                                                    disabled="@Host._busy"
-                                                    @onclick="() => Keys.BeginAddKeyForProvider(c.Id, c.ProviderId)"
+                                                    @onclick="() => KeyActions.BeginAddKeyForProvider(c.Id, c.ProviderId)"
                                                     @onclick:stopPropagation="true">
                                                 Add key
                                             </button>
@@ -215,9 +218,8 @@
                                             <button type="button"
                                                     class="btn btn-sm btn-outline-secondary"
                                                     data-testid="coverage-change-key-@c.Id"
-                                                    disabled="@Host._busy"
                                                     title="Replace only the @Configuration.ConfigurationCatalog.FriendlyProviderLabel(c.ProviderId) key"
-                                                    @onclick="() => Keys.BeginReplaceKey(c.Id, c.ProviderId)"
+                                                    @onclick="() => KeyActions.BeginReplaceKey(c.Id, c.ProviderId)"
                                                     @onclick:stopPropagation="true">
                                                 Replace key
                                             </button>
@@ -226,7 +228,7 @@
                                                     data-testid="coverage-remove-key-@c.Id"
                                                     disabled="@Host._busy"
                                                     title="Remove personal key for this provider"
-                                                    @onclick="() => Keys.ClearProviderKeyAsync(c.ProviderId)"
+                                                    @onclick="() => KeyActions.ClearProviderKeyAsync(c.ProviderId)"
                                                     @onclick:stopPropagation="true">
                                                 Remove key
                                             </button>
@@ -236,7 +238,7 @@
                                             <button type="button"
                                                     class="btn btn-sm btn-link text-muted px-1"
                                                     disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
-                                                    @onclick="() => Coverage.TurnOffOptionalAsync(c.Id)"
+                                                    @onclick="() => Cov.TurnOffOptionalAsync(c.Id)"
                                                     @onclick:stopPropagation="true">
                                                 Turn off
                                             </button>
@@ -251,23 +253,23 @@
                                         <div class="p-2">
                                             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                                                 <div class="small fw-semibold">
-                                                    @if (Coverage._coverageKeyMode == "replace")
+                                                    @if (Cov._coverageKeyMode == "replace")
                                                     {
-                                                        <span>Replace key · <span class="text-primary">@Configuration.ConfigurationCatalog.FriendlyProviderLabel(Coverage._coverageKeyProviderId)</span></span>
+                                                        <span>Replace key · <span class="text-primary">@Configuration.ConfigurationCatalog.FriendlyProviderLabel(Cov._coverageKeyProviderId)</span></span>
                                                     }
-                                                    else if (Coverage._coverageKeyMode == "add-key")
+                                                    else if (Cov._coverageKeyMode == "add-key")
                                                     {
-                                                        <span>Add key · <span class="text-primary">@Configuration.ConfigurationCatalog.FriendlyProviderLabel(Coverage._coverageKeyProviderId)</span></span>
+                                                        <span>Add key · <span class="text-primary">@Configuration.ConfigurationCatalog.FriendlyProviderLabel(Cov._coverageKeyProviderId)</span></span>
                                                     }
                                                     else
                                                     {
                                                         <span>Add provider for <span class="text-primary">@c.Label</span></span>
                                                     }
                                                 </div>
-                                                <button type="button" class="btn btn-sm btn-link" @onclick="Keys.CancelAddKey">Cancel</button>
+                                                <button type="button" class="btn btn-sm btn-link" @onclick="KeyActions.CancelAddKey">Cancel</button>
                                             </div>
                                             <p class="small text-muted mb-2">
-                                                @if (Coverage._coverageKeyMode is "replace" or "add-key")
+                                                @if (Cov._coverageKeyMode is "replace" or "add-key")
                                                 {
                                                     <span>Only this provider — paste a new key or remove the saved one.</span>
                                                 }
@@ -285,9 +287,9 @@
                                                 }
                                             </p>
                                             <div class="row g-2">
-                                                @foreach (var p in Keys.ProvidersForKeyPanel(c.Id))
+                                                @foreach (var p in KeyActions.ProvidersForKeyPanel(c.Id))
                                                 {
-                                                    var selected = string.Equals(Coverage._coverageKeyProviderId, p.ProviderId, StringComparison.OrdinalIgnoreCase);
+                                                    var selected = string.Equals(Cov._coverageKeyProviderId, p.ProviderId, StringComparison.OrdinalIgnoreCase);
                                                     <div class="col-md-6 col-lg-4">
                                                         <div class="border rounded p-2 h-100 @(selected ? "border-primary" : "")"
                                                              data-testid="coverage-provider-@p.ProviderId">
@@ -303,7 +305,7 @@
                                                                 <button type="button"
                                                                         class="btn btn-sm @(p.IsConfigured ? "btn-primary" : "btn-outline-primary")"
                                                                         data-testid="coverage-pick-@p.ProviderId"
-                                                                        @onclick="() => Coverage.ChooseProviderForCoverageAsync(p.ProviderId, c.Id)">
+                                                                        @onclick="() => Cov.ChooseProviderForCoverageAsync(p.ProviderId, c.Id)">
                                                                     @(p.IsConfigured ? "Use this key" : "Select")
                                                                 </button>
                                                                 @if (p.IsConfigured)
@@ -317,23 +319,23 @@
                                                                         class="btn btn-sm btn-primary mb-2"
                                                                         data-testid="coverage-use-saved-@p.ProviderId"
                                                                         disabled="@Host._busy"
-                                                                        @onclick="() => Coverage.UseSavedProviderForCoverageAsync(p.ProviderId, c.Id)">
+                                                                        @onclick="() => Cov.UseSavedProviderForCoverageAsync(p.ProviderId, c.Id)">
                                                                     Use saved key
                                                                 </button>
                                                                 <div class="form-text mb-2">Already on file — no need to paste again unless you want to replace it.</div>
                                                                 <label class="form-label small mb-1">Replace API key (optional)</label>
                                                                 <div class="input-group input-group-sm mb-1">
-                                                                    <input type="@(Keys.IsKeyVisible(p.ProviderId) ? "text" : "password")"
+                                                                    <input type="@(KeyActions.IsKeyVisible(p.ProviderId) ? "text" : "password")"
                                                                            class="form-control font-monospace"
                                                                            placeholder="@Configuration.ConfigurationCatalog.ProviderPlaceholder(p.ProviderId)"
-                                                                           value="@Keys.GetKeyInput(p.ProviderId)"
-                                                                           @oninput="e => Keys.SetKeyInput(p.ProviderId, e.Value?.ToString())"
-                                                                           disabled="@(Host._busy || Keys._apiKeySaving)" />
+                                                                           value="@KeyActions.GetKeyInput(p.ProviderId)"
+                                                                           @oninput="e => KeyActions.SetKeyInput(p.ProviderId, e.Value?.ToString())"
+                                                                           disabled="@(Host._busy || KeyActions._apiKeySaving)" />
                                                                     <button class="btn btn-outline-secondary" type="button"
-                                                                            title="@(Keys.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
-                                                                            aria-label="@(Keys.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
-                                                                            @onclick="() => Keys.ToggleKeyVisible(p.ProviderId)">
-                                                                        @if (Keys.IsKeyVisible(p.ProviderId))
+                                                                            title="@(KeyActions.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
+                                                                            aria-label="@(KeyActions.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
+                                                                            @onclick="() => KeyActions.ToggleKeyVisible(p.ProviderId)">
+                                                                        @if (KeyActions.IsKeyVisible(p.ProviderId))
                                                                         {
                                                                             @* eye-slash *@
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
@@ -351,14 +353,14 @@
                                                                         }
                                                                     </button>
                                                                     <button class="btn btn-outline-primary" type="button"
-                                                                            disabled="@(Host._busy || Keys._apiKeySaving || string.IsNullOrWhiteSpace(Keys.GetKeyInput(p.ProviderId)))"
-                                                                            @onclick="() => Keys.SaveCoverageKeyAsync(p.ProviderId, c.Id)">
+                                                                            disabled="@(Host._busy || KeyActions._apiKeySaving || string.IsNullOrWhiteSpace(KeyActions.GetKeyInput(p.ProviderId)))"
+                                                                            @onclick="() => KeyActions.SaveCoverageKeyAsync(p.ProviderId, c.Id)">
                                                                         Replace
                                                                     </button>
                                                                 </div>
                                                                 <button type="button" class="btn btn-link btn-sm text-danger p-0"
                                                                         disabled="@Host._busy"
-                                                                        @onclick="() => Keys.ClearProviderKeyAsync(p.ProviderId)">
+                                                                        @onclick="() => KeyActions.ClearProviderKeyAsync(p.ProviderId)">
                                                                     Remove saved key
                                                                 </button>
                                                             }
@@ -366,17 +368,17 @@
                                                             {
                                                                 <label class="form-label small mb-1">API key</label>
                                                                 <div class="input-group input-group-sm mb-1">
-                                                                    <input type="@(Keys.IsKeyVisible(p.ProviderId) ? "text" : "password")"
+                                                                    <input type="@(KeyActions.IsKeyVisible(p.ProviderId) ? "text" : "password")"
                                                                            class="form-control font-monospace"
                                                                            placeholder="@Configuration.ConfigurationCatalog.ProviderPlaceholder(p.ProviderId)"
-                                                                           value="@Keys.GetKeyInput(p.ProviderId)"
-                                                                           @oninput="e => Keys.SetKeyInput(p.ProviderId, e.Value?.ToString())"
-                                                                           disabled="@(Host._busy || Keys._apiKeySaving)" />
+                                                                           value="@KeyActions.GetKeyInput(p.ProviderId)"
+                                                                           @oninput="e => KeyActions.SetKeyInput(p.ProviderId, e.Value?.ToString())"
+                                                                           disabled="@(Host._busy || KeyActions._apiKeySaving)" />
                                                                     <button class="btn btn-outline-secondary" type="button"
-                                                                            title="@(Keys.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
-                                                                            aria-label="@(Keys.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
-                                                                            @onclick="() => Keys.ToggleKeyVisible(p.ProviderId)">
-                                                                        @if (Keys.IsKeyVisible(p.ProviderId))
+                                                                            title="@(KeyActions.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
+                                                                            aria-label="@(KeyActions.IsKeyVisible(p.ProviderId) ? "Hide API key" : "Show API key")"
+                                                                            @onclick="() => KeyActions.ToggleKeyVisible(p.ProviderId)">
+                                                                        @if (KeyActions.IsKeyVisible(p.ProviderId))
                                                                         {
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                                                                                 <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7 7 0 0 0-2.79.588l.77.771A6 6 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.218.288c-.332.404-.75.85-1.232 1.295l.772.772zm-2.151-2.151.772.772a.5.5 0 0 1 0 .707l-.48.48a.5.5 0 0 1-.707 0l-.772-.772a4 4 0 0 1-5.14-5.14l-.772-.772a.5.5 0 0 1 0-.707l.48-.48a.5.5 0 0 1 .707 0l.772.772A4 4 0 0 1 11.208 9.087z"/>
@@ -392,8 +394,8 @@
                                                                         }
                                                                     </button>
                                                                     <button class="btn btn-primary" type="button"
-                                                                            disabled="@(Host._busy || Keys._apiKeySaving || string.IsNullOrWhiteSpace(Keys.GetKeyInput(p.ProviderId)))"
-                                                                            @onclick="() => Keys.SaveCoverageKeyAsync(p.ProviderId, c.Id)">
+                                                                            disabled="@(Host._busy || KeyActions._apiKeySaving || string.IsNullOrWhiteSpace(KeyActions.GetKeyInput(p.ProviderId)))"
+                                                                            @onclick="() => KeyActions.SaveCoverageKeyAsync(p.ProviderId, c.Id)">
                                                                         Save
                                                                     </button>
                                                                 </div>
@@ -402,7 +404,7 @@
                                                     </div>
                                                 }
                                             </div>
-                                            @if (!Keys.ProvidersForKeyPanel(c.Id).Any())
+                                            @if (!KeyActions.ProvidersForKeyPanel(c.Id).Any())
                                             {
                                                 <InlineAlert Variant="warning" CssClass="py-2 small mb-0" Message="No providers available for this job in the catalog." />
                                             }
@@ -416,7 +418,7 @@
             </div>
 
             @{
-                var savedKeys = Keys.ProviderRows.Where(pr => pr.HasPersonalKey).ToList();
+                var savedKeys = KeyActions.ProviderRows.Where(pr => pr.HasPersonalKey).ToList();
             }
             @if (savedKeys.Count > 0)
             {
@@ -425,7 +427,7 @@
                     <div class="row g-2 mt-2">
                         @foreach (var p in savedKeys)
                         {
-                            var used = Coverage.CoverageUsesForProvider(p.ProviderId);
+                            var used = Cov.CoverageUsesForProvider(p.ProviderId);
                             <div class="col-md-6 col-lg-4">
                                 <div class="border rounded p-2 small">
                                     <div class="fw-semibold">@p.DisplayName</div>
@@ -443,7 +445,7 @@
                                     }
                                     <button type="button" class="btn btn-link btn-sm text-danger p-0 mt-1"
                                             disabled="@Host._busy"
-                                            @onclick="() => Keys.ClearProviderKeyAsync(p.ProviderId)">
+                                            @onclick="() => KeyActions.ClearProviderKeyAsync(p.ProviderId)">
                                         Remove key
                                     </button>
                                 </div>
@@ -453,5 +455,6 @@
                 </details>
             }
         </div>
-    </details>
+        }
+    </div>
 </div>

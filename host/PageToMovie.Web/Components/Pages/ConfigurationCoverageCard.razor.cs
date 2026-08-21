@@ -1,15 +1,4 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Routing;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
-using PageToMovie.Core.Models;
-using PageToMovie.Core.Localization;
-using PageToMovie.Core.Util;
-using PageToMovie.Web.Services;
-
 using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -24,20 +13,48 @@ public partial class ConfigurationCoverageCard : PageSliceComponent
     [CascadingParameter] public Configuration.ConfigurationProjectForm? Form { get; set; }
     [CascadingParameter] public Configuration.ConfigurationMediaTheme? Media { get; set; }
 
+    /// <summary>Local toggle; starts open so Settings lands on keys.</summary>
+    private bool _studioOpen = true;
+
     /// <summary>
-    /// Controlled <details open> — Blazor re-renders after "Add key" would otherwise collapse
-    /// an uncontrolled details element and hide the paste panel.
+    /// Add / Replace / Add provider open a local paste panel — do not depend on the Coverage
+    /// cascade alone (IsFixed slices can miss it) and do not gate on Host._busy.
     /// </summary>
+    private Configuration.ConfigurationKeys KeyActions => Keys ?? Host.Keys;
+    private Configuration.ConfigurationCoverage Cov => Coverage ?? Host.Coverage;
+
+    /// <summary>
+    /// Visibility is C# <c>@if</c>, not a long-lived <c>&lt;details open&gt;</c>.
+    /// <paramref name="coverageOpen"/> / <paramref name="editId"/> keep the body shown after
+    /// Add key / Add provider / Replace key re-renders (Aug 10 intent).
+    /// </summary>
+    internal static bool ShouldShowStudioBody(bool localOpen, bool coverageOpen, string? editId) =>
+        localOpen || coverageOpen || !string.IsNullOrWhiteSpace(editId);
+
     private bool IsStudioOpen =>
-        Coverage is not null
-        && (Coverage.StudioCoverageOpen || !string.IsNullOrWhiteSpace(Coverage._coverageEditId));
+        ShouldShowStudioBody(
+            _studioOpen,
+            Coverage?.StudioCoverageOpen == true,
+            Coverage?._coverageEditId);
 
     private void ToggleStudioCoverage()
     {
-        if (Coverage is null) return;
         // Keep open while the key panel is active.
-        if (!string.IsNullOrWhiteSpace(Coverage._coverageEditId) && Coverage.StudioCoverageOpen)
+        if (!string.IsNullOrWhiteSpace(Coverage?._coverageEditId) && IsStudioOpen)
             return;
-        Coverage.StudioCoverageOpen = !Coverage.StudioCoverageOpen;
+        var next = !IsStudioOpen;
+        _studioOpen = next;
+        if (Coverage is not null)
+            Coverage.StudioCoverageOpen = next;
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        Coverage ??= Host.Coverage;
+        Keys ??= Host.Keys;
+        Catalog ??= Host.Catalog;
+        Form ??= Host.Form;
+        Media ??= Host.Media;
     }
 }

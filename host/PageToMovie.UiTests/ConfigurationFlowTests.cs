@@ -105,4 +105,66 @@ public class ConfigurationFlowTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Studio_coverage_starts_open_and_header_toggles_keys_table()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl,
+                "ConfigKeys_" + Guid.NewGuid().ToString("N")[..6]);
+
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("studio-coverage-card"))
+                .ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            var keysTable = page.GetByTestId("capability-coverage");
+            var header = page.GetByTestId("config-section-coverage");
+            await Assertions.Expect(keysTable).ToBeVisibleAsync(new() { Timeout = 20_000 });
+            await Assertions.Expect(page.GetByTestId("coverage-video"))
+                .ToBeVisibleAsync(new() { Timeout = 20_000 });
+            Assert.True(await Ui.IsConfigSectionOpenAsync(header));
+
+            await header.ClickAsync();
+            await Assertions.Expect(keysTable).ToBeHiddenAsync(new() { Timeout = 10_000 });
+            Assert.False(await Ui.IsConfigSectionOpenAsync(header));
+
+            await header.ClickAsync();
+            await Assertions.Expect(keysTable).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            Assert.True(await Ui.IsConfigSectionOpenAsync(header));
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Add_or_replace_key_opens_paste_panel()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl,
+                "ConfigPaste_" + Guid.NewGuid().ToString("N")[..6]);
+
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("capability-coverage"))
+                .ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            var videoRow = page.GetByTestId("coverage-video");
+            await Assertions.Expect(videoRow).ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            var addKey = page.GetByTestId("coverage-add-key-video");
+            var replaceKey = page.GetByTestId("coverage-change-key-video");
+            if (await addKey.CountAsync() > 0)
+                await addKey.ClickAsync();
+            else if (await replaceKey.CountAsync() > 0)
+                await replaceKey.ClickAsync();
+            else
+                await page.GetByTestId("coverage-add-provider-video").ClickAsync();
+
+            await Assertions.Expect(page.GetByTestId("coverage-key-panel-video"))
+                .ToBeVisibleAsync(new() { Timeout = 10_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }
