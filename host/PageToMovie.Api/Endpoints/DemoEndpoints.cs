@@ -76,7 +76,7 @@ public static class DemoEndpoints
             {
                 visibilityMap[d.Id] = proj.VisibilityMode.ToString();
                 forkableProjectIds.Add(d.ProjectId!);
-                var dir = await store.GetProjectDirAsync(d.ProjectId, ct);
+                var dir = await store.GetProjectDirAsync(d.ProjectId ?? "", ct);
                 lookMap[d.Id] = ApiEndpointHelpers.ResolveDemoLook(dir);
             }
         }
