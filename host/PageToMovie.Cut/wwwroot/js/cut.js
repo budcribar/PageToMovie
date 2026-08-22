@@ -142,15 +142,10 @@
                 const data = await api._safeFetchFile(pngUrl);
                 await ffmpeg.writeFile(inName, data);
                 await ffmpeg.exec([
-                    "-hide_banner", "-y",
-                    "-loop", "1", "-i", inName,
-                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-                    "-t", String(hold),
+                    "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
                     "-vf", "scale=1280:720,setsar=1",
                     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-shortest",
-                    "-movflags", "+faststart",
+                    "-an", "-movflags", "+faststart",
                     outName,
                 ]);
                 const out = await ffmpeg.readFile(outName);
@@ -164,6 +159,11 @@
         });
     }
 
+    /**
+     * Visual dissolve/dip. Must keep native clip audio.
+     * Scene-change default is Dissolve. Mapping video only with `-an` strips VO
+     * from the accumulator; later concat cannot bring it back.
+     */
     async function xfadeAsync(leftUrl, rightUrl, kind, onProgress) {
         const api = window.PageToMovieFfmpeg;
         const trans = xfadeName(kind);
@@ -185,9 +185,35 @@
                 const offset = Math.max(0, leftSec - fade);
                 const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
-                const kept = await xfadeKeepAudioAsync(ffmpeg, aName, bName, outName, vgraph, fade);
-                if (!kept.success)
-                    return kept;
+                const aNorm = "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a0];"
+                    + "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a1];";
+                const graphs = [
+                    vgraph + ";" + aNorm + "[a0][a1]acrossfade=d=" + fade + ":c1=tri:c2=tri[a]",
+                    vgraph + ";" + aNorm + "[a0][a1]concat=n=2:v=0:a=1[a]",
+                ];
+                let encoded = false;
+                for (const graph of graphs) {
+                    try {
+                        await ffmpeg.exec([
+                            "-hide_banner", "-y", "-i", aName, "-i", bName,
+                            "-filter_complex", graph,
+                            "-map", "[v]", "-map", "[a]",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                            "-c:a", "aac", "-b:a", "128k",
+                            "-movflags", "+faststart",
+                            outName,
+                        ]);
+                        encoded = true;
+                        break;
+                    } catch (audioErr) {
+                        console.debug("Cut: xfade audio pass failed", audioErr);
+                        try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                            console.debug("Cut: xfade out cleanup", delErr);
+                        }
+                    }
+                }
+                if (!encoded)
+                    return { success: false, error: "xfade audio failed" };
                 const out = await ffmpeg.readFile(outName);
                 return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
             } catch (err) {
@@ -198,37 +224,6 @@
                 await deleteMemfs(ffmpeg, outName);
             }
         });
-    }
-
-    /**
-     * Visual xfade keeps native clip audio. Prefer acrossfade; if a dissolve
-     * cannot mix audio, hard-cut the two audio streams through the join.
-     * Failure here lets joinPairAsync fall back to concat (hard-cut video+audio).
-     */
-    async function xfadeKeepAudioAsync(ffmpeg, aName, bName, outName, vgraph, fade) {
-        const graphs = [
-            vgraph + ";[0:a][1:a]acrossfade=d=" + fade + "[a]",
-            vgraph + ";[0:a][1:a]concat=n=2:v=0:a=1[a]",
-        ];
-        for (const graph of graphs) {
-            try {
-                await ffmpeg.exec([
-                    "-hide_banner", "-y", "-i", aName, "-i", bName,
-                    "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-c:a", "aac", "-b:a", "128k",
-                    "-movflags", "+faststart",
-                    outName,
-                ]);
-                return { success: true };
-            } catch (err) {
-                console.debug("Cut: xfade audio pass failed", err);
-                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
-                    console.debug("Cut: xfade out cleanup", delErr);
-                }
-            }
-        }
-        return { success: false, error: "xfade audio failed" };
     }
 
     async function joinPairAsync(api, leftUrl, rightUrl, kind, onProgress) {

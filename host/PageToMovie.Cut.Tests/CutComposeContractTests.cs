@@ -18,7 +18,7 @@ public class CutComposeContractTests
     public void Native_clip_audio_stays_on_hard_cut_and_xfade()
     {
         Assert.True(CutComposeContract.KeepNativeClipAudio);
-        Assert.True(CutComposeContract.PadCardSilence);
+        Assert.False(CutComposeContract.PadCardSilence);
         Assert.Equal(CutComposeAudioJoin.KeepThroughConcat, CutComposeContract.AudioJoin(CutJoinKind.Cut));
         Assert.Equal(CutComposeAudioJoin.KeepThroughConcat, CutComposeContract.AudioJoin(CutJoinKind.CutToBlack));
         Assert.Equal(CutComposeAudioJoin.AcrossfadeOrHardCut, CutComposeContract.AudioJoin(CutJoinKind.Dissolve));

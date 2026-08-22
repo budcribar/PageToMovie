@@ -9,7 +9,7 @@ namespace PageToMovie.Cut.Cut;
 public static class CutComposeContract
 {
     public const bool KeepNativeClipAudio = true;
-    public const bool PadCardSilence = true;
+    public const bool PadCardSilence = false;
 
     public static bool CanReusePreview(string? moviePreviewUrl) =>
         !string.IsNullOrWhiteSpace(moviePreviewUrl);
