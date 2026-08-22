@@ -69,7 +69,7 @@ public partial class CutTimeline
     private ElementReference _textLabelInput = default;
     private ElementReference _musicNameInput = default;
     private ElementReference _musicOutHandle = default;
-    private CutTimeline_TextInspector? _inspector;
+    private CutTimeline_TextInspector? _inspector = null;
     private TimelineRenderSnap _renderSnap;
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
