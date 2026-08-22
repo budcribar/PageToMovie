@@ -28,28 +28,11 @@ public static class CutTransport
     public static bool IsPlayable(CutClip clip) =>
         !clip.Missing && !string.IsNullOrWhiteSpace(clip.PreviewUrl);
 
-    public static bool CanPlay(IEnumerable<CutClip> clips)
-    {
-        foreach (var clip in clips)
-        {
-            if (IsPlayable(clip))
-                return true;
-        }
+    public static bool CanPlay(IEnumerable<CutClip> clips) =>
+        clips.Any(IsPlayable);
 
-        return false;
-    }
-
-    public static List<CutClip> PlayableClips(IEnumerable<CutClip> clips)
-    {
-        var ready = new List<CutClip>();
-        foreach (var clip in clips)
-        {
-            if (IsPlayable(clip))
-                ready.Add(clip);
-        }
-
-        return ready;
-    }
+    public static List<CutClip> PlayableClips(IEnumerable<CutClip> clips) =>
+        clips.Where(IsPlayable).ToList();
 
     public static string PlayTitle(bool isPlaying) => isPlaying ? "Stop" : "Play";
 
