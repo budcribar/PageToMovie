@@ -39,6 +39,7 @@ public class CutPlayClockTests
         Assert.True(CutPlayClock.ShouldRenderOnProgress(overlayVisible: true));
         Assert.True(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true));
         Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: false));
+        Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true, showingMerge: true));
         Assert.True(CutPlayClock.ShouldRenderAfterComposeSettles);
     }
 

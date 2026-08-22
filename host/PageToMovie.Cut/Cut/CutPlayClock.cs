@@ -52,7 +52,10 @@ public static class CutPlayClock
     /// Finished compose must not leave "Playing 100%" stuck on screen.
     /// </summary>
     public static bool ShouldShowPlayComposeOverlay(bool waiting, bool composing) =>
-        waiting && composing;
+        ShouldShowPlayComposeOverlay(waiting, composing, showingMerge: false);
+
+    public static bool ShouldShowPlayComposeOverlay(bool waiting, bool composing, bool showingMerge) =>
+        waiting && composing && !showingMerge;
 
     public static bool ShouldRenderAfterComposeSettles => true;
 

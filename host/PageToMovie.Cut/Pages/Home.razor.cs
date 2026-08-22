@@ -36,6 +36,7 @@ public partial class Home : IAsyncDisposable
     private string? _clipSrcBound;
     private string? _movieSrcBound;
     private bool _needTextCues;
+    private bool _mergeHasFrame;
     internal int ProgressPercent { get; private set; }
     internal string? ProgressMessage { get; private set; }
     internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
@@ -52,7 +53,8 @@ public partial class Home : IAsyncDisposable
     internal bool TransportLocked => _folderBusy || _exporting;
 
     internal bool ShowComposeOverlay =>
-        CutPlayClock.ShouldShowPlayComposeOverlay(_playMode == PlayMode.Waiting, _composing)
+        CutPlayClock.ShouldShowPlayComposeOverlay(
+            _playMode == PlayMode.Waiting, _composing, _mergeHasFrame && _playMode == PlayMode.Movie)
         || (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage));
 
     internal bool ShowMovie =>
@@ -347,6 +349,7 @@ public partial class Home : IAsyncDisposable
     {
         _error = null;
         _wantPlay = true;
+        _mergeHasFrame = false;
         _clipSrcBound = _selected?.PreviewUrl;
         _movieSrcBound = ActiveMovieUrl;
         _firstStart = CutJitPlay.At(Folder.Clips, _playhead);
@@ -355,8 +358,8 @@ public partial class Home : IAsyncDisposable
         if (CutJitPlay.CanReuseFullPreview(Compose.MoviePreviewUrl))
         {
             _prefixClipCount = Folder.Clips.Count;
-            await PlayMovieAsync(CutPlayMerge.PlaySeekSec(Folder.Clips, _playhead), Compose.MoviePreviewUrl, userSeek: true);
-            return;
+            if (await PlayMovieAsync(CutPlayMerge.PlaySeekSec(Folder.Clips, _playhead), Compose.MoviePreviewUrl, userSeek: true))
+                return;
         }
 
         StartJitCompose();
@@ -434,7 +437,8 @@ public partial class Home : IAsyncDisposable
 
         if (playMerge)
         {
-            await PlayMovieAsync(_playhead, playUrl, userSeek);
+            if (!await PlayMovieAsync(_playhead, playUrl, userSeek))
+                await EnterWaitAsync();
             return;
         }
 
@@ -505,66 +509,62 @@ public partial class Home : IAsyncDisposable
             await InvokeAsync(StateHasChanged);
     }
 
-    private async Task PlayMovieAsync(double timelineSec, string? url, bool userSeek = false)
+    private async Task<bool> PlayMovieAsync(double timelineSec, string? url, bool userSeek = false)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            return;
+        if (string.IsNullOrWhiteSpace(url) || Js is null)
+            return false;
         var seekSec = CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
-        var samePlayer = _playMode == PlayMode.Movie;
-        if (ShouldReusePlayingMovie(samePlayer, url))
+        var samePlayer = _playMode == PlayMode.Movie && _mergeHasFrame;
+        if (CutPlayMerge.ShouldReusePlayingMovie(
+                samePlayer,
+                _movieSrcBound,
+                url,
+                _mergeHasFrame,
+                _playhead,
+                CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips)))
         {
             if (!CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek))
-                return;
+                return true;
             _playhead = seekSec;
-            if (Js is not null)
-            {
-                try
-                {
-                    await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, _movieSrcBound ?? url, _playhead);
-                    await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
-                    await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
-                }
-                catch (JSException)
-                {
-                    // player may not be mounted yet
-                }
-            }
-
-            return;
-        }
-
-        _playMode = PlayMode.Movie;
-        _nativeWindow = null;
-        _playhead = seekSec;
-        _movieSrcBound = url;
-        _playingMergeClips = CutPlayMerge.CoveredClipCount(
-            url, Compose.MoviePreviewUrl, _prefixClipCount, Folder.Clips.Count);
-        if (CutPlayClock.ShouldRebindPlayback(samePlayer))
-            await BindPlaybackAsync(MoviePlayer, PlaySurface.Movie, OnMovieTime, OnMovieEnded);
-        if (Js is not null)
-        {
             try
             {
-                await BindPlaySurfacesAsync();
-                await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, url, _playhead);
+                var seeked = await Js.InvokeAsync<JsResult>(PlayUrlAtJs, MoviePlayer, _movieSrcBound ?? url, _playhead);
+                if (seeked is not { Success: true })
+                    return false;
                 await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
                 await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
+                return true;
             }
             catch (JSException)
             {
-                // player may not be mounted yet
+                return false;
             }
         }
-    }
 
-    private bool ShouldReusePlayingMovie(bool samePlayer, string url)
-    {
-        if (!samePlayer)
-            return false;
-        if (string.Equals(_movieSrcBound, url, StringComparison.Ordinal))
+        try
+        {
+            await BindPlaySurfacesAsync();
+            var swapped = await Js.InvokeAsync<JsResult>(PlayUrlAtJs, MoviePlayer, url, seekSec);
+            if (swapped is not { Success: true })
+                return false;
+
+            _playMode = PlayMode.Movie;
+            _nativeWindow = null;
+            _playhead = seekSec;
+            _movieSrcBound = url;
+            _mergeHasFrame = true;
+            _playingMergeClips = CutPlayMerge.CoveredClipCount(
+                url, Compose.MoviePreviewUrl, _prefixClipCount, Folder.Clips.Count);
+            if (CutPlayClock.ShouldRebindPlayback(_boundSurface == PlaySurface.Movie))
+                await BindPlaybackAsync(MoviePlayer, PlaySurface.Movie, OnMovieTime, OnMovieEnded);
+            await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
+            await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
             return true;
-        return !CutPlayClock.ShouldReplaceMergeSrcWhilePlaying
-            && _playhead < CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips) - 0.05;
+        }
+        catch (JSException)
+        {
+            return false;
+        }
     }
 
     private async Task EnterWaitAsync()
@@ -629,21 +629,46 @@ public partial class Home : IAsyncDisposable
     {
         if (!_wantPlay)
             return;
-        var covered = CutPlayMerge.CoveredClipCount(
-            _movieSrcBound, Compose.MoviePreviewUrl, _playingMergeClips, Folder.Clips.Count);
-        if (!CutPlayMerge.TryWaitEdgeAfterPrefixEnded(Folder.Clips, covered, out var edge)
-            || CutPlayClock.ShouldContinuePlayOnPrefixEnded)
+        if (ShouldStopAfterMovieEnded())
         {
-            _wantPlay = false;
-            _playMode = PlayMode.Idle;
-            _ = InvokeAsync(StateHasChanged);
+            StopAfterEnded();
             return;
         }
 
-        // S01 prefix EOF is not Stop and must not ContinuePlay (that seeks
-        // back to a stale playhead and loops the last hops of the scene).
-        _playhead = edge;
-        _ = EnterWaitAsync();
+        if (ShouldResumeAfterMovieEnded())
+        {
+            _ = ContinuePlayAsync(_playhead);
+            return;
+        }
+
+        if (CutPlayMerge.TryWaitEdgeAfterPrefixEnded(
+                Folder.Clips, _playingMergeClips, _playhead, out var edge))
+        {
+            _playhead = edge;
+            _ = EnterWaitAsync();
+            return;
+        }
+
+        StopAfterEnded();
+    }
+
+    private bool ShouldStopAfterMovieEnded() =>
+        CutPlayMerge.EndedIsStop(_playhead, CutJitPlay.TotalSec(Folder.Clips))
+        || CutPlayClock.ShouldContinuePlayOnPrefixEnded;
+
+    private bool ShouldResumeAfterMovieEnded()
+    {
+        var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
+        return CutPlayMerge.ShouldRetryMergeSwap(_wantPlay, _mergeHasFrame, playUrl)
+            || CutPlayMerge.ShouldPlayMerge(
+                playUrl, Folder.Clips, _prefixClipCount, _playhead, _firstStart);
+    }
+
+    private void StopAfterEnded()
+    {
+        _wantPlay = false;
+        _playMode = PlayMode.Idle;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task BindPlaybackAsync(
@@ -672,6 +697,7 @@ public partial class Home : IAsyncDisposable
         _playMode = PlayMode.Idle;
         _nativeWindow = null;
         _firstStart = null;
+        _mergeHasFrame = false;
         _playingMergeClips = 0;
         _boundSurface = PlaySurface.None;
         if (!CutPlayClock.ShouldResetPlayheadOnStop)
@@ -778,6 +804,7 @@ public partial class Home : IAsyncDisposable
         _prefixUrl = null;
         _prefixClipCount = 0;
         _playingMergeClips = 0;
+        _mergeHasFrame = false;
     }
 
     private async Task SkipStartAsync() => await OnPlayheadAsync(0);
