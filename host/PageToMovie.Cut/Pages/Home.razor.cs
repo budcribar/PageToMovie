@@ -51,7 +51,7 @@ public partial class Home : IAsyncDisposable
     internal bool TransportLocked => _folderBusy || _exporting;
 
     internal bool ShowComposeOverlay =>
-        _playMode == PlayMode.Waiting
+        CutPlayClock.ShouldShowPlayComposeOverlay(_playMode == PlayMode.Waiting, _composing)
         || (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage));
 
     internal bool ShowMovie =>
@@ -254,18 +254,36 @@ public partial class Home : IAsyncDisposable
         await PaintPlayVisualsAsync();
     }
 
-    private void OnTimelineEdited()
+    private async Task OnTimelineEdited()
     {
+        if (_wantPlay)
+            await SyncPlayheadFromPlayerAsync();
+        var playhead = CutPlayMerge.PlayheadAfterJoinChange(Folder.Clips, _playhead);
         ForgetPreview();
         SavedNote = null;
         _needTextCues = true;
         if (_selected?.SelectedTake is { } take)
             _ = CaptureFilmstripAsync(take);
+        _playhead = playhead;
+        if (Js is not null)
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("PageToMovieCut.holdPlayhead", _playhead);
+            }
+            catch (JSException)
+            {
+                // needle stays at the last painted time
+            }
+        }
+
         if (!_wantPlay)
             return;
         _firstStart = CutJitPlay.At(Folder.Clips, _playhead);
         StartJitCompose();
-        _ = ContinuePlayAsync(_playhead);
+        await ContinuePlayAsync(_playhead);
+        if (CutPlayClock.ShouldRenderAfterComposeSettles)
+            await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnAudioAsync(InputFileChangeEventArgs e)
@@ -320,7 +338,7 @@ public partial class Home : IAsyncDisposable
         }
         if (!CutSplit.TryAt(Folder.Clips, _playhead, out _))
             return;
-        OnTimelineEdited();
+        await OnTimelineEdited();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -367,7 +385,7 @@ public partial class Home : IAsyncDisposable
                 ReportProgress,
                 (url, count) =>
                 {
-                    if (cts.IsCancellationRequested || gen != _playGen)
+                    if (cts.IsCancellationRequested || !CutPlayMerge.AcceptPrefix(gen, _playGen))
                         return;
                     _prefixUrl = url;
                     _prefixClipCount = count;
@@ -378,22 +396,23 @@ public partial class Home : IAsyncDisposable
                 },
                 cts.Token,
                 Folder.TextClips);
-            if (cts.IsCancellationRequested || gen != _playGen)
+            if (cts.IsCancellationRequested || !CutPlayMerge.ComposeRunOwnsFlag(gen, _playGen))
                 return;
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;
-            _composing = false;
-            ProgressMessage = "Playing";
-            if (ShouldHandOffToMerge())
+            FinishComposeRun(gen);
+            if (_wantPlay)
                 await ContinuePlayAsync(_playhead);
+            if (CutPlayClock.ShouldRenderAfterComposeSettles)
+                await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException)
         {
-            _composing = false;
+            FinishComposeRun(gen);
         }
         catch (Exception ex)
         {
-            _composing = false;
+            FinishComposeRun(gen);
             _error = ex.Message;
             if (_playMode == PlayMode.Waiting)
                 _playMode = PlayMode.Idle;
@@ -722,12 +741,31 @@ public partial class Home : IAsyncDisposable
         CutMusic? music) =>
         CutPlayMerge.Fingerprint(clips, texts, audioFileName, music);
 
+    private void FinishComposeRun(int gen)
+    {
+        if (!CutPlayMerge.ComposeRunOwnsFlag(gen, _playGen))
+            return;
+        _composing = false;
+        if (!CutPlayMerge.ShouldClearProgressWhenComposeEnds || _exporting)
+            return;
+        ProgressPercent = 0;
+        if (_playMode != PlayMode.Waiting)
+            ProgressMessage = null;
+    }
+
     private void CancelCompose()
     {
         _composeCts?.Cancel();
         _composeCts?.Dispose();
         _composeCts = null;
         _composing = false;
+        if (!_exporting && CutPlayMerge.ShouldClearProgressWhenComposeEnds)
+        {
+            ProgressPercent = 0;
+            if (_playMode != PlayMode.Waiting)
+                ProgressMessage = null;
+        }
+
         _ = Compose.AbortAsync();
     }
 

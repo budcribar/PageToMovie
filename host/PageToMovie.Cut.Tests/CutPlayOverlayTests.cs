@@ -53,6 +53,19 @@ public class CutPlayOverlayTests
     }
 
     [Fact]
+    public void Cut_to_black_does_not_invent_a_scene_card_cue()
+    {
+        var a = NewClip(1, 1, 6);
+        var b = NewClip(2, 1, 6);
+        a.JoinOverride = CutJoinKind.CutToBlack;
+
+        Assert.Empty(CutPlayOverlay.Cues([a, b], []));
+        Assert.Null(CutPlayOverlay.ActiveAt([], 6));
+        Assert.False(b.Card.Enabled);
+        Assert.False(CutComposeContract.JoinIsSceneCard(CutJoinKind.CutToBlack));
+    }
+
+    [Fact]
     public void Fade_opacity_eases_in_and_out()
     {
         var cue = new CutPlayOverlayCue

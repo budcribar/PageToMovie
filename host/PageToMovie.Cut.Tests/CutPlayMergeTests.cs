@@ -123,6 +123,35 @@ public class CutPlayMergeTests
     }
 
     [Fact]
+    public void Join_change_keeps_the_playhead_and_does_not_loop_a_stale_prefix()
+    {
+        var a = NewClip(1, 1, 10);
+        var b = NewClip(2, 1, 10);
+        var c = NewClip(2, 2, 10);
+        var clips = new[] { a, b, c };
+        const double midScene = 15;
+        a.JoinOverride = CutJoinKind.Dissolve;
+        var before = CutPlayMerge.PlayheadAfterJoinChange(clips, midScene);
+        a.JoinOverride = CutJoinKind.FadeWhite;
+
+        Assert.False(CutPlayMerge.ShouldResetPlayheadOnJoinChange);
+        Assert.False(CutPlayClock.ShouldResetPlayheadOnJoinChange);
+        Assert.False(CutPlayMerge.ShouldSeekToSceneStartOnJoinChange);
+        Assert.Equal(midScene, before, 5);
+        Assert.Equal(midScene, CutPlayMerge.PlayheadAfterJoinChange(clips, midScene), 5);
+        Assert.NotEqual(CutJitPlay.SceneStartSec(clips, midScene), CutPlayMerge.PlayheadAfterJoinChange(clips, midScene));
+        Assert.False(CutPlayMerge.ShouldLoopPrefixWhileRebuilding);
+        Assert.False(CutPlayMerge.AcceptPrefix(prefixGen: 1, playGen: 2));
+        Assert.True(CutPlayMerge.AcceptPrefix(2, 2));
+        Assert.False(CutPlayMerge.ComposeRunOwnsFlag(1, 2));
+        Assert.True(CutPlayMerge.ShouldClearProgressWhenComposeEnds);
+        Assert.True(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true));
+        Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: false));
+        Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: false, composing: true));
+        Assert.True(CutPlayClock.ShouldRenderAfterComposeSettles);
+    }
+
+    [Fact]
     public void Stop_and_scrub_keep_the_playhead_where_it_is()
     {
         var a = NewClip(1, 1, 10);

@@ -219,6 +219,7 @@ public sealed class CutComposeService : IAsyncDisposable
         {
             var c = clips[i];
             var next = i + 1 < clips.Count ? clips[i + 1] : null;
+            var join = next is null ? CutJoinKind.Cut : c.JoinToNext(next);
             var windows = c.KeepWindows();
             payload.Add(new JsExportClip
             {
@@ -229,7 +230,8 @@ public sealed class CutComposeService : IAsyncDisposable
                 MarkOut = c.HasDuration ? c.MarkOut : 0,
                 Duration = c.DurationSec,
                 Windows = windows.Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
-                JoinOut = next is null ? "cut" : CutTransitionMap.WireName(c.JoinToNext(next)),
+                JoinOut = next is null ? "cut" : CutTransitionMap.WireName(join),
+                JoinHold = next is null ? 0 : CutComposeContract.HoldSeconds(join),
                 Card = CardPayload(c, clips),
             });
         }

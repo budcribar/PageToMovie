@@ -25,6 +25,8 @@ public static class CutPlayClock
 
     public static bool ShouldResetPlayheadOnStop => CutPlayMerge.ShouldResetPlayheadOnStop;
 
+    public static bool ShouldResetPlayheadOnJoinChange => CutPlayMerge.ShouldResetPlayheadOnJoinChange;
+
     public static bool ShouldSnapPlayheadOnScrubEnd => CutPlayMerge.ShouldSnapPlayheadOnScrubEnd;
 
     /// <summary>
@@ -44,6 +46,15 @@ public static class CutPlayClock
         waiting || !playing;
 
     public static bool ShouldRenderOnProgress(bool overlayVisible) => overlayVisible;
+
+    /// <summary>
+    /// Play overlay is only while a rebuild is actually in flight.
+    /// Finished compose must not leave "Playing 100%" stuck on screen.
+    /// </summary>
+    public static bool ShouldShowPlayComposeOverlay(bool waiting, bool composing) =>
+        waiting && composing;
+
+    public static bool ShouldRenderAfterComposeSettles => true;
 
     public static bool BlazorOwnsVideoSrc(bool isPlaying) => !isPlaying;
 

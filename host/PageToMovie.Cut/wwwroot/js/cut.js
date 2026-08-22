@@ -33,6 +33,9 @@
         _textCues: [],
     };
 
+    /** Matches CutComposeContract.CutToBlackHoldSeconds — black hold, not a card. */
+    const CUT_TO_BLACK_HOLD_SEC = 0.4;
+
     function messageOf(err, fallback) {
         return err?.message || fallback;
     }
@@ -277,7 +280,9 @@
         } else {
             ctx.clearRect(0, 0, 1280, 720);
         }
-        const label = String(text || "");
+        const label = String(text || "").trim();
+        if (!label)
+            return;
         ctx.font = style.fontPx + "px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -296,8 +301,12 @@
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext("2d");
-        drawStyledText(ctx, text || "Scene", textStyle(style), "black");
+        drawStyledText(ctx, text, textStyle(style), "black");
         return canvas.toDataURL("image/png");
+    }
+
+    function blackPngUrl() {
+        return cardPngUrl("", null);
     }
 
     function overlayPngUrl(text, style) {
@@ -490,12 +499,13 @@
         });
     }
 
-    async function joinPairAsync(api, leftUrl, rightUrl, kind, onProgress) {
+    async function joinPairAsync(api, leftUrl, rightUrl, kind, onProgress, holdSec) {
         const k = String(kind || "cut").toLowerCase();
         if (k === "cuttoblack") {
-            const hold = await stillVideoAsync(cardPngUrl(""), 0.4, onProgress);
-            if (!hold.success) return concatPinned(api, [leftUrl, rightUrl], onProgress);
-            const mid = await concatPinned(api, [leftUrl, hold.url], onProgress);
+            const hold = Math.max(0.3, Number(holdSec) || CUT_TO_BLACK_HOLD_SEC);
+            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress);
+            if (!black.success) return concatPinned(api, [leftUrl, rightUrl], onProgress);
+            const mid = await concatPinned(api, [leftUrl, black.url], onProgress);
             if (!mid.success) return mid;
             return concatPinned(api, [mid.url, rightUrl], onProgress);
         }
@@ -1373,6 +1383,7 @@
             const usedSources = [];
             let acc = null;
             let pendingJoin = "cut";
+            let pendingHold = 0;
             let sourceCount = 0;
             for (let i = 0; i < clips.length; i++) {
                 if (composeStopped())
@@ -1387,11 +1398,12 @@
                     if (!acc)
                         acc = card.url;
                     else {
-                        const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress);
+                        const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress, pendingHold);
                         if (!joined.success) return joined;
                         acc = joined.url;
                     }
                     pendingJoin = "dip";
+                    pendingHold = 0;
                 }
                 const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
                 if (one.error)
@@ -1407,11 +1419,12 @@
                     acc = one.url;
                 else {
                     // Hard cut ("cut") is concat with no xfade — keeps native audio.
-                    const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress);
+                    const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress, pendingHold);
                     if (!joined.success) return joined;
                     acc = joined.url;
                 }
                 pendingJoin = c.joinOut || "cut";
+                pendingHold = Number(c.joinHold) || 0;
                 sourceCount++;
                 if (jit) {
                     keepPrefixUrl(acc);

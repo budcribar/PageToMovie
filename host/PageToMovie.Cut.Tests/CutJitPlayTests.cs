@@ -93,6 +93,20 @@ public class CutJitPlayTests
     }
 
     [Fact]
+    public void Cut_to_black_waits_for_the_stitched_join()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(2, 1, duration: 4);
+        a.JoinOverride = CutJoinKind.CutToBlack;
+        var clips = new[] { a, b };
+
+        Assert.False(CutJitPlay.IsHardPlayJoin(clips, 0));
+        Assert.Equal(4, CutJitPlay.NativeReachableThrough(clips));
+        Assert.True(CutJitPlay.NeedsWait(4, CutJitPlay.ReadyThroughSec(clips, 0), CutJitPlay.TotalSec(clips)));
+        Assert.False(CutJitPlay.NeedsWait(4, CutJitPlay.ReadyThroughSec(clips, 2), CutJitPlay.TotalSec(clips)));
+    }
+
+    [Fact]
     public void Incoming_scene_card_blocks_native_join()
     {
         var a = NewClip(1, 1, duration: 4);

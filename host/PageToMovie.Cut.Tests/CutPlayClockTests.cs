@@ -26,6 +26,7 @@ public class CutPlayClockTests
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: false, waiting: true));
         Assert.False(CutPlayClock.ShouldContinuePlayOnPrefixEnded);
         Assert.False(CutPlayClock.ShouldResetPlayheadOnStop);
+        Assert.False(CutPlayClock.ShouldResetPlayheadOnJoinChange);
         Assert.False(CutPlayClock.ShouldSnapPlayheadOnScrubEnd);
         Assert.False(CutPlayClock.ShouldPaintPlayheadWhilePaused);
         Assert.False(CutPlayClock.ShouldRestartNativeOnPrefixGrow);
@@ -36,6 +37,9 @@ public class CutPlayClockTests
         Assert.True(CutPlayClock.ShouldRenderOnPrefix(waiting: false, playing: false));
         Assert.False(CutPlayClock.ShouldRenderOnProgress(overlayVisible: false));
         Assert.True(CutPlayClock.ShouldRenderOnProgress(overlayVisible: true));
+        Assert.True(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true));
+        Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: false));
+        Assert.True(CutPlayClock.ShouldRenderAfterComposeSettles);
     }
 
     [Fact]
