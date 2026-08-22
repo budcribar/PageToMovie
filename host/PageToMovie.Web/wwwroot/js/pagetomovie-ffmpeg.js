@@ -80,7 +80,8 @@ window.PageToMovieFfmpeg = {
 
     /** Load local ffmpeg assets from same-origin /js/ffmpeg/. */
     ensureLoadedAsync: async function (onProgress) {
-        this._onProgress = typeof onProgress === "function" ? onProgress : null;
+        if (typeof onProgress === "function")
+            this._onProgress = onProgress;
         if (this._loaded && this._ffmpeg) return { success: true };
         if (this._loading) return this._loading;
         this._loading = (async () => {
