@@ -573,6 +573,7 @@ public partial class Home : IAsyncDisposable
         _composeCts?.Dispose();
         _composeCts = null;
         _composing = false;
+        _ = Compose.AbortAsync();
     }
 
     private void ForgetPreview()

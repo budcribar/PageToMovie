@@ -15,6 +15,7 @@ public sealed class CutComposeService : IAsyncDisposable
     internal const long MaxAudioUploadBytes = 8_388_608;
 
     private readonly IJSRuntime _js;
+    private int _composeGen;
     private string? _audioUrl;
     public string? MoviePreviewUrl { get; private set; }
     public string? PrefixPreviewUrl { get; private set; }
@@ -122,6 +123,16 @@ public sealed class CutComposeService : IAsyncDisposable
         PrefixClipCount = 0;
     }
 
+    /// <summary>
+    /// Stop in-flight preview/JIT so Stop / second Play does not call a
+    /// disposed progress sink or revoke blobs ffmpeg still holds.
+    /// </summary>
+    public Task AbortAsync()
+    {
+        Interlocked.Increment(ref _composeGen);
+        return AbortComposeJsAsync();
+    }
+
     private async Task<string?> ComposeAsync(
         IReadOnlyList<CutClip> clips,
         bool download,
@@ -215,10 +226,37 @@ public sealed class CutComposeService : IAsyncDisposable
         List<JsExportClip> payload,
         T sink,
         CancellationToken cancellationToken)
-        where T : class
+        where T : class, IDisposable
     {
-        using var sinkRef = DotNetObjectReference.Create(sink);
-        return await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
+        var gen = Interlocked.Increment(ref _composeGen);
+        var sinkRef = DotNetObjectReference.Create(sink);
+        try
+        {
+            return await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
+        }
+        catch (OperationCanceledException)
+        {
+            if (gen == Volatile.Read(ref _composeGen))
+                await AbortComposeJsAsync();
+            throw;
+        }
+        finally
+        {
+            sink.Dispose();
+            sinkRef.Dispose();
+        }
+    }
+
+    private async Task AbortComposeJsAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("PageToMovieCut.abortCompose");
+        }
+        catch (JSException)
+        {
+            // Circuit or helper may already be gone.
+        }
     }
 
     private static JsCard? CardPayload(CutClip clip, IReadOnlyList<CutClip> strip)
@@ -246,6 +284,7 @@ public sealed class CutComposeService : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         MoviePreviewUrl = null;
+        await AbortAsync();
         await ClearAudioAsync();
     }
 }

@@ -127,14 +127,26 @@ public sealed class JsTextStyle
     public double FadeSec { get; set; }
 }
 
-public sealed class ExportProgressSink
+public sealed class ExportProgressSink : IDisposable
 {
-    private readonly Action<int, string> _report;
+    private Action<int, string>? _report;
 
     public ExportProgressSink(Action<int, string> report) => _report = report;
 
     [JSInvokable]
-    public void Report(int percent, string? message) => _report(percent, message ?? "");
+    public void Report(int percent, string? message)
+    {
+        try
+        {
+            _report?.Invoke(percent, message ?? "");
+        }
+        catch (ObjectDisposedException)
+        {
+            // Page or circuit gone — progress is optional.
+        }
+    }
+
+    public void Dispose() => _report = null;
 }
 
 public sealed class MediaTimeSink
@@ -155,10 +167,10 @@ public sealed class MediaTimeSink
     public void OnEnded() => _ended?.Invoke();
 }
 
-public sealed class JitPreviewSink
+public sealed class JitPreviewSink : IDisposable
 {
-    private readonly Action<int, string> _report;
-    private readonly Action<string, int> _prefix;
+    private Action<int, string>? _report;
+    private Action<string, int>? _prefix;
 
     public JitPreviewSink(Action<int, string> report, Action<string, int> prefix)
     {
@@ -167,13 +179,37 @@ public sealed class JitPreviewSink
     }
 
     [JSInvokable]
-    public void Report(int percent, string? message) => _report(percent, message ?? "");
+    public void Report(int percent, string? message)
+    {
+        try
+        {
+            _report?.Invoke(percent, message ?? "");
+        }
+        catch (ObjectDisposedException)
+        {
+            // Page or circuit gone — progress is optional.
+        }
+    }
 
     [JSInvokable]
     public void OnPrefix(string? url, int clipCount)
     {
-        if (!string.IsNullOrWhiteSpace(url))
-            _prefix(url, clipCount);
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+        try
+        {
+            _prefix?.Invoke(url, clipCount);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Page or circuit gone — prefix is optional.
+        }
+    }
+
+    public void Dispose()
+    {
+        _report = null;
+        _prefix = null;
     }
 }
 
