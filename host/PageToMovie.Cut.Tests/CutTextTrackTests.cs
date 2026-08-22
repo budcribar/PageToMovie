@@ -135,6 +135,7 @@ public class CutTextTrackTests
 
         var payload = CutComposeService.BuildExportPayload([a, b], titles);
         Assert.Empty(payload[0].Texts);
+        Assert.Equal(0, payload[0].JoinHold);
         var wired = Assert.Single(payload[1].Texts);
         Assert.Equal("Hello", wired.Text);
         Assert.Equal(1.5, wired.Start, 5);
@@ -143,6 +144,33 @@ public class CutTextTrackTests
         Assert.Equal(360, wired.Style.Y);
         Assert.False(wired.Style.Bar);
         Assert.Equal(0, wired.Style.FadeSec);
+    }
+
+    [Fact]
+    public void Cut_to_black_wires_a_black_hold_and_no_card()
+    {
+        var a = NewClip(1, 1, 5);
+        var b = NewClip(2, 1, 5);
+        a.JoinOverride = CutJoinKind.CutToBlack;
+
+        Assert.Empty(CutTextTrack.Build([a, b], [], pxPerSec: 10));
+        var payload = CutComposeService.BuildExportPayload([a, b]);
+        Assert.Equal("cuttoblack", payload[0].JoinOut);
+        Assert.Equal(CutComposeContract.CutToBlackHoldSeconds, payload[0].JoinHold);
+        Assert.Null(payload[0].Card);
+        Assert.Null(payload[1].Card);
+        Assert.Equal("cut", payload[1].JoinOut);
+        Assert.Equal(0, payload[1].JoinHold);
+
+        b.Card.Enabled = true;
+        b.Card.Text = "Chapter 2";
+        var withCard = CutComposeService.BuildExportPayload([a, b]);
+        Assert.Equal("cuttoblack", withCard[0].JoinOut);
+        Assert.NotNull(withCard[1].Card);
+        Assert.Equal("Chapter 2", withCard[1].Card!.Text);
+        var cardBlock = Assert.Single(CutTextTrack.Build([a, b], [], pxPerSec: 10));
+        Assert.Equal(CutTextKind.SceneCard, cardBlock.Kind);
+        Assert.Equal("Chapter 2", cardBlock.Text);
     }
 
     [Fact]

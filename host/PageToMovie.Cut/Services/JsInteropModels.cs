@@ -81,6 +81,9 @@ public sealed class JsExportClip
     [JsonPropertyName("joinOut")]
     public string JoinOut { get; set; } = "cut";
 
+    [JsonPropertyName("joinHold")]
+    public double JoinHold { get; set; }
+
     [JsonPropertyName("card")]
     public JsCard? Card { get; set; }
 

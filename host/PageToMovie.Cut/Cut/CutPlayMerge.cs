@@ -110,6 +110,31 @@ public static class CutPlayMerge
 
     public static double PlayheadAfterStop(double playhead) => Math.Max(0, playhead);
 
+    /// <summary>
+    /// Changing Dissolve / Fade to white / Dip / Cut-to-black / Cut
+    /// rebuilds the merge. The needle stays put — not scene start, not 0.
+    /// </summary>
+    public static bool ShouldResetPlayheadOnJoinChange => false;
+
+    public static bool ShouldSeekToSceneStartOnJoinChange => false;
+
+    public static double PlayheadAfterJoinChange(IReadOnlyList<CutClip> clips, double playhead) =>
+        PlaySeekSec(clips, playhead);
+
+    /// <summary>
+    /// A stale JIT prefix must not resume Play or replace the playing
+    /// file after a newer rebuild has started.
+    /// </summary>
+    public static bool ShouldLoopPrefixWhileRebuilding => false;
+
+    public static bool AcceptPrefix(int prefixGen, int playGen) =>
+        prefixGen == playGen;
+
+    public static bool ComposeRunOwnsFlag(int runGen, int playGen) =>
+        runGen == playGen;
+
+    public static bool ShouldClearProgressWhenComposeEnds => true;
+
     /// <summary>Mouseup/touchend keeps the drop time — not the prior playhead, scene start, or 0.</summary>
     public static bool ShouldSnapPlayheadOnScrubEnd => false;
 

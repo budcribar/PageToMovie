@@ -217,6 +217,13 @@ public class CutTimelineLayoutTests
         layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
         Assert.Equal(CutJoinKind.FadeWhite, Assert.Single(layout.Joins).Kind);
         Assert.Equal("Fade to white", CutTransitionMap.TickLabel(layout.Joins[0].Kind));
+
+        b.JoinOverride = CutJoinKind.CutToBlack;
+        layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
+        var black = Assert.Single(layout.Joins);
+        Assert.Equal(CutJoinKind.CutToBlack, black.Kind);
+        Assert.Equal(8, black.AtSec);
+        Assert.Equal(layout.Scenes[1].StartSec, black.AtSec);
     }
 
     [Fact]
