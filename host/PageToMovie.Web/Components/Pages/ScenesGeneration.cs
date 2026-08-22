@@ -618,16 +618,26 @@ public partial class Scenes
         {
             var dto = await S.Engine.GetScenesAsync(S._projectId);
             S.List._scenes = dto?.Scenes ?? new List<SceneSummary>();
+            S.List._selected.RemoveWhere(sn => S.List._scenes.All(s => s.SceneNumber != sn));
+            S.List.ReconcileSelectedSceneWithList();
             await ReconcileJobWithServerAsync();
             await RefreshMyJobsAsync();
             await S.List.RefreshCastGateAsync();
             await S.List.RefreshResolutionLockAsync();
-            if (S.List._selectedScene is int sn)
+            if (S.List._selectedScene is int sn && S.List._scenes.Any(s => s.SceneNumber == sn))
             {
-                var detail = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
-                S.List._detail = detail?.Scene;
-                if (S.ClipForm._selectedClip is int cn && S.List._detail is not null)
-                    S.ClipForm._clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
+                try
+                {
+                    var detail = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
+                    S.List._detail = detail?.Scene;
+                    if (S.ClipForm._selectedClip is int cn && S.List._detail is not null)
+                        S.ClipForm._clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
+                }
+                catch
+                {
+                    // Deleted/missing open scene — keep the refreshed list counts; drop stale detail.
+                    S.List._detail = null;
+                }
             }
         }
         catch { /* ignore soft reload errors */ }
