@@ -1,4 +1,9 @@
-<div class="cut-tl" data-testid="cut-timeline" tabindex="0" @onkeydown="OnKey">
+<div @ref="_root"
+     class="cut-tl"
+     data-testid="cut-timeline"
+     tabindex="0"
+     @onkeydown="OnKey"
+     @onkeydown:preventDefault="PreventTitleKey">
     <div class="cut-tl-transport">
         <button type="button" class="cut-tl-icon" title="Skip to start" disabled="@Busy" @onclick="OnSkipStart">⏮</button>
         <button type="button" class="cut-tl-icon" title="Back 5s" disabled="@Busy" @onclick="OnStepBack">⏪</button>
@@ -162,7 +167,9 @@
                              data-testid="cut-tl-text-clip"
                              title="@block.Text"
                              @onpointerdown:stopPropagation="true"
-                             @onpointerdown="() => SelectText(block)">
+                             @onpointerdown="() => SelectText(block)"
+                             @oncontextmenu:preventDefault="true"
+                             @oncontextmenu="e => OpenTitleMenu(e, block)">
                             @if (selected)
                             {
                                 <input class="cut-tl-text-label"
@@ -200,13 +207,32 @@
             <div class="cut-tl-audio" data-testid="cut-tl-audio">
                 @if (ShowMusic)
                 {
-                    <div class="cut-tl-music"
+                    <div class="cut-tl-music @(_musicSelected ? "is-selected" : "")"
                          style="left: @(MusicLeftPx)px; width: @(MusicWidthPx)px"
                          data-testid="cut-tl-music"
                          title="@MusicLabel"
                          @onpointerdown:stopPropagation="true"
-                         @onpointerdown="BeginMusicMoveAsync">
-                        <span class="cut-tl-music-name">@MusicLabel</span>
+                         @onpointerdown="BeginMusicMoveAsync"
+                         @oncontextmenu:preventDefault="true"
+                         @oncontextmenu="OpenMusicMenu">
+                        @if (_musicNameEditing)
+                        {
+                            <input class="cut-tl-music-name"
+                                   @ref="_musicNameInput"
+                                   value="@MusicLabel"
+                                   maxlength="80"
+                                   aria-label="Music name"
+                                   data-testid="cut-tl-music-label"
+                                   @onpointerdown:stopPropagation="true"
+                                   @onkeydown:stopPropagation="true"
+                                   @onfocus="() => _textFieldFocused = true"
+                                   @onblur="() => _textFieldFocused = false"
+                                   @onchange="SetMusicNameAsync" />
+                        }
+                        else
+                        {
+                            <span class="cut-tl-music-name">@MusicLabel</span>
+                        }
                         <button type="button"
                                 class="cut-tl-handle is-in"
                                 data-testid="cut-tl-music-handle-in"
@@ -217,6 +243,7 @@
                                 class="cut-tl-handle is-out"
                                 data-testid="cut-tl-music-handle-out"
                                 title="Trim music out"
+                                @ref="_musicOutHandle"
                                 @onpointerdown:stopPropagation="true"
                                 @onpointerdown="e => BeginMusicTrimAsync(e, false)"></button>
                     </div>
@@ -229,7 +256,32 @@
         </div>
     </div>
 
-    <CutTimeline_TextInspector Block="SelectedTextBlock" Busy="Busy" StyleChanged="OnEdited" OnDelete="DeleteSelectedTextAsync" />
+    <CutTimeline_TextInspector @ref="_inspector"
+                               Block="SelectedTextBlock"
+                               Busy="Busy"
+                               StyleChanged="OnEdited"
+                               DurationChanged="SetTextDurationAsync"
+                               OnDelete="DeleteSelectedTextAsync"
+                               FieldFocusChanged="OnInspectorFieldFocus" />
+
+    <CutTimeline_TextMenu Open="_menuOpen"
+                          X="_menuX"
+                          Y="_menuY"
+                          Busy="Busy"
+                          CanPaste="MenuCanPaste"
+                          CanSplit="MenuCanSplit"
+                          ShowDuplicate="_menuKind == CtxMenuKind.Title"
+                          ShowRename="_menuKind == CtxMenuKind.Music"
+                          HideSplitWhenDisabled="_menuKind == CtxMenuKind.Title"
+                          TestId="@(_menuKind == CtxMenuKind.Music ? "cut-music-menu" : "cut-text-menu")"
+                          OnDuplicate="DuplicateSelectedTitleAsync"
+                          OnCopy="OnMenuCopy"
+                          OnPaste="OnMenuPasteAsync"
+                          OnDelete="OnMenuDeleteAsync"
+                          OnSplit="OnMenuSplitAsync"
+                          OnEditDuration="OnMenuEditDurationAsync"
+                          OnRename="RenameMusicAsync"
+                          Close="CloseTitleMenu" />
 
     <div class="cut-tl-chrome">
         <div class="cut-tl-zoom" data-testid="cut-tl-zoom">

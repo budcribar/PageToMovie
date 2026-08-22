@@ -59,7 +59,7 @@
             throw new Error("Clip is missing.");
         let dir = root;
         for (const part of parts.slice(0, -1))
-            dir = await dir.getDirectoryHandle(part, { create: false });
+            dir = await dir.getDirectoryHandle(part, { create: !!create });
         return dir.getFileHandle(parts.at(-1), { create: !!create });
     }
 
@@ -493,7 +493,7 @@
      * Scene-change default is Dissolve. Mapping video only with `-an` strips VO
      * from the accumulator; later concat cannot bring it back.
      */
-    async function xfadeAsync(leftUrl, rightUrl, kind, onProgress) {
+    async function xfadeAsync(leftUrl, rightUrl, kind, onProgress, fadeSec) {
         const api = window.PageToMovieFfmpeg;
         const trans = xfadeName(kind);
         if (!api || !trans) return { success: false, error: "no xfade" };
@@ -513,7 +513,9 @@
                 await ffmpeg.writeFile(bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
-                const fade = Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
+                const fade = Number(fadeSec) > 0.05
+                    ? Number(fadeSec)
+                    : Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
                 const vgraph = "[0:v]scale=1280:720,setsar=1,format=yuv420p[v0];[1:v]scale=1280:720,setsar=1,format=yuv420p[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + ",format=yuv420p[v]";
@@ -1489,84 +1491,252 @@
         });
     };
 
-    async function composeWorkAsync(clips, audioUrl, dotNetRef, jit) {
+    function normalizeComposePlan(raw, jit) {
+        if (Array.isArray(raw))
+            return { clips: raw, scenes: [], joins: [], jit: !!jit };
+        const plan = raw || {};
+        return {
+            clips: plan.clips || [],
+            scenes: plan.scenes || [],
+            joins: plan.joins || [],
+            reuseMovieUrl: plan.reuseMovieUrl || "",
+            reusePictureUrl: plan.reusePictureUrl || "",
+            jit: !!jit,
+        };
+    }
+
+    function emptyComposeResult(url, pictureUrl) {
+        return {
+            success: true,
+            url: url,
+            pictureUrl: pictureUrl || url,
+            stitched: false,
+            owned: false,
+            scenes: [],
+            joins: [],
+            rebuiltScenes: [],
+            rebuiltJoins: [],
+        };
+    }
+
+    async function composeSceneClipsAsync(clips, scene, onProgress) {
+        const api = window.PageToMovieFfmpeg;
+        const first = Math.max(0, Number(scene.first) || 0);
+        const count = Math.max(0, Number(scene.count) || 0);
+        const slice = clips.slice(first, first + count);
+        if (slice.length === 0)
+            return { success: false, error: "Empty scene." };
+        let acc = null;
+        let pendingJoin = "cut";
+        let pendingHold = 0;
+        for (let i = 0; i < slice.length; i++) {
+            if (composeStopped())
+                return { success: false, error: "Stopped." };
+            const c = slice[i];
+            if (c.card && c.card.text) {
+                const look = textStyle(c.card.style);
+                const card = await stillVideoAsync(
+                    cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
+                if (!card.success)
+                    return { success: false, error: card.error || "Card failed." };
+                if (!acc)
+                    acc = card.url;
+                else {
+                    const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress, pendingHold);
+                    if (!joined.success) return joined;
+                    acc = joined.url;
+                }
+                pendingJoin = "dip";
+                pendingHold = 0;
+            }
+            const one = await prepareWindowsAsync(c, first + i, clips.length, onProgress);
+            if (one.error)
+                return { success: false, error: one.error };
+            if (c.texts && c.texts.length > 0) {
+                const over = await overlayTextsAsync(one.url, c.texts, onProgress);
+                if (!over.success)
+                    return { success: false, error: over.error || "Text overlay failed." };
+                one.url = over.url;
+            }
+            if (!acc)
+                acc = one.url;
+            else {
+                const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress, pendingHold);
+                if (!joined.success) return joined;
+                acc = joined.url;
+            }
+            pendingJoin = "cut";
+            pendingHold = 0;
+        }
+        return { success: true, url: acc };
+    }
+
+    async function trimBodyAsync(url, seconds, inFade, outFade, onProgress) {
+        const start = Math.max(0, Number(inFade) || 0);
+        const total = Number(seconds) || 0;
+        const end = Math.max(start + 0.1, total - (Number(outFade) || 0));
+        if (start <= 0.05 && (total <= 0 || total - end <= 0.05))
+            return { success: true, url: url };
+        return cut.trimRangeAsync(url, start, end, onProgress);
+    }
+
+    async function ensureJoinUrlAsync(join, left, right, onProgress) {
+        if (!join || !join.encodes)
+            return { success: true, url: "" };
+        if (join.url)
+            return { success: true, url: join.url, cached: true };
+        const kind = String(join.kind || "cut").toLowerCase();
+        if (kind === "cuttoblack") {
+            const hold = Math.max(0.3, Number(join.hold) || CUT_TO_BLACK_HOLD_SEC);
+            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress);
+            if (!black.success) return black;
+            join.url = black.url;
+            return { success: true, url: black.url };
+        }
+        if (!xfadeName(kind))
+            return { success: true, url: "" };
+        const fade = Math.max(CUT_XFADE_MIN_SEC, Number(join.fade) || CUT_XFADE_SEC);
+        const leftSec = Number(left.seconds) || 0;
+        const tailStart = Math.max(0, leftSec - fade);
+        const leftTail = await cut.trimRangeAsync(left.url, tailStart, leftSec > 0 ? leftSec : tailStart + fade, onProgress);
+        if (!leftTail.success) return leftTail;
+        const rightHead = await cut.trimRangeAsync(right.url, 0, fade, onProgress);
+        if (!rightHead.success) return rightHead;
+        const faded = await xfadeAsync(leftTail.url, rightHead.url, kind, onProgress, fade);
+        if (!faded.success) return faded;
+        join.url = faded.url;
+        return faded;
+    }
+
+    async function stitchScenesAsync(api, sceneUrls, joins, onProgress) {
+        const pieces = [];
+        for (let i = 0; i < sceneUrls.length; i++) {
+            const join = i < joins.length ? joins[i] : null;
+            const prev = i > 0 ? joins[i - 1] : null;
+            const inFade = prev && xfadeName(prev.kind) ? Number(prev.fade) || 0 : 0;
+            const outFade = join && xfadeName(join.kind) ? Number(join.fade) || 0 : 0;
+            const body = await trimBodyAsync(sceneUrls[i].url, sceneUrls[i].seconds, inFade, outFade, onProgress);
+            if (!body.success) return body;
+            pieces.push(body.url);
+            if (!join || !join.encodes)
+                continue;
+            const next = sceneUrls[i + 1];
+            if (!next)
+                continue;
+            const made = await ensureJoinUrlAsync(join, sceneUrls[i], next, onProgress);
+            if (!made.success) return made;
+            if (made.url)
+                pieces.push(made.url);
+        }
+        onProgress?.(55, "Combining clips…");
+        return concatPinned(api, pieces, onProgress);
+    }
+
+    async function composeWorkAsync(clipsOrPlan, audioUrl, dotNetRef, jit) {
         cut._aborted = false;
         const onProgress = asProgress(dotNetRef);
         try {
             const api = window.PageToMovieFfmpeg;
             if (!api) return { success: false, error: "ffmpeg helper missing" };
+            const plan = normalizeComposePlan(clipsOrPlan, jit);
+            const clips = plan.clips;
             if (!clips || clips.length === 0)
                 return { success: false, error: "No clips to export." };
+            if (plan.reuseMovieUrl)
+                return emptyComposeResult(plan.reuseMovieUrl, plan.reusePictureUrl || plan.reuseMovieUrl);
 
             const spec = musicSpec(audioUrl);
-            const sourceUrls = (clips || []).map(function (c) { return c && c.url; }).filter(Boolean);
+            const sourceUrls = clips.map(function (c) { return c && c.url; }).filter(Boolean);
             if (spec)
                 sourceUrls.push(spec.url);
+            if (plan.reusePictureUrl)
+                sourceUrls.push(plan.reusePictureUrl);
+            plan.scenes.forEach(function (s) { if (s && s.url) sourceUrls.push(s.url); });
+            plan.joins.forEach(function (j) { if (j && j.url) sourceUrls.push(j.url); });
 
             return await withPinnedUrls(sourceUrls, async function () {
-            const usedSources = [];
-            let acc = null;
-            let pendingJoin = "cut";
-            let pendingHold = 0;
-            let sourceCount = 0;
-            for (let i = 0; i < clips.length; i++) {
+                const rebuiltScenes = [];
+                const rebuiltJoins = [];
+                const sceneUrls = [];
+                const scenes = plan.scenes.length > 0
+                    ? plan.scenes
+                    : [{ scene: 1, first: 0, count: clips.length, seconds: 0, url: "" }];
+
+                for (let i = 0; i < scenes.length; i++) {
+                    if (composeStopped())
+                        return { success: false, error: "Stopped." };
+                    const scene = scenes[i];
+                    if (scene.url) {
+                        sceneUrls.push({ id: scene.scene, url: scene.url, seconds: scene.seconds });
+                        continue;
+                    }
+                    onProgress?.(Math.round((i / Math.max(scenes.length, 1)) * 40), "Preparing scene…");
+                    const built = await composeSceneClipsAsync(clips, scene, onProgress);
+                    if (!built.success)
+                        return built;
+                    sceneUrls.push({ id: scene.scene, url: built.url, seconds: scene.seconds });
+                    rebuiltScenes.push(scene.scene);
+                }
+
+                if (plan.jit) {
+                    let firstDirty = scenes.length;
+                    for (let i = 0; i < scenes.length; i++) {
+                        if (!scenes[i].url) {
+                            firstDirty = i;
+                            break;
+                        }
+                    }
+                    if (firstDirty > 0) {
+                        const lead = await stitchScenesAsync(api, sceneUrls.slice(0, firstDirty), plan.joins.slice(0, firstDirty), onProgress);
+                        if (lead.success) {
+                            let covered = 0;
+                            for (let i = 0; i < firstDirty; i++)
+                                covered += Number(scenes[i].count) || 0;
+                            keepPrefixUrl(lead.url);
+                            emitPrefix(dotNetRef, lead.url, covered);
+                        }
+                    }
+                }
+
                 if (composeStopped())
                     return { success: false, error: "Stopped." };
-                const c = clips[i];
-                if (c.card?.text) {
-                    const look = textStyle(c.card.style);
-                    const card = await stillVideoAsync(
-                        cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
-                    if (!card.success)
-                        return { success: false, error: card.error || "Card failed." };
-                    if (!acc)
-                        acc = card.url;
-                    else {
-                        const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress, pendingHold);
-                        if (!joined.success) return joined;
-                        acc = joined.url;
-                    }
-                    pendingJoin = "dip";
-                    pendingHold = 0;
-                }
-                const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
-                if (one.error)
-                    return { success: false, error: one.error };
-                if (c.texts && c.texts.length > 0) {
-                    const over = await overlayTextsAsync(one.url, c.texts, onProgress);
-                    if (!over.success)
-                        return { success: false, error: over.error || "Text overlay failed." };
-                    one.url = over.url;
-                }
-                usedSources.push(one.source);
-                if (!acc)
-                    acc = one.url;
-                else {
-                    // Hard cut ("cut") is concat with no xfade — keeps native audio.
-                    const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress, pendingHold);
-                    if (!joined.success) return joined;
-                    acc = joined.url;
-                }
-                pendingJoin = c.joinOut || "cut";
-                pendingHold = Number(c.joinHold) || 0;
-                sourceCount++;
-                if (jit) {
-                    keepPrefixUrl(acc);
-                    emitPrefix(dotNetRef, acc, sourceCount);
-                }
-            }
 
-            if (composeStopped())
-                return { success: false, error: "Stopped." };
-            onProgress?.(55, "Combining clips…");
-            const mixed = await mixOptionalAudio(api, acc, audioUrl, onProgress);
-            if (!mixed.success) return mixed;
-            noteResult(mixed);
+                const cachedJoins = {};
+                plan.joins.forEach(function (j) {
+                    if (j && j.encodes && j.url)
+                        cachedJoins[j.from] = true;
+                });
+                let picture;
+                const joinsDirty = plan.joins.some(function (j) { return j && j.encodes && !j.url; });
+                if (plan.reusePictureUrl && rebuiltScenes.length === 0 && !joinsDirty) {
+                    picture = { success: true, url: plan.reusePictureUrl };
+                } else {
+                    picture = await stitchScenesAsync(api, sceneUrls, plan.joins, onProgress);
+                    if (!picture.success) return picture;
+                    plan.joins.forEach(function (j) {
+                        if (j && j.encodes && j.url && !cachedJoins[j.from])
+                            rebuiltJoins.push(j.from);
+                    });
+                }
 
-            onProgress?.(100, "Ready");
-            if (jit)
-                emitPrefix(dotNetRef, mixed.url, sourceCount);
-            return { success: true, url: mixed.url, owned: usedSources.indexOf(mixed.url) < 0 };
+                const mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress);
+                if (!mixed.success) return mixed;
+                noteResult(mixed);
+                onProgress?.(100, "Ready");
+                if (plan.jit)
+                    emitPrefix(dotNetRef, mixed.url, clips.length);
+                return {
+                    success: true,
+                    url: mixed.url,
+                    pictureUrl: picture.url,
+                    stitched: true,
+                    owned: true,
+                    scenes: sceneUrls.map(function (s) { return { id: s.id, url: s.url }; }),
+                    joins: plan.joins.filter(function (j) { return j && j.encodes && j.url; })
+                        .map(function (j) { return { id: j.from, url: j.url }; }),
+                    rebuiltScenes: rebuiltScenes,
+                    rebuiltJoins: rebuiltJoins,
+                };
             });
         } finally {
             if (cut._progressRef === dotNetRef)

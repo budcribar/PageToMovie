@@ -18,10 +18,16 @@ public sealed class CutComposeService : IAsyncDisposable
     private int _composeGen;
     private string? _audioUrl;
     public CutMusic Music { get; } = new();
+    public CutMergeRuntime Cache { get; } = new();
     public string? MoviePreviewUrl { get; private set; }
     public string? PrefixPreviewUrl { get; private set; }
     public int PrefixClipCount { get; private set; }
     public bool HasCachedMoviePreview => CutComposeContract.CanReusePreview(MoviePreviewUrl);
+    public CutMergePlan CurrentPlan { get; private set; } = new([], [], "", "", "");
+    public CutMergeDiff LastDiff { get; private set; } =
+        new(false, false, false, [], [], true, false);
+    public IReadOnlyList<int> LastRebuiltScenes { get; private set; } = [];
+    public IReadOnlyList<int> LastRebuiltJoins { get; private set; } = [];
 
     public CutComposeService(IJSRuntime js) => _js = js;
 
@@ -60,6 +66,7 @@ public sealed class CutComposeService : IAsyncDisposable
 
     public void ApplySavedMusic(CutMusic saved)
     {
+        Music.DisplayName = saved.DisplayName;
         Music.SetStart(saved.StartSec);
         Music.ApplyInOut(saved.MarkIn, saved.MarkOut > saved.MarkIn ? saved.MarkOut : Music.MarkOut);
     }
@@ -107,12 +114,8 @@ public sealed class CutComposeService : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyList<CutTextClip>? texts = null)
     {
-        if (HasCachedMoviePreview)
-        {
-            progress(100, "Ready");
+        if (TryReuseMovie(clips, texts, progress, onPrefix: null))
             return MoviePreviewUrl;
-        }
-
         return await ComposeAsync(clips, download: false, progress, cancellationToken, texts: texts);
     }
 
@@ -123,16 +126,8 @@ public sealed class CutComposeService : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyList<CutTextClip>? texts = null)
     {
-        if (HasCachedMoviePreview)
-        {
-            var cached = MoviePreviewUrl ?? "";
-            PrefixPreviewUrl = cached;
-            PrefixClipCount = clips.Count;
-            progress(100, "Ready");
-            onPrefix(cached, clips.Count);
-            return cached;
-        }
-
+        if (TryReuseMovie(clips, texts, progress, onPrefix))
+            return MoviePreviewUrl;
         return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix, texts);
     }
 
@@ -140,14 +135,30 @@ public sealed class CutComposeService : IAsyncDisposable
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<CutTextClip>? texts = null) =>
-        await ComposeAsync(clips, download: true, progress, cancellationToken, texts: texts);
+        IReadOnlyList<CutTextClip>? texts = null)
+    {
+        if (TryReuseMovie(clips, texts, progress, onPrefix: null)
+            && !string.IsNullOrWhiteSpace(MoviePreviewUrl))
+        {
+            await _js.InvokeVoidAsync("PageToMovieCut.downloadUrlAs", MoviePreviewUrl, CutPlayMerge.MovieFileName);
+            return MoviePreviewUrl;
+        }
 
-    public void ClearMoviePreview()
+        return await ComposeAsync(clips, download: true, progress, cancellationToken, texts: texts);
+    }
+
+    public void InvalidateMovie()
     {
         MoviePreviewUrl = null;
         PrefixPreviewUrl = null;
         PrefixClipCount = 0;
+    }
+
+    public void ClearMoviePreview()
+    {
+        InvalidateMovie();
+        Cache.Clear();
+        CurrentPlan = new([], [], "", "", "");
     }
 
     public void AttachExistingMerge(string url, int clipCount)
@@ -157,6 +168,7 @@ public sealed class CutComposeService : IAsyncDisposable
         MoviePreviewUrl = url;
         PrefixPreviewUrl = url;
         PrefixClipCount = clipCount;
+        Cache.PictureUrl ??= url;
     }
 
     /// <summary>
@@ -182,7 +194,7 @@ public sealed class CutComposeService : IAsyncDisposable
         if (ready.Count == 0)
             throw new InvalidOperationException("No current takes to export.");
 
-        var payload = BuildExportPayload(ready, texts);
+        var payload = BuildComposePlan(ready, texts);
         string method;
         if (download)
             method = "PageToMovieCut.exportMovieAsync";
@@ -204,10 +216,109 @@ public sealed class CutComposeService : IAsyncDisposable
                 cancellationToken);
         if (!r.Success)
             throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
+        RememberComposeResult(r, ready.Count);
+        return r.Url;
+    }
+
+    internal bool TryReuseMovie(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts,
+        Action<int, string> progress,
+        Action<string, int>? onPrefix)
+    {
+        RefreshPlan(clips, texts);
+        var url = CutComposeContract.CanReuseExport(MoviePreviewUrl, LastDiff)
+            ? MoviePreviewUrl
+            : LastDiff.MovieFresh && string.IsNullOrWhiteSpace(AudioFileName)
+                ? Cache.PictureUrl
+                : null;
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        MoviePreviewUrl = url;
+        PrefixPreviewUrl = url;
+        PrefixClipCount = clips.Count;
+        progress(100, "Ready");
+        onPrefix?.Invoke(url, clips.Count);
+        return true;
+    }
+
+    internal JsComposePlan BuildComposePlan(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts)
+    {
+        RefreshPlan(clips, texts);
+        var payload = new JsComposePlan
+        {
+            Clips = BuildExportPayload(clips, texts),
+            ReuseMovieUrl = CutMergeCache.CanReuseMovie(LastDiff, MoviePreviewUrl)
+                ? MoviePreviewUrl
+                : null,
+            ReusePictureUrl = CutMergeCache.CanReusePicture(LastDiff, Cache.PictureUrl)
+                ? Cache.PictureUrl
+                : null,
+        };
+        foreach (var scene in CurrentPlan.Scenes)
+        {
+            payload.Scenes.Add(new JsComposeScene
+            {
+                Scene = scene.Scene,
+                First = scene.FirstClipIndex,
+                Count = scene.ClipCount,
+                Seconds = scene.Seconds,
+                Url = Cache.SceneUrlIfFresh(scene.Scene, scene.Fingerprint),
+            });
+        }
+
+        foreach (var join in CurrentPlan.Joins)
+        {
+            payload.Joins.Add(new JsComposeJoin
+            {
+                From = join.FromScene,
+                To = join.ToScene,
+                Kind = CutTransitionMap.WireName(join.Kind),
+                Hold = join.HoldSec,
+                Fade = join.FadeSec,
+                Encodes = join.Encodes,
+                Url = join.Encodes ? Cache.JoinUrlIfFresh(join.FromScene, join.Fingerprint) : null,
+            });
+        }
+
+        return payload;
+    }
+
+    private void RefreshPlan(IReadOnlyList<CutClip> clips, IReadOnlyList<CutTextClip>? texts)
+    {
+        CurrentPlan = CutMergeCache.Build(clips, texts, AudioFileName, Music);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
+    }
+
+    private void RememberComposeResult(JsResult r, int clipCount)
+    {
         MoviePreviewUrl = r.Url;
         PrefixPreviewUrl = r.Url;
-        PrefixClipCount = ready.Count;
-        return r.Url;
+        PrefixClipCount = clipCount;
+        LastRebuiltScenes = r.RebuiltScenes.Count > 0 ? r.RebuiltScenes.ToList() : [];
+        LastRebuiltJoins = r.RebuiltJoins.Count > 0 ? r.RebuiltJoins.ToList() : [];
+        if (!string.IsNullOrWhiteSpace(r.PictureUrl))
+            Cache.PictureUrl = r.PictureUrl;
+        else if (string.IsNullOrWhiteSpace(AudioFileName))
+            Cache.PictureUrl = r.Url;
+        foreach (var scene in r.Scenes)
+        {
+            var row = CurrentPlan.Scenes.FirstOrDefault(s => s.Scene == scene.Id);
+            if (row.Scene > 0 && !string.IsNullOrWhiteSpace(scene.Url))
+                Cache.RememberScene(scene.Id, scene.Url, row.Fingerprint);
+        }
+
+        foreach (var join in r.Joins)
+        {
+            var row = CurrentPlan.Joins.FirstOrDefault(j => j.FromScene == join.Id);
+            if (row.FromScene > 0 && !string.IsNullOrWhiteSpace(join.Url))
+                Cache.RememberJoin(join.Id, join.Url, row.Fingerprint);
+        }
+
+        Cache.RememberPlan(CurrentPlan);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
     }
 
     internal static List<JsExportClip> BuildExportPayload(
@@ -254,7 +365,7 @@ public sealed class CutComposeService : IAsyncDisposable
 
     private async Task<JsResult> InvokeComposeAsync<T>(
         string method,
-        List<JsExportClip> payload,
+        JsComposePlan payload,
         T sink,
         CancellationToken cancellationToken)
         where T : class, IDisposable

@@ -13,6 +13,13 @@ public class CutComposeContractTests
         Assert.False(CutComposeContract.CanReusePreview(""));
         Assert.False(CutComposeContract.CanReusePreview("   "));
         Assert.True(CutComposeContract.CanReusePreview("blob:cut-preview"));
+        var fresh = new CutMergeDiff(true, true, true, [], [], false, false);
+        var dirty = new CutMergeDiff(false, false, true, [40], [39], true, false);
+        Assert.True(CutComposeContract.CanReuseExport("blob:movie", fresh));
+        Assert.False(CutComposeContract.MustStitch(fresh, "blob:movie"));
+        Assert.False(CutComposeContract.CanReuseExport("blob:movie", dirty));
+        Assert.True(CutComposeContract.MustStitch(dirty, "blob:movie"));
+        Assert.True(CutComposeContract.MustStitch(fresh, null));
     }
 
     [Fact]

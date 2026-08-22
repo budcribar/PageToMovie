@@ -210,6 +210,13 @@ html, body {
 }
 
 .cut-text-overlay.is-off { display: none; }
+.cut-text-overlay.is-picked { z-index: 2; }
+
+.cut-text-overlay:not(.is-off) .cut-text-overlay-line,
+.cut-text-overlay.is-picked .cut-text-overlay-line {
+    pointer-events: auto;
+    cursor: pointer;
+}
 
 .cut-text-overlay-line {
     position: absolute;
@@ -224,6 +231,11 @@ html, body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.cut-text-overlay.is-picked .cut-text-overlay-line {
+    outline: 2px solid #b9a3f0;
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.35);
 }
 
 .cut-text-overlay-line.has-bar {
@@ -743,6 +755,20 @@ html, body {
     white-space: nowrap;
 }
 
+.cut-tl-music.is-selected {
+    box-shadow: 0 0 0 1px #c4b0f0;
+}
+
+.cut-tl-music input.cut-tl-music-name {
+    height: 100%;
+    width: calc(100% - 18px);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
 .cut-tl-music .cut-tl-handle {
     top: 6px;
     bottom: 6px;
@@ -817,6 +843,72 @@ html, body {
 }
 
 .cut-tl-inspector-del:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cut-tl-inspector-duration input {
+    width: 4.2rem;
+    height: 1.55rem;
+    border: 1px solid var(--fs-border-color);
+    border-radius: 6px;
+    background: #181b22;
+    color: var(--fs-text-secondary);
+    padding: 0 0.35rem;
+    font-size: 0.72rem;
+}
+
+.cut-text-menu-back {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+}
+
+.cut-text-menu {
+    position: fixed;
+    z-index: 31;
+    min-width: 13.75rem;
+    padding: 0.3rem 0;
+    background: #fff;
+    color: #1b1b1b;
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.cut-text-menu-item {
+    display: grid;
+    grid-template-columns: 1.35rem 1fr auto;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font-size: 0.82rem;
+    padding: 0.38rem 0.85rem;
+    cursor: pointer;
+}
+
+.cut-text-menu-item:hover:not(:disabled) { background: #f3f0ff; }
+.cut-text-menu-item:disabled { opacity: 0.4; cursor: default; }
+
+.cut-text-menu-item svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    display: block;
+    color: #4b5568;
+}
+
+.cut-text-menu-item kbd {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.cut-text-menu-rule {
+    height: 1px;
+    margin: 0.25rem 0;
+    background: #ececec;
+}
 
 .cut-tl-chrome {
     display: flex;

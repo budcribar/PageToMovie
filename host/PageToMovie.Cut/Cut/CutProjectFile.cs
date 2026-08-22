@@ -20,7 +20,8 @@ public static class CutProjectFile
         string? musicFileName,
         IReadOnlyList<CutTextClip>? textClips = null,
         string? movieFingerprint = null,
-        CutMusic? music = null)
+        CutMusic? music = null,
+        CutMergeManifest? mergeCache = null)
     {
         var track = music ?? new CutMusic { FileName = musicFileName };
         if (!track.HasFile && !string.IsNullOrWhiteSpace(musicFileName))
@@ -32,7 +33,15 @@ public static class CutProjectFile
             MusicStart = track.StartSec,
             MusicIn = track.MarkIn,
             MusicOut = track.MarkOut,
+            MusicLabel = string.IsNullOrWhiteSpace(track.DisplayName) ? null : track.DisplayName.Trim(),
             MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
+            PictureFingerprint = string.IsNullOrWhiteSpace(mergeCache?.PictureFingerprint)
+                ? null
+                : mergeCache.PictureFingerprint,
+            MusicFingerprint = string.IsNullOrWhiteSpace(mergeCache?.MusicFingerprint)
+                ? null
+                : mergeCache.MusicFingerprint,
+            MergeCache = ToCacheDto(mergeCache),
             Clips = clips.Select(ToDto).ToList(),
             TextClips = textClips is { Count: > 0 } ? textClips.Select(ToTextDto).ToList() : null,
         };
@@ -63,12 +72,23 @@ public static class CutProjectFile
         out string? musicFileName,
         out List<CutTextClip> textClips,
         out string? movieFingerprint,
-        out CutMusic music)
+        out CutMusic music) =>
+        TryApply(clips, json, out musicFileName, out textClips, out movieFingerprint, out music, out _);
+
+    public static bool TryApply(
+        IReadOnlyList<CutClip> clips,
+        string? json,
+        out string? musicFileName,
+        out List<CutTextClip> textClips,
+        out string? movieFingerprint,
+        out CutMusic music,
+        out CutMergeManifest mergeCache)
     {
         musicFileName = null;
         textClips = [];
         movieFingerprint = null;
         music = new CutMusic();
+        mergeCache = new CutMergeManifest();
         if (string.IsNullOrWhiteSpace(json))
             return false;
         ProjectDto? dto;
@@ -86,6 +106,7 @@ public static class CutProjectFile
         musicFileName = dto.MusicFileName;
         movieFingerprint = dto.MovieFingerprint;
         music.FileName = dto.MusicFileName;
+        music.DisplayName = string.IsNullOrWhiteSpace(dto.MusicLabel) ? null : dto.MusicLabel.Trim();
         music.SetStart(dto.MusicStart);
         music.ApplyInOut(dto.MusicIn, dto.MusicOut);
         ApplyClipRows(clips, dto.Clips);
@@ -105,6 +126,9 @@ public static class CutProjectFile
             textClips.Add(title);
         }
 
+        mergeCache = FromCacheDto(dto);
+        if (string.IsNullOrWhiteSpace(mergeCache.MovieFingerprint))
+            mergeCache.MovieFingerprint = dto.MovieFingerprint;
         return true;
     }
 
@@ -262,9 +286,64 @@ public static class CutProjectFile
         public double MusicStart { get; set; }
         public double MusicIn { get; set; }
         public double MusicOut { get; set; }
+        public string? MusicLabel { get; set; }
         public string? MovieFingerprint { get; set; }
+        public string? PictureFingerprint { get; set; }
+        public string? MusicFingerprint { get; set; }
+        public MergeCacheDto? MergeCache { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
         public List<TextClipDto>? TextClips { get; set; }
+    }
+
+    private static MergeCacheDto? ToCacheDto(CutMergeManifest? cache)
+    {
+        if (cache is null)
+            return null;
+        if (cache.Scenes.Count == 0 && cache.Joins.Count == 0
+            && string.IsNullOrWhiteSpace(cache.PictureFingerprint))
+            return null;
+        return new MergeCacheDto
+        {
+            PictureFile = string.IsNullOrWhiteSpace(cache.PictureFile) ? null : cache.PictureFile,
+            Scenes = cache.Scenes.Select(ToSegDto).ToList(),
+            Joins = cache.Joins.Select(ToSegDto).ToList(),
+        };
+    }
+
+    private static CutMergeManifest FromCacheDto(ProjectDto dto)
+    {
+        var cache = dto.MergeCache;
+        return new CutMergeManifest
+        {
+            MovieFingerprint = dto.MovieFingerprint,
+            PictureFingerprint = dto.PictureFingerprint,
+            MusicFingerprint = dto.MusicFingerprint,
+            PictureFile = string.IsNullOrWhiteSpace(cache?.PictureFile)
+                ? CutMergeCache.PictureFileName
+                : cache.PictureFile,
+            Scenes = (cache?.Scenes ?? []).Select(FromSegDto).Where(s => s.Id > 0).ToList(),
+            Joins = (cache?.Joins ?? []).Select(FromSegDto).Where(s => s.Id > 0).ToList(),
+        };
+    }
+
+    private static CacheSegDto ToSegDto(CutMergeSeg seg) =>
+        new() { Id = seg.Id, Fingerprint = seg.Fingerprint, File = seg.File };
+
+    private static CutMergeSeg FromSegDto(CacheSegDto row) =>
+        new(row.Id, row.Fingerprint ?? "", row.File ?? "");
+
+    private sealed class MergeCacheDto
+    {
+        public string? PictureFile { get; set; }
+        public List<CacheSegDto> Scenes { get; set; } = [];
+        public List<CacheSegDto> Joins { get; set; } = [];
+    }
+
+    private sealed class CacheSegDto
+    {
+        public int Id { get; set; }
+        public string? Fingerprint { get; set; }
+        public string? File { get; set; }
     }
 
     private sealed class TextClipDto
