@@ -44,6 +44,7 @@ public partial class Home : IAsyncDisposable
     private const string PlayUrlAtJs = "PageToMovieCut.playUrlAt";
     private const string PauseVideoJs = "PageToMovieCut.pauseVideo";
     private const string PaintPlayheadJs = "PageToMovieCut.paintPlayhead";
+    private const string HoldPlayheadJs = "PageToMovieCut.holdPlayhead";
 
     private CancellationToken ComposeToken => _composeCts?.Token ?? CancellationToken.None;
 
@@ -239,7 +240,7 @@ public partial class Home : IAsyncDisposable
             if (!string.IsNullOrWhiteSpace(ActiveMovieUrl) && ShowMovie)
             {
                 await Js.InvokeVoidAsync(SeekMediaJs, MoviePlayer, _playhead);
-                await Js.InvokeVoidAsync("PageToMovieCut.holdPlayhead", _playhead);
+                await Js.InvokeVoidAsync(HoldPlayheadJs, _playhead);
                 return;
             }
 
@@ -269,7 +270,7 @@ public partial class Home : IAsyncDisposable
         {
             try
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.holdPlayhead", _playhead);
+                await Js.InvokeVoidAsync(HoldPlayheadJs, _playhead);
             }
             catch (JSException)
             {
@@ -888,7 +889,7 @@ public partial class Home : IAsyncDisposable
             await Js.InvokeVoidAsync(
                 "PageToMovieCut.setLiveTextOverlay",
                 CutPlayOverlay.UseLiveOverlay(ShowMovie));
-            await Js.InvokeVoidAsync("PageToMovieCut.holdPlayhead", _playhead);
+            await Js.InvokeVoidAsync(HoldPlayheadJs, _playhead);
         }
         catch (JSException)
         {
@@ -924,7 +925,7 @@ public partial class Home : IAsyncDisposable
                     await Js.InvokeVoidAsync(SeekMediaJs, MoviePlayer, _playhead);
                 else if (CutTimelineLayout.HitTest(Folder.Clips, _playhead) is { } hit)
                     await Js.InvokeVoidAsync(SeekMediaJs, ClipPlayer, hit.LocalSec);
-                await Js.InvokeVoidAsync("PageToMovieCut.holdPlayhead", _playhead);
+                await Js.InvokeVoidAsync(HoldPlayheadJs, _playhead);
             }
         }
         catch (JSException)
