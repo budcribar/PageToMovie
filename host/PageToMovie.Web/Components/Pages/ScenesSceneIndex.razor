@@ -371,7 +371,7 @@ else
             @if (i + 1 < shown.Count && ShouldShowJoin(list, shown, i))
             {
                 var incoming = shown[i + 1];
-                <Scenes_JoinRow @key="@($"join-{incoming.SceneNumber}")"
+                <ScenesJoinRow @key="@($"join-{incoming.SceneNumber}")"
                                 BeforeScene="incoming.SceneNumber"
                                 Kind="@(string.IsNullOrWhiteSpace(incoming.IncomingJoinKind) ? "cut" : incoming.IncomingJoinKind)"
                                 Card="@incoming.IncomingJoinCard"

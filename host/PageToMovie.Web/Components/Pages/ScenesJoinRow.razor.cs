@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes_JoinRow
+public partial class ScenesJoinRow
 {
     [Parameter] public int BeforeScene { get; set; }
     [Parameter] public string Kind { get; set; } = "cut";
