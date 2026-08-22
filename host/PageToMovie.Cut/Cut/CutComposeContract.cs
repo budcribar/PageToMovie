@@ -26,6 +26,18 @@ public static class CutComposeContract
     public static bool CanReusePreview(string? moviePreviewUrl) =>
         !string.IsNullOrWhiteSpace(moviePreviewUrl);
 
+    /// <summary>
+    /// Make Movie / Play reuse the cached merge when the fingerprint
+    /// still matches. A dirty scene must not force a full re-encode.
+    /// </summary>
+    public static bool CanReuseExport(
+        string? moviePreviewUrl,
+        CutMergeDiff diff) =>
+        CutMergeCache.CanReuseMovie(diff, moviePreviewUrl);
+
+    public static bool MustStitch(CutMergeDiff diff, string? moviePreviewUrl) =>
+        !CanReuseExport(moviePreviewUrl, diff);
+
     public static bool JoinInsertsBlackHold(CutJoinKind kind) =>
         kind == CutJoinKind.CutToBlack;
 

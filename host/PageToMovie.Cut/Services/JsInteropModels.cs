@@ -23,6 +23,93 @@ public sealed class JsResult
 
     [JsonPropertyName("files")]
     public List<JsFileEntry> Files { get; set; } = [];
+
+    [JsonPropertyName("pictureUrl")]
+    public string? PictureUrl { get; set; }
+
+    [JsonPropertyName("stitched")]
+    public bool Stitched { get; set; }
+
+    [JsonPropertyName("scenes")]
+    public List<JsCachedSeg> Scenes { get; set; } = [];
+
+    [JsonPropertyName("joins")]
+    public List<JsCachedSeg> Joins { get; set; } = [];
+
+    [JsonPropertyName("rebuiltScenes")]
+    public List<int> RebuiltScenes { get; set; } = [];
+
+    [JsonPropertyName("rebuiltJoins")]
+    public List<int> RebuiltJoins { get; set; } = [];
+}
+
+public sealed class JsCachedSeg
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+}
+
+public sealed class JsComposePlan
+{
+    [JsonPropertyName("clips")]
+    public List<JsExportClip> Clips { get; set; } = [];
+
+    [JsonPropertyName("scenes")]
+    public List<JsComposeScene> Scenes { get; set; } = [];
+
+    [JsonPropertyName("joins")]
+    public List<JsComposeJoin> Joins { get; set; } = [];
+
+    [JsonPropertyName("reuseMovieUrl")]
+    public string? ReuseMovieUrl { get; set; }
+
+    [JsonPropertyName("reusePictureUrl")]
+    public string? ReusePictureUrl { get; set; }
+}
+
+public sealed class JsComposeScene
+{
+    [JsonPropertyName("scene")]
+    public int Scene { get; set; }
+
+    [JsonPropertyName("first")]
+    public int First { get; set; }
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    [JsonPropertyName("seconds")]
+    public double Seconds { get; set; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+}
+
+public sealed class JsComposeJoin
+{
+    [JsonPropertyName("from")]
+    public int From { get; set; }
+
+    [JsonPropertyName("to")]
+    public int To { get; set; }
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "cut";
+
+    [JsonPropertyName("hold")]
+    public double Hold { get; set; }
+
+    [JsonPropertyName("fade")]
+    public double Fade { get; set; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    [JsonPropertyName("encodes")]
+    public bool Encodes { get; set; }
 }
 
 public sealed class JsFileEntry
