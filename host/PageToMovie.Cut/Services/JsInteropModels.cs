@@ -96,3 +96,37 @@ public sealed class ExportProgressSink
     [JSInvokable]
     public void Report(int percent, string? message) => _report(percent, message ?? "");
 }
+
+public sealed class MediaTimeSink
+{
+    private readonly Action<double> _report;
+
+    public MediaTimeSink(Action<double> report) => _report = report;
+
+    [JSInvokable]
+    public void OnTime(double seconds) => _report(seconds);
+}
+
+public sealed class JsFilmstrip
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("frames")]
+    public List<string> Frames { get; set; } = [];
+}
+
+public sealed class JsRect
+{
+    [JsonPropertyName("x")]
+    public double X { get; set; }
+
+    [JsonPropertyName("y")]
+    public double Y { get; set; }
+
+    [JsonPropertyName("width")]
+    public double Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public double Height { get; set; }
+}

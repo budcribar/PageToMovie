@@ -31,13 +31,23 @@ public static class CutTransitionMap
 
     public static CutJoinKind Resolve(string? fountainLine, bool sceneChanged, CutJoinKind? uiOverride)
     {
-        if (uiOverride is CutJoinKind.Cut or CutJoinKind.Dissolve or CutJoinKind.Dip)
-            return uiOverride.Value;
+        if (uiOverride is { } chosen && chosen != CutJoinKind.Unset)
+            return chosen;
         var mapped = FromFountain(fountainLine);
         if (mapped != CutJoinKind.Unset)
             return mapped;
         return sceneChanged ? CutJoinKind.Dissolve : CutJoinKind.Cut;
     }
+
+    public static string TickLabel(CutJoinKind kind) => kind switch
+    {
+        CutJoinKind.Dissolve => "Dissolve",
+        CutJoinKind.Dip or CutJoinKind.FadeOut => "Dip to black",
+        CutJoinKind.FadeIn => "Fade in",
+        CutJoinKind.FadeWhite => "Fade to white",
+        CutJoinKind.CutToBlack => "Cut to black",
+        _ => "Cut",
+    };
 
     public static string WireName(CutJoinKind kind) => kind switch
     {

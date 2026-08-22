@@ -29,33 +29,8 @@
 
 @if (Folder.Clips.Count > 0)
 {
-    <section class="cut-strip-wrap" aria-label="Clip strip">
-        <div class="cut-strip">
-            @foreach (var clip in Folder.Clips)
-            {
-                <button type="button"
-                        class="cut-chip @(clip == _selected ? "is-selected" : "") @(clip.Missing ? "is-missing" : "")"
-                        @onclick="() => Select(clip)">
-                    @if (!string.IsNullOrWhiteSpace(clip.PreviewUrl))
-                    {
-                        <video src="@clip.PreviewUrl" muted playsinline preload="metadata"></video>
-                    }
-                    <span class="cut-chip-label">@clip.Label</span>
-                    @if (clip.Takes.Count > 1)
-                    {
-                        <span class="cut-chip-take">T@(clip.SelectedTakeNumber.ToString("D2"))</span>
-                    }
-                    @if (clip.Missing)
-                    {
-                        <span class="cut-chip-missing">Missing</span>
-                    }
-                </button>
-            }
-        </div>
-    </section>
-
-    <div class="cut-editor">
-        <section class="cut-card cut-player">
+    <div class="cut-stage">
+        <section class="cut-preview" aria-label="Preview">
             @if (_selected is null)
             {
                 <p class="cut-muted">Select a clip.</p>
@@ -85,64 +60,36 @@
                 {
                     <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
                 }
+                else if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
+                {
+                    <video @ref="MoviePlayer"
+                           class="cut-preview-video"
+                           src="@Compose.MoviePreviewUrl"
+                           playsinline
+                           preload="auto"></video>
+                }
                 else
                 {
-                <video @ref="ClipPlayer"
-                       src="@_selected.PreviewUrl"
-                       controls
-                       playsinline
-                       preload="metadata"
-                       @onloadedmetadata="OnPreviewMetadataAsync"></video>
-                <div class="cut-marks">
-                    <label>
-                        In
-                        <input type="range" min="0" max="@RangeMax" step="0.05"
-                               value="@_selected.MarkIn"
-                               disabled="@(!_selected.HasDuration)"
-                               @oninput="e => SetIn(e.Value)" />
-                        <input type="number" min="0" max="@RangeMax" step="0.05"
-                               value="@FormatSec(_selected.MarkIn)"
-                               disabled="@(!_selected.HasDuration)"
-                               @onchange="e => SetIn(e.Value)" />
-                    </label>
-                    <label>
-                        Out
-                        <input type="range" min="0" max="@RangeMax" step="0.05"
-                               value="@_selected.MarkOut"
-                               disabled="@(!_selected.HasDuration)"
-                               @oninput="e => SetOut(e.Value)" />
-                        <input type="number" min="0" max="@RangeMax" step="0.05"
-                               value="@FormatSec(_selected.MarkOut)"
-                               disabled="@(!_selected.HasDuration)"
-                               @onchange="e => SetOut(e.Value)" />
-                    </label>
-                    <p class="cut-muted">
-                        @if (_selected.HasDuration)
-                        {
-                            <text>@FormatSec(_selected.DurationSec)s total · using @FormatSec(_selected.MarkOut - _selected.MarkIn)s</text>
-                        }
-                        else
-                        {
-                            <text>Reading length…</text>
-                        }
-                    </p>
+                    <video @ref="ClipPlayer"
+                           class="cut-preview-video"
+                           src="@_selected.PreviewUrl"
+                           playsinline
+                           preload="metadata"
+                           @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                }
+                <p class="cut-muted">
+                    @if (_selected.HasDuration)
+                    {
+                        <text>@FormatSec(_selected.SlicedDurationSec)s on the track · file @FormatSec(_selected.DurationSec)s</text>
+                    }
+                    else
+                    {
+                        <text>Reading length…</text>
+                    }
+                </p>
+                @if (_selected.RangeDeletes.Count > 0)
+                {
                     <div class="cut-range">
-                        <p class="cut-kicker">Delete span (gap closes)</p>
-                        <label>
-                            From
-                            <input type="number" min="0" max="@RangeMax" step="0.05"
-                                   value="@FormatSec(_spanFrom)"
-                                   disabled="@(!_selected.HasDuration)"
-                                   @onchange="e => SetSpanFrom(e.Value)" />
-                        </label>
-                        <label>
-                            To
-                            <input type="number" min="0" max="@RangeMax" step="0.05"
-                                   value="@FormatSec(_spanTo)"
-                                   disabled="@(!_selected.HasDuration)"
-                                   @onchange="e => SetSpanTo(e.Value)" />
-                        </label>
-                        <button type="button" class="cut-btn cut-btn-ghost" disabled="@(!_selected.HasDuration || _busy)" @onclick="AddRangeDelete">Delete span</button>
                         @foreach (var span in _selected.RangeDeletes)
                         {
                             <button type="button" class="cut-span" @onclick="() => RemoveRangeDelete(span)">
@@ -150,36 +97,36 @@
                             </button>
                         }
                     </div>
-                    @if (NextAfterSelected is { } next)
-                    {
-                        <div class="cut-joins">
-                            <p class="cut-kicker">Join to @next.Label · @ResolvedJoin</p>
-                            @if (!string.IsNullOrWhiteSpace(_selected.FountainTransition))
-                            {
-                                <p class="cut-muted">@_selected.FountainTransition</p>
-                            }
-                            <button type="button" class="cut-take @(_selected.JoinOverride == CutJoinKind.Cut ? "is-using" : "")" @onclick="() => SetJoin(CutJoinKind.Cut)">Cut</button>
-                            <button type="button" class="cut-take @(_selected.JoinOverride == CutJoinKind.Dissolve ? "is-using" : "")" @onclick="() => SetJoin(CutJoinKind.Dissolve)">Dissolve</button>
-                            <button type="button" class="cut-take @(_selected.JoinOverride == CutJoinKind.Dip ? "is-using" : "")" @onclick="() => SetJoin(CutJoinKind.Dip)">Dip</button>
-                        </div>
-                    }
-                    @if (ShowCard)
-                    {
-                        <div class="cut-card-edit">
-                            <label class="cut-check">
-                                <input type="checkbox" checked="@_selected.Card.Enabled" @onchange="OnCardCheck" />
-                                Scene card
-                            </label>
-                            <input type="text" value="@_selected.Card.Text" maxlength="80" @onchange="SetCardText" placeholder="Chapter 1" />
-                        </div>
-                    }
-                </div>
+                }
+                @if (ShowCard)
+                {
+                    <div class="cut-card-edit">
+                        <label class="cut-check">
+                            <input type="checkbox" checked="@_selected.Card.Enabled" @onchange="OnCardCheck" />
+                            Scene card
+                        </label>
+                        <input type="text" value="@_selected.Card.Text" maxlength="80" @onchange="SetCardText" placeholder="Chapter 1" />
+                    </div>
                 }
             }
         </section>
 
-        <section class="cut-card">
-            <h2 style="margin:0 0 0.6rem;font-size:1rem;">Audio (optional)</h2>
+        <CutTimeline Clips="Folder.Clips"
+                     Selected="_selected"
+                     SelectedChanged="Select"
+                     PlayheadSec="_playhead"
+                     PlayheadChanged="OnPlayheadAsync"
+                     HasAudio="Compose.HasAudio"
+                     AudioName="Compose.AudioFileName"
+                     Busy="_busy"
+                     PlayDisabled="ExportDisabled"
+                     OnPlay="PlayAsync"
+                     OnSkipStart="SkipStartAsync"
+                     OnStepBack="() => StepAsync(-5)"
+                     OnStepForward="() => StepAsync(5)"
+                     OnEdited="OnTimelineEdited" />
+
+        <section class="cut-card cut-mix">
             <div class="cut-drop">
                 <InputFile OnChange="OnAudioAsync" accept="audio/*,.wav,.mp3,.m4a,.aac" />
                 @if (Compose.HasAudio)
@@ -193,24 +140,14 @@
                 }
             </div>
             <div class="cut-actions">
-                <button type="button" class="cut-btn" @onclick="PlayAsync" disabled="@ExportDisabled">Play</button>
                 <button type="button" class="cut-btn cut-btn-ghost" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
             </div>
-                @if (_busy && !string.IsNullOrWhiteSpace(ProgressMessage))
-                {
-                    <p class="cut-muted">@ProgressText</p>
-                    <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">
-                        <span style="width:@(ProgressPercent)%"></span>
-                    </div>
-                }
-            @if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
+            @if (_busy && !string.IsNullOrWhiteSpace(ProgressMessage))
             {
-                <video @ref="MoviePlayer"
-                       class="cut-movie"
-                       src="@Compose.MoviePreviewUrl"
-                       controls
-                       playsinline
-                       autoplay></video>
+                <p class="cut-muted">@ProgressText</p>
+                <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">
+                    <span style="width:@(ProgressPercent)%"></span>
+                </div>
             }
         </section>
     </div>

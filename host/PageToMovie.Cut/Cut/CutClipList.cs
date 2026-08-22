@@ -13,6 +13,7 @@ public static class CutClipList
         var list = files.ToList();
         var pointers = ReadPointers(list);
         var sidecars = ReadSidecarTransitions(list);
+        var hops = ReadSidecarHops(list);
         var groups = new Dictionary<(int Scene, int Clip), Slot>();
 
         foreach (var file in list)
@@ -43,7 +44,7 @@ public static class CutClipList
         return groups
             .OrderBy(g => g.Key.Scene)
             .ThenBy(g => g.Key.Clip)
-            .Select(g => ToClip(g.Value, pointers.GetValueOrDefault(g.Key), sidecars.GetValueOrDefault(g.Key)))
+            .Select(g => ToClip(g.Value, pointers.GetValueOrDefault(g.Key), sidecars.GetValueOrDefault(g.Key), hops))
             .Where(c => c.Takes.Count > 0)
             .ToList();
     }
@@ -112,12 +113,53 @@ public static class CutClipList
         return best.ToDictionary(kv => kv.Key, kv => kv.Value.Line);
     }
 
-    private static CutClip ToClip(Slot slot, int pointerTake, string? fountainTransition)
+    private static Dictionary<(int Scene, int Clip, int Take), CutHop> ReadSidecarHops(
+        IEnumerable<FoundMediaFile> files)
+    {
+        var best = new Dictionary<(int Scene, int Clip, int Take), (CutHop Hop, int Score)>();
+        foreach (var file in files)
+        {
+            if (!CutClipNaming.IsClipSidecarName(file.FileName)
+                && !CutClipNaming.IsClipSidecarName(file.RelativePath))
+                continue;
+            if (!CutClipNaming.TryParseSceneClip(file.FileName, out var scene, out var clip)
+                && !CutClipNaming.TryParseSceneClip(file.RelativePath, out scene, out clip))
+                continue;
+            var hop = CutHop.Read(file.Text);
+            if (!hop.HasSlice)
+                continue;
+            var take = CutClipNaming.ParseTakeNumber(file.FileName);
+            if (take <= 0)
+                take = CutClipNaming.ParseTakeNumber(file.RelativePath);
+            var key = (scene, clip, take);
+            var score = PathScore(file.RelativePath);
+            if (!best.TryGetValue(key, out var cur) || score < cur.Score)
+                best[key] = (hop, score);
+        }
+
+        return best.ToDictionary(kv => kv.Key, kv => kv.Value.Hop);
+    }
+
+    private static CutHop HopFor(
+        Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip, int take)
+    {
+        if (hops.TryGetValue((scene, clip, take), out var exact) && exact.HasSlice)
+            return exact;
+        if (hops.TryGetValue((scene, clip, 0), out var fallback) && fallback.HasSlice)
+            return fallback;
+        return CutHop.None;
+    }
+
+    private static CutClip ToClip(
+        Slot slot,
+        int pointerTake,
+        string? fountainTransition,
+        Dictionary<(int Scene, int Clip, int Take), CutHop> hops)
     {
         var clip = new CutClip { Scene = slot.Scene, Clip = slot.Clip, ActiveTakeNumber = pointerTake };
         clip.FountainTransition = fountainTransition;
         foreach (var file in PreferUniqueTakes(slot.Takes).OrderBy(t => t.TakeHint))
-            clip.Takes.Add(ToTake(file.TakeHint, file));
+            clip.Takes.Add(ToTake(file.TakeHint, file, HopFor(hops, slot.Scene, slot.Clip, file.TakeHint)));
 
         var pointerPath = PreferOne(slot.Takes) is { } sample
             ? CutClipNaming.PointerPathBeside(sample.RelativePath, slot.Scene, slot.Clip)
@@ -127,15 +169,21 @@ public static class CutClipList
         return clip;
     }
 
-    private static CutTake ToTake(int take, FoundMediaFile file) => new()
+    private static CutTake ToTake(int take, FoundMediaFile file, CutHop hop)
     {
-        Take = take,
-        FileName = CutClipNaming.FileNameOnly(file.FileName),
-        RelativePath = file.RelativePath,
-        SizeBytes = file.SizeBytes,
-        Missing = file.SizeBytes <= 0,
-        MissingReason = file.SizeBytes <= 0 ? "Clip file is empty." : null,
-    };
+        var row = new CutTake
+        {
+            Take = take,
+            FileName = CutClipNaming.FileNameOnly(file.FileName),
+            RelativePath = file.RelativePath,
+            SizeBytes = file.SizeBytes,
+            Missing = file.SizeBytes <= 0,
+            MissingReason = file.SizeBytes <= 0 ? "Clip file is empty." : null,
+        };
+        if (hop.HasSlice)
+            row.SetHop(hop);
+        return row;
+    }
 
     private static List<FoundMediaFile> PreferUniqueTakes(List<FoundMediaFile> takes)
     {
