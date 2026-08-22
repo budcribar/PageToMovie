@@ -983,6 +983,7 @@ public partial class Home : IAsyncDisposable
         StopPlay();
         DisposeTimeSink();
         _preview = null;
+        _timeline = null;
         return ValueTask.CompletedTask;
     }
 
