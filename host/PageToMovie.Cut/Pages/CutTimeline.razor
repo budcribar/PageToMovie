@@ -122,6 +122,66 @@
                 }
             </div>
 
+            <div class="cut-tl-text @(HasText ? "" : "is-empty")"
+                 data-testid="cut-tl-text"
+                 @onpointerdown="OnTextRowDownAsync">
+                @if (!HasText)
+                {
+                    <span class="cut-tl-text-empty">+ Add text</span>
+                }
+                else
+                {
+                    <button type="button"
+                            class="cut-tl-text-add"
+                            title="Add text"
+                            data-testid="cut-tl-text-add"
+                            @onpointerdown:stopPropagation="true"
+                            @onclick="() => AddTextAtAsync(PlayheadSec)">+</button>
+                    @foreach (var block in TextBlocks)
+                    {
+                        var selected = block.Id == _selectedTextId;
+                        <div class="cut-tl-text-clip @(selected ? "is-selected" : "") @(block.Kind == CutTextKind.SceneCard ? "is-card" : "")"
+                             style="left: @(block.StartPx)px; width: @(Math.Max(block.WidthPx, 36))px"
+                             data-testid="cut-tl-text-clip"
+                             title="@block.Text"
+                             @onpointerdown:stopPropagation="true"
+                             @onpointerdown="() => SelectText(block)">
+                            @if (selected)
+                            {
+                                <input class="cut-tl-text-label"
+                                       value="@block.Text"
+                                       maxlength="80"
+                                       aria-label="Text"
+                                       @onpointerdown:stopPropagation="true"
+                                       @onchange="e => SetTextLabelAsync(block, e)" />
+                                <button type="button"
+                                        class="cut-tl-text-del"
+                                        title="Delete text"
+                                        data-testid="cut-tl-text-del"
+                                        @onpointerdown:stopPropagation="true"
+                                        @onclick="() => DeleteTextAsync(block)">✕</button>
+                            }
+                            else
+                            {
+                                <span class="cut-tl-text-label">@block.Text</span>
+                            }
+                            <button type="button"
+                                    class="cut-tl-handle is-in"
+                                    data-testid="cut-tl-text-handle-in"
+                                    title="Trim text"
+                                    @onpointerdown:stopPropagation="true"
+                                    @onpointerdown="e => BeginTextTrimAsync(e, block, true)"></button>
+                            <button type="button"
+                                    class="cut-tl-handle is-out"
+                                    data-testid="cut-tl-text-handle-out"
+                                    title="Trim text"
+                                    @onpointerdown:stopPropagation="true"
+                                    @onpointerdown="e => BeginTextTrimAsync(e, block, false)"></button>
+                        </div>
+                    }
+                }
+            </div>
+
             <div class="cut-tl-audio" data-testid="cut-tl-audio">
                 @if (HasAudio)
                 {

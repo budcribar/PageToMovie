@@ -86,6 +86,55 @@ public static class CutTransitionMap
         return null;
     }
 
+    public static string? ReadSidecarCard(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var key in new[] { "card", "cardText", "incomingJoinCard" })
+            {
+                if (doc.RootElement.TryGetProperty(key, out var el)
+                    && el.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var s = el.GetString();
+                    if (TryReadCardNote(s, out var fromNote))
+                        return fromNote;
+                    if (!string.IsNullOrWhiteSpace(s))
+                        return s.Trim();
+                }
+            }
+
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                    && TryReadCardNote(prop.Value.GetString(), out var note))
+                    return note;
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // sidecar is optional
+        }
+
+        return TryReadCardNote(json, out var onlyNote) ? onlyNote : null;
+    }
+
+    public static bool TryReadCardNote(string? line, out string text)
+    {
+        text = "";
+        var t = (line ?? "").Trim();
+        if (!t.StartsWith("[[", StringComparison.Ordinal) || !t.EndsWith("]]", StringComparison.Ordinal) || t.Length < 5)
+            return false;
+        var inner = t[2..^2].Trim();
+        const string prefix = "CARD:";
+        if (!inner.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+        text = inner[prefix.Length..].Trim();
+        return text.Length > 0;
+    }
+
     private static string Normalize(string? line)
     {
         if (string.IsNullOrWhiteSpace(line))

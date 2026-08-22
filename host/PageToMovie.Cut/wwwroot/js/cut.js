@@ -147,6 +147,82 @@
         return canvas.toDataURL("image/png");
     }
 
+    function overlayPngUrl(text) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, 1280, 720);
+        const label = String(text || "Title");
+        ctx.font = "48px sans-serif";
+        const width = Math.min(1100, Math.max(220, ctx.measureText(label).width + 64));
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.fillRect(640 - width / 2, 328, width, 64);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, 640, 360, 1100);
+        return canvas.toDataURL("image/png");
+    }
+
+    async function overlayTextsAsync(videoUrl, texts, onProgress) {
+        const list = (texts || []).filter(function (t) { return t && String(t.text || "").trim(); });
+        if (list.length === 0)
+            return { success: true, url: videoUrl };
+        const api = window.PageToMovieFfmpeg;
+        if (!api) return { success: false, error: "ffmpeg helper missing" };
+        if (!videoUrl) return { success: false, error: "No URL" };
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success) return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inName = "cut_ov_in_" + seq + ".mp4";
+            const outName = "cut_ov_out_" + seq + ".mp4";
+            const pngs = [];
+            try {
+                await ffmpeg.writeFile(inName, await api._safeFetchFile(videoUrl));
+                let graph = "[0:v]scale=1280:720,setsar=1[v0]";
+                let last = "v0";
+                const args = ["-hide_banner", "-y", "-i", inName];
+                for (let i = 0; i < list.length; i++) {
+                    const pngName = "cut_ov_" + seq + "_" + i + ".png";
+                    pngs.push(pngName);
+                    await ffmpeg.writeFile(pngName, await api._safeFetchFile(overlayPngUrl(list[i].text)));
+                    args.push("-i", pngName);
+                    const start = Math.max(0, Number(list[i].start) || 0);
+                    const hold = Math.max(0.3, Number(list[i].seconds) || 2);
+                    const end = start + hold;
+                    const next = "v" + (i + 1);
+                    graph += ";[" + last + "][" + (i + 1) + ":v]overlay=0:0:enable='gte(t," + start + ")*lte(t," + end + ")'[" + next + "]";
+                    last = next;
+                }
+                args.push("-filter_complex", graph, "-map", "[" + last + "]");
+                try {
+                    await ffmpeg.exec(args.concat([
+                        "-map", "0:a", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outName,
+                    ]));
+                } catch (audioErr) {
+                    console.debug("Cut: overlay native audio missing", audioErr);
+                    await ffmpeg.exec(args.concat([
+                        "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                        "-movflags", "+faststart", outName,
+                    ]));
+                }
+                const out = await ffmpeg.readFile(outName);
+                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+            } catch (err) {
+                return { success: false, error: messageOf(err, String(err)) };
+            } finally {
+                await deleteMemfs(ffmpeg, inName);
+                await deleteMemfs(ffmpeg, outName);
+                for (const name of pngs)
+                    await deleteMemfs(ffmpeg, name);
+            }
+        });
+    }
+
     async function stillVideoAsync(pngUrl, seconds, onProgress) {
         const api = window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
@@ -740,6 +816,12 @@
             const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
+            if (c.texts && c.texts.length > 0) {
+                const over = await overlayTextsAsync(one.url, c.texts, onProgress);
+                if (!over.success)
+                    return { success: false, error: over.error || "Text overlay failed." };
+                one.url = over.url;
+            }
             sourceUrls.push(one.source);
             if (!acc)
                 acc = one.url;

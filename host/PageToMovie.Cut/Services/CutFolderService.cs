@@ -18,6 +18,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
     public IReadOnlyList<CutClip> Clips { get; private set; } = [];
+    public List<CutTextClip> TextClips { get; } = [];
 
     public async Task<bool> BrowserSupportsFolderPickerAsync()
     {
@@ -106,15 +107,19 @@ public sealed class CutFolderService : IAsyncDisposable
     private void ApplySavedFinish(IEnumerable<JsFileEntry> files, List<CutClip> clips)
     {
         PendingMusicFileName = null;
+        TextClips.Clear();
         var project = files.FirstOrDefault(f =>
             CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
-        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music))
+        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music, out var texts))
+        {
             PendingMusicFileName = music;
+            TextClips.AddRange(texts);
+        }
     }
 
     public async Task<bool> SaveFinishAsync(string? musicFileName)
     {
-        var json = CutProjectFile.Serialize(Clips, musicFileName);
+        var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips);
         var wrote = await _js.InvokeAsync<JsResult>(
             "PageToMovieCut.writeTextFileAsync", CutClipNaming.ProjectFileName, json);
         if (!wrote.Success)

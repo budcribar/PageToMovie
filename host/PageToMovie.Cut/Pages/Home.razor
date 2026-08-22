@@ -104,16 +104,6 @@
                         }
                     </div>
                 }
-                @if (ShowCard)
-                {
-                    <div class="cut-card-edit">
-                        <label class="cut-check">
-                            <input type="checkbox" checked="@_selected.Card.Enabled" @onchange="OnCardCheck" />
-                            Scene card
-                        </label>
-                        <input type="text" value="@_selected.Card.Text" maxlength="80" @onchange="SetCardText" placeholder="Chapter 1" />
-                    </div>
-                }
             }
         </section>
 
@@ -122,6 +112,7 @@
                      SelectedChanged="Select"
                      PlayheadSec="_playhead"
                      PlayheadChanged="OnPlayheadAsync"
+                     TextClips="Folder.TextClips"
                      HasAudio="Compose.HasAudio"
                      AudioName="Compose.AudioFileName"
                      Busy="TransportLocked"

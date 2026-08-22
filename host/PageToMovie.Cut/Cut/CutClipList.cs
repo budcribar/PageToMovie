@@ -13,6 +13,7 @@ public static class CutClipList
         var list = files.ToList();
         var pointers = ReadPointers(list);
         var sidecars = ReadSidecarTransitions(list);
+        var cards = ReadSidecarCards(list);
         var hops = ReadSidecarHops(list);
         var groups = new Dictionary<(int Scene, int Clip), Slot>();
 
@@ -44,7 +45,12 @@ public static class CutClipList
         return groups
             .OrderBy(g => g.Key.Scene)
             .ThenBy(g => g.Key.Clip)
-            .Select(g => ToClip(g.Value, pointers.GetValueOrDefault(g.Key), sidecars.GetValueOrDefault(g.Key), hops))
+            .Select(g => ToClip(
+                g.Value,
+                pointers.GetValueOrDefault(g.Key),
+                sidecars.GetValueOrDefault(g.Key),
+                cards.GetValueOrDefault(g.Key),
+                hops))
             .Where(c => c.Takes.Count > 0)
             .ToList();
     }
@@ -113,6 +119,29 @@ public static class CutClipList
         return best.ToDictionary(kv => kv.Key, kv => kv.Value.Line);
     }
 
+    private static Dictionary<(int Scene, int Clip), string> ReadSidecarCards(IEnumerable<FoundMediaFile> files)
+    {
+        var best = new Dictionary<(int Scene, int Clip), (string Text, int Score)>();
+        foreach (var file in files)
+        {
+            if (!CutClipNaming.IsClipSidecarName(file.FileName)
+                && !CutClipNaming.IsClipSidecarName(file.RelativePath))
+                continue;
+            if (!CutClipNaming.TryParseSceneClip(file.FileName, out var scene, out var clip)
+                && !CutClipNaming.TryParseSceneClip(file.RelativePath, out scene, out clip))
+                continue;
+            var text = CutTransitionMap.ReadSidecarCard(file.Text);
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+            var key = (scene, clip);
+            var score = PathScore(file.RelativePath);
+            if (!best.TryGetValue(key, out var cur) || score < cur.Score)
+                best[key] = (text, score);
+        }
+
+        return best.ToDictionary(kv => kv.Key, kv => kv.Value.Text);
+    }
+
     private static Dictionary<(int Scene, int Clip, int Take), CutHop> ReadSidecarHops(
         IEnumerable<FoundMediaFile> files)
     {
@@ -154,10 +183,16 @@ public static class CutClipList
         Slot slot,
         int pointerTake,
         string? fountainTransition,
+        string? cardText,
         Dictionary<(int Scene, int Clip, int Take), CutHop> hops)
     {
         var clip = new CutClip { Scene = slot.Scene, Clip = slot.Clip, ActiveTakeNumber = pointerTake };
         clip.FountainTransition = fountainTransition;
+        if (!string.IsNullOrWhiteSpace(cardText))
+        {
+            clip.Card.Enabled = true;
+            clip.Card.Text = cardText.Trim();
+        }
         foreach (var file in PreferUniqueTakes(slot.Takes).OrderBy(t => t.TakeHint))
             clip.Takes.Add(ToTake(file.TakeHint, file, HopFor(hops, slot.Scene, slot.Clip, file.TakeHint)));
 

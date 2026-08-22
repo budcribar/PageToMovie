@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace PageToMovie.Cut.Cut;
 
-/// <summary>Finish file <c>cut.project.json</c> — trims, range-deletes, joins, cards, music name.</summary>
+/// <summary>Finish file <c>cut.project.json</c> — trims, range-deletes, joins, cards, text clips, music name.</summary>
 public static class CutProjectFile
 {
     public const int Version = 1;
@@ -15,20 +15,32 @@ public static class CutProjectFile
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public static string Serialize(IReadOnlyList<CutClip> clips, string? musicFileName)
+    public static string Serialize(
+        IReadOnlyList<CutClip> clips,
+        string? musicFileName,
+        IReadOnlyList<CutTextClip>? textClips = null)
     {
         var dto = new ProjectDto
         {
             SchemaVersion = Version,
             MusicFileName = string.IsNullOrWhiteSpace(musicFileName) ? null : musicFileName,
             Clips = clips.Select(ToDto).ToList(),
+            TextClips = textClips is { Count: > 0 } ? textClips.Select(ToTextDto).ToList() : null,
         };
         return JsonSerializer.Serialize(dto, JsonOpts);
     }
 
-    public static bool TryApply(IReadOnlyList<CutClip> clips, string? json, out string? musicFileName)
+    public static bool TryApply(IReadOnlyList<CutClip> clips, string? json, out string? musicFileName) =>
+        TryApply(clips, json, out musicFileName, out _);
+
+    public static bool TryApply(
+        IReadOnlyList<CutClip> clips,
+        string? json,
+        out string? musicFileName,
+        out List<CutTextClip> textClips)
     {
         musicFileName = null;
+        textClips = [];
         if (string.IsNullOrWhiteSpace(json))
             return false;
         ProjectDto? dto;
@@ -50,6 +62,19 @@ public static class CutProjectFile
             if (clip is null)
                 continue;
             ApplyRow(clip, row);
+        }
+
+        foreach (var row in dto.TextClips ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(row.Text) && string.IsNullOrWhiteSpace(row.Id))
+                continue;
+            textClips.Add(new CutTextClip
+            {
+                Id = string.IsNullOrWhiteSpace(row.Id) ? CutTextClip.NewId() : row.Id.Trim(),
+                Text = row.Text ?? "",
+                StartSec = Math.Max(0, row.Start),
+                Seconds = CutCard.ResolveHold(row.Seconds > 0 ? row.Seconds : CutCard.DefaultHoldSeconds),
+            });
         }
 
         return true;
@@ -88,6 +113,14 @@ public static class CutProjectFile
             : null,
     };
 
+    private static TextClipDto ToTextDto(CutTextClip title) => new()
+    {
+        Id = string.IsNullOrWhiteSpace(title.Id) ? CutTextClip.NewId() : title.Id,
+        Text = title.Text,
+        Start = Math.Max(0, title.StartSec),
+        Seconds = title.HoldSeconds,
+    };
+
     private static CutJoinKind? ParseJoinOverride(string? wire) =>
         string.IsNullOrWhiteSpace(wire)
             ? null
@@ -108,6 +141,15 @@ public static class CutProjectFile
         public int SchemaVersion { get; set; }
         public string? MusicFileName { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
+        public List<TextClipDto>? TextClips { get; set; }
+    }
+
+    private sealed class TextClipDto
+    {
+        public string? Id { get; set; }
+        public string? Text { get; set; }
+        public double Start { get; set; }
+        public double Seconds { get; set; }
     }
 
     private sealed class ClipDto

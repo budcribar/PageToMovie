@@ -67,6 +67,21 @@ public sealed class JsExportClip
 
     [JsonPropertyName("card")]
     public JsCard? Card { get; set; }
+
+    [JsonPropertyName("texts")]
+    public List<JsTextOverlay> Texts { get; set; } = [];
+}
+
+public sealed class JsTextOverlay
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+
+    [JsonPropertyName("start")]
+    public double Start { get; set; }
+
+    [JsonPropertyName("seconds")]
+    public double Seconds { get; set; } = 2;
 }
 
 public sealed class JsKeepWindow

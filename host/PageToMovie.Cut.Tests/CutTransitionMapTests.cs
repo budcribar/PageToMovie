@@ -52,4 +52,15 @@ public class CutTransitionMapTests
         Assert.Equal("FADE OUT.", CutTransitionMap.ReadSidecarTransition("""{"fountainTransition":"FADE OUT."}"""));
         Assert.Null(CutTransitionMap.ReadSidecarTransition("{"));
     }
+
+    [Fact]
+    public void Reads_sidecar_card_and_fountain_note()
+    {
+        Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("""{"card":"Chapter 1"}"""));
+        Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("""{"card":"[[CARD: Chapter 1]]"}"""));
+        Assert.True(CutTransitionMap.TryReadCardNote("[[CARD: Chapter 1]]", out var note));
+        Assert.Equal("Chapter 1", note);
+        Assert.False(CutTransitionMap.TryReadCardNote("[[NOTE: hi]]", out _));
+        Assert.Null(CutTransitionMap.ReadSidecarCard("{"));
+    }
 }
