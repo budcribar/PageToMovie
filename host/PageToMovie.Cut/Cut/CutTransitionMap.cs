@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace PageToMovie.Cut.Cut;
@@ -66,11 +67,11 @@ public static class CutTransitionMap
             return null;
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
             foreach (var key in new[] { "fountainTransition", "transition", "transition_type" })
             {
                 if (doc.RootElement.TryGetProperty(key, out var el)
-                    && el.ValueKind == System.Text.Json.JsonValueKind.String)
+                    && el.ValueKind == JsonValueKind.String)
                 {
                     var s = el.GetString();
                     if (!string.IsNullOrWhiteSpace(s))
@@ -78,7 +79,7 @@ public static class CutTransitionMap
                 }
             }
         }
-        catch (System.Text.Json.JsonException)
+        catch (JsonException)
         {
             // sidecar is optional
         }
@@ -92,28 +93,13 @@ public static class CutTransitionMap
             return null;
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            foreach (var key in new[] { "card", "cardText", "incomingJoinCard" })
-            {
-                if (doc.RootElement.TryGetProperty(key, out var el)
-                    && el.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var s = el.GetString();
-                    if (TryReadCardNote(s, out var fromNote))
-                        return fromNote;
-                    if (!string.IsNullOrWhiteSpace(s))
-                        return s.Trim();
-                }
-            }
-
-            foreach (var prop in doc.RootElement.EnumerateObject())
-            {
-                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
-                    && TryReadCardNote(prop.Value.GetString(), out var note))
-                    return note;
-            }
+            using var doc = JsonDocument.Parse(json);
+            if (ReadNamedCard(doc.RootElement) is { } named)
+                return named;
+            if (FindCardNoteOnStrings(doc.RootElement) is { } scanned)
+                return scanned;
         }
-        catch (System.Text.Json.JsonException)
+        catch (JsonException)
         {
             // sidecar is optional
         }
@@ -133,6 +119,35 @@ public static class CutTransitionMap
             return false;
         text = inner[prefix.Length..].Trim();
         return text.Length > 0;
+    }
+
+    private static string? ReadNamedCard(JsonElement root)
+    {
+        foreach (var key in new[] { "card", "cardText", "incomingJoinCard" })
+        {
+            if (!root.TryGetProperty(key, out var el)
+                || el.ValueKind != JsonValueKind.String)
+                continue;
+            var s = el.GetString();
+            if (TryReadCardNote(s, out var fromNote))
+                return fromNote;
+            if (!string.IsNullOrWhiteSpace(s))
+                return s.Trim();
+        }
+
+        return null;
+    }
+
+    private static string? FindCardNoteOnStrings(JsonElement root)
+    {
+        foreach (var value in root.EnumerateObject().Select(prop => prop.Value))
+        {
+            if (value.ValueKind == JsonValueKind.String
+                && TryReadCardNote(value.GetString(), out var note))
+                return note;
+        }
+
+        return null;
     }
 
     private static string Normalize(string? line)
