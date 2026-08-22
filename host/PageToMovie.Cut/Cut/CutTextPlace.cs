@@ -45,13 +45,7 @@ public static class CutTextPlace
     public static bool OverlapsAny(double startSec, double hold, IReadOnlyList<Span> others)
     {
         var probe = new Span(startSec, hold);
-        foreach (var other in others)
-        {
-            if (Overlaps(probe, other))
-                return true;
-        }
-
-        return false;
+        return others.Any(other => Overlaps(probe, other));
     }
 
     public static void Neighbors(
