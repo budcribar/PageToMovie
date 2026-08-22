@@ -220,7 +220,7 @@ public static class FountainSceneJoin
         return kind != FountainSceneJoinKind.Cut || IsMatch(NormalizeLine(t), @"\b(CUT|SMASH|MATCH|JUMP|WIPE)\b");
     }
 
-    private static (string? Line, string? Card) ReadJoinRegion(string[] lines, int afterPrevHeading, int headingLine)
+    private static (string? Line, string? Card) ReadJoinRegion(IReadOnlyList<string> lines, int afterPrevHeading, int headingLine)
     {
         string? transition = null;
         string? card = null;
@@ -287,10 +287,10 @@ public static class FountainSceneJoin
         return block;
     }
 
-    internal static List<int> FindHeadingIndexes(string[] lines)
+    internal static List<int> FindHeadingIndexes(IReadOnlyList<string> lines)
     {
         var idxs = new List<int>();
-        for (var i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Count; i++)
         {
             if (IsHeadingLine(lines, i))
                 idxs.Add(i);
@@ -299,7 +299,7 @@ public static class FountainSceneJoin
         return idxs;
     }
 
-    internal static bool IsHeadingLine(string[] lines, int i)
+    internal static bool IsHeadingLine(IReadOnlyList<string> lines, int i)
     {
         var trimmed = lines[i].Trim();
         if (trimmed.Length == 0)
@@ -315,7 +315,7 @@ public static class FountainSceneJoin
         return nextBlank || NextIsPageTagOrSynopsis(lines, i);
     }
 
-    internal static int ResolveHeadingOrdinal(string[] lines, IReadOnlyList<int> headings, int sceneNumber)
+    internal static int ResolveHeadingOrdinal(IReadOnlyList<string> lines, IReadOnlyList<int> headings, int sceneNumber)
     {
         for (var h = 0; h < headings.Count; h++)
         {
@@ -335,9 +335,9 @@ public static class FountainSceneJoin
         return m.Success && int.TryParse(m.Groups[1].Value, out var n) && n > 0 ? n : null;
     }
 
-    private static bool NextIsPageTagOrSynopsis(string[] lines, int i)
+    private static bool NextIsPageTagOrSynopsis(IReadOnlyList<string> lines, int i)
     {
-        if (i + 1 >= lines.Length)
+        if (i + 1 >= lines.Count)
             return false;
         var next = lines[i + 1].Trim();
         if (next.Length == 0)
