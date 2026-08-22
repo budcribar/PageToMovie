@@ -156,9 +156,9 @@ public static class MediaEndpoints
             if (!seen.Add((scene, clip)))
                 continue;
 
-            // Any real MP4 for this clip on server disk (take-suffixed included) → the regular
-            // listing already covers it; recovery is only for byte-less sidecar-only clips.
-            if (Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}*.mp4").Any())
+            // A leftover bare alias is not the player file — ignore it. Recovery is for
+            // clips whose take_NN bytes are gone from this machine.
+            if (Directory.EnumerateFiles(videoDir, $"{ClipTakeNaming.SceneClipPrefix(scene, clip)}_take_*.mp4").Any())
                 continue;
 
             var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
@@ -218,8 +218,10 @@ public static class MediaEndpoints
             return null;
 
         var relPath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
-        var fi = new FileInfo(file);
         var isMp4 = ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+        if (isMp4 && ClipTakeNaming.IsCanonicalClipName(name))
+            return null;
+        var fi = new FileInfo(file);
         var sha256 = await TryHashMediaFileAsync(file, fi.Length, ct);
         var ticketToken = tickets.Issue($"{id}:{relPath}", TimeSpan.FromHours(2));
         var streamUrl = $"/api/projects/{Uri.EscapeDataString(id)}/media/file?path={Uri.EscapeDataString(relPath)}&ticket={ticketToken}";

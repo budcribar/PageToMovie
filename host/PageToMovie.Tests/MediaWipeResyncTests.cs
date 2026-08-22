@@ -44,6 +44,7 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         var locPath = WriteBytes(projectDir, locRel, "loc-plate");
         var locVariantPath = WriteBytes(projectDir, locVariantRel, "loc-variant");
         var mp4Path = WriteBytes(projectDir, mp4Rel, "clip-bytes");
+        WriteBytes(projectDir, leftoverAliasRel, "stale-leftover-alias");
         WriteText(projectDir, "assets/video/scene_01_clip_01.current.json", """{"take":1}""");
         var sidecarPath = WriteText(projectDir, sidecarRel,
             $$"""{"scene":1,"clip":1,"take":1,"source_url":"{{sourceUrl}}","source_file_id":"{{sourceFileId}}"}""");
@@ -58,8 +59,10 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         Assert.True(File.Exists(locVariantPath), "Location variant must survive register/offload");
         Assert.True(File.Exists(sidecarPath), "Sidecar must stay on the server");
         Assert.False(File.Exists(mp4Path), "Railway must not keep clip bytes as a recovery source");
+        Assert.True(File.Exists(Path.Combine(projectDir, leftoverAliasRel.Replace('/', Path.DirectorySeparatorChar))),
+            "Leftover alias may remain on disk; it is not the player file.");
         Assert.Empty(Directory.EnumerateFiles(
-            Path.Combine(projectDir, "assets", "video"), "*.mp4", SearchOption.AllDirectories));
+            Path.Combine(projectDir, "assets", "video"), "*_take_*.mp4", SearchOption.AllDirectories));
 
         var sync = await client.GetAsync($"{ProjectIdRouting.ProjectApi(projectId)}/media/sync");
         Assert.True(sync.IsSuccessStatusCode, await sync.Content.ReadAsStringAsync());

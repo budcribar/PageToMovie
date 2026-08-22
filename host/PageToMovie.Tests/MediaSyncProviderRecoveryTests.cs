@@ -77,6 +77,20 @@ public class MediaSyncProviderRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void Leftover_alias_on_disk_does_not_block_take_recovery()
+    {
+        WriteSidecar(1, 1, 1, "https://vidgen.example/clip1.mp4");
+        File.WriteAllBytes(Path.Combine(_videoDir, "scene_01_clip_01.mp4"), new byte[2048]);
+        File.WriteAllText(Path.Combine(_videoDir, "scene_01_clip_01.current.json"), """{"take":1}""");
+
+        var entries = Collect(_videoDir);
+
+        var e = Assert.Single(entries);
+        Assert.Equal("assets/video/scene_01_clip_01_take_01.mp4", e.RelativePath);
+        Assert.True(e.ProviderRecovery);
+    }
+
+    [Fact]
     public void Combined_extend_copy_carries_its_lead_in_for_the_client_slice()
     {
         // Combined extend video: its head repeats the previous clip — the entry must carry the
