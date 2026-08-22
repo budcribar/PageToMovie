@@ -14,6 +14,8 @@ public class CutPlayClockTests
         Assert.True(CutPlayClock.ShouldRebindPlayback(samePlayer: false));
         Assert.False(CutPlayClock.BlazorOwnsVideoSrc(isPlaying: true));
         Assert.True(CutPlayClock.BlazorOwnsVideoSrc(isPlaying: false));
+        Assert.True(CutPlayClock.FreezePreviewMarkup(isPlaying: true));
+        Assert.False(CutPlayClock.FreezePreviewMarkup(isPlaying: false));
     }
 
     [Fact]
@@ -23,6 +25,8 @@ public class CutPlayClockTests
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: false));
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: false, waiting: true));
         Assert.False(CutPlayClock.ShouldRestartNativeOnPrefixGrow);
+        Assert.False(CutPlayClock.ShouldReplaceMergeSrcWhilePlaying);
+        Assert.True(CutPlayClock.ShouldSwitchToMergeOnPrefix(true, false, true));
         Assert.False(CutPlayClock.ShouldRenderOnPrefix(waiting: false, playing: true));
         Assert.True(CutPlayClock.ShouldRenderOnPrefix(waiting: true, playing: true));
         Assert.True(CutPlayClock.ShouldRenderOnPrefix(waiting: false, playing: false));

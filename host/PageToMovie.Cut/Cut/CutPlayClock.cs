@@ -1,8 +1,8 @@
 namespace PageToMovie.Cut.Cut;
 
 /// <summary>
-/// Play-clock policy: timeupdate and same-scene hops stay off the Blazor
-/// render path. JS paints the white playhead and live text overlay.
+/// Play-clock policy: timeupdate and the first-start→merge handoff stay
+/// off the Blazor render path. JS paints the white playhead and live text overlay.
 /// </summary>
 public static class CutPlayClock
 {
@@ -17,7 +17,12 @@ public static class CutPlayClock
     public static bool ShouldResumeOnPrefix(bool wantPlay, bool waiting) =>
         wantPlay && waiting;
 
+    public static bool ShouldSwitchToMergeOnPrefix(bool wantPlay, bool waiting, bool playingFirstStart) =>
+        CutPlayMerge.ShouldSwitchToMergeOnPrefix(wantPlay, waiting, playingFirstStart);
+
     public static bool ShouldRestartNativeOnPrefixGrow => false;
+
+    public static bool ShouldReplaceMergeSrcWhilePlaying => CutPlayMerge.ShouldReplaceMergeSrcWhilePlaying;
 
     public static bool ShouldRenderOnPrefix(bool waiting, bool playing) =>
         waiting || !playing;
@@ -25,6 +30,12 @@ public static class CutPlayClock
     public static bool ShouldRenderOnProgress(bool overlayVisible) => overlayVisible;
 
     public static bool BlazorOwnsVideoSrc(bool isPlaying) => !isPlaying;
+
+    /// <summary>
+    /// Freeze preview markup while playing so a wait-overlay render
+    /// cannot reset <c>video.src</c> and blank the picture.
+    /// </summary>
+    public static bool FreezePreviewMarkup(bool isPlaying) => isPlaying;
 
     public static bool ShouldAdvanceNative(double localSec, double localEnd) =>
         localSec >= localEnd - AdvanceEpsilonSec;

@@ -17,6 +17,8 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderName { get; private set; }
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
+    public string? SavedMovieFingerprint { get; private set; }
+    public string? MovieMp4Path { get; private set; }
     public List<CutClip> Clips { get; private set; } = [];
     public List<CutTextClip> TextClips { get; } = [];
 
@@ -107,19 +109,27 @@ public sealed class CutFolderService : IAsyncDisposable
     private void ApplySavedFinish(IEnumerable<JsFileEntry> files, List<CutClip> clips)
     {
         PendingMusicFileName = null;
+        SavedMovieFingerprint = null;
+        MovieMp4Path = null;
         TextClips.Clear();
-        var project = files.FirstOrDefault(f =>
+        var list = files.ToList();
+        var movie = list.FirstOrDefault(f =>
+            CutPlayMerge.IsMovieFileName(f.FileName) || CutPlayMerge.IsMovieFileName(f.RelativePath));
+        if (movie is not null && movie.SizeBytes > 0)
+            MovieMp4Path = string.IsNullOrWhiteSpace(movie.RelativePath) ? movie.FileName : movie.RelativePath;
+        var project = list.FirstOrDefault(f =>
             CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
-        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music, out var texts))
+        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music, out var texts, out var fp))
         {
             PendingMusicFileName = music;
+            SavedMovieFingerprint = fp;
             TextClips.AddRange(texts);
         }
     }
 
-    public async Task<bool> SaveFinishAsync(string? musicFileName)
+    public async Task<bool> SaveFinishAsync(string? musicFileName, string? movieFingerprint = null)
     {
-        var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips);
+        var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips, movieFingerprint);
         var wrote = await _js.InvokeAsync<JsResult>(
             "PageToMovieCut.writeTextFileAsync", CutClipNaming.ProjectFileName, json);
         if (!wrote.Success)
@@ -129,6 +139,27 @@ public sealed class CutFolderService : IAsyncDisposable
         }
 
         FolderError = null;
+        SavedMovieFingerprint = movieFingerprint;
+        return true;
+    }
+
+    public async Task<string?> TryOpenMovieMp4Async()
+    {
+        if (string.IsNullOrWhiteSpace(MovieMp4Path))
+            return null;
+        var blob = await _js.InvokeAsync<JsResult>("PageToMovieCut.getFileBlobUrlAsync", MovieMp4Path);
+        return blob.Success ? blob.Url : null;
+    }
+
+    public async Task<bool> WriteMovieMp4Async(string url)
+    {
+        if (!CanWrite || string.IsNullOrWhiteSpace(url))
+            return false;
+        var wrote = await _js.InvokeAsync<JsResult>(
+            "PageToMovieCut.writeBlobUrlFileAsync", CutPlayMerge.MovieFileName, url);
+        if (!wrote.Success)
+            return false;
+        MovieMp4Path = CutPlayMerge.MovieFileName;
         return true;
     }
 

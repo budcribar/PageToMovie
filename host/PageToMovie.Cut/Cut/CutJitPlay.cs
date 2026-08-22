@@ -2,8 +2,9 @@ namespace PageToMovie.Cut.Cut;
 
 /// <summary>
 /// JIT Play: first ready window is the hop-sliced clip at the playhead
-/// (native audio). Same-scene hard cuts stay native. Compose grows a
-/// prefix in the background; seek past that prefix waits.
+/// (native audio) only until a merge exists. Compose grows one merged
+/// file in the background; clip/scene edges are times on that file.
+/// Seek past the ready prefix waits.
 /// </summary>
 public static class CutJitPlay
 {
@@ -65,32 +66,24 @@ public static class CutJitPlay
     }
 
     /// <summary>
-    /// How far Play can go without waiting: native hop windows through
-    /// undetectable hard cuts, or the composed prefix, whichever is longer.
+    /// How far Play can go without waiting: the first-start hop window
+    /// (one take), or the composed merge, whichever is longer. Same-scene
+    /// takes are not a hop chain.
     /// </summary>
-    public static double ReadyThroughSec(IReadOnlyList<CutClip> clips, int prefixClipCount)
+    public static double ReadyThroughSec(IReadOnlyList<CutClip> clips, int prefixClipCount) =>
+        ReadyThroughSec(clips, prefixClipCount, firstStart: null);
+
+    public static double ReadyThroughSec(
+        IReadOnlyList<CutClip> clips, int prefixClipCount, Window? firstStart)
     {
-        var native = NativeReachableThrough(clips);
-        var composed = prefixClipCount <= 0
-            ? 0
-            : TimelineEndOf(clips, Math.Min(prefixClipCount, clips.Count) - 1);
+        var native = firstStart?.TimelineEnd ?? NativeReachableThrough(clips);
+        var composed = CutPlayMerge.MergeReadyThroughSec(clips, prefixClipCount);
         return Math.Max(native, composed);
     }
 
-    public static double NativeReachableThrough(IReadOnlyList<CutClip> clips)
-    {
-        if (clips.Count == 0)
-            return 0;
-        var end = TimelineEndOf(clips, 0);
-        for (var i = 0; i < clips.Count - 1; i++)
-        {
-            if (!IsHardPlayJoin(clips, i))
-                break;
-            end = TimelineEndOf(clips, i + 1);
-        }
-
-        return end;
-    }
+    /// <summary>One hop-sliced take at t=0 — not a same-scene hop chain.</summary>
+    public static double NativeReachableThrough(IReadOnlyList<CutClip> clips) =>
+        At(clips, 0)?.TimelineEnd ?? 0;
 
     public static double TotalSec(IReadOnlyList<CutClip> clips) =>
         clips.Count == 0 ? 0 : TimelineEndOf(clips, clips.Count - 1);

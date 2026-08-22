@@ -1,0 +1,13 @@
+@namespace PageToMovie.Cut.Pages
+
+<video @ref="MoviePlayer"
+       class="cut-preview-video @(ShowMovie ? "" : "is-off")"
+       src="@MovieSrc"
+       playsinline
+       preload="auto"></video>
+<video @ref="ClipPlayer"
+       class="cut-preview-video @(ShowMovie ? "is-off" : "")"
+       src="@ClipSrc"
+       playsinline
+       preload="auto"
+       @onloadedmetadata="OnClipMetadata"></video>

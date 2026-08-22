@@ -44,17 +44,12 @@
                 else
                 {
                     <div class="cut-preview-stage">
-                        <video @ref="MoviePlayer"
-                               class="cut-preview-video @(ShowMovie ? "" : "is-off")"
-                               src="@MoviePlayerSrc"
-                               playsinline
-                               preload="auto"></video>
-                        <video @ref="ClipPlayer"
-                               class="cut-preview-video @(ShowMovie ? "is-off" : "")"
-                               src="@ClipPlayerSrc"
-                               playsinline
-                               preload="metadata"
-                               @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                        <CutPreviewVideos @ref="_preview"
+                                          Freeze="IsPlaying"
+                                          ClipSrc="@ClipPlayerSrc"
+                                          MovieSrc="@MoviePlayerSrc"
+                                          ShowMovie="ShowMovie"
+                                          OnClipMetadata="OnPreviewMetadataAsync" />
                         <div @ref="TextOverlay"
                              class="cut-text-overlay is-off"
                              data-testid="cut-text-overlay"
