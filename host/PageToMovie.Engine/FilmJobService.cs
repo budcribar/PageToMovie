@@ -2367,18 +2367,7 @@ public sealed class FilmJobService
 
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
-            var activeMp4Path = ClipSidecarService.CurrentTakePath(videoDir, req.Scene, req.Clip);
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-                activeMp4Path = _projects.ResolveClipVideoPath(projectId, req.Scene, req.Clip);
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-            {
-                // Legacy tree with only a leftover bare alias — edit input only, not the player file.
-                var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(req.Scene, req.Clip));
-                if (File.Exists(leftover))
-                    activeMp4Path = leftover;
-            }
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-                throw new InvalidOperationException($"Scene {req.Scene} clip {req.Clip}: no clip on disk to edit.");
+            var activeMp4Path = ResolveVideoEditSourcePath(projectId, videoDir, req.Scene, req.Clip);
 
             // ResolveOrDefault doesn't consult the capability's own defaultModelId automatically —
             // an explicit fallback is required, or a null/omitted req.Model (the common case: no
@@ -2399,13 +2388,7 @@ public sealed class FilmJobService
                     $"clips longer than {cap:0.#}s cannot be edited.");
             }
 
-            string? sourceFileId = null;
-            if (current?.SourceFileId is { Length: > 0 } fid &&
-                (current.SourceFileExpiresAtUnixSeconds is not { } exp ||
-                 exp > DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
-            {
-                sourceFileId = fid;
-            }
+            var sourceFileId = UnexpiredEditSourceFileId(current);
             await AppendLogAsync(sourceFileId is null
                 ? "No stored file reference on this clip — uploading it"
                 : "Trying the clip's stored file reference first");
@@ -2459,6 +2442,41 @@ public sealed class FilmJobService
             _log.LogError(ex, "Video edit failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Bytes to send to the video-edit API. Prefer the <c>.current.json</c> take, then
+    /// newest <c>take_NN</c>, then a leftover bare alias (edit input only — not the player).
+    /// </summary>
+    private string ResolveVideoEditSourcePath(string projectId, string videoDir, int scene, int clip)
+    {
+        var currentTake = ClipSidecarService.CurrentTakePath(videoDir, scene, clip);
+        if (currentTake is not null && File.Exists(currentTake))
+            return currentTake;
+
+        var resolved = _projects.ResolveClipVideoPath(projectId, scene, clip);
+        if (resolved is not null && File.Exists(resolved))
+            return resolved;
+
+        var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        if (File.Exists(leftover))
+            return leftover;
+
+        throw new InvalidOperationException($"Scene {scene} clip {clip}: no clip on disk to edit.");
+    }
+
+    /// <summary>
+    /// Stored provider <c>file_id</c> when present and unexpired; otherwise null so the
+    /// edit call uploads the local clip instead.
+    /// </summary>
+    private static string? UnexpiredEditSourceFileId(ClipVersionItem? current)
+    {
+        if (current?.SourceFileId is not { Length: > 0 } fid)
+            return null;
+        if (current.SourceFileExpiresAtUnixSeconds is { } exp &&
+            exp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            return null;
+        return fid;
     }
 
     /// <summary>
