@@ -688,8 +688,11 @@ public partial class Home : IAsyncDisposable
         _movieSrcBound = url;
     }
 
-    private string? CurrentMergeFingerprint() =>
-        CutPlayMerge.Fingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName);
+    private static string CurrentMergeFingerprint(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts,
+        string? audioFileName) =>
+        CutPlayMerge.Fingerprint(clips, texts, audioFileName);
 
     private void CancelCompose()
     {
@@ -764,7 +767,9 @@ public partial class Home : IAsyncDisposable
     {
         _error = null;
         SavedNote = null;
-        var fp = Compose.HasCachedMoviePreview ? CurrentMergeFingerprint() : null;
+        var fp = Compose.HasCachedMoviePreview
+            ? CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName)
+            : null;
         if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp))
         {
             _error = Folder.FolderError ?? "Could not save the cut.";
