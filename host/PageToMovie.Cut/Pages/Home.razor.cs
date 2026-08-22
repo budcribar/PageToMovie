@@ -521,12 +521,7 @@ public partial class Home : IAsyncDisposable
         var playingEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips);
         var total = CutJitPlay.TotalSec(Folder.Clips);
         var atFileEnd = CutPlayMerge.PlayingFileEndedBeforeTimeline(_playhead, playingEnd, total);
-        var applyLeadIn = !userSeek
-            && (!_mergeHasFrame || atFileEnd
-                || !string.Equals(_movieSrcBound, url, StringComparison.Ordinal));
-        var seekSec = applyLeadIn
-            ? CutPlayMerge.HandoffSeekSec(Folder.Clips, timelineSec, applyJoinLeadIn: true)
-            : CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
+        var seekSec = MoviePlaySeekSec(timelineSec, url, userSeek, atFileEnd);
         var samePlayer = _playMode == PlayMode.Movie && _mergeHasFrame;
         if (CutPlayMerge.ShouldReusePlayingMovie(
                 samePlayer,
@@ -536,24 +531,7 @@ public partial class Home : IAsyncDisposable
                 _playhead,
                 playingEnd,
                 total))
-        {
-            if (!CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek))
-                return true;
-            _playhead = seekSec;
-            try
-            {
-                var seeked = await Js.InvokeAsync<JsResult>(PlayUrlAtJs, MoviePlayer, _movieSrcBound ?? url, _playhead);
-                if (seeked is not { Success: true })
-                    return false;
-                await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
-                await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
-                return true;
-            }
-            catch (JSException)
-            {
-                return false;
-            }
-        }
+            return await SeekPlayingMovieAsync(Js, url, seekSec, userSeek);
 
         try
         {
@@ -575,6 +553,37 @@ public partial class Home : IAsyncDisposable
             await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
             if (CutPlayClock.ShouldRenderAfterMergeSwap)
                 await InvokeAsync(StateHasChanged);
+            return true;
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+    }
+
+    private double MoviePlaySeekSec(double timelineSec, string url, bool userSeek, bool atFileEnd)
+    {
+        var applyLeadIn = !userSeek
+            && (!_mergeHasFrame || atFileEnd
+                || !string.Equals(_movieSrcBound, url, StringComparison.Ordinal));
+        return applyLeadIn
+            ? CutPlayMerge.HandoffSeekSec(Folder.Clips, timelineSec, applyJoinLeadIn: true)
+            : CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
+    }
+
+    private async Task<bool> SeekPlayingMovieAsync(
+        IJSRuntime js, string url, double seekSec, bool userSeek)
+    {
+        if (!CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek))
+            return true;
+        _playhead = seekSec;
+        try
+        {
+            var seeked = await js.InvokeAsync<JsResult>(PlayUrlAtJs, MoviePlayer, _movieSrcBound ?? url, _playhead);
+            if (seeked is not { Success: true })
+                return false;
+            await js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
+            await js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
             return true;
         }
         catch (JSException)
