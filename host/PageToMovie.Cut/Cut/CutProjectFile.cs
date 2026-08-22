@@ -62,13 +62,15 @@ public static class CutProjectFile
         {
             if (string.IsNullOrWhiteSpace(row.Text) && string.IsNullOrWhiteSpace(row.Id))
                 continue;
-            textClips.Add(new CutTextClip
+            var title = new CutTextClip
             {
                 Id = string.IsNullOrWhiteSpace(row.Id) ? CutTextClip.NewId() : row.Id.Trim(),
                 Text = row.Text ?? "",
                 StartSec = Math.Max(0, row.Start),
                 Seconds = CutCard.ResolveHold(row.Seconds > 0 ? row.Seconds : CutCard.DefaultHoldSeconds),
-            });
+            };
+            ApplyStyle(title.Style, row.Style);
+            textClips.Add(title);
         }
 
         return true;
@@ -131,6 +133,7 @@ public static class CutProjectFile
             clip.Card.Text = row.Card.Text ?? "";
             if (row.Card.Seconds > 0)
                 clip.Card.Seconds = row.Card.Seconds;
+            ApplyStyle(clip.Card.Style, row.Card.Style);
         }
     }
 
@@ -144,7 +147,13 @@ public static class CutProjectFile
         JoinOut = clip.JoinOverride is { } j ? CutTransitionMap.WireName(j) : null,
         FountainTransition = clip.FountainTransition,
         Card = clip.Card.Enabled || !string.IsNullOrWhiteSpace(clip.Card.Text)
-            ? new CardDto { Enabled = clip.Card.Enabled, Text = clip.Card.Text, Seconds = clip.Card.HoldSeconds }
+            ? new CardDto
+            {
+                Enabled = clip.Card.Enabled,
+                Text = clip.Card.Text,
+                Seconds = clip.Card.HoldSeconds,
+                Style = ToStyleDto(clip.Card.Style),
+            }
             : null,
     };
 
@@ -154,7 +163,31 @@ public static class CutProjectFile
         Text = title.Text,
         Start = Math.Max(0, title.StartSec),
         Seconds = title.HoldSeconds,
+        Style = ToStyleDto(title.Style),
     };
+
+    private static StyleDto? ToStyleDto(CutTextStyle? style) =>
+        style is null || style.IsDefault
+            ? null
+            : new StyleDto
+            {
+                Position = CutTextStyle.WirePosition(style.Position),
+                Size = CutTextStyle.WireSize(style.Size),
+                Color = CutTextStyle.WireColor(style.Color),
+                Background = CutTextStyle.WireBackground(style.Background),
+                Fade = CutTextStyle.WireFade(style.Fade),
+            };
+
+    private static void ApplyStyle(CutTextStyle target, StyleDto? dto)
+    {
+        if (dto is null)
+            return;
+        target.Position = CutTextStyle.ParsePosition(dto.Position);
+        target.Size = CutTextStyle.ParseSize(dto.Size);
+        target.Color = CutTextStyle.ParseColor(dto.Color);
+        target.Background = CutTextStyle.ParseBackground(dto.Background);
+        target.Fade = CutTextStyle.ParseFade(dto.Fade);
+    }
 
     private static CutJoinKind? ParseJoinOverride(string? wire) =>
         string.IsNullOrWhiteSpace(wire)
@@ -185,6 +218,7 @@ public static class CutProjectFile
         public string? Text { get; set; }
         public double Start { get; set; }
         public double Seconds { get; set; }
+        public StyleDto? Style { get; set; }
     }
 
     private sealed class ClipDto
@@ -210,5 +244,15 @@ public static class CutProjectFile
         public bool Enabled { get; set; }
         public string? Text { get; set; }
         public double Seconds { get; set; }
+        public StyleDto? Style { get; set; }
+    }
+
+    private sealed class StyleDto
+    {
+        public string? Position { get; set; }
+        public string? Size { get; set; }
+        public string? Color { get; set; }
+        public string? Background { get; set; }
+        public string? Fade { get; set; }
     }
 }

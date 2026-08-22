@@ -9,6 +9,7 @@ public sealed class CutCard
     public bool Enabled { get; set; }
     public string Text { get; set; } = "";
     public double Seconds { get; set; } = DefaultHoldSeconds;
+    public CutTextStyle Style { get; } = new();
 
     public double HoldSeconds => ResolveHold(Seconds);
 

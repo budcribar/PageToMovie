@@ -730,6 +730,54 @@ html, body {
     padding: 0.35rem 0.2rem;
 }
 
+.cut-tl-inspector {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.85rem;
+    margin: 0.4rem 0 0;
+    padding: 0.35rem 0.15rem 0.1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cut-tl-inspector-kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fs-text-muted);
+}
+
+.cut-tl-inspector-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--fs-text-muted);
+}
+
+.cut-tl-inspector-group button {
+    appearance: none;
+    border: 1px solid var(--fs-border-color);
+    background: #181b22;
+    color: var(--fs-text-secondary);
+    border-radius: 6px;
+    min-width: 1.7rem;
+    height: 1.55rem;
+    padding: 0 0.4rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.cut-tl-inspector-group button.is-on,
+.cut-tl-inspector-group button:hover {
+    background: #4a3278;
+    border-color: #6b4ea8;
+    color: #f7f4ff;
+}
+
+.cut-tl-inspector-group button:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .cut-tl-chrome {
     display: flex;
     justify-content: flex-end;

@@ -132,36 +132,55 @@
         return "";
     }
 
-    function cardPngUrl(text) {
+    function textStyle(raw) {
+        const fontPx = Number(raw && raw.fontPx) > 0 ? Number(raw.fontPx) : 48;
+        const y = Number(raw && raw.y) > 0 ? Number(raw.y) : 360;
+        const fadeSec = Number(raw && raw.fadeSec);
+        return {
+            fontPx: fontPx,
+            color: (raw && raw.color) || "#ffffff",
+            y: y,
+            bar: !!(raw && raw.bar),
+            fadeSec: Number.isFinite(fadeSec) && fadeSec > 0 ? fadeSec : 0,
+        };
+    }
+
+    function drawStyledText(ctx, text, style, plate) {
+        if (plate === "black") {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, 1280, 720);
+        } else {
+            ctx.clearRect(0, 0, 1280, 720);
+        }
+        const label = String(text || "");
+        ctx.font = style.fontPx + "px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        if (style.bar) {
+            const width = Math.min(1100, Math.max(220, ctx.measureText(label).width + 64));
+            const h = Math.round(style.fontPx * 1.35);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+            ctx.fillRect(640 - width / 2, style.y - h / 2, width, h);
+        }
+        ctx.fillStyle = style.color;
+        ctx.fillText(label, 640, style.y, 1100);
+    }
+
+    function cardPngUrl(text, style) {
         const canvas = document.createElement("canvas");
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, 1280, 720);
-        ctx.fillStyle = "#f1f3f7";
-        ctx.font = "48px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(text || "Scene"), 640, 360, 1100);
+        drawStyledText(ctx, text || "Scene", textStyle(style), "black");
         return canvas.toDataURL("image/png");
     }
 
-    function overlayPngUrl(text) {
+    function overlayPngUrl(text, style) {
         const canvas = document.createElement("canvas");
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, 1280, 720);
-        const label = String(text || "Title");
-        ctx.font = "48px sans-serif";
-        const width = Math.min(1100, Math.max(220, ctx.measureText(label).width + 64));
-        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-        ctx.fillRect(640 - width / 2, 328, width, 64);
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, 640, 360, 1100);
+        drawStyledText(ctx, text || "Title", textStyle(style), "clear");
         return canvas.toDataURL("image/png");
     }
 
@@ -187,14 +206,24 @@
                 const args = ["-hide_banner", "-y", "-i", inName];
                 for (let i = 0; i < list.length; i++) {
                     const pngName = "cut_ov_" + seq + "_" + i + ".png";
+                    const look = textStyle(list[i].style);
                     pngs.push(pngName);
-                    await ffmpeg.writeFile(pngName, await api._safeFetchFile(overlayPngUrl(list[i].text)));
-                    args.push("-i", pngName);
+                    await ffmpeg.writeFile(pngName, await api._safeFetchFile(overlayPngUrl(list[i].text, look)));
                     const start = Math.max(0, Number(list[i].start) || 0);
                     const hold = Math.max(0.3, Number(list[i].seconds) || 2);
                     const end = start + hold;
+                    const fade = Math.min(look.fadeSec, hold / 3);
                     const next = "v" + (i + 1);
-                    graph += ";[" + last + "][" + (i + 1) + ":v]overlay=0:0:enable='gte(t," + start + ")*lte(t," + end + ")'[" + next + "]";
+                    const src = String(i + 1);
+                    if (fade > 0.05) {
+                        args.push("-itsoffset", String(start), "-loop", "1", "-t", String(hold), "-i", pngName);
+                        graph += ";[" + src + ":v]format=rgba,fade=t=in:st=0:d=" + fade
+                            + ":alpha=1,fade=t=out:st=" + (hold - fade) + ":d=" + fade + ":alpha=1[ov" + i + "]";
+                        graph += ";[" + last + "][ov" + i + "]overlay=0:0:eof_action=pass[" + next + "]";
+                    } else {
+                        args.push("-i", pngName);
+                        graph += ";[" + last + "][" + src + ":v]overlay=0:0:enable='gte(t," + start + ")*lte(t," + end + ")'[" + next + "]";
+                    }
                     last = next;
                 }
                 args.push("-filter_complex", graph, "-map", "[" + last + "]");
@@ -223,7 +252,7 @@
         });
     }
 
-    async function stillVideoAsync(pngUrl, seconds, onProgress) {
+    async function stillVideoAsync(pngUrl, seconds, onProgress, fadeSec) {
         const api = window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         const hold = Math.max(0.3, Number(seconds) || 2);
@@ -237,9 +266,13 @@
             try {
                 const data = await api._safeFetchFile(pngUrl);
                 await ffmpeg.writeFile(inName, data);
+                const fade = Math.min(Math.max(0, Number(fadeSec) || 0), hold / 3);
+                let vf = "scale=1280:720,setsar=1";
+                if (fade > 0.05)
+                    vf += ",fade=t=in:st=0:d=" + fade + ",fade=t=out:st=" + (hold - fade) + ":d=" + fade;
                 await ffmpeg.exec([
                     "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
-                    "-vf", "scale=1280:720,setsar=1",
+                    "-vf", vf,
                     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                     "-an", "-movflags", "+faststart",
                     outName,
@@ -801,7 +834,9 @@
         for (let i = 0; i < clips.length; i++) {
             const c = clips[i];
             if (c.card?.text) {
-                const card = await stillVideoAsync(cardPngUrl(c.card.text), c.card.seconds || 2, onProgress);
+                const look = textStyle(c.card.style);
+                const card = await stillVideoAsync(
+                    cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
                 if (!card.success)
                     return { success: false, error: card.error || "Card failed." };
                 if (!acc)

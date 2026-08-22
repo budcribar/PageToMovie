@@ -7,6 +7,7 @@ public sealed class CutTextClip
     public string Text { get; set; } = "";
     public double StartSec { get; set; }
     public double Seconds { get; set; } = CutCard.DefaultHoldSeconds;
+    public CutTextStyle Style { get; } = new();
 
     public double HoldSeconds => CutCard.ResolveHold(Seconds);
 

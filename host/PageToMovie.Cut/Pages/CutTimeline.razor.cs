@@ -48,7 +48,7 @@ public partial class CutTimeline
     private string? _selectedTextId;
     private bool _textFieldFocused;
     private bool _focusTextInput;
-    private ElementReference _textLabelInput;
+    private ElementReference _textLabelInput = default;
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
     private IReadOnlyList<CutTextBlock> TextBlocks => CutTextTrack.Build(Clips, TextClips, _pxPerSec);
@@ -62,10 +62,27 @@ public partial class CutTimeline
     private bool PlayOrStopDisabled => IsPlaying ? Busy : PlayDisabled;
     private bool SplitDisabled => Busy || !CutSplit.CanAt(Clips, PlayheadSec);
 
+    internal CutTextBlock? SelectedTextBlock
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_selectedTextId))
+                return null;
+            foreach (var block in TextBlocks)
+            {
+                if (block.Id == _selectedTextId)
+                    return block;
+            }
+
+            return null;
+        }
+    }
+
     protected override void OnInitialized()
     {
         _scroll = default;
         _inner = default;
+        _textLabelInput = default;
     }
 
     protected override void OnParametersSet()

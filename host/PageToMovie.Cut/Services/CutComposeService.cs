@@ -203,6 +203,7 @@ public sealed class CutComposeService : IAsyncDisposable
                 Text = overlay.Text,
                 Start = overlay.LocalStart,
                 Seconds = overlay.Seconds,
+                Style = ToJsStyle(overlay.Style, overlay.Seconds),
             });
         }
 
@@ -225,7 +226,21 @@ public sealed class CutComposeService : IAsyncDisposable
         if (!clip.Card.Enabled || !clip.IsFirstOfScene(strip))
             return null;
         var text = string.IsNullOrWhiteSpace(clip.Card.Text) ? $"Scene {clip.Scene}" : clip.Card.Text.Trim();
-        return new JsCard { Text = text, Seconds = clip.Card.HoldSeconds };
+        var hold = clip.Card.HoldSeconds;
+        return new JsCard { Text = text, Seconds = hold, Style = ToJsStyle(clip.Card.Style, hold) };
+    }
+
+    internal static JsTextStyle ToJsStyle(CutTextStyle? style, double holdSeconds)
+    {
+        var look = style ?? new CutTextStyle();
+        return new JsTextStyle
+        {
+            FontPx = look.FontPx,
+            Color = look.ColorHex,
+            Y = look.Y,
+            Bar = look.HasBar,
+            FadeSec = look.FadeSec(holdSeconds),
+        };
     }
 
     public async ValueTask DisposeAsync()

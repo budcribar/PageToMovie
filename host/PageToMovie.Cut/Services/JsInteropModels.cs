@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
+using PageToMovie.Cut.Cut;
 
 namespace PageToMovie.Cut.Services;
 
@@ -82,6 +83,9 @@ public sealed class JsTextOverlay
 
     [JsonPropertyName("seconds")]
     public double Seconds { get; set; } = 2;
+
+    [JsonPropertyName("style")]
+    public JsTextStyle? Style { get; set; }
 }
 
 public sealed class JsKeepWindow
@@ -100,6 +104,27 @@ public sealed class JsCard
 
     [JsonPropertyName("seconds")]
     public double Seconds { get; set; } = 2;
+
+    [JsonPropertyName("style")]
+    public JsTextStyle? Style { get; set; }
+}
+
+public sealed class JsTextStyle
+{
+    [JsonPropertyName("fontPx")]
+    public int FontPx { get; set; } = CutTextStyle.DefaultFontPx;
+
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = CutTextStyle.DefaultColorHex;
+
+    [JsonPropertyName("y")]
+    public int Y { get; set; } = CutTextStyle.CenterY;
+
+    [JsonPropertyName("bar")]
+    public bool Bar { get; set; }
+
+    [JsonPropertyName("fadeSec")]
+    public double FadeSec { get; set; }
 }
 
 public sealed class ExportProgressSink
