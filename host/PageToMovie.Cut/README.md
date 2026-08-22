@@ -3,6 +3,8 @@
 Standalone V1 cut / editor. A thin, in-browser movie assembler (Clipchamp-like, but tiny).
 It is **not** wired into Film Studio yet.
 
+**1.0 scope and remaining slices:** [CUT-1.0.md](CUT-1.0.md) (SSoT — do not stack two agents on the same slice).
+
 Open this folder’s solution — do **not** add it to `host/PageToMovie.slnx`.
 No Engine, API, Railway, catalog, or auth. Clip bytes stay on the client.
 Compose is **browser ffmpeg.wasm only** (no native server ffmpeg).
