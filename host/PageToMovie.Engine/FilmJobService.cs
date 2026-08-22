@@ -2422,12 +2422,17 @@ public sealed class FilmJobService
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best effort */ }
             }
 
-            var newFileName = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
+            _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
 
             if (_sidecars is not null)
             {
+                // Legacy trees only have the player-alias sidecar. Persist that as take 1
+                // first so this edit is take 2 (unique, comparable) instead of colliding.
+                ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
                 var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
                 var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
+                var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
+                File.WriteAllBytes(Path.Combine(videoDir, takeMp4Name), bytes);
                 await _sidecars.WriteSidecarWithTakeAsync(
                     projectDir, req.Scene, req.Clip,
                     take: editTake,
@@ -2438,10 +2443,9 @@ public sealed class FilmJobService
                     durationSeconds: current?.DurationSeconds ?? 0,
                     sha256: sha256,
                     sizeBytes: bytes.LongLength,
-                    mp4FileName: ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake),
-                    editedFromTake: current?.Take,
+                    mp4FileName: takeMp4Name,
+                    editedFromTake: current?.Take is > 0 ? current.Take : 1,
                     ct: ct).ConfigureAwait(false);
-                ClipSidecarService.WriteCurrentTake(videoDir, req.Scene, req.Clip, editTake);
             }
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry

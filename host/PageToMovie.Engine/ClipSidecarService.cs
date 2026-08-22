@@ -135,6 +135,26 @@ public sealed class ClipSidecarService
         File.WriteAllText(CurrentTakePointerPath(videoDir, scene, clip), JsonSerializer.Serialize(payload, JsonOpts));
     }
 
+    /// <summary>
+    /// A leftover player-alias sidecar (no <c>_take_NN</c> files yet) is implicit take 1.
+    /// Persist it as <c>take_01.clip.json</c> so the next write is take 2 and compare
+    /// still has the original. No-op when take sidecars already exist.
+    /// </summary>
+    public static bool EnsureLegacyCanonicalHasTakeSidecar(string videoDir, int scene, int clip)
+    {
+        if (!Directory.Exists(videoDir))
+            return false;
+        if (Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)).Any())
+            return false;
+        var canonical = Path.Combine(videoDir, ClipTakeNaming.CanonicalSidecarFileName(scene, clip));
+        if (!File.Exists(canonical))
+            return false;
+        var dest = Path.Combine(videoDir, ClipTakeNaming.TakeSidecarFileName(scene, clip, 1));
+        RewriteSidecarTakeNumber(canonical, dest, 1);
+        WriteCurrentTake(videoDir, scene, clip, 1);
+        return true;
+    }
+
     public static string GetSidecarPathForMp4(string mp4Path) =>
         Path.ChangeExtension(mp4Path, ".clip.json");
 
@@ -168,6 +188,8 @@ public sealed class ClipSidecarService
         // Takes are the sidecars: every generation writes a NEW numbered sidecar and the previous
         // ones stay (their source_url still points at the earlier provider video). Overwriting
         // _take_01 each time lost every prior take once the server stopped keeping MP4s.
+        // A leftover player-alias sidecar is implicit take 1 — persist it first so this write is 2.
+        EnsureLegacyCanonicalHasTakeSidecar(videoDir, scene, clip);
         var take = NextTakeNumber(videoDir, scene, clip);
         var fileName = string.IsNullOrWhiteSpace(mp4FileName)
             ? ClipTakeNaming.TakeMp4FileName(scene, clip, take)
