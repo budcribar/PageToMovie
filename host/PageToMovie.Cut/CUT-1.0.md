@@ -54,7 +54,7 @@ Reorder, delete, take-picking product, ripple, split, multi-track, undo, Engine 
 | 5 | Save/reload finish | Open | This app |
 | 6 | Transitions | Open | This app |
 | 7 | Chapter/scene cards | Open | This app |
-| 8 | Film: drop alias MP4, resolve current via `.current.json` | Separate PR | [PR 194](https://github.com/budcribar/PageToMovie/pull/194) |
+| 8 | Film: drop alias MP4, resolve current via `.current.json` | Done | [PR 194](https://github.com/budcribar/PageToMovie/pull/194) merged |
 | 9 | Film Final Edit mount | Last | After finish UI is stable |
 
 The take list on this branch is leftover from the earlier assembly sketch. Do **not** expand it into a take-picking product. Film + `.current.json` remain SSoT for which take is current.
