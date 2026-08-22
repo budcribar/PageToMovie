@@ -11,7 +11,7 @@ public partial class Home : IAsyncDisposable
 {
     [Inject] private IJSRuntime? Js { get; set; }
 
-    private CutPreviewVideos? _preview;
+    private CutPreviewVideos? _preview = null;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
     internal ElementReference TextOverlay { get; set; }
@@ -43,6 +43,9 @@ public partial class Home : IAsyncDisposable
     private const string SeekMediaJs = "PageToMovieCut.seekMedia";
     private const string PlayUrlAtJs = "PageToMovieCut.playUrlAt";
     private const string PauseVideoJs = "PageToMovieCut.pauseVideo";
+    private const string PaintPlayheadJs = "PageToMovieCut.paintPlayhead";
+
+    private CancellationToken ComposeToken => _composeCts?.Token ?? CancellationToken.None;
 
     private bool _busy => TransportLocked;
     internal bool TransportLocked => _folderBusy || _exporting;
@@ -463,7 +466,7 @@ public partial class Home : IAsyncDisposable
                 await Js.InvokeVoidAsync(PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local);
                 await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow",
                     "native", window.Value.TimelineStart, window.Value.LocalStart, window.Value.LocalEnd);
-                await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", timelineSec);
+                await Js.InvokeVoidAsync(PaintPlayheadJs, timelineSec);
                 await PrimeMergeAsync();
             }
             catch (JSException)
@@ -494,7 +497,7 @@ public partial class Home : IAsyncDisposable
                 {
                     await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, _movieSrcBound ?? url, _playhead);
                     await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
-                    await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", _playhead);
+                    await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
                 }
                 catch (JSException)
                 {
@@ -519,7 +522,7 @@ public partial class Home : IAsyncDisposable
                 await BindPlaySurfacesAsync();
                 await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, url, _playhead);
                 await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
-                await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", _playhead);
+                await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
             }
             catch (JSException)
             {
@@ -537,7 +540,7 @@ public partial class Home : IAsyncDisposable
         {
             try
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces");
+                await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces", ComposeToken);
             }
             catch (JSException)
             {
@@ -634,7 +637,7 @@ public partial class Home : IAsyncDisposable
         CancelCompose();
         DisposeTimeSink();
         if (Js is not null)
-            _ = Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces");
+            _ = Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces", CancellationToken.None);
         _ = PausePlayersAsync();
     }
 
@@ -644,7 +647,7 @@ public partial class Home : IAsyncDisposable
             return;
         try
         {
-            await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces");
+            await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces", CancellationToken.None);
             await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
             await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
         }
@@ -781,6 +784,7 @@ public partial class Home : IAsyncDisposable
     {
         StopPlay();
         DisposeTimeSink();
+        _preview = null;
         return ValueTask.CompletedTask;
     }
 
@@ -815,7 +819,7 @@ public partial class Home : IAsyncDisposable
             await Js.InvokeVoidAsync(
                 "PageToMovieCut.setLiveTextOverlay",
                 CutPlayOverlay.UseLiveOverlay(ShowMovie));
-            await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", _playhead);
+            await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
         }
         catch (JSException)
         {
@@ -846,7 +850,7 @@ public partial class Home : IAsyncDisposable
             await BindPlaySurfacesAsync();
             if (!IsPlaying && Js is not null)
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces");
+                await Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces", CancellationToken.None);
                 await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, ShowMovie);
             }
         }
