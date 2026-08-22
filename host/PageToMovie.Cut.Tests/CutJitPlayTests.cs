@@ -23,6 +23,26 @@ public class CutJitPlayTests
     }
 
     [Fact]
+    public void Hop_window_inside_stitched_scene_stays_native()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(1, 2, duration: 10);
+        b.SelectedTake!.SetHop(new CutHop(5, 5, 10, 5));
+        b.SetDuration(10);
+        var clips = new[] { a, b };
+
+        var window = CutJitPlay.At(clips, 5.5);
+        Assert.NotNull(window);
+        Assert.Equal(b, window.Value.Clip);
+        Assert.Equal(6.5, window.Value.LocalStart, 5);
+        Assert.Equal(10, window.Value.LocalEnd, 5);
+        Assert.Equal(5.5, window.Value.TimelineStart, 5);
+        Assert.True(CutJitPlay.IsHardPlayJoin(clips, 0));
+        Assert.Equal(9, CutJitPlay.NativeReachableThrough(clips));
+        Assert.False(CutJitPlay.NeedsWait(8.9, CutJitPlay.ReadyThroughSec(clips, 0)));
+    }
+
+    [Fact]
     public void Native_ready_runs_through_same_scene_hard_cuts()
     {
         var a = NewClip(1, 1, duration: 4);

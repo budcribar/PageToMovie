@@ -105,6 +105,34 @@ public static class CutTextTrack
             title.StartSec = Math.Max(0, startSec);
     }
 
+    /// <summary>
+    /// Backspace/Delete remove the selected text clip only when no
+    /// label field is focused. While an input is focused, the key
+    /// edits one character — it must not wipe the clip.
+    /// </summary>
+    public static bool RemovesSelectedTextOnKey(string? key, bool textFieldFocused) =>
+        !textFieldFocused && key is "Delete" or "Backspace";
+
+    public static bool TryDeleteSelectedOnKey(
+        string? key,
+        bool textFieldFocused,
+        string? selectedId,
+        IReadOnlyList<CutTextBlock> blocks,
+        IList<CutTextClip> titles)
+    {
+        if (!RemovesSelectedTextOnKey(key, textFieldFocused) || string.IsNullOrEmpty(selectedId))
+            return false;
+        foreach (var block in blocks)
+        {
+            if (block.Id != selectedId)
+                continue;
+            Delete(block, titles);
+            return true;
+        }
+
+        return false;
+    }
+
     public static void Delete(CutTextBlock block, IList<CutTextClip> titles)
     {
         if (block.CardClip is { } clip)

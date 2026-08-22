@@ -575,6 +575,10 @@ html, body {
     cursor: pointer;
 }
 
+.cut-tl-clip.is-scene {
+    box-shadow: none;
+}
+
 .cut-tl-clip.is-selected { border-color: #8b6ad4; }
 .cut-tl-clip.is-missing { border-color: var(--fs-danger-border); }
 

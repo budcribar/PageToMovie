@@ -62,6 +62,29 @@ public class CutTextTrackTests
     }
 
     [Fact]
+    public void Backspace_in_active_text_edit_does_not_wipe_the_clip()
+    {
+        var clip = NewClip(1, 1, 10);
+        var titles = new List<CutTextClip>();
+        var added = CutTextTrack.Add(titles, 2, "Opening title");
+        var blocks = CutTextTrack.Build([clip], titles, pxPerSec: 10);
+        var block = Assert.Single(blocks);
+
+        Assert.False(CutTextTrack.RemovesSelectedTextOnKey("Backspace", textFieldFocused: true));
+        Assert.False(CutTextTrack.RemovesSelectedTextOnKey("Delete", textFieldFocused: true));
+        Assert.False(CutTextTrack.TryDeleteSelectedOnKey(
+            "Backspace", textFieldFocused: true, added.Id, blocks, titles));
+        Assert.Single(titles);
+        Assert.Equal("Opening title", added.Text);
+        Assert.Equal(block.Id, added.Id);
+
+        Assert.True(CutTextTrack.RemovesSelectedTextOnKey("Backspace", textFieldFocused: false));
+        Assert.True(CutTextTrack.TryDeleteSelectedOnKey(
+            "Backspace", textFieldFocused: false, added.Id, blocks, titles));
+        Assert.Empty(titles);
+    }
+
+    [Fact]
     public void Delete_disables_cards_and_removes_titles()
     {
         var clip = NewClip(2, 1, 4);

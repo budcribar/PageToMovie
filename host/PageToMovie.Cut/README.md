@@ -41,7 +41,7 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
 
 1. Pick a local folder (or a handful of MP4s).
 2. Load current takes from `_take_NN.mp4` + `.current.json` in Film scene/clip order. Ignore alias MP4s.
-3. Timeline: filmstrip clips in Film order, white trim handles, purple ruler range-delete (gap closes; not whole-clip delete). Hop fields seed in/out so an extended take does not play from t=0.
+3. Timeline: one scene-stitched filmstrip block per scene (S01 / S02), white bookend trim handles, purple ruler range-delete (gap closes; not whole-clip delete). Hop fields seed in/out so an extended take does not play from t=0.
 4. Join ticks between clips (Cut / Dissolve / Dip to black / Fade to white / Cut to black). Fountain sidecar when present; `cut.project.json` can override.
 5. One text row between video and audio: scene cards at the incoming scene, plus `+ Add text` titles. Optional ~2s card hold (usually a dip). One background music track (8 MiB cap).
 6. **Play** stitches that finish (ffmpeg.wasm) and plays in-page. **Make movie** downloads `movie.mp4`.
