@@ -2334,11 +2334,11 @@ public sealed class FilmJobService
     }
 
     /// <summary>
-    /// Runs the actual xAI edit call for <see cref="StartVideoEditAsync"/>. Re-validates
-    /// eligibility server-side (never trusts the client-only UI gate), tries the active clip's
-    /// stored file_id first when unexpired, downloads the edited result, archives the current
-    /// active clip into <c>assets/video/history/</c>, and writes the edited bytes as the new
-    /// active clip + sidecar — so it shows up as a new take in the existing Takes UI for free.
+    /// Runs the edit call for <see cref="StartVideoEditAsync"/>. Re-validates eligibility
+    /// server-side (never trusts the client-only UI gate), tries the current take's stored
+    /// file_id first when unexpired, downloads the edited result, archives a leftover alias
+    /// into <c>assets/video/history/</c> when one exists, and persists <c>take_NN</c> +
+    /// <c>.current.json</c> — so it shows up as a new take in the existing Takes UI.
     /// </summary>
     private async Task RunVideoEditAsync(StartVideoEditRequest req, string projectId, CancellationToken ct)
     {
@@ -2360,25 +2360,10 @@ public sealed class FilmJobService
 
         try
         {
-            if (_videoEdit is null)
-                throw new InvalidOperationException("Video edit is not configured on this server.");
-            if (!_videoEdit.IsConfigured)
-                throw new InvalidOperationException("Video edit: connect xAI (XAI_API_KEY) in Configuration.");
-
+            var videoEdit = RequireVideoEditClient();
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
-            var activeMp4Path = ClipSidecarService.CurrentTakePath(videoDir, req.Scene, req.Clip);
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-                activeMp4Path = _projects.ResolveClipVideoPath(projectId, req.Scene, req.Clip);
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-            {
-                // Legacy tree with only a leftover bare alias — edit input only, not the player file.
-                var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(req.Scene, req.Clip));
-                if (File.Exists(leftover))
-                    activeMp4Path = leftover;
-            }
-            if (activeMp4Path is null || !File.Exists(activeMp4Path))
-                throw new InvalidOperationException($"Scene {req.Scene} clip {req.Clip}: no clip on disk to edit.");
+            var activeMp4Path = ResolveVideoEditInputPath(projectId, videoDir, req.Scene, req.Clip);
 
             // ResolveOrDefault doesn't consult the capability's own defaultModelId automatically —
             // an explicit fallback is required, or a null/omitted req.Model (the common case: no
@@ -2391,45 +2376,20 @@ public sealed class FilmJobService
             // trust the client-only UI gate. Duration cap is catalog-driven, never hardcoded.
             var versions = await _projects.GetClipVersionsAsync(projectId, req.Scene, req.Clip).ConfigureAwait(false);
             var current = versions.FirstOrDefault(v => v.IsCurrent);
-            if (current is not null && entry.MaxEditInputDurationSeconds is { } cap &&
-                current.DurationSeconds > cap + 0.01)
-            {
-                throw new InvalidOperationException(
-                    $"Scene {req.Scene} clip {req.Clip} is {current.DurationSeconds:0.#}s — " +
-                    $"clips longer than {cap:0.#}s cannot be edited.");
-            }
+            ThrowIfEditInputTooLong(req, current, entry);
 
-            string? sourceFileId = null;
-            if (current?.SourceFileId is { Length: > 0 } fid &&
-                (current.SourceFileExpiresAtUnixSeconds is not { } exp ||
-                 exp > DateTimeOffset.UtcNow.ToUnixTimeSeconds()))
-            {
-                sourceFileId = fid;
-            }
+            var sourceFileId = TryUnexpiredSourceFileId(current);
             await AppendLogAsync(sourceFileId is null
                 ? "No stored file reference on this clip — uploading it"
                 : "Trying the clip's stored file reference first");
 
-            var url = await _videoEdit.EditClipAsync(
+            var url = await videoEdit.EditClipAsync(
                 activeMp4Path, req.Prompt, sourceFileId, entry.Id,
                 onProgress: msg => _ = AppendLogAsync($"  [Edit] {msg}"),
                 ct).ConfigureAwait(false);
 
             await UpdateAsync(s => s.Message = "Downloading edited clip…");
-            // Via IVideoEditClient.DownloadToFileAsync, not a raw HttpClient GET — a fake
-            // implementation's "URL" isn't necessarily real http(s) (see FakeGrokVideoClient's own
-            // DownloadToFileAsync precedent for the same reason).
-            var tempPath = Path.Combine(Path.GetTempPath(), $"video-edit-{Guid.NewGuid():N}.mp4");
-            byte[] bytes;
-            try
-            {
-                await _videoEdit.DownloadToFileAsync(url, tempPath, ct).ConfigureAwait(false);
-                bytes = await File.ReadAllBytesAsync(tempPath, ct).ConfigureAwait(false);
-            }
-            finally
-            {
-                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best effort */ }
-            }
+            var bytes = await DownloadEditedClipBytesAsync(videoEdit, url, ct).ConfigureAwait(false);
 
             _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
             var editTake = await PersistEditedTakeAsync(
@@ -2458,6 +2418,79 @@ public sealed class FilmJobService
         {
             _log.LogError(ex, "Video edit failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
+        }
+    }
+
+    private IVideoEditClient RequireVideoEditClient()
+    {
+        if (_videoEdit is null)
+            throw new InvalidOperationException("Video edit is not configured on this server.");
+        if (!_videoEdit.IsConfigured)
+            throw new InvalidOperationException("Video edit: connect xAI (XAI_API_KEY) in Configuration.");
+        return _videoEdit;
+    }
+
+    /// <summary>
+    /// Bytes to send to the edit API: current take, then any take file, then a leftover
+    /// bare alias as input only (never the player file).
+    /// </summary>
+    private string ResolveVideoEditInputPath(string projectId, string videoDir, int scene, int clip)
+    {
+        var currentTake = ClipSidecarService.CurrentTakePath(videoDir, scene, clip);
+        if (currentTake is not null && File.Exists(currentTake))
+            return currentTake;
+
+        var resolved = _projects.ResolveClipVideoPath(projectId, scene, clip);
+        if (resolved is not null && File.Exists(resolved))
+            return resolved;
+
+        var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        if (File.Exists(leftover))
+            return leftover;
+
+        throw new InvalidOperationException($"Scene {scene} clip {clip}: no clip on disk to edit.");
+    }
+
+    private static void ThrowIfEditInputTooLong(
+        StartVideoEditRequest req, ClipVersionItem? current, SupportedModelEntry entry)
+    {
+        if (current is null)
+            return;
+        if (entry.MaxEditInputDurationSeconds is not { } cap)
+            return;
+        if (current.DurationSeconds <= cap + 0.01)
+            return;
+        throw new InvalidOperationException(
+            $"Scene {req.Scene} clip {req.Clip} is {current.DurationSeconds:0.#}s — " +
+            $"clips longer than {cap:0.#}s cannot be edited.");
+    }
+
+    private static string? TryUnexpiredSourceFileId(ClipVersionItem? current)
+    {
+        if (current?.SourceFileId is not { Length: > 0 } fid)
+            return null;
+        if (current.SourceFileExpiresAtUnixSeconds is { } exp &&
+            exp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            return null;
+        return fid;
+    }
+
+    /// <summary>
+    /// Via <see cref="IVideoEditClient.DownloadToFileAsync"/>, not a raw HttpClient GET — a
+    /// fake implementation's "URL" isn't necessarily real http(s).
+    /// </summary>
+    private static async Task<byte[]> DownloadEditedClipBytesAsync(
+        IVideoEditClient videoEdit, string url, CancellationToken ct)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"video-edit-{Guid.NewGuid():N}.mp4");
+        try
+        {
+            await videoEdit.DownloadToFileAsync(url, tempPath, ct).ConfigureAwait(false);
+            return await File.ReadAllBytesAsync(tempPath, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best effort */ }
         }
     }
 
