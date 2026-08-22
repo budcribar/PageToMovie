@@ -57,8 +57,6 @@ public partial class Home : IAsyncDisposable
 
     private bool ExportDisabled => PlayDisabled;
 
-    private bool ShowCard => _selected is not null && _selected.IsFirstOfScene(Folder.Clips);
-
     private void Select(CutClip clip)
     {
         _selected = clip;
@@ -327,7 +325,8 @@ public partial class Home : IAsyncDisposable
                             StateHasChanged();
                     });
                 },
-                cts.Token);
+                cts.Token,
+                Folder.TextClips);
             if (cts.IsCancellationRequested || gen != _playGen)
                 return;
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
@@ -558,7 +557,7 @@ public partial class Home : IAsyncDisposable
         await InvokeAsync(StateHasChanged);
         try
         {
-            await Compose.ExportMovieAsync(Folder.Clips, ReportProgress);
+            await Compose.ExportMovieAsync(Folder.Clips, ReportProgress, texts: Folder.TextClips);
             ProgressMessage = "Downloaded movie.mp4";
         }
         catch (Exception ex)
@@ -584,31 +583,6 @@ public partial class Home : IAsyncDisposable
     private void RemoveRangeDelete(CutRangeSpan span)
     {
         _selected?.RangeDeletes.Remove(span);
-        ForgetPreview();
-        SavedNote = null;
-    }
-
-    private void OnCardCheck(ChangeEventArgs e)
-    {
-        ToggleCard(e.Value is bool flag && flag);
-    }
-
-    private void ToggleCard(bool enabled)
-    {
-        if (_selected is null)
-            return;
-        _selected.Card.Enabled = enabled;
-        if (enabled && string.IsNullOrWhiteSpace(_selected.Card.Text))
-            _selected.Card.Text = $"Scene {_selected.Scene}";
-        ForgetPreview();
-        SavedNote = null;
-    }
-
-    private void SetCardText(ChangeEventArgs e)
-    {
-        if (_selected is null)
-            return;
-        _selected.Card.Text = Convert.ToString(e.Value, CultureInfo.InvariantCulture) ?? "";
         ForgetPreview();
         SavedNote = null;
     }

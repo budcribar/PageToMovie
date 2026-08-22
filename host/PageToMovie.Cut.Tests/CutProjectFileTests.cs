@@ -38,6 +38,30 @@ public class CutProjectFileTests
     }
 
     [Fact]
+    public void Round_trips_text_clips_on_the_text_row()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(10);
+        var titles = new List<CutTextClip>
+        {
+            new() { Id = "title-1", Text = "Opening", StartSec = 1.25, Seconds = 3 },
+        };
+
+        var json = CutProjectFile.Serialize([clip], null, titles);
+        Assert.Contains("Opening", json, StringComparison.Ordinal);
+        Assert.Contains("textClips", json, StringComparison.OrdinalIgnoreCase);
+
+        var reload = NewClip(1, 1);
+        reload.SetDuration(10);
+        Assert.True(CutProjectFile.TryApply([reload], json, out _, out var loaded));
+        var one = Assert.Single(loaded);
+        Assert.Equal("title-1", one.Id);
+        Assert.Equal("Opening", one.Text);
+        Assert.Equal(1.25, one.StartSec);
+        Assert.Equal(3, one.HoldSeconds);
+    }
+
+    [Fact]
     public void Saved_marks_override_hop_seed()
     {
         var clip = NewClip(1, 2);
@@ -69,6 +93,25 @@ public class CutProjectFileTests
         var clip = Assert.Single(clips);
         Assert.Equal("DISSOLVE TO:", clip.FountainTransition);
         Assert.Equal(CutJoinKind.Dissolve, clip.JoinToNext(NewClip(2, 1)));
+    }
+
+    [Fact]
+    public void FromFiles_reads_sidecar_card_note()
+    {
+        var clips = CutClipList.FromFiles(
+        [
+            new("scene_02_clip_01_take_01.mp4", "assets/video/scene_02_clip_01_take_01.mp4", 2000),
+            new("scene_02_clip_01.current.json", "assets/video/scene_02_clip_01.current.json", 40,
+                """{"take":1}"""),
+            new("scene_02_clip_01.clip.json", "assets/video/scene_02_clip_01.clip.json", 80,
+                """{"transition":"DISSOLVE TO:","card":"[[CARD: Chapter 1]]"}"""),
+        ]);
+        var clip = Assert.Single(clips);
+        Assert.True(clip.Card.Enabled);
+        Assert.Equal("Chapter 1", clip.Card.Text);
+        var block = Assert.Single(CutTextTrack.Build(clips, [], pxPerSec: 10));
+        Assert.Equal("Chapter 1", block.Text);
+        Assert.Equal(0, block.StartSec);
     }
 
     private static CutClip NewClip(int scene, int clip)

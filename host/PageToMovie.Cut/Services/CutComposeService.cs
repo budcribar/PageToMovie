@@ -76,7 +76,8 @@ public sealed class CutComposeService : IAsyncDisposable
     public async Task<string?> PreviewMovieAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<CutTextClip>? texts = null)
     {
         if (HasCachedMoviePreview)
         {
@@ -84,14 +85,15 @@ public sealed class CutComposeService : IAsyncDisposable
             return MoviePreviewUrl;
         }
 
-        return await ComposeAsync(clips, download: false, progress, cancellationToken);
+        return await ComposeAsync(clips, download: false, progress, cancellationToken, texts: texts);
     }
 
     public async Task<string?> PreviewMovieJitAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
         Action<string, int> onPrefix,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<CutTextClip>? texts = null)
     {
         if (HasCachedMoviePreview)
         {
@@ -103,14 +105,15 @@ public sealed class CutComposeService : IAsyncDisposable
             return cached;
         }
 
-        return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix);
+        return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix, texts);
     }
 
     public async Task<string?> ExportMovieAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
-        CancellationToken cancellationToken = default) =>
-        await ComposeAsync(clips, download: true, progress, cancellationToken);
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<CutTextClip>? texts = null) =>
+        await ComposeAsync(clips, download: true, progress, cancellationToken, texts: texts);
 
     public void ClearMoviePreview()
     {
@@ -124,7 +127,8 @@ public sealed class CutComposeService : IAsyncDisposable
         bool download,
         Action<int, string> progress,
         CancellationToken cancellationToken,
-        Action<string, int>? onPrefix = null)
+        Action<string, int>? onPrefix = null,
+        IReadOnlyList<CutTextClip>? texts = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var missing = clips.FirstOrDefault(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
@@ -134,7 +138,7 @@ public sealed class CutComposeService : IAsyncDisposable
         if (clips.Count == 0)
             throw new InvalidOperationException("No clips to export.");
 
-        var payload = BuildExportPayload(clips);
+        var payload = BuildExportPayload(clips, texts);
         string method;
         if (download)
             method = "PageToMovieCut.exportMovieAsync";
@@ -166,7 +170,9 @@ public sealed class CutComposeService : IAsyncDisposable
         return r.Url;
     }
 
-    private static List<JsExportClip> BuildExportPayload(IReadOnlyList<CutClip> clips)
+    internal static List<JsExportClip> BuildExportPayload(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts = null)
     {
         var payload = new List<JsExportClip>(clips.Count);
         for (var i = 0; i < clips.Count; i++)
@@ -185,6 +191,18 @@ public sealed class CutComposeService : IAsyncDisposable
                 Windows = windows.Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
                 JoinOut = next is null ? "cut" : CutTransitionMap.WireName(c.JoinToNext(next)),
                 Card = CardPayload(c, clips),
+            });
+        }
+
+        foreach (var overlay in CutTextTrack.OverlaysForCompose(clips, texts ?? []))
+        {
+            if (overlay.ClipIndex < 0 || overlay.ClipIndex >= payload.Count)
+                continue;
+            payload[overlay.ClipIndex].Texts.Add(new JsTextOverlay
+            {
+                Text = overlay.Text,
+                Start = overlay.LocalStart,
+                Seconds = overlay.Seconds,
             });
         }
 
