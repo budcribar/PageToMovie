@@ -441,7 +441,7 @@ public partial class Home : IAsyncDisposable
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;
             FinishComposeRun(gen);
-            await PersistPlayMergeAsync();
+            await PersistPlayMergeAsync(Folder, Compose);
             if (_wantPlay)
                 await ContinuePlayAsync(_playhead);
             if (CutPlayClock.ShouldRenderAfterComposeSettles)
@@ -877,17 +877,17 @@ public partial class Home : IAsyncDisposable
         _mergeHasFrame = false;
     }
 
-    private async Task PersistPlayMergeAsync()
+    private static async Task PersistPlayMergeAsync(CutFolderService folder, CutComposeService compose)
     {
-        if (!Folder.CanWrite || !Compose.HasCachedMoviePreview)
+        if (!folder.CanWrite || !compose.HasCachedMoviePreview)
             return;
-        if (Compose.PrefixClipCount < Folder.Clips.Count)
+        if (compose.PrefixClipCount < folder.Clips.Count)
             return;
-        if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
-            await Folder.WriteMovieMp4Async(Compose.MoviePreviewUrl);
-        await Folder.PersistMergeCacheAsync(Compose);
-        var fp = CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName, Compose.Music);
-        await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, Compose.Cache.Built);
+        if (!string.IsNullOrWhiteSpace(compose.MoviePreviewUrl))
+            await folder.WriteMovieMp4Async(compose.MoviePreviewUrl);
+        await folder.PersistMergeCacheAsync(compose);
+        var fp = CurrentMergeFingerprint(folder.Clips, folder.TextClips, compose.AudioFileName, compose.Music);
+        await folder.SaveFinishAsync(compose.AudioFileName, fp, compose.Music, compose.Cache.Built);
     }
 
     private async Task SkipStartAsync() => await OnPlayheadAsync(0);
@@ -908,7 +908,7 @@ public partial class Home : IAsyncDisposable
             await Compose.ExportMovieAsync(Folder.Clips, ReportProgress, texts: Folder.TextClips);
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;
-            await PersistPlayMergeAsync();
+            await PersistPlayMergeAsync(Folder, Compose);
             ProgressMessage = "Downloaded movie.mp4";
         }
         catch (Exception ex)
