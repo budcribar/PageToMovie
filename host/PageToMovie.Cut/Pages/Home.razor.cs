@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.JSInterop;
 using PageToMovie.Cut.Cut;
 using PageToMovie.Cut.Services;
 
@@ -8,7 +9,10 @@ namespace PageToMovie.Cut.Pages;
 
 public partial class Home
 {
+    [Inject] private IJSRuntime Js { get; set; } = default!;
+
     private ElementReference _player;
+    private ElementReference _moviePlayer;
     private CutClip? _selected;
     private bool _busy;
     private string? _error;
@@ -24,7 +28,7 @@ public partial class Home
     private void Select(CutClip clip)
     {
         _selected = clip;
-        _error = clip.Missing ? (clip.MissingReason ?? $"Clip is missing: {clip.Label}.") : null;
+        _error = clip.Missing ? (clip.MissingReason ?? $"Selected take file is missing: {clip.Label}.") : null;
     }
 
     private async Task SelectTakeAsync(int take)
@@ -32,7 +36,8 @@ public partial class Home
         if (_selected is null)
             return;
         await Folder.SetCurrentTakeAsync(_selected, take);
-        _error = _selected.Missing ? (_selected.MissingReason ?? $"Clip is missing: {_selected.Label}.") : Folder.FolderError;
+        Compose.ClearMoviePreview();
+        _error = _selected.Missing ? (_selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.") : Folder.FolderError;
     }
 
     private async Task PickFolderAsync()
@@ -75,10 +80,11 @@ public partial class Home
 
     private void AfterFolderLoad()
     {
+        Compose.ClearMoviePreview();
         _error = Folder.FolderError;
         _selected = Folder.Clips.FirstOrDefault();
         if (_selected?.Missing == true && string.IsNullOrWhiteSpace(_error))
-            _error = _selected.MissingReason ?? $"Clip is missing: {_selected.Label}.";
+            _error = _selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.";
     }
 
     private async Task OnPreviewMetadataAsync()
@@ -94,6 +100,7 @@ public partial class Home
         if (_selected is null || !TryParseSec(value, out var seconds))
             return;
         _selected.ApplyInOut(seconds, _selected.MarkOut);
+        Compose.ClearMoviePreview();
     }
 
     private void SetOut(object? value)
@@ -101,6 +108,7 @@ public partial class Home
         if (_selected is null || !TryParseSec(value, out var seconds))
             return;
         _selected.ApplyInOut(_selected.MarkIn, seconds);
+        Compose.ClearMoviePreview();
     }
 
     private async Task OnAudioAsync(InputFileChangeEventArgs e)
@@ -112,6 +120,7 @@ public partial class Home
             if (file is null)
                 return;
             await Compose.SetAudioFromBrowserFileAsync(file);
+            Compose.ClearMoviePreview();
         }
         catch (Exception ex)
         {
@@ -119,7 +128,34 @@ public partial class Home
         }
     }
 
-    private async Task ClearAudioAsync() => await Compose.ClearAudioAsync();
+    private async Task ClearAudioAsync()
+    {
+        await Compose.ClearAudioAsync();
+        Compose.ClearMoviePreview();
+    }
+
+    private async Task PlayAsync()
+    {
+        _error = null;
+        _busy = true;
+        _progressPercent = 0;
+        _progressMessage = "Starting…";
+        try
+        {
+            await Compose.PreviewMovieAsync(Folder.Clips, ReportProgress);
+            _progressMessage = "Playing";
+            await InvokeAsync(StateHasChanged);
+            await Js.InvokeVoidAsync("PageToMovieCut.playVideo", _moviePlayer);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     private async Task ExportAsync()
     {
@@ -129,12 +165,7 @@ public partial class Home
         _progressMessage = "Starting…";
         try
         {
-            await Compose.ExportMovieAsync(Folder.Clips, (pct, msg) =>
-            {
-                _progressPercent = Math.Clamp(pct, 0, 100);
-                _progressMessage = msg;
-                _ = InvokeAsync(StateHasChanged);
-            });
+            await Compose.ExportMovieAsync(Folder.Clips, ReportProgress);
             _progressMessage = "Downloaded movie.mp4";
         }
         catch (Exception ex)
@@ -145,6 +176,13 @@ public partial class Home
         {
             _busy = false;
         }
+    }
+
+    private void ReportProgress(int pct, string msg)
+    {
+        _progressPercent = Math.Clamp(pct, 0, 100);
+        _progressMessage = msg;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private static string FormatSec(double seconds) =>

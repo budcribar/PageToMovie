@@ -237,6 +237,21 @@ html, body {
 
 .cut-ok { color: var(--fs-ok-text); }
 
+.cut-actions {
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.cut-movie {
+    width: 100%;
+    margin-top: 0.75rem;
+    max-height: 280px;
+    background: #000;
+    border-radius: 8px;
+}
+
 #blazor-error-ui {
     display: none;
     position: fixed;

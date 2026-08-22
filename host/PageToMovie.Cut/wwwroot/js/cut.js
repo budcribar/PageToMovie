@@ -173,6 +173,12 @@ window.PageToMovieCut = {
         return (typeof d === "number" && isFinite(d) && d > 0) ? d : 0;
     },
 
+    playVideo: function (el) {
+        if (!el || typeof el.play !== "function") return;
+        var p = el.play();
+        if (p && typeof p.catch === "function") p.catch(function () { /* autoplay may need a click */ });
+    },
+
     downloadUrlAs: function (url, fileName) {
         const a = document.createElement("a");
         a.href = url;
@@ -242,7 +248,7 @@ window.PageToMovieCut = {
         });
     },
 
-    exportMovieAsync: async function (clips, audioUrl, dotNetRef) {
+    composeMovieAsync: async function (clips, audioUrl, dotNetRef) {
         const onProgress = this._asProgress(dotNetRef);
         const api = window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
@@ -250,11 +256,13 @@ window.PageToMovieCut = {
             return { success: false, error: "No clips to export." };
 
         const prepared = [];
+        const sourceUrls = [];
         for (let i = 0; i < clips.length; i++) {
             const c = clips[i];
             const label = c.label || c.fileName || ("clip " + (i + 1));
             if (!c.url)
-                return { success: false, error: "Clip is missing: " + label };
+                return { success: false, error: "Selected take file is missing: " + label };
+            sourceUrls.push(c.url);
             if (typeof onProgress === "function")
                 onProgress(Math.round((i / clips.length) * 50), "Preparing " + label + "…");
             const duration = Number(c.duration) || 0;
@@ -285,9 +293,24 @@ window.PageToMovieCut = {
             outUrl = mixed.url;
         }
 
-        if (typeof onProgress === "function") onProgress(96, "Saving movie.mp4…");
-        this.downloadUrlAs(outUrl, "movie.mp4");
-        if (typeof onProgress === "function") onProgress(100, "Done");
-        return { success: true, url: outUrl };
+        if (typeof onProgress === "function") onProgress(100, "Ready");
+        const owned = sourceUrls.indexOf(outUrl) < 0;
+        return { success: true, url: outUrl, owned: owned };
+    },
+
+    exportMovieAsync: async function (clips, audioUrl, dotNetRef) {
+        const r = await this.composeMovieAsync(clips, audioUrl, dotNetRef);
+        if (!r.success) return r;
+        this.downloadUrlAs(r.url, "movie.mp4");
+        return r;
+    },
+
+    previewMovieAsync: async function (clips, audioUrl, dotNetRef) {
+        const r = await this.composeMovieAsync(clips, audioUrl, dotNetRef);
+        if (!r.success) return r;
+        if (this._ownedMovieUrl && this._ownedMovieUrl !== r.url)
+            this.revokeBlobUrl(this._ownedMovieUrl);
+        this._ownedMovieUrl = r.owned ? r.url : null;
+        return r;
     },
 };

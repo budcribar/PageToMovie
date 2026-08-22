@@ -45,7 +45,8 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
    preview, in/out, and export, and writes `.current.json`. It never writes an alias MP4.
 5. Per clip: preview + mark in / out (on the current take).
 6. Optional one audio track (music or wav) mixed under the whole movie (duck, then replace if duck fails).
-7. **Make movie** runs ffmpeg.wasm and downloads `movie.mp4` from the current take of each clip.
+7. **Play** stitches the current in/out-trimmed takes plus optional audio (same ffmpeg.wasm queue as export) and plays the blob in-page. It does not download.
+8. **Make movie** uses that same compose path and downloads `movie.mp4`.
 
 ffmpeg assets and `pagetomovie-ffmpeg.js` are copied from `PageToMovie.Web/wwwroot/js/` so the loader, concat, duration probe, and encode args stay the same. Ops share that file’s exclusive queue.
 

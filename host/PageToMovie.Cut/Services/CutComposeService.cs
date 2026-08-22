@@ -6,12 +6,14 @@ using PageToMovie.Cut.Cut;
 namespace PageToMovie.Cut.Services;
 
 /// <summary>
-/// Browser ffmpeg.wasm compose — concat trimmed clips, optional one-track audio mix, download movie.mp4.
+/// Browser ffmpeg.wasm compose — concat trimmed clips, optional one-track audio mix.
+/// Preview plays a blob URL; export downloads movie.mp4. Same queue, no download on preview.
 /// </summary>
 public sealed class CutComposeService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
     private string? _audioUrl;
+    public string? MoviePreviewUrl { get; private set; }
 
     public CutComposeService(IJSRuntime js) => _js = js;
 
@@ -46,15 +48,31 @@ public sealed class CutComposeService : IAsyncDisposable
     public async Task<double> ReadMediaDurationAsync(ElementReference media) =>
         await _js.InvokeAsync<double>("PageToMovieCut.readMediaDuration", media);
 
+    public async Task<string?> PreviewMovieAsync(
+        IReadOnlyList<CutClip> clips,
+        Action<int, string> progress,
+        CancellationToken cancellationToken = default) =>
+        await ComposeAsync(clips, download: false, progress, cancellationToken);
+
     public async Task<string?> ExportMovieAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ComposeAsync(clips, download: true, progress, cancellationToken);
+
+    public void ClearMoviePreview() => MoviePreviewUrl = null;
+
+    private async Task<string?> ComposeAsync(
+        IReadOnlyList<CutClip> clips,
+        bool download,
+        Action<int, string> progress,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var missing = clips.FirstOrDefault(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
         if (missing is not null)
-            throw new InvalidOperationException(missing.MissingReason ?? $"Clip is missing: {missing.Label}.");
+            throw new InvalidOperationException(
+                missing.MissingReason ?? $"Selected take file is missing: {missing.Label}.");
         if (clips.Count == 0)
             throw new InvalidOperationException("No clips to export.");
 
@@ -70,16 +88,18 @@ public sealed class CutComposeService : IAsyncDisposable
 
         var sink = new ExportProgressSink(progress);
         using var sinkRef = DotNetObjectReference.Create(sink);
-        var r = await _js.InvokeAsync<JsResult>(
-            "PageToMovieCut.exportMovieAsync",
-            cancellationToken,
-            payload,
-            _audioUrl,
-            sinkRef);
+        var method = download ? "PageToMovieCut.exportMovieAsync" : "PageToMovieCut.previewMovieAsync";
+        var r = await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
         if (!r.Success)
-            throw new InvalidOperationException(r.Error ?? "Export failed.");
+            throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
+        if (!download)
+            MoviePreviewUrl = r.Url;
         return r.Url;
     }
 
-    public async ValueTask DisposeAsync() => await ClearAudioAsync();
+    public async ValueTask DisposeAsync()
+    {
+        MoviePreviewUrl = null;
+        await ClearAudioAsync();
+    }
 }

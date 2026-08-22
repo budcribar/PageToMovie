@@ -140,16 +140,26 @@
                     <p class="cut-muted">Drop music or a wav. Mixed under the whole movie.</p>
                 }
             </div>
-            <div style="margin-top:1rem;display:flex;flex-direction:column;gap:0.55rem;">
-                <button type="button" class="cut-btn" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
-                @if (_busy && !string.IsNullOrWhiteSpace(_progressMessage))
-                {
-                    <p class="cut-muted">@_progressPercent% · @_progressMessage</p>
-                    <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_progressPercent">
-                        <span style="width:@(_progressPercent)%"></span>
-                    </div>
-                }
+            <div class="cut-actions">
+                <button type="button" class="cut-btn" @onclick="PlayAsync" disabled="@ExportDisabled">Play</button>
+                <button type="button" class="cut-btn cut-btn-ghost" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
             </div>
+            @if (_busy && !string.IsNullOrWhiteSpace(_progressMessage))
+            {
+                <p class="cut-muted">@_progressPercent% · @_progressMessage</p>
+                <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_progressPercent">
+                    <span style="width:@(_progressPercent)%"></span>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
+            {
+                <video @ref="_moviePlayer"
+                       class="cut-movie"
+                       src="@Compose.MoviePreviewUrl"
+                       controls
+                       playsinline
+                       autoplay></video>
+            }
         </section>
     </div>
 }
