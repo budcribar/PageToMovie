@@ -1,9 +1,8 @@
 # PageToMovie.Cut
 
-Standalone V1 cut / editor. A thin, in-browser movie assembler (Clipchamp-like, but tiny).
-It is **not** wired into Film Studio yet.
+Standalone finish editor. Film already owns order, deletes, and current takes. Cut reads that folder and finishes the movie (trim, transitions, music, cards, export). It is **not** wired into Film Studio yet.
 
-**1.0 scope and remaining slices:** [CUT-1.0.md](CUT-1.0.md) (SSoT — do not stack two agents on the same slice).
+**1.0 (finish, not assembly):** [CUT-1.0.md](CUT-1.0.md) — scope SSoT. Do not stack two agents on the same slice. Do not add reorder / delete / take-picking product work.
 
 Open this folder’s solution — do **not** add it to `host/PageToMovie.slnx`.
 No Engine, API, Railway, catalog, or auth. Clip bytes stay on the client.
@@ -38,23 +37,21 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
 - Bare `scene_SS_clip_CC.mp4` is legacy. Ignore it. Do not copy, write, or treat it as current.
 - Timestamp leftovers are ignored.
 
-## What V1 does
+## What this branch already does (slices 1–4)
 
 1. Pick a local folder (or a handful of MP4s).
-2. Load `_take_NN` files; seed the Active take from `.current.json`.
-3. Show a horizontal strip in scene / clip order.
-4. Per clip: take chooser (list takes, mark **Active**). Changing the take updates
-   preview, in/out, and export, and writes `.current.json`. It never writes an alias MP4.
-5. Per clip: preview + mark in / out (on the current take).
-6. Optional one audio track (music or wav) mixed under the whole movie (duck, then replace if duck fails).
-7. **Play** stitches the current in/out-trimmed takes plus optional audio (same ffmpeg.wasm queue as export) and plays the blob in-page. It does not download.
-8. **Make movie** uses that same compose path and downloads `movie.mp4`.
+2. Load current takes from `_take_NN.mp4` + `.current.json` in Film scene/clip order. Ignore alias MP4s.
+3. Show a strip; per-clip preview + mark in / out on the current take.
+4. Optional one background music track mixed under the whole movie (8 MiB cap).
+5. **Play** stitches trimmed current takes + music (same ffmpeg.wasm queue as export) and plays the blob in-page. It does not download.
+6. **Make movie** uses that same compose path and downloads `movie.mp4`.
+
+Remaining 1.0 work (save/reload finish, transitions, chapter/scene cards, Film mount) is listed in [CUT-1.0.md](CUT-1.0.md).
 
 ffmpeg assets and `pagetomovie-ffmpeg.js` are copied from `PageToMovie.Web/wwwroot/js/` so the loader, concat, duration probe, and encode args stay the same. Ops share that file’s exclusive queue.
 
-## Out of scope (not in V1)
+## Out of 1.0
 
-Ripple delete, multi-track mix, titles, transitions, undo, Film / Review integration,
-RCL / iframe mount, Engine API, alias MP4 read/write, credits special-case.
+Reorder, delete, take-picking product, ripple, split, multi-track, undo, Engine / Railway.
 
-Integration with the main studio app comes later.
+Film Final Edit mount is last — see [CUT-1.0.md](CUT-1.0.md).
