@@ -2469,16 +2469,19 @@ public sealed class FilmJobService
             return 0;
         return await _sidecars.PersistGeneratedTakeAsync(
             projectDir, req.Scene, req.Clip, bytes,
-            prompt: req.Prompt,
-            scriptText: current?.ScriptText ?? "",
-            model: entry.Id,
-            resolution: current?.Resolution ?? "",
-            durationSeconds: current?.DurationSeconds ?? 0,
-            editedFromTake: current?.Take is > 0 ? current.Take : 1,
-            sourceUrl: sourceUrl,
-            sourceProvider: entry.ProviderId,
-            updateAlias: false,
-            ct: ct).ConfigureAwait(false);
+            new PersistGeneratedTakeOptions
+            {
+                Prompt = req.Prompt,
+                ScriptText = current?.ScriptText ?? "",
+                Model = entry.Id,
+                Resolution = current?.Resolution ?? "",
+                DurationSeconds = current?.DurationSeconds ?? 0,
+                EditedFromTake = current?.Take is > 0 ? current.Take : 1,
+                SourceUrl = sourceUrl,
+                SourceProvider = entry.ProviderId,
+                UpdateAlias = false,
+            },
+            ct).ConfigureAwait(false);
     }
 
     private async Task RunLocationVariantsAsync(StartLocationVariantsRequest req, string projectId, CancellationToken ct)
