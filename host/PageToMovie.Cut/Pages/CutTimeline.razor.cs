@@ -29,7 +29,10 @@ public partial class CutTimeline
     [Parameter] public EventCallback OnStepForward { get; set; }
     [Parameter] public EventCallback OnSplit { get; set; }
     [Parameter] public EventCallback OnEdited { get; set; }
+    [Parameter] public string? SelectedTextId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedTextIdChanged { get; set; }
 
+    private ElementReference _root = default;
     private ElementReference _scroll = default;
     private ElementReference _inner = default;
     private double _pxPerSec = CutTimelineLayout.DefaultPxPerSec;
@@ -52,7 +55,12 @@ public partial class CutTimeline
     private string? _selectedTextId;
     private bool _textFieldFocused;
     private bool _focusTextInput;
+    private bool _menuOpen;
+    private double _menuX;
+    private double _menuY;
+    private CutTextPayload? _clipboard;
     private ElementReference _textLabelInput = default;
+    private CutTimeline_TextInspector? _inspector;
     private TimelineRenderSnap _renderSnap;
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
@@ -66,6 +74,11 @@ public partial class CutTimeline
     private string TotalClock => CutTimelineLayout.Clock(Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec);
     private bool PlayOrStopDisabled => IsPlaying ? Busy : PlayDisabled;
     private bool SplitDisabled => Busy || !CutSplit.CanAt(Clips, PlayheadSec);
+    private bool PreventTitleKey => !string.IsNullOrEmpty(_selectedTextId) && !_textFieldFocused;
+    private bool CanSplitSelectedTitle =>
+        SelectedTitle is { } title && CutTextEdit.CanSplit(title, PlayheadSec);
+    private CutTextClip? SelectedTitle =>
+        SelectedTextBlock is { Title: { } title } ? title : CutTextEdit.Find(TextClips, _selectedTextId);
     private bool ShowMusic => Music is { HasFile: true };
     private double MusicLeftPx => (Music?.StartSec ?? 0) * _pxPerSec;
     private double MusicWidthPx
@@ -99,6 +112,7 @@ public partial class CutTimeline
 
     protected override void OnInitialized()
     {
+        _root = default;
         _scroll = default;
         _inner = default;
         _textLabelInput = default;
@@ -106,6 +120,8 @@ public partial class CutTimeline
 
     protected override void OnParametersSet()
     {
+        if (!string.IsNullOrEmpty(SelectedTextId) && SelectedTextId != _selectedTextId)
+            _selectedTextId = SelectedTextId;
         if (Clips.Count != _lastCount)
         {
             _lastCount = Clips.Count;
@@ -190,7 +206,8 @@ public partial class CutTimeline
     private async Task SelectClip(CutClip clip)
     {
         _joinMenu = null;
-        _selectedTextId = null;
+        CloseTitleMenu();
+        await SetSelectedTextIdAsync(null);
         _textFieldFocused = false;
         await SelectedChanged.InvokeAsync(clip);
     }
@@ -208,10 +225,50 @@ public partial class CutTimeline
             await SelectClip(Clips[block.FirstIndex]);
     }
 
-    private void SelectText(CutTextBlock block)
+    private void SelectText(CutTextBlock block) =>
+        _ = SelectTitleAsync(block.Id);
+
+    internal void SelectTitle(string id) => _ = SelectTitleAsync(id);
+
+    internal async Task SelectTitleAsync(string id)
     {
         _joinMenu = null;
-        _selectedTextId = block.Id;
+        await SetSelectedTextIdAsync(id);
+    }
+
+    internal async Task OpenTitleMenuAsync(double clientX, double clientY, string titleId)
+    {
+        await SelectTitleAsync(titleId);
+        if (CutTextEdit.Find(TextClips, titleId) is null)
+            return;
+        _menuX = clientX;
+        _menuY = clientY;
+        _menuOpen = true;
+        try
+        {
+            await _root.FocusAsync();
+        }
+        catch (JSException)
+        {
+            // Timeline may not be mounted yet.
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenTitleMenu(MouseEventArgs e, CutTextBlock block)
+    {
+        if (block.Kind != CutTextKind.Title)
+            return;
+        _ = OpenTitleMenuAsync(e.ClientX, e.ClientY, block.Id);
+    }
+
+    private void CloseTitleMenu() => _menuOpen = false;
+
+    private async Task SetSelectedTextIdAsync(string? id)
+    {
+        _selectedTextId = id;
+        if (SelectedTextId != id)
+            await SelectedTextIdChanged.InvokeAsync(id);
     }
 
     private async Task OnTextRowDownAsync(PointerEventArgs e)
@@ -228,7 +285,7 @@ public partial class CutTimeline
         if (Busy)
             return;
         var title = CutTextTrack.Add(TextClips, startSec);
-        _selectedTextId = title.Id;
+        await SetSelectedTextIdAsync(title.Id);
         _textFieldFocused = true;
         _focusTextInput = true;
         await OnEdited.InvokeAsync();
@@ -249,11 +306,68 @@ public partial class CutTimeline
 
     private async Task DeleteTextAsync(CutTextBlock block)
     {
+        CloseTitleMenu();
         CutTextTrack.Delete(block, TextClips);
         if (_selectedTextId == block.Id)
-            _selectedTextId = null;
+            await SetSelectedTextIdAsync(null);
         _textFieldFocused = false;
         await OnEdited.InvokeAsync();
+    }
+
+    private async Task SetTextDurationAsync(double seconds)
+    {
+        if (SelectedTextBlock is not { } block)
+            return;
+        CutTextTrack.SetHold(block, seconds, TextHoldMax(block.StartSec));
+        await OnEdited.InvokeAsync();
+    }
+
+    private void OnInspectorFieldFocus(bool focused) => _textFieldFocused = focused;
+
+    private async Task DuplicateSelectedTitleAsync()
+    {
+        if (Busy || SelectedTitle is not { } title)
+            return;
+        CloseTitleMenu();
+        var copy = CutTextEdit.Duplicate(TextClips, title);
+        await SetSelectedTextIdAsync(copy.Id);
+        await OnEdited.InvokeAsync();
+    }
+
+    private void CopySelectedTitle()
+    {
+        if (SelectedTitle is not { } title)
+            return;
+        _clipboard = CutTextEdit.Copy(title);
+        CloseTitleMenu();
+    }
+
+    private async Task PasteTitleAsync()
+    {
+        if (Busy || _clipboard is null)
+            return;
+        CloseTitleMenu();
+        var start = CutTextEdit.PasteStart(PlayheadSec, SelectedTitle);
+        var pasted = CutTextEdit.Paste(TextClips, _clipboard, start);
+        await SetSelectedTextIdAsync(pasted.Id);
+        await OnEdited.InvokeAsync();
+    }
+
+    private async Task SplitSelectedTitleAsync()
+    {
+        if (Busy || SelectedTitle is not { } title)
+            return;
+        CloseTitleMenu();
+        if (!CutTextEdit.TrySplit(TextClips, title, PlayheadSec, out _))
+            return;
+        await OnEdited.InvokeAsync();
+    }
+
+    private async Task EditDurationAsync()
+    {
+        CloseTitleMenu();
+        if (_inspector is not null)
+            await _inspector.FocusDurationAsync();
     }
 
     private async Task BeginTextTrimAsync(PointerEventArgs e, CutTextBlock block, bool fromStart)
@@ -265,7 +379,7 @@ public partial class CutTimeline
         _dragOriginX = e.ClientX;
         _dragTextStart = block.StartSec;
         _dragTextHold = block.Seconds;
-        _selectedTextId = block.Id;
+        await SetSelectedTextIdAsync(block.Id);
         await CapturePointerAsync(e.PointerId);
     }
 
@@ -451,6 +565,14 @@ public partial class CutTimeline
     {
         if (_textFieldFocused)
             return;
+        if (e.Key is "Escape")
+        {
+            CloseTitleMenu();
+            return;
+        }
+
+        if (await TryHandleTitleShortcutAsync(e))
+            return;
         if (await TryHandleDeleteKeyAsync(e.Key))
             return;
         if (e.Key is "-" or "_" or "Minus" or "Subtract")
@@ -461,13 +583,36 @@ public partial class CutTimeline
             await FitAsync();
     }
 
+    private async Task<bool> TryHandleTitleShortcutAsync(KeyboardEventArgs e)
+    {
+        var shortcut = CutTextEdit.ShortcutOf(e.Key, e.CtrlKey || e.MetaKey, _textFieldFocused);
+        switch (shortcut)
+        {
+            case CutTextShortcut.Duplicate:
+                await DuplicateSelectedTitleAsync();
+                return true;
+            case CutTextShortcut.Copy:
+                CopySelectedTitle();
+                return true;
+            case CutTextShortcut.Paste:
+                await PasteTitleAsync();
+                return true;
+            case CutTextShortcut.Split:
+                await SplitSelectedTitleAsync();
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private async Task<bool> TryHandleDeleteKeyAsync(string key)
     {
         if (key is not ("Delete" or "Backspace"))
             return false;
         if (CutTextTrack.TryDeleteSelectedOnKey(key, _textFieldFocused, _selectedTextId, TextBlocks, TextClips))
         {
-            _selectedTextId = null;
+            CloseTitleMenu();
+            await SetSelectedTextIdAsync(null);
             _textFieldFocused = false;
             await OnEdited.InvokeAsync();
             return true;
@@ -545,6 +690,7 @@ public partial class CutTimeline
             HasRange,
             _joinMenu,
             _selectedTextId,
+            _menuOpen,
             Music?.StartSec,
             Music?.MarkIn,
             Music?.MarkOut,
@@ -576,6 +722,7 @@ public partial class CutTimeline
         bool HasRange,
         int? Join,
         string? TextId,
+        bool Menu,
         double? MusicStart,
         double? MusicIn,
         double? MusicOut,

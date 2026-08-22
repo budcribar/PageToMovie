@@ -51,9 +51,24 @@
                     <div @ref="TextOverlay"
                          class="cut-text-overlay is-off"
                          data-testid="cut-text-overlay"
-                         aria-hidden="true">
+                         aria-hidden="true"
+                         @onclick="OnLiveOverlayClickAsync"
+                         @oncontextmenu="OnLiveOverlayContextMenuAsync"
+                         @oncontextmenu:preventDefault="true">
                         <p class="cut-text-overlay-line"></p>
                     </div>
+                    @if (ShowSelectedTitleOverlay && SelectedTitle is { } picked)
+                    {
+                        var look = picked.Style;
+                        <div class="cut-text-overlay is-picked"
+                             data-testid="cut-text-overlay-picked"
+                             @onclick="() => _timeline?.SelectTitle(picked.Id)"
+                             @oncontextmenu="e => OnPickedOverlayContextMenuAsync(e, picked.Id)"
+                             @oncontextmenu:preventDefault="true">
+                            <p class="cut-text-overlay-line @(look.HasBar ? "has-bar" : "")"
+                               style="color: @look.ColorHex; font-size: @(look.FontPx)px; top: @((look.Y / 7.2).ToString(System.Globalization.CultureInfo.InvariantCulture))%">@picked.DisplayText</p>
+                        </div>
+                    }
                     @if (ShowComposeOverlay)
                     {
                         <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">
@@ -89,12 +104,15 @@
             }
         </section>
 
-        <CutTimeline Clips="Folder.Clips"
+        <CutTimeline @ref="_timeline"
+                     Clips="Folder.Clips"
                      Selected="_selected"
                      SelectedChanged="Select"
                      PlayheadSec="_playhead"
                      PlayheadChanged="OnPlayheadAsync"
                      TextClips="Folder.TextClips"
+                     SelectedTextId="_selectedTextId"
+                     SelectedTextIdChanged="OnSelectedTextId"
                      HasAudio="Compose.HasAudio"
                      AudioName="@Compose.AudioFileName"
                      Music="Compose.Music"

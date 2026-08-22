@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Cut.Cut;
 using PageToMovie.Cut.Services;
@@ -12,6 +13,8 @@ public partial class Home : IAsyncDisposable
     [Inject] private IJSRuntime? Js { get; set; }
 
     private CutPreviewVideos? _preview = null;
+    private CutTimeline? _timeline;
+    private string? _selectedTextId;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
     internal ElementReference TextOverlay { get; set; }
@@ -76,6 +79,37 @@ public partial class Home : IAsyncDisposable
     private bool ExportDisabled => PlayDisabled;
 
     internal bool IsPlaying => _wantPlay;
+
+    internal CutTextClip? SelectedTitle => CutTextEdit.Find(Folder.TextClips, _selectedTextId);
+
+    internal bool ShowSelectedTitleOverlay =>
+        !IsPlaying
+        && CutPlayOverlay.UseLiveOverlay(ShowMovie)
+        && SelectedTitle is not null;
+
+    private void OnSelectedTextId(string? id) => _selectedTextId = id;
+
+    private void OnLiveOverlayClickAsync()
+    {
+        var title = CutTextEdit.TitleAt(Folder.TextClips, _playhead) ?? SelectedTitle;
+        if (title is null)
+            return;
+        _timeline?.SelectTitle(title.Id);
+    }
+
+    private Task OnLiveOverlayContextMenuAsync(MouseEventArgs e) =>
+        OpenOverlayTitleMenuAsync(e, CutTextEdit.TitleAt(Folder.TextClips, _playhead)?.Id);
+
+    private Task OnPickedOverlayContextMenuAsync(MouseEventArgs e, string titleId) =>
+        OpenOverlayTitleMenuAsync(e, titleId);
+
+    private async Task OpenOverlayTitleMenuAsync(MouseEventArgs e, string? titleId)
+    {
+        var id = titleId ?? SelectedTitle?.Id;
+        if (id is null || _timeline is null)
+            return;
+        await _timeline.OpenTitleMenuAsync(e.ClientX, e.ClientY, id);
+    }
 
     private void Select(CutClip clip)
     {
@@ -964,7 +998,7 @@ public partial class Home : IAsyncDisposable
         {
             await Js.InvokeVoidAsync(
                 "PageToMovieCut.setLiveTextOverlay",
-                CutPlayOverlay.UseLiveOverlay(ShowMovie));
+                CutPlayOverlay.UseLiveOverlay(ShowMovie) && !ShowSelectedTitleOverlay);
             await Js.InvokeVoidAsync(HoldPlayheadJs, _playhead);
         }
         catch (JSException)

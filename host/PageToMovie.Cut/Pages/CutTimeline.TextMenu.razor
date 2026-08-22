@@ -1,0 +1,90 @@
+@if (Open)
+{
+    <div class="cut-text-menu-back"
+         data-testid="cut-text-menu-back"
+         @onclick="Close"
+         @oncontextmenu="Close"
+         @oncontextmenu:preventDefault="true"></div>
+    <div class="@CutTransport.TextMenuClass"
+         data-testid="cut-text-menu"
+         role="menu"
+         style="left: @(X.ToString(System.Globalization.CultureInfo.InvariantCulture))px; top: @(Y.ToString(System.Globalization.CultureInfo.InvariantCulture))px">
+        <button type="button"
+                class="cut-text-menu-item"
+                data-testid="cut-text-menu-duplicate"
+                disabled="@Busy"
+                @onclick="OnDuplicate">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 7h9a2 2 0 0 1 2 2v9H8V7zm-3 3h2v9a2 2 0 0 0 2 2h9v1H7a2 2 0 0 1-2-2v-10zm10.2.4v1.8H17v1.6h-1.8V16h-1.6v-1.8H12v-1.6h1.8V10.4h1.4z"/></svg>
+            <span>Duplicate</span>
+            <kbd>@CutTextEdit.DuplicateKeys</kbd>
+        </button>
+        <button type="button"
+                class="cut-text-menu-item"
+                data-testid="cut-text-menu-copy"
+                disabled="@Busy"
+                @onclick="OnCopy">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 6h10a2 2 0 0 1 2 2v10H8V6zm-3 3h2v10a2 2 0 0 0 2 2h10v1H7a2 2 0 0 1-2-2V9z"/></svg>
+            <span>Copy</span>
+            <kbd>@CutTextEdit.CopyKeys</kbd>
+        </button>
+        <button type="button"
+                class="cut-text-menu-item"
+                data-testid="cut-text-menu-paste"
+                disabled="@(Busy || !CanPaste)"
+                @onclick="OnPaste">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1-2zm3 5.5A2.5 2.5 0 1 0 12 14a2.5 2.5 0 0 0 0-4.5z"/></svg>
+            <span>Paste</span>
+            <kbd>@CutTextEdit.PasteKeys</kbd>
+        </button>
+        <button type="button"
+                class="cut-text-menu-item"
+                data-testid="cut-text-menu-delete"
+                disabled="@Busy"
+                @onclick="OnDelete">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h4v2H4V6h4l1-2zm1 6h2v8h-2v-8zm4 0h2v8h-2v-8z"/></svg>
+            <span>Delete</span>
+            <kbd>@CutTextEdit.DeleteKeys</kbd>
+        </button>
+        <div class="cut-text-menu-rule"></div>
+        @if (CanSplit)
+        {
+            <button type="button"
+                    class="cut-text-menu-item"
+                    data-testid="cut-text-menu-split"
+                    disabled="@Busy"
+                    @onclick="OnSplit">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="6.2" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                    <circle cx="6.2" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.2 8.4 20 18.2M8.2 15.6 20 5.8" />
+                </svg>
+                <span>Split</span>
+                <kbd>@CutTextEdit.SplitKeys</kbd>
+            </button>
+        }
+        <button type="button"
+                class="cut-text-menu-item"
+                data-testid="cut-text-menu-duration"
+                disabled="@Busy"
+                @onclick="OnEditDuration">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm.8 3h-1.6v5.2l3.7 2.2.8-1.3-2.9-1.7V7z"/></svg>
+            <span>Edit duration</span>
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool CanPaste { get; set; }
+    [Parameter] public bool CanSplit { get; set; }
+    [Parameter] public EventCallback OnDuplicate { get; set; }
+    [Parameter] public EventCallback OnCopy { get; set; }
+    [Parameter] public EventCallback OnPaste { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnSplit { get; set; }
+    [Parameter] public EventCallback OnEditDuration { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+}

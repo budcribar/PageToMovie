@@ -1,4 +1,9 @@
-<div class="cut-tl" data-testid="cut-timeline" tabindex="0" @onkeydown="OnKey">
+<div @ref="_root"
+     class="cut-tl"
+     data-testid="cut-timeline"
+     tabindex="0"
+     @onkeydown="OnKey"
+     @onkeydown:preventDefault="PreventTitleKey">
     <div class="cut-tl-transport">
         <button type="button" class="cut-tl-icon" title="Skip to start" disabled="@Busy" @onclick="OnSkipStart">⏮</button>
         <button type="button" class="cut-tl-icon" title="Back 5s" disabled="@Busy" @onclick="OnStepBack">⏪</button>
@@ -162,7 +167,9 @@
                              data-testid="cut-tl-text-clip"
                              title="@block.Text"
                              @onpointerdown:stopPropagation="true"
-                             @onpointerdown="() => SelectText(block)">
+                             @onpointerdown="() => SelectText(block)"
+                             @oncontextmenu:preventDefault="true"
+                             @oncontextmenu="e => OpenTitleMenu(e, block)">
                             @if (selected)
                             {
                                 <input class="cut-tl-text-label"
@@ -229,7 +236,27 @@
         </div>
     </div>
 
-    <CutTimeline_TextInspector Block="SelectedTextBlock" Busy="Busy" StyleChanged="OnEdited" OnDelete="DeleteSelectedTextAsync" />
+    <CutTimeline_TextInspector @ref="_inspector"
+                               Block="SelectedTextBlock"
+                               Busy="Busy"
+                               StyleChanged="OnEdited"
+                               DurationChanged="SetTextDurationAsync"
+                               OnDelete="DeleteSelectedTextAsync"
+                               FieldFocusChanged="OnInspectorFieldFocus" />
+
+    <CutTimeline_TextMenu Open="_menuOpen"
+                          X="_menuX"
+                          Y="_menuY"
+                          Busy="Busy"
+                          CanPaste="_clipboard is not null"
+                          CanSplit="CanSplitSelectedTitle"
+                          OnDuplicate="DuplicateSelectedTitleAsync"
+                          OnCopy="CopySelectedTitle"
+                          OnPaste="PasteTitleAsync"
+                          OnDelete="DeleteSelectedTextAsync"
+                          OnSplit="SplitSelectedTitleAsync"
+                          OnEditDuration="EditDurationAsync"
+                          Close="CloseTitleMenu" />
 
     <div class="cut-tl-chrome">
         <div class="cut-tl-zoom" data-testid="cut-tl-zoom">

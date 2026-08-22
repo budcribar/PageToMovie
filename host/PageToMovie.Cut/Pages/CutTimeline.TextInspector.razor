@@ -53,6 +53,20 @@
                         @onclick="() => SetAsync(s => s.Fade = choice.Value)">@choice.Label</button>
             }
         </div>
+        <label class="cut-tl-inspector-group cut-tl-inspector-duration">
+            <span>Time</span>
+            <input @ref="_durationInput"
+                   type="number"
+                   min="@CutCard.MinHoldSeconds"
+                   step="0.1"
+                   value="@DurationValue"
+                   aria-label="Duration"
+                   data-testid="cut-tl-text-duration"
+                   disabled="@Busy"
+                   @onfocus="() => FieldFocusChanged.InvokeAsync(true)"
+                   @onblur="() => FieldFocusChanged.InvokeAsync(false)"
+                   @onchange="OnDurationAsync" />
+        </label>
         <button type="button"
                 class="cut-tl-inspector-del"
                 title="Delete text"
@@ -66,7 +80,29 @@
     [Parameter] public CutTextBlock? Block { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback StyleChanged { get; set; }
+    [Parameter] public EventCallback<double> DurationChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback<bool> FieldFocusChanged { get; set; }
+
+    private ElementReference _durationInput = default;
+
+    private string DurationValue =>
+        Block is { } block
+            ? block.Seconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+            : "";
+
+    internal async Task FocusDurationAsync()
+    {
+        await FieldFocusChanged.InvokeAsync(true);
+        try
+        {
+            await _durationInput.FocusAsync();
+        }
+        catch (JSException)
+        {
+            // Inspector may have closed on the same render.
+        }
+    }
 
     private async Task SetAsync(Action<CutTextStyle> edit)
     {
@@ -74,5 +110,14 @@
             return;
         CutTextTrack.SetStyle(block, edit);
         await StyleChanged.InvokeAsync();
+    }
+
+    private async Task OnDurationAsync(ChangeEventArgs e)
+    {
+        var raw = Convert.ToString(e.Value, System.Globalization.CultureInfo.InvariantCulture);
+        if (!double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+            return;
+        await DurationChanged.InvokeAsync(seconds);
     }
 }
