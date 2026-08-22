@@ -88,15 +88,19 @@
         return { start: start, keep: Math.max(0.1, end - start) };
     }
 
-    function buildTrimArgs(inName, outName, start, keep) {
+    function buildTrimArgs(inName, outName, start, keep, silentAudio) {
         const args = ["-hide_banner", "-y"];
         if (start > 0.001) args.push("-ss", String(start));
-        args.push("-i", inName, "-t", String(keep),
+        args.push("-i", inName);
+        if (silentAudio)
+            args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
+        args.push("-t", String(keep),
             "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            outName);
+            "-c:a", "aac", "-b:a", "128k");
+        if (silentAudio)
+            args.push("-map", "0:v", "-map", "1:a", "-shortest");
+        args.push("-movflags", "+faststart", outName);
         return args;
     }
 
@@ -155,6 +159,11 @@
         });
     }
 
+    /**
+     * Visual dissolve/dip. Must keep native clip audio.
+     * Scene-change default is Dissolve. Mapping video only with `-an` strips VO
+     * from the accumulator; later concat cannot bring it back.
+     */
     async function xfadeAsync(leftUrl, rightUrl, kind, onProgress) {
         const api = window.PageToMovieFfmpeg;
         const trans = xfadeName(kind);
@@ -174,15 +183,37 @@
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
                 const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
-                const graph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
+                const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
-                await ffmpeg.exec([
-                    "-hide_banner", "-y", "-i", aName, "-i", bName,
-                    "-filter_complex", graph, "-map", "[v]", "-an",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-movflags", "+faststart",
-                    outName,
-                ]);
+                const aNorm = "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a0];"
+                    + "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a1];";
+                const graphs = [
+                    vgraph + ";" + aNorm + "[a0][a1]acrossfade=d=" + fade + ":c1=tri:c2=tri[a]",
+                    vgraph + ";" + aNorm + "[a0][a1]concat=n=2:v=0:a=1[a]",
+                ];
+                let encoded = false;
+                for (const graph of graphs) {
+                    try {
+                        await ffmpeg.exec([
+                            "-hide_banner", "-y", "-i", aName, "-i", bName,
+                            "-filter_complex", graph,
+                            "-map", "[v]", "-map", "[a]",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                            "-c:a", "aac", "-b:a", "128k",
+                            "-movflags", "+faststart",
+                            outName,
+                        ]);
+                        encoded = true;
+                        break;
+                    } catch (audioErr) {
+                        console.debug("Cut: xfade audio pass failed", audioErr);
+                        try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                            console.debug("Cut: xfade out cleanup", delErr);
+                        }
+                    }
+                }
+                if (!encoded)
+                    return { success: false, error: "xfade audio failed" };
                 const out = await ffmpeg.readFile(outName);
                 return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
             } catch (err) {
@@ -584,7 +615,12 @@
                 const total = probe.success && probe.seconds > 0 ? probe.seconds : 0;
                 const window = clampTrimWindow(startSec, endSec, total);
                 onProgress?.(55, "Trimming…");
-                await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep));
+                try {
+                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, false));
+                } catch (audioErr) {
+                    console.debug("Cut: trim native audio missing, pad silence", audioErr);
+                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, true));
+                }
                 const out = await ffmpeg.readFile(outName);
                 const blob = new Blob([out.buffer], { type: "video/mp4" });
                 return { success: true, url: URL.createObjectURL(blob) };
@@ -624,6 +660,7 @@
         onProgress?.(55, "Combining clips…");
         let acc = items[0].url;
         for (let i = 1; i < items.length; i++) {
+            // Hard cut ("cut") is concat with no xfade — keeps native audio.
             const joined = await joinPairAsync(api, acc, items[i].url, items[i - 1].joinOut, onProgress);
             if (!joined.success) return joined;
             acc = joined.url;

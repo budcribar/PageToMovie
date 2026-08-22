@@ -13,11 +13,12 @@ Cut **reads** `_take_NN.mp4` + `.current.json` only, in Film scene/clip order. I
 1. Folder scan, **Clipchamp-style timeline** (one video track in Film order), per-clip play, hop-aware in/out, one background music track, stitched preview, export `movie.mp4`.
 2. **Trim handles:** white left/right pills on each clip slide MarkIn/MarkOut and ripple the track.
 3. **Range-delete:** drag a purple span on the time ruler, delete it, concat closes the gap. Not whole-clip delete.
-4. **Joins:** ticks/pills **between** clips (Cut / Dissolve / Dip to black / Fade to white / Cut to black). Fountain sidecar is SSoT; `cut.project.json` can override.
+4. **Joins / scene marks:** each current take stays its own trimmable block. Timeline marks **scenes** (S01, S02, …), not clip seams. Same-scene hard cuts are silent concat — no tick. Scene-change join tick only for a visible look (Dissolve / Dip to black / Fade to white / Cut to black). Hard-cut scene change = scene label only. Fountain sidecar is SSoT; `cut.project.json` can override.
 5. **Hop / extend:** seed MarkIn/MarkOut from sidecar `provider_clip_start_seconds` / `provider_clip_stop_seconds`, or `provider_lead_in_seconds` + duration. Timeline width, filmstrip, and preview start at the hop — not t=0 of a combined take file.
 6. **Chapter/scene cards:** optional text card at scene boundaries, hold ~2s, usually with a dip.
 7. **Save/reload** the finish to `cut.project.json` (trims, range-deletes, join types, cards, music filename).
-8. Tests: hop-seeded in/out, trim handles, range-delete, join ticks, naming, `.current.json`.
+8. **Play / audio:** Clipchamp zoom cluster (out / in / Fit timeline) is pinned in the timeline chrome — always visible; only the filmstrip scroller moves. Compose keeps each clip’s native VO (hop/trim window); optional music mixes under. Hard-cut concat keeps audio. `xfadeAsync` maps `[v]` + `[a]` (acrossfade, else audio concat) — never `-an` on a dissolve/dip (Mary19 scene-change default). Cards (`stillVideoAsync`) may stay silent. First Play shows a preview overlay; a valid composed preview is cached so the next Play skips compose.
+9. Tests: hop-seeded in/out, trim handles, range-delete, scene bands, visible-join ticks, zoom/fit, naming, `.current.json`.
 
 ## Fountain → join
 
@@ -74,7 +75,8 @@ Multi-track NLE, Clipchamp sidebars (captions / filters / speed / brand kit), un
 | 1–4 | Folder, trim, preview/export, music | Done |
 | 5 | Save/reload finish | Done |
 | 6 | Range-delete + Fountain joins + cards | Done |
-| 7 | Clipchamp timeline + hop-seeded in/out | **This PR** |
+| 7 | Clipchamp timeline + hop-seeded in/out | Done (PR 199) |
+| 7b | Scene marks, Clipchamp zoom, native VO, Play cache | **This PR** |
 | 8 | Film alias drop | [PR 194](https://github.com/budcribar/PageToMovie/pull/194) merged |
 | 9 | Final Edit mount | Last — not tonight |
 

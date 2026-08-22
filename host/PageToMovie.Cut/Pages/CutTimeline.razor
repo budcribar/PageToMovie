@@ -43,6 +43,18 @@
                         @onpointerdown="BeginPlayheadAsync"></button>
             </div>
 
+            <div class="cut-tl-scenes" data-testid="cut-tl-scenes">
+                @foreach (var band in Layout.Scenes)
+                {
+                    <div class="cut-tl-scene"
+                         style="left: @(band.StartPx)px; width: @(Math.Max(band.WidthPx, 28))px"
+                         data-testid="cut-tl-scene"
+                         title="@band.Label">
+                        <span>@band.Label</span>
+                    </div>
+                }
+            </div>
+
             <div class="cut-tl-video" data-testid="cut-tl-video">
                 @foreach (var lane in Layout.Lanes)
                 {
@@ -50,7 +62,7 @@
                     <div class="cut-tl-clip @(clip == Selected ? "is-selected" : "") @(clip.Missing ? "is-missing" : "")"
                          style="left: @(lane.StartPx)px; width: @(Math.Max(lane.WidthPx, 28))px"
                          data-testid="cut-tl-clip"
-                         title="@clip.FileName"
+                         title="@clip.Label"
                          @onclick="() => SelectClip(clip)">
                         <div class="cut-tl-film">
                             @if (clip.Filmstrip.Count > 0)
@@ -61,7 +73,7 @@
                                 }
                             }
                         </div>
-                        <span class="cut-tl-clip-name">@clip.FileName</span>
+                        <span class="cut-tl-clip-name">@clip.Label</span>
                         <span class="cut-tl-speaker" aria-hidden="true">🔊</span>
                         <button type="button"
                                 class="cut-tl-handle is-in"
@@ -117,9 +129,39 @@
         </div>
     </div>
 
-    <div class="cut-tl-zoom">
-        <button type="button" class="cut-tl-icon" title="Zoom out" @onclick="ZoomOut">−</button>
-        <button type="button" class="cut-tl-icon" title="Zoom in" @onclick="ZoomIn">+</button>
-        <button type="button" class="cut-tl-icon" title="Fit" @onclick="FitAsync">⟷</button>
+    <div class="cut-tl-chrome">
+        <div class="cut-tl-zoom" data-testid="cut-tl-zoom">
+            <button type="button" class="cut-tl-icon" title="Zoom out" data-testid="cut-tl-zoom-out" @onclick="ZoomOut">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8" />
+                </svg>
+            </button>
+            <button type="button" class="cut-tl-icon" title="Zoom in" data-testid="cut-tl-zoom-in" @onclick="ZoomIn">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8M10.5 7.6v5.8" />
+                </svg>
+            </button>
+            <button type="button" class="cut-tl-icon" title="Fit timeline" data-testid="cut-tl-fit" @onclick="FitAsync">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M3 5h2v14H3V5zm16 0h2v14h-2V5z" />
+                    <path fill="currentColor" d="M8.2 11.1h7.6v1.8H8.2z" />
+                    <path fill="currentColor" d="M9.4 7.8 5.8 12l3.6 4.2V7.8zm5.2 0v8.4L18.2 12 14.6 7.8z" />
+                </svg>
+            </button>
+            <input type="range"
+                   class="cut-tl-zoom-slider"
+                   min="@CutTimelineLayout.MinPxPerSec"
+                   max="@CutTimelineLayout.MaxPxPerSec"
+                   step="1"
+                   value="@_pxPerSec"
+                   title="Zoom"
+                   aria-label="Zoom"
+                   data-testid="cut-tl-zoom-slider"
+                   @oninput="OnZoomSlider" />
+        </div>
     </div>
 </div>

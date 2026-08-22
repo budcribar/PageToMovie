@@ -39,9 +39,13 @@ html, body {
 
 .cut-shell {
     max-width: 1400px;
+    width: 100%;
+    min-width: 0;
     margin: 0 auto;
     padding: 1rem 1.1rem 2rem;
 }
+
+.cut-main { min-width: 0; }
 
 .cut-header {
     display: flex;
@@ -114,7 +118,12 @@ html, body {
     margin-bottom: 1rem;
 }
 
-.cut-stage { display: grid; gap: 0.85rem; }
+.cut-stage {
+    display: grid;
+    gap: 0.85rem;
+    width: 100%;
+    min-width: 0;
+}
 
 .cut-preview {
     background: var(--fs-bg-card);
@@ -131,6 +140,45 @@ html, body {
     margin: 0 auto;
     background: #000;
     border-radius: 8px;
+}
+
+.cut-preview-stage {
+    position: relative;
+    width: min(100%, 920px);
+    margin: 0 auto;
+}
+
+.cut-compose-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    background: rgba(8, 10, 14, 0.72);
+    border-radius: 8px;
+    color: #f1f3f7;
+    z-index: 2;
+}
+
+.cut-compose-spinner {
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 3px solid rgba(255, 255, 255, 0.22);
+    border-top-color: #e8eaef;
+    border-radius: 50%;
+    animation: cut-spin 0.7s linear infinite;
+}
+
+.cut-compose-copy {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+@keyframes cut-spin {
+    to { transform: rotate(360deg); }
 }
 
 .cut-mix { margin-top: 0; }
@@ -266,11 +314,17 @@ html, body {
 }
 
 .cut-tl {
+    display: flex;
+    flex-direction: column;
     position: relative;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
     background: #101218;
     border: 1px solid var(--fs-border-color);
     border-radius: 12px;
-    padding: 0.55rem 0.65rem 2.4rem;
+    padding: 0.55rem 0.65rem 0.45rem;
     outline: none;
 }
 
@@ -318,13 +372,16 @@ html, body {
 .cut-tl-del { margin-left: 0.4rem; }
 
 .cut-tl-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     border-radius: 8px;
     background: #0c0e13;
 }
 
-.cut-tl-inner { position: relative; min-height: 168px; padding-bottom: 0.2rem; }
+.cut-tl-inner { position: relative; min-height: 190px; padding-bottom: 0.2rem; }
 
 .cut-tl-ruler {
     position: relative;
@@ -390,6 +447,27 @@ html, body {
     background: #111;
     border-radius: 4px 4px 2px 2px;
     transform: translateX(-50%);
+}
+
+.cut-tl-scenes {
+    position: relative;
+    height: 22px;
+    margin: 0.25rem 0 0;
+}
+
+.cut-tl-scene {
+    position: absolute;
+    top: 0;
+    height: 22px;
+    border-left: 2px solid rgba(232, 234, 239, 0.55);
+    color: #d7dde8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 22px;
+    padding-left: 0.4rem;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .cut-tl-video, .cut-tl-audio {
@@ -540,12 +618,53 @@ html, body {
     padding: 0.35rem 0.2rem;
 }
 
-.cut-tl-zoom {
-    position: absolute;
-    right: 0.65rem;
-    bottom: 0.45rem;
+.cut-tl-chrome {
     display: flex;
-    gap: 0.25rem;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    width: 100%;
+    min-width: 0;
+    padding: 0.4rem 0 0;
+}
+
+.cut-tl-zoom {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: 0.08rem;
+    background: #e8eaef;
+    border-radius: 8px;
+    padding: 0.12rem 0.18rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+    z-index: 8;
+}
+
+.cut-tl-zoom .cut-tl-icon {
+    border: 0;
+    background: transparent;
+    color: #1b1f27;
+    min-width: 2rem;
+    height: 2rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
+}
+
+.cut-tl-zoom .cut-tl-icon:hover {
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 6px;
+}
+
+.cut-tl-zoom svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: block;
+}
+
+.cut-tl-zoom-slider {
+    width: 4.6rem;
+    margin: 0 0.2rem;
+    accent-color: #3d4450;
 }
 
 #blazor-error-ui {

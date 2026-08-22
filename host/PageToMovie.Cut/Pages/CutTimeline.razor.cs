@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -90,10 +91,17 @@ public partial class CutTimeline
     }
 
     private void ZoomIn() =>
-        _pxPerSec = Math.Min(CutTimelineLayout.MaxPxPerSec, _pxPerSec * 1.35);
+        _pxPerSec = CutTimelineLayout.ZoomInPxPerSec(_pxPerSec);
 
     private void ZoomOut() =>
-        _pxPerSec = Math.Max(CutTimelineLayout.MinPxPerSec, _pxPerSec / 1.35);
+        _pxPerSec = CutTimelineLayout.ZoomOutPxPerSec(_pxPerSec);
+
+    private void OnZoomSlider(ChangeEventArgs e)
+    {
+        var raw = Convert.ToString(e.Value, CultureInfo.InvariantCulture);
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var px))
+            _pxPerSec = CutTimelineLayout.ClampPxPerSec(px);
+    }
 
     private async Task SelectClip(CutClip clip)
     {
@@ -196,7 +204,17 @@ public partial class CutTimeline
     private async Task OnKey(KeyboardEventArgs e)
     {
         if (e.Key is "Delete" or "Backspace")
+        {
             await DeleteRangeAsync();
+            return;
+        }
+
+        if (e.Key is "-" or "_" or "Minus" or "Subtract")
+            ZoomOut();
+        else if (e.Key is "+" or "=" or "Add")
+            ZoomIn();
+        else if (e.Key is "0" or "f" or "F")
+            await FitAsync();
     }
 
     private void ToggleJoinMenu(int afterIndex) =>

@@ -4,17 +4,20 @@ namespace PageToMovie.Cut.Cut;
 
 /// <summary>
 /// One video track, Film order. Width is the hop-aware sliced duration
-/// (keep windows after range-delete). Joins sit on the boundary.
+/// (keep windows after range-delete). Scene bands mark S01 / S02. Join
+/// ticks only on a visible scene-change look.
 /// </summary>
 public sealed class CutTimelineLayout
 {
     public const double MinPxPerSec = 8;
     public const double MaxPxPerSec = 220;
     public const double DefaultPxPerSec = 36;
+    public const double ZoomFactor = 1.35;
     public const double PlaceholderSec = 2;
     public const double MinHandleSpanSeconds = ClipInOut.MinSpanSeconds;
 
     public required IReadOnlyList<CutTimelineLane> Lanes { get; init; }
+    public required IReadOnlyList<CutTimelineSceneBand> Scenes { get; init; }
     public required IReadOnlyList<CutTimelineJoinTick> Joins { get; init; }
     public required IReadOnlyList<CutTimelineRulerMark> Ruler { get; init; }
     public double TotalSec { get; init; }
@@ -45,15 +48,19 @@ public sealed class CutTimelineLayout
         {
             var left = clips[i];
             var right = clips[i + 1];
+            if (right.Scene == left.Scene)
+                continue;
             var kind = left.JoinToNext(right);
-            var sceneChange = right.Scene != left.Scene;
+            if (!ShowsJoinTick(kind))
+                continue;
             var at = lanes[i + 1].StartSec;
-            joins.Add(new CutTimelineJoinTick(i, kind, sceneChange, at, at * px));
+            joins.Add(new CutTimelineJoinTick(i, kind, SceneChange: true, at, at * px));
         }
 
         return new CutTimelineLayout
         {
             Lanes = lanes,
+            Scenes = BuildSceneBands(lanes, px),
             Joins = joins,
             Ruler = BuildRuler(cursor, px),
             TotalSec = cursor,
@@ -61,6 +68,40 @@ public sealed class CutTimelineLayout
             PxPerSec = px,
             WidthPx = Math.Max(cursor * px, 1),
         };
+    }
+
+    public static string SceneLabel(int scene) =>
+        string.Create(CultureInfo.InvariantCulture, $"S{scene:D2}");
+
+    public static IReadOnlyList<CutTimelineSceneBand> BuildSceneBands(
+        IReadOnlyList<CutTimelineLane> lanes, double pxPerSec)
+    {
+        var bands = new List<CutTimelineSceneBand>();
+        if (lanes.Count == 0)
+            return bands;
+        var px = Math.Clamp(pxPerSec, MinPxPerSec, MaxPxPerSec);
+        var start = 0;
+        for (var i = 1; i <= lanes.Count; i++)
+        {
+            if (i < lanes.Count && lanes[i].Clip.Scene == lanes[start].Clip.Scene)
+                continue;
+            var first = lanes[start];
+            var last = lanes[i - 1];
+            var widthSec = (last.StartSec + last.WidthSec) - first.StartSec;
+            var scene = first.Clip.Scene;
+            bands.Add(new CutTimelineSceneBand(
+                scene,
+                SceneLabel(scene),
+                first.Index,
+                i - start,
+                first.StartSec,
+                widthSec,
+                first.StartSec * px,
+                widthSec * px));
+            start = i;
+        }
+
+        return bands;
     }
 
     public static double SlicedSeconds(CutClip clip)
@@ -85,8 +126,17 @@ public sealed class CutTimelineLayout
     {
         if (totalSec <= 0.05 || viewWidthPx <= 40)
             return DefaultPxPerSec;
-        return Math.Clamp(viewWidthPx / totalSec, MinPxPerSec, MaxPxPerSec);
+        return ClampPxPerSec(viewWidthPx / totalSec);
     }
+
+    public static double ClampPxPerSec(double pxPerSec) =>
+        Math.Clamp(pxPerSec, MinPxPerSec, MaxPxPerSec);
+
+    public static double ZoomInPxPerSec(double pxPerSec) =>
+        Math.Min(MaxPxPerSec, ClampPxPerSec(pxPerSec) * ZoomFactor);
+
+    public static double ZoomOutPxPerSec(double pxPerSec) =>
+        Math.Max(MinPxPerSec, ClampPxPerSec(pxPerSec) / ZoomFactor);
 
     public static double TimelineToPx(double timelineSec, double pxPerSec) =>
         timelineSec * Math.Clamp(pxPerSec, MinPxPerSec, MaxPxPerSec);
@@ -190,6 +240,18 @@ public sealed class CutTimelineLayout
         CutJoinKind.CutToBlack,
     ];
 
+    /// <summary>
+    /// Scene-change ticks only. Hard cut / CUT TO / smash / match / jump is
+    /// plain concat — scene label only, no Cut pill.
+    /// </summary>
+    public static bool ShowsJoinTick(CutJoinKind kind) =>
+        kind is CutJoinKind.Dissolve
+            or CutJoinKind.Dip
+            or CutJoinKind.FadeIn
+            or CutJoinKind.FadeOut
+            or CutJoinKind.FadeWhite
+            or CutJoinKind.CutToBlack;
+
     public static string Clock(double seconds)
     {
         if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0)
@@ -249,6 +311,16 @@ public readonly record struct CutTimelineLane(
     double StartPx,
     double WidthPx,
     double SlicedSec);
+
+public readonly record struct CutTimelineSceneBand(
+    int Scene,
+    string Label,
+    int FirstIndex,
+    int ClipCount,
+    double StartSec,
+    double WidthSec,
+    double StartPx,
+    double WidthPx);
 
 public readonly record struct CutTimelineJoinTick(
     int AfterIndex,
