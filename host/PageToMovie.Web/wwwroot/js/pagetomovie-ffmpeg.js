@@ -2,13 +2,21 @@
  * Client-side video stitching, audio silence trim, and frame sampling via ffmpeg.wasm.
  * All static ffmpeg assets are served same-origin from /js/ffmpeg/ for maximum speed & zero CORS issues.
  */
+function ignoreDisposedProgress(err) {
+    // Play/Stop can dispose the Blazor sink or revoke blob URLs mid-compose.
+    // Swallow so ffmpeg work continues; debug-log so the exception is handled.
+    console.debug("[PageToMovieFfmpeg] disposed progress sink", err);
+}
+
 function reportProgress(onProgress, pct, msg) {
     if (typeof onProgress !== "function") return;
     try {
         const pending = onProgress(pct, msg);
         if (pending && typeof pending.catch === "function")
-            pending.catch(function () { /* disposed progress sink */ });
-    } catch (_) { /* disposed progress sink */ }
+            pending.catch(ignoreDisposedProgress);
+    } catch (err) {
+        ignoreDisposedProgress(err);
+    }
 }
 
 window.PageToMovieFfmpeg = {
