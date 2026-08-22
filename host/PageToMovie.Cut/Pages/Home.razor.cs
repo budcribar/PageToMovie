@@ -57,6 +57,8 @@ public partial class Home : IAsyncDisposable
 
     private bool ExportDisabled => PlayDisabled;
 
+    internal bool IsPlaying => _wantPlay;
+
     private void Select(CutClip clip)
     {
         _selected = clip;
@@ -274,6 +276,30 @@ public partial class Home : IAsyncDisposable
         await Compose.ClearAudioAsync();
         ForgetPreview();
         SavedNote = null;
+    }
+
+    private async Task TogglePlayAsync()
+    {
+        if (_wantPlay)
+        {
+            StopPlay();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await PlayAsync();
+    }
+
+    private async Task SplitAtPlayheadAsync()
+    {
+        if (TransportLocked || !CutSplit.CanAt(Folder.Clips, _playhead))
+            return;
+        if (_wantPlay)
+            StopPlay();
+        if (!CutSplit.TryAt(Folder.Clips, _playhead, out _))
+            return;
+        OnTimelineEdited();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task PlayAsync()
@@ -523,6 +549,22 @@ public partial class Home : IAsyncDisposable
         _nativeWindow = null;
         _playGen++;
         CancelCompose();
+        _ = PausePlayersAsync();
+    }
+
+    private async Task PausePlayersAsync()
+    {
+        if (Js is null)
+            return;
+        try
+        {
+            await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
+            await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
+        }
+        catch (JSException)
+        {
+            // pause is best-effort while the player remounts
+        }
     }
 
     private void CancelCompose()

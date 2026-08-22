@@ -17,7 +17,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderName { get; private set; }
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
-    public IReadOnlyList<CutClip> Clips { get; private set; } = [];
+    public List<CutClip> Clips { get; private set; } = [];
     public List<CutTextClip> TextClips { get; } = [];
 
     public async Task<bool> BrowserSupportsFolderPickerAsync()

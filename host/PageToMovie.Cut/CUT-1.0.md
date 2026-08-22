@@ -18,9 +18,11 @@ Cut **reads** `_take_NN.mp4` + `.current.json` only, in Film scene/clip order. I
 6. **Hop / extend:** seed MarkIn/MarkOut from sidecar `provider_clip_start_seconds` / `provider_clip_stop_seconds`, or `provider_lead_in_seconds` + duration. Timeline width, filmstrip, and preview start at the hop — not t=0 of a combined take file.
 7. **Chapter/scene cards:** optional text card at scene boundaries, hold ~2s, usually with a dip. Cards appear as blocks on the **text row** (between video and audio) at the incoming scene time. Edit the label, drag duration, or delete on that row.
 8. **Text row:** one Clipchamp-style titles/text track. Empty state is `+ Add text`. Free titles are centered white text on a simple card/overlay. Not a title designer, captions, or a Text library. Scene-change joins and the text row stay at scene boundaries. While the label field is focused, Backspace/Delete edit one character; they remove the text clip only when the clip is selected and no field is focused.
-9. **Save/reload** the finish to `cut.project.json` (trims, range-deletes, join types, cards, text clips, music filename).
-10. **Play / audio:** Clipchamp zoom cluster (out / in / Fit timeline) is pinned in the timeline chrome — always visible; only the filmstrip scroller moves. Compose keeps each clip’s native VO (hop/trim window); optional music mixes under. Hard-cut concat keeps audio. `xfadeAsync` maps `[v]` + `[a]` (acrossfade, else audio concat) — never `-an` on a dissolve/dip (Mary19 scene-change default). Cards (`stillVideoAsync`) may stay silent. Free titles overlay the clip they sit on. **Play is JIT:** first ready window (hop-sliced clip, native VO) starts immediately; ffmpeg.wasm keeps combining later clips on the exclusive queue. Playback continues as the prefix grows (no restart from 0). Seek past the ready prefix shows the overlay until that gap is ready. A valid full `MoviePreviewUrl` still skips compose. **Make movie** / export stays a full compose.
-11. Tests: hop-seeded in/out, scene-bookend trim handles, range-delete, scene-stitched video blocks / labels, scene bands, visible-join ticks, JIT ready/wait, zoom/fit, naming, `.current.json`, text-row cards/titles, Backspace-in-edit does not wipe the text clip.
+9. **Save/reload** the finish to `cut.project.json` (trims, range-deletes, split windows, join types, cards, text clips, music filename).
+10. **Play / audio:** Clipchamp zoom cluster (out / in / Fit timeline) is pinned in the timeline chrome — always visible; only the filmstrip scroller moves. Compose keeps each clip’s native VO (hop/trim window); optional music mixes under. Hard-cut concat keeps audio. `xfadeAsync` maps `[v]` + `[a]` (acrossfade, else audio concat) — never `-an` on a dissolve/dip (Mary19 scene-change default). Cards (`stillVideoAsync`) may stay silent. Free titles overlay the clip they sit on. **Play is JIT:** first ready window (hop-sliced clip, native VO) starts immediately; ffmpeg.wasm keeps combining later clips on the exclusive queue. Playback continues as the prefix grows (no restart from 0). Seek past the ready prefix shows the overlay until that gap is ready. A valid full `MoviePreviewUrl` still skips compose. **Make movie** / export stays a full compose. While preview/JIT is playing, the Play control is **Stop** — it ends playback and leaves the playhead. Stopped, it is Play again. Not a full NLE pause/resume.
+11. **White playhead:** the current-time needle is white (`#ffffff` / `--cut-playhead`) so it reads on the dark filmstrip.
+12. **Scissors split:** Clipchamp-style scissors on the transport splits the take/window at the playhead (range-delete/trim SSoT — two adjacent in-memory windows of the same `_take_NN.mp4`, no new take file, no `scene_SS.mp4`). Same-scene result abuts with no gap; the S01/S02 stitched block stays one tile. Scene-bookend handles stay on the new first/last of that scene. Persist extra windows as extra `cut.project.json` clip rows for the same scene/clip.
+13. Tests: hop-seeded in/out, scene-bookend trim handles, range-delete, scene-stitched video blocks / labels, scene bands, visible-join ticks, JIT ready/wait, zoom/fit, naming, `.current.json`, text-row cards/titles, Backspace-in-edit does not wipe the text clip, white playhead class/color, scissors split at playhead, Play/Stop toggle.
 
 ## Fountain → join
 
@@ -59,7 +61,7 @@ Multi-track NLE, Clipchamp sidebars (captions / filters / speed / brand kit), un
 | Alias MP4 | Legacy. Ignore. Never write. |
 | Missing current | Missing. No fallback to another take or the alias. |
 | Hop slice | Sidecar `provider_lead_in_seconds`, `provider_clip_start_seconds`, `provider_clip_stop_seconds` |
-| Finish file | `cut.project.json` (trims / range-deletes / joins / cards / text clips / music name) |
+| Finish file | `cut.project.json` (trims / range-deletes / split windows / joins / cards / text clips / music name) |
 
 ## Constraints
 
@@ -81,7 +83,8 @@ Multi-track NLE, Clipchamp sidebars (captions / filters / speed / brand kit), un
 | 7b | Scene marks, Clipchamp zoom, native VO, Play cache | Done (PR 200) |
 | 7c | Scene-bookend handles + JIT Play | Done (PR 201) |
 | 7d | Clipchamp text row | Done (PR 202) |
-| 7e | Scene-stitched video blocks | **This PR** |
+| 7e | Scene-stitched video blocks | Done (PR 205) |
+| 7f | White playhead, scissors split, Play/Stop | **This PR** |
 | 8 | Film alias drop | [PR 194](https://github.com/budcribar/PageToMovie/pull/194) merged |
 | 9 | Final Edit mount | Last — not tonight |
 

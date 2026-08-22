@@ -117,8 +117,10 @@
                      AudioName="Compose.AudioFileName"
                      Busy="TransportLocked"
                      PlayDisabled="PlayDisabled"
-                     OnPlay="PlayAsync"
+                     IsPlaying="IsPlaying"
+                     OnPlay="TogglePlayAsync"
                      OnSkipStart="SkipStartAsync"
+                     OnSplit="SplitAtPlayheadAsync"
                      OnStepBack="() => StepAsync(-5)"
                      OnStepForward="() => StepAsync(5)"
                      OnEdited="OnTimelineEdited" />

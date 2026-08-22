@@ -80,6 +80,26 @@ public class CutProjectFileTests
     }
 
     [Fact]
+    public void Round_trips_scissors_windows_of_the_same_take()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(10);
+        var clips = new List<CutClip> { clip };
+        Assert.True(CutSplit.TryAt(clips, 4, out _));
+
+        var json = CutProjectFile.Serialize(clips, null);
+        var reload = new List<CutClip> { NewClip(1, 1) };
+        reload[0].SetDuration(10);
+        Assert.True(CutProjectFile.TryApply(reload, json, out _));
+        Assert.Equal(2, reload.Count);
+        Assert.Equal(0, reload[0].MarkIn);
+        Assert.Equal(4, reload[0].MarkOut);
+        Assert.Equal(4, reload[1].MarkIn);
+        Assert.Equal(10, reload[1].MarkOut);
+        Assert.Equal(reload[0].FileName, reload[1].FileName);
+    }
+
+    [Fact]
     public void FromFiles_reads_sidecar_transition()
     {
         var clips = CutClipList.FromFiles(

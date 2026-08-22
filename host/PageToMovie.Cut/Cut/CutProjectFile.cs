@@ -56,13 +56,7 @@ public static class CutProjectFile
         if (dto?.Clips is null)
             return false;
         musicFileName = dto.MusicFileName;
-        foreach (var row in dto.Clips)
-        {
-            var clip = clips.FirstOrDefault(c => c.Scene == row.Scene && c.Clip == row.Clip);
-            if (clip is null)
-                continue;
-            ApplyRow(clip, row);
-        }
+        ApplyClipRows(clips, dto.Clips);
 
         foreach (var row in dto.TextClips ?? [])
         {
@@ -78,6 +72,47 @@ public static class CutProjectFile
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// First row for a (scene, clip) applies to the folder slot. Extra rows
+    /// are scissors windows of the same take — insert clones, no new MP4.
+    /// </summary>
+    private static void ApplyClipRows(IReadOnlyList<CutClip> clips, List<ClipDto> rows)
+    {
+        var mutable = clips as IList<CutClip>;
+        var canInsert = mutable is { IsReadOnly: false };
+        var applied = new Dictionary<(int Scene, int Clip), int>();
+        foreach (var row in rows)
+        {
+            var key = (row.Scene, row.Clip);
+            var n = applied.GetValueOrDefault(key);
+            applied[key] = n + 1;
+            if (n == 0)
+            {
+                var clip = clips.FirstOrDefault(c => c.Scene == row.Scene && c.Clip == row.Clip);
+                if (clip is null)
+                    continue;
+                ApplyRow(clip, row);
+                continue;
+            }
+
+            if (!canInsert || mutable is null)
+                continue;
+            var source = clips.FirstOrDefault(c => c.Scene == row.Scene && c.Clip == row.Clip);
+            if (source is null)
+                continue;
+            var clone = CutSplit.CloneWindow(source, row.MarkIn, row.MarkOut);
+            ApplyRow(clone, row);
+            var last = 0;
+            for (var i = 0; i < mutable.Count; i++)
+            {
+                if (mutable[i].Scene == row.Scene && mutable[i].Clip == row.Clip)
+                    last = i;
+            }
+
+            mutable.Insert(last + 1, clone);
+        }
     }
 
     private static void ApplyRow(CutClip clip, ClipDto row)
