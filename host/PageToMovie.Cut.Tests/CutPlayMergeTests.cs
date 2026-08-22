@@ -234,6 +234,14 @@ public class CutPlayMergeTests
         Assert.False(CutPlayMerge.EndedIsStop(s02End, total));
         Assert.Equal("Fade to white", CutTransitionMap.TickLabel(s01.JoinToNext(s02)));
         Assert.Equal("Dissolve", CutTransitionMap.TickLabel(s02.JoinToNext(s03)));
+
+        var fade = CutComposeContract.XfadeSecondsFor(hopEnd);
+        Assert.Equal(hopEnd - fade, CutPlayMerge.HandoffSeekSec(clips, hopEnd, firstSwapToMerge: true), 5);
+        Assert.Equal(hopEnd, CutPlayMerge.HandoffSeekSec(clips, hopEnd, firstSwapToMerge: false), 5);
+        Assert.Equal(0, CutPlayMerge.JoinLeadInAt(clips, 1.0), 5);
+        Assert.Equal(fade, CutPlayMerge.JoinLeadInAt(clips, hopEnd), 5);
+        Assert.Equal(CutComposeContract.XfadeSecondsFor(20), CutPlayMerge.JoinLeadInAt(clips, s02End), 5);
+        Assert.Equal(s02End, CutPlayMerge.PlaySeekSec(clips, s02End), 5);
     }
 
     [Fact]

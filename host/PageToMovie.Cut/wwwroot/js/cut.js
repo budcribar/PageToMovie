@@ -35,6 +35,9 @@
 
     /** Matches CutComposeContract.CutToBlackHoldSeconds — black hold, not a card. */
     const CUT_TO_BLACK_HOLD_SEC = 0.4;
+    /** Matches CutComposeContract.XfadeSeconds / XfadeMinSeconds. */
+    const CUT_XFADE_SEC = 0.5;
+    const CUT_XFADE_MIN_SEC = 0.2;
 
     function messageOf(err, fallback) {
         return err?.message || fallback;
@@ -452,7 +455,7 @@
                 await ffmpeg.writeFile(bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
-                const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
+                const fade = Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
                 const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";

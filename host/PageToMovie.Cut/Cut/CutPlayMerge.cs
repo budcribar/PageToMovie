@@ -160,6 +160,39 @@ public static class CutPlayMerge
         return Math.Clamp(playhead, 0, total);
     }
 
+    /// <summary>
+    /// First hop→merge swap at a Fade to white / Dissolve / Dip must start
+    /// a fade-length before the join. Timeline time has no overlap; the
+    /// composed file xfades the last <see cref="CutComposeContract.XfadeSeconds"/>
+    /// of the outgoing scene. Seeking the merge to the hop EOF lands after
+    /// that look.
+    /// </summary>
+    public static double HandoffSeekSec(
+        IReadOnlyList<CutClip> clips, double playhead, bool firstSwapToMerge)
+    {
+        var seek = PlaySeekSec(clips, playhead);
+        if (!firstSwapToMerge)
+            return seek;
+        return PlaySeekSec(clips, seek - JoinLeadInAt(clips, seek));
+    }
+
+    public static double JoinLeadInAt(IReadOnlyList<CutClip> clips, double playhead)
+    {
+        for (var i = 0; i < clips.Count - 1; i++)
+        {
+            var join = clips[i].JoinToNext(clips[i + 1]);
+            if (!CutComposeContract.JoinIsXfade(join))
+                continue;
+            var joinAt = CutJitPlay.TimelineEndOf(clips, i);
+            var leftSec = joinAt - CutJitPlay.TimelineStartOf(clips, i);
+            var fade = CutComposeContract.XfadeSecondsFor(leftSec);
+            if (playhead >= joinAt - fade - 0.05 && playhead <= joinAt + 0.05)
+                return fade;
+        }
+
+        return 0;
+    }
+
     public static bool WouldRewindMerge(double currentPlayhead, double targetPlayhead) =>
         targetPlayhead < currentPlayhead - 0.05;
 

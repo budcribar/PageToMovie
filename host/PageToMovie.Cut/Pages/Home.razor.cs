@@ -513,7 +513,10 @@ public partial class Home : IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(url) || Js is null)
             return false;
-        var seekSec = CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
+        var firstSwap = !_mergeHasFrame;
+        var seekSec = firstSwap && !userSeek
+            ? CutPlayMerge.HandoffSeekSec(Folder.Clips, timelineSec, firstSwapToMerge: true)
+            : CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
         var samePlayer = _playMode == PlayMode.Movie && _mergeHasFrame;
         if (CutPlayMerge.ShouldReusePlayingMovie(
                 samePlayer,
