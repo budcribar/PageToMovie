@@ -10,10 +10,10 @@ public class CutElementFocusTests
     [Fact]
     public async Task EditDuration_when_inspector_is_not_mounted_does_not_throw()
     {
-        await CutTimeline.EditDurationAsync(inspector: null);
+        Assert.Null(await Record.ExceptionAsync(() => CutTimeline.EditDurationAsync(inspector: null)));
 
         var unmounted = new CutTimeline_TextInspector();
-        await CutTimeline.EditDurationAsync(unmounted);
+        Assert.Null(await Record.ExceptionAsync(() => CutTimeline.EditDurationAsync(unmounted)));
     }
 
     [Fact]
