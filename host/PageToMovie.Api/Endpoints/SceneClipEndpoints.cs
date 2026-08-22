@@ -572,10 +572,11 @@ public static partial class SceneClipEndpoints
         var projectDir = await svc.Store.GetProjectDirAsync(id, ct).ConfigureAwait(false);
         var take = await svc.Sidecars.PersistGeneratedTakeAsync(
             projectDir, scene, clip, bytes,
-            prompt: "",
-            durationSeconds: seconds is > 0 ? seconds.Value : 0,
-            updateAlias: true,
-            ct: ct).ConfigureAwait(false);
+            new PersistGeneratedTakeOptions
+            {
+                DurationSeconds = seconds is > 0 ? seconds.Value : 0,
+            },
+            ct).ConfigureAwait(false);
         svc.Store.InvalidateSceneListCache(id);
         return Results.Ok(new
         {

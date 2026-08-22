@@ -207,8 +207,8 @@ public class ClipSidecarServiceTests : IDisposable
 
         var take1Bytes = "credits-take-one-bytes---------------"u8.ToArray();
         var take2Bytes = "credits-take-two-bytes---------------"u8.ToArray();
-        Assert.Equal(1, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take1Bytes, prompt: "card 1"));
-        Assert.Equal(2, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take2Bytes, prompt: "card 2"));
+        Assert.Equal(1, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take1Bytes, new PersistGeneratedTakeOptions { Prompt = "card 1" }));
+        Assert.Equal(2, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take2Bytes, new PersistGeneratedTakeOptions { Prompt = "card 2" }));
 
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));

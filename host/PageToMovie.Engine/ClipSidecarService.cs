@@ -16,6 +16,10 @@ public sealed class ClipSidecarService
     private static readonly JsonSerializerOptions JsonOpts = JsonDefaults.IndentedCaseInsensitive;
     private static readonly byte[] NewLineBytes = new byte[] { (byte)'\n' };
 
+    /// <summary>Project <c>assets/video</c> directory — naming SSoT is <see cref="ClipTakeNaming.AssetsVideoPrefix"/>.</summary>
+    private static string VideoDirFor(string projectDir) =>
+        Path.Combine(projectDir, ClipTakeNaming.AssetsVideoPrefix);
+
     private static async Task WriteSidecarStreamAsync(string sidecarPath, object sidecar, CancellationToken ct)
     {
         await using var stream = new FileStream(sidecarPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
@@ -188,7 +192,7 @@ public sealed class ClipSidecarService
         double? providerClipStopSeconds = null,
         CancellationToken ct = default)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = VideoDirFor(projectDir);
         Directory.CreateDirectory(videoDir);
 
         // Takes are the sidecars: every generation writes a NEW numbered sidecar and the previous
@@ -258,25 +262,18 @@ public sealed class ClipSidecarService
         int scene,
         int clip,
         byte[] bytes,
-        string prompt = "",
-        string scriptText = "",
-        string model = "",
-        string resolution = "",
-        double durationSeconds = 0,
-        int? editedFromTake = null,
-        string? sourceUrl = null,
-        string? sourceProvider = null,
-        bool updateAlias = true,
+        PersistGeneratedTakeOptions? options = null,
         CancellationToken ct = default)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        options ??= new PersistGeneratedTakeOptions();
+        var videoDir = VideoDirFor(projectDir);
         Directory.CreateDirectory(videoDir);
         EnsureLegacyCanonicalHasTakeSidecar(videoDir, scene, clip);
 
         var take = NextTakeNumber(videoDir, scene, clip);
         var takeMp4Name = ClipTakeNaming.TakeMp4FileName(scene, clip, take);
         await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
-        if (updateAlias)
+        if (options.UpdateAlias)
         {
             await File.WriteAllBytesAsync(
                 Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip)), bytes, ct)
@@ -287,17 +284,17 @@ public sealed class ClipSidecarService
         await WriteSidecarWithTakeAsync(
             projectDir, scene, clip,
             take: take,
-            prompt: prompt,
-            scriptText: scriptText,
-            model: model,
-            resolution: resolution,
-            durationSeconds: durationSeconds,
+            prompt: options.Prompt,
+            scriptText: options.ScriptText,
+            model: options.Model,
+            resolution: options.Resolution,
+            durationSeconds: options.DurationSeconds,
             sha256: sha256,
             sizeBytes: bytes.LongLength,
             mp4FileName: takeMp4Name,
-            editedFromTake: editedFromTake,
-            sourceUrl: sourceUrl,
-            sourceProvider: sourceProvider,
+            editedFromTake: options.EditedFromTake,
+            sourceUrl: options.SourceUrl,
+            sourceProvider: options.SourceProvider,
             ct: ct).ConfigureAwait(false);
         return take;
     }
@@ -324,7 +321,7 @@ public sealed class ClipSidecarService
         string? sourceProvider = null,
         CancellationToken ct = default)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = VideoDirFor(projectDir);
         Directory.CreateDirectory(videoDir);
 
         var sidecarName = Path.GetFileNameWithoutExtension(mp4FileName) + ".clip.json";
@@ -362,7 +359,7 @@ public sealed class ClipSidecarService
     /// </summary>
     public async Task<int> ConvertProjectClipsToNewFormatAsync(string projectDir, CancellationToken ct = default)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = VideoDirFor(projectDir);
         if (!Directory.Exists(videoDir))
             return 0;
 
@@ -694,4 +691,21 @@ public sealed class ClipSidecarService
     /// </summary>
     public Task<int> EnsureAllSidecarsExistAsync(string projectDir, CancellationToken ct = default) =>
         ConvertProjectClipsToNewFormatAsync(projectDir, ct);
+}
+
+/// <summary>
+/// Sidecar metadata and alias-publish flag for <see cref="ClipSidecarService.PersistGeneratedTakeAsync"/>.
+/// Identity (project, scene, clip, bytes) stays on that method.
+/// </summary>
+public sealed class PersistGeneratedTakeOptions
+{
+    public string Prompt { get; init; } = "";
+    public string ScriptText { get; init; } = "";
+    public string Model { get; init; } = "";
+    public string Resolution { get; init; } = "";
+    public double DurationSeconds { get; init; }
+    public int? EditedFromTake { get; init; }
+    public string? SourceUrl { get; init; }
+    public string? SourceProvider { get; init; }
+    public bool UpdateAlias { get; init; } = true;
 }
