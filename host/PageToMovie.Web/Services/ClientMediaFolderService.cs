@@ -513,11 +513,16 @@ public sealed class ClientMediaFolderService
         bool IsMusic,
         bool IsSpeakBatch);
 
-    private static bool IsCreditsJobMedia(string rel, JobSnapshot snap) =>
-        rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
-        rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
-        snap.Scene == 18 ||
-        string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
+    private static bool IsCreditsJobMedia(string rel, JobSnapshot snap)
+    {
+        // AI Edit of a credits clip still writes take_NN like any other clip.
+        if (string.Equals(snap.Kind, "video_edit", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
+               rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
+               snap.Scene == 18 ||
+               string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
+    }
 
     private async Task<PreparedSaveUrl> PrepareUrlToSaveAsync(
         JobSnapshot snap, string rel, string url, string? extendSliceBlobUrl)

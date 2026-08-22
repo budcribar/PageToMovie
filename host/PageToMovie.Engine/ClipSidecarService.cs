@@ -260,6 +260,8 @@ public sealed class ClipSidecarService
         string mp4FileName,
         DateTime? createdUtc = null,
         int? editedFromTake = null,
+        string? sourceUrl = null,
+        string? sourceProvider = null,
         CancellationToken ct = default)
     {
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -280,6 +282,10 @@ public sealed class ClipSidecarService
         // Absent for ordinary (non-edit) takes.
         if (editedFromTake is { } fromTake)
             sidecar["edited_from_take"] = fromTake;
+        if (!string.IsNullOrWhiteSpace(sourceUrl))
+            sidecar["source_url"] = sourceUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(sourceProvider) || !string.IsNullOrWhiteSpace(sourceUrl))
+            sidecar["source_provider"] = string.IsNullOrWhiteSpace(sourceProvider) ? "" : sourceProvider.Trim();
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
         WriteCurrentTake(videoDir, scene, clip, take);
