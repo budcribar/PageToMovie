@@ -38,6 +38,12 @@
     /** Matches CutComposeContract.XfadeSeconds / XfadeMinSeconds. */
     const CUT_XFADE_SEC = 0.5;
     const CUT_XFADE_MIN_SEC = 0.2;
+    /** Matches CutFfmpegEncode / CutComposeContract WMP-safe H.264. */
+    const CUT_H264_PRESET = "ultrafast";
+    const CUT_H264_CRF = "23";
+    const CUT_H264_PIX = "yuv420p";
+    const CUT_H264_PROFILE = "main";
+    const CUT_AAC_RATE = "128k";
 
     function messageOf(err, fallback) {
         return err?.message || fallback;
@@ -187,7 +193,55 @@
 
     async function concatPinned(api, urls, onProgress) {
         return withPinnedUrls(urls, async function () {
-            return noteResult(await api.concatVideosAsync(urls, onProgress));
+            const list = (urls || []).filter(Boolean);
+            if (list.length === 0)
+                return { success: false, error: "No clips to combine." };
+            if (list.length === 1)
+                return { success: true, url: list[0], single: true };
+            return noteResult(await concatEncodeAsync(api, list, onProgress));
+        });
+    }
+
+    async function concatEncodeAsync(api, urls, onProgress) {
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const names = [];
+            const outName = "cut_cat_" + seq + ".mp4";
+            const listName = "cut_cat_" + seq + ".txt";
+            try {
+                for (let i = 0; i < urls.length; i++) {
+                    const n = "cut_cat_" + seq + "_" + i + ".mp4";
+                    names.push(n);
+                    await ffmpeg.writeFile(n, await api._safeFetchFile(urls[i]));
+                }
+                await ffmpeg.writeFile(listName, names.map(function (n) { return "file '" + n + "'"; }).join("\n"));
+                try {
+                    await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                        .concat(h264EncodeArgs("aac"), [outName]));
+                } catch (audioErr) {
+                    console.debug("Cut: concat audio missing", audioErr);
+                    try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                        console.debug("Cut: concat out cleanup", delErr);
+                    }
+                    await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                        .concat(h264EncodeArgs("an"), [outName]));
+                }
+                const out = await ffmpeg.readFile(outName);
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
+            } catch (err) {
+                return { success: false, error: messageOf(err, "Combine failed.") };
+            } finally {
+                for (let i = 0; i < names.length; i++)
+                    await deleteMemfs(ffmpeg, names[i]);
+                await deleteMemfs(ffmpeg, listName);
+                await deleteMemfs(ffmpeg, outName);
+            }
         });
     }
 
@@ -227,6 +281,19 @@
         }
     }
 
+    function h264EncodeArgs(audio) {
+        const args = [
+            "-c:v", "libx264", "-preset", CUT_H264_PRESET, "-crf", CUT_H264_CRF,
+            "-pix_fmt", CUT_H264_PIX, "-profile:v", CUT_H264_PROFILE,
+        ];
+        if (audio === "aac")
+            args.push("-c:a", "aac", "-b:a", CUT_AAC_RATE);
+        else if (audio === "an")
+            args.push("-an");
+        args.push("-movflags", "+faststart");
+        return args;
+    }
+
     function clampTrimWindow(startSec, endSec, total) {
         let start = Number(startSec) || 0;
         let end = Number(endSec);
@@ -246,12 +313,11 @@
         if (silentAudio)
             args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
         args.push("-t", String(keep),
-            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k");
+            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p");
+        args.push.apply(args, h264EncodeArgs("aac"));
         if (silentAudio)
             args.push("-map", "0:v", "-map", "1:a", "-shortest");
-        args.push("-movflags", "+faststart", outName);
+        args.push(outName);
         return args;
     }
 
@@ -366,16 +432,10 @@
                 }
                 args.push("-filter_complex", graph, "-map", "[" + last + "]");
                 try {
-                    await ffmpeg.exec(args.concat([
-                        "-map", "0:a", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outName,
-                    ]));
+                    await ffmpeg.exec(args.concat(["-map", "0:a"], h264EncodeArgs("aac"), [outName]));
                 } catch (audioErr) {
                     console.debug("Cut: overlay native audio missing", audioErr);
-                    await ffmpeg.exec(args.concat([
-                        "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                        "-movflags", "+faststart", outName,
-                    ]));
+                    await ffmpeg.exec(args.concat(h264EncodeArgs("an"), [outName]));
                 }
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
@@ -410,13 +470,11 @@
                 let vf = "scale=1280:720,setsar=1";
                 if (fade > 0.05)
                     vf += ",fade=t=in:st=0:d=" + fade + ",fade=t=out:st=" + (hold - fade) + ":d=" + fade;
+                vf += ",format=yuv420p";
                 await ffmpeg.exec([
                     "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
                     "-vf", vf,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-                    "-an", "-movflags", "+faststart",
-                    outName,
-                ]);
+                ].concat(h264EncodeArgs("an"), [outName]));
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
                 noteTemp(url);
@@ -457,8 +515,8 @@
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
                 const fade = Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
-                const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
-                    + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
+                const vgraph = "[0:v]scale=1280:720,setsar=1,format=yuv420p[v0];[1:v]scale=1280:720,setsar=1,format=yuv420p[v1];"
+                    + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + ",format=yuv420p[v]";
                 const aNorm = "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a0];"
                     + "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a1];";
                 const graphs = [
@@ -472,11 +530,7 @@
                             "-hide_banner", "-y", "-i", aName, "-i", bName,
                             "-filter_complex", graph,
                             "-map", "[v]", "-map", "[a]",
-                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                            "-c:a", "aac", "-b:a", "128k",
-                            "-movflags", "+faststart",
-                            outName,
-                        ]);
+                        ].concat(h264EncodeArgs("aac"), [outName]));
                         encoded = true;
                         break;
                     } catch (audioErr) {
@@ -616,6 +670,66 @@
         });
     }
 
+    async function mixMovieAudioAsync(api, videoUrl, musicUrl, onProgress) {
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inVideo = "cut_mix_v_" + seq + ".mp4";
+            const inMusic = "cut_mix_m_" + seq + ".m4a";
+            const outName = "cut_mix_o_" + seq + ".mp4";
+            try {
+                await ffmpeg.writeFile(inVideo, await api._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inMusic, await api._safeFetchFile(musicUrl));
+                const probe = await api._probeDurationMemfsAsync(inVideo);
+                const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
+                const fadeStart = Math.max(0, durationSec - 1.5);
+                const vol = "[1:a]volume=0.22"
+                    + (durationSec > 0 ? ",afade=t=out:st=" + fadeStart.toFixed(1) + ":d=1.5" : "")
+                    + ",apad[bg]";
+                const args = [
+                    "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
+                    "-filter_complex", vol + ";[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]",
+                    "-map", "0:v", "-map", "[a]",
+                ];
+                if (durationSec > 0.05)
+                    args.push("-t", String(durationSec));
+                args.push.apply(args, h264EncodeArgs("aac"));
+                args.push(outName);
+                try {
+                    await ffmpeg.exec(args);
+                } catch (noVidAudio) {
+                    console.debug("Cut: mix video has no audio", noVidAudio);
+                    try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                        console.debug("Cut: mix out cleanup", delErr);
+                    }
+                    const fallback = [
+                        "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
+                        "-filter_complex", "[1:a]volume=0.22,apad[a]",
+                        "-map", "0:v", "-map", "[a]",
+                    ];
+                    if (durationSec > 0.05)
+                        fallback.push("-t", String(durationSec));
+                    fallback.push.apply(fallback, h264EncodeArgs("aac"));
+                    fallback.push(outName);
+                    await ffmpeg.exec(fallback);
+                }
+                const out = await ffmpeg.readFile(outName);
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
+            } catch (err) {
+                return { success: false, error: messageOf(err, "Could not mix audio.") };
+            } finally {
+                await deleteMemfs(ffmpeg, inVideo);
+                await deleteMemfs(ffmpeg, inMusic);
+                await deleteMemfs(ffmpeg, outName);
+            }
+        });
+    }
+
     async function mixOptionalAudio(api, videoUrl, audio, onProgress) {
         const spec = musicSpec(audio);
         if (!spec)
@@ -625,10 +739,7 @@
             return placed;
         return withPinnedUrls([videoUrl, placed.url], async function () {
             onProgress?.(80, "Mixing audio…");
-            let mixed = await api.mixSceneAudioAsync(videoUrl, placed.url, 22, onProgress);
-            if (!mixed.success)
-                mixed = await api.replaceVideoAudioAsync(videoUrl, placed.url, onProgress);
-            return mixed;
+            return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress);
         });
     }
 

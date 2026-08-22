@@ -60,6 +60,97 @@ public static class CutComposeContract
                 => CutComposeAudioJoin.AcrossfadeOrHardCut,
             _ => CutComposeAudioJoin.KeepThroughConcat,
         };
+
+    public const string ExportVideoCodec = "libx264";
+    public const string ExportPixelFormat = "yuv420p";
+    public const string ExportVideoProfile = "main";
+    public const string ExportAudioCodec = "aac";
+    public const string ExportMovFlags = "+faststart";
+
+    /// <summary>
+    /// Music mix must keep the video length. <c>-shortest</c> against a
+    /// shorter score clips movie.mp4 (1:28 vs a 1:44 timeline).
+    /// </summary>
+    public const bool MixMustNotShortenToMusic = true;
+
+    public static bool ExportArgvIsWmpSafe(IReadOnlyList<string> argv, bool expectAudio)
+    {
+        if (argv is null || argv.Count == 0)
+            return false;
+        if (!ContainsPair(argv, "-c:v", ExportVideoCodec))
+            return false;
+        if (!ContainsPair(argv, "-pix_fmt", ExportPixelFormat))
+            return false;
+        if (!ContainsPair(argv, "-profile:v", ExportVideoProfile))
+            return false;
+        if (!ContainsToken(argv, ExportMovFlags))
+            return false;
+        if (CopiesVideo(argv))
+            return false;
+        if (expectAudio && !ContainsPair(argv, "-c:a", ExportAudioCodec))
+            return false;
+        return true;
+    }
+
+    public static bool MixKeepsVideoDuration(IReadOnlyList<string> argv) =>
+        MixMustNotShortenToMusic && !ContainsToken(argv, "-shortest");
+
+    public static double ComposedDurationSec(IReadOnlyList<CutClip> clips)
+    {
+        var visual = CutJitPlay.TotalSec(clips);
+        if (clips.Count == 0)
+            return 0;
+        var overlap = 0.0;
+        var hold = 0.0;
+        for (var i = 0; i < clips.Count - 1; i++)
+        {
+            var join = clips[i].JoinToNext(clips[i + 1]);
+            hold += HoldSeconds(join);
+            if (!JoinIsXfade(join))
+                continue;
+            var leftSec = CutJitPlay.TimelineEndOf(clips, i) - CutJitPlay.TimelineStartOf(clips, i);
+            overlap += XfadeSecondsFor(leftSec);
+        }
+
+        return Math.Max(0, visual - overlap + hold);
+    }
+
+    private static bool ContainsToken(IReadOnlyList<string> argv, string token)
+    {
+        for (var i = 0; i < argv.Count; i++)
+        {
+            if (string.Equals(argv[i], token, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsPair(IReadOnlyList<string> argv, string flag, string value)
+    {
+        for (var i = 0; i < argv.Count - 1; i++)
+        {
+            if (string.Equals(argv[i], flag, StringComparison.Ordinal)
+                && string.Equals(argv[i + 1], value, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool CopiesVideo(IReadOnlyList<string> argv)
+    {
+        for (var i = 0; i < argv.Count - 1; i++)
+        {
+            if (!string.Equals(argv[i + 1], "copy", StringComparison.Ordinal))
+                continue;
+            if (string.Equals(argv[i], "-c:v", StringComparison.Ordinal)
+                || string.Equals(argv[i], "-c", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
 }
 
 public enum CutComposeAudioJoin

@@ -64,6 +64,57 @@ public class CutComposeContractTests
         Assert.Equal(CutComposeContract.XfadeSeconds, CutComposeContract.XfadeSecondsFor(8), 5);
     }
 
+    [Fact]
+    public void Every_compose_export_path_is_wmp_safe_h264()
+    {
+        foreach (var path in CutFfmpegEncode.ComposeExportPaths)
+        {
+            var argv = CutFfmpegEncode.Argv(path);
+            var expectAudio = path is not CutFfmpegEncodePath.Still
+                and not CutFfmpegEncodePath.OverlaySilent
+                and not CutFfmpegEncodePath.ConcatSilent;
+            Assert.True(CutComposeContract.ExportArgvIsWmpSafe(argv, expectAudio), path.ToString());
+            Assert.Contains("-pix_fmt", argv);
+            Assert.Contains("yuv420p", argv);
+            Assert.Contains("libx264", argv);
+            Assert.Contains("main", argv);
+            Assert.Contains("+faststart", argv);
+            Assert.DoesNotContain("copy", argv);
+        }
+
+        var mix = CutFfmpegEncode.Argv(CutFfmpegEncodePath.Mix);
+        Assert.True(CutComposeContract.MixKeepsVideoDuration(mix));
+        Assert.DoesNotContain("-shortest", mix);
+        Assert.Contains("-t", mix);
+        Assert.True(CutComposeContract.MixMustNotShortenToMusic);
+    }
+
+    [Fact]
+    public void Composed_duration_keeps_timeline_minus_xfades_not_music()
+    {
+        var s01a = NewClip(1, 1, 5.04);
+        var s01b = NewClip(1, 2, 10.82);
+        s01b.JoinOverride = CutJoinKind.Dissolve;
+        var s02 = NewClip(2, 1, 25);
+        s02.JoinOverride = CutJoinKind.Dissolve;
+        var s03 = NewClip(3, 1, 30);
+        s03.JoinOverride = CutJoinKind.Dissolve;
+        var s04 = NewClip(4, 1, 33.81);
+        var clips = new[] { s01a, s01b, s02, s03, s04 };
+        var timeline = CutJitPlay.TotalSec(clips);
+        var composed = CutComposeContract.ComposedDurationSec(clips);
+        Assert.Equal(104.67, timeline, 5);
+        Assert.True(composed < timeline);
+        Assert.True(composed > 88);
+        Assert.Equal(
+            timeline
+            - CutComposeContract.XfadeSecondsFor(10.82)
+            - CutComposeContract.XfadeSecondsFor(25)
+            - CutComposeContract.XfadeSecondsFor(30),
+            composed,
+            5);
+    }
+
     private static CutClip NewClip(int scene, int clip, double duration)
     {
         var c = new CutClip { Scene = scene, Clip = clip };

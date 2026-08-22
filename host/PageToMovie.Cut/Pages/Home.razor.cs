@@ -459,8 +459,13 @@ public partial class Home : IAsyncDisposable
 
     private bool ShouldHandOffToMerge()
     {
+        var playingEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips);
+        var newEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _prefixClipCount);
+        var total = CutJitPlay.TotalSec(Folder.Clips);
+        var atEnd = CutPlayMerge.PlayingFileEndedBeforeTimeline(_playhead, playingEnd, total)
+            || CutPlayMerge.ShouldHandoffAtJoin(_playhead, playingEnd, newEnd, total, Folder.Clips);
         if (!CutPlayClock.ShouldSwitchToMergeOnPrefix(
-                _wantPlay, _playMode == PlayMode.Waiting, _playMode == PlayMode.Native))
+                _wantPlay, _playMode == PlayMode.Waiting, _playMode == PlayMode.Native, atEnd))
             return false;
         var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
         return CutPlayMerge.ShouldPlayMerge(
@@ -513,9 +518,14 @@ public partial class Home : IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(url) || Js is null)
             return false;
-        var firstSwap = !_mergeHasFrame;
-        var seekSec = firstSwap && !userSeek
-            ? CutPlayMerge.HandoffSeekSec(Folder.Clips, timelineSec, firstSwapToMerge: true)
+        var playingEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips);
+        var total = CutJitPlay.TotalSec(Folder.Clips);
+        var atFileEnd = CutPlayMerge.PlayingFileEndedBeforeTimeline(_playhead, playingEnd, total);
+        var applyLeadIn = !userSeek
+            && (!_mergeHasFrame || atFileEnd
+                || !string.Equals(_movieSrcBound, url, StringComparison.Ordinal));
+        var seekSec = applyLeadIn
+            ? CutPlayMerge.HandoffSeekSec(Folder.Clips, timelineSec, applyJoinLeadIn: true)
             : CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
         var samePlayer = _playMode == PlayMode.Movie && _mergeHasFrame;
         if (CutPlayMerge.ShouldReusePlayingMovie(
@@ -524,7 +534,8 @@ public partial class Home : IAsyncDisposable
                 url,
                 _mergeHasFrame,
                 _playhead,
-                CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips)))
+                playingEnd,
+                total))
         {
             if (!CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek))
                 return true;
@@ -562,6 +573,8 @@ public partial class Home : IAsyncDisposable
                 await BindPlaybackAsync(MoviePlayer, PlaySurface.Movie, OnMovieTime, OnMovieEnded);
             await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
             await Js.InvokeVoidAsync(PaintPlayheadJs, _playhead);
+            if (CutPlayClock.ShouldRenderAfterMergeSwap)
+                await InvokeAsync(StateHasChanged);
             return true;
         }
         catch (JSException)
@@ -632,6 +645,10 @@ public partial class Home : IAsyncDisposable
     {
         if (!_wantPlay)
             return;
+        _playhead = CutPlayMerge.PlayheadAfterMovieEnded(
+            _playhead,
+            CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips),
+            CutJitPlay.TotalSec(Folder.Clips));
         if (ShouldStopAfterMovieEnded())
         {
             StopAfterEnded();
@@ -662,7 +679,11 @@ public partial class Home : IAsyncDisposable
     private bool ShouldResumeAfterMovieEnded()
     {
         var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
-        return CutPlayMerge.ShouldRetryMergeSwap(_wantPlay, _mergeHasFrame, playUrl)
+        var playingEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips);
+        var newEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _prefixClipCount);
+        var total = CutJitPlay.TotalSec(Folder.Clips);
+        return CutPlayMerge.ShouldRetryMergeSwap(
+                _wantPlay, _mergeHasFrame, playUrl, _playhead, playingEnd, newEnd, total)
             || CutPlayMerge.ShouldPlayMerge(
                 playUrl, Folder.Clips, _prefixClipCount, _playhead, _firstStart);
     }
@@ -848,6 +869,22 @@ public partial class Home : IAsyncDisposable
         ProgressMessage = msg;
         if (CutPlayClock.ShouldRenderOnProgress(ShowComposeOverlay))
             _ = InvokeAsync(StateHasChanged);
+    }
+
+    internal bool ShowPreviewLength =>
+        _selected is not null && (_mergeHasFrame || _selected.HasDuration);
+
+    internal string PreviewLengthText
+    {
+        get
+        {
+            var selectedTrack = _selected?.SlicedDurationSec ?? 0;
+            var selectedFile = _selected?.DurationSec ?? 0;
+            var mergeClips = _playingMergeClips > 0 ? _playingMergeClips : _prefixClipCount;
+            var mergeSec = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, mergeClips);
+            var cap = CutPlayMerge.PreviewCaption(_mergeHasFrame, mergeSec, selectedTrack, selectedFile);
+            return $"{FormatSec(cap.TrackSec)}s on the track · file {FormatSec(cap.FileSec)}s";
+        }
     }
 
     private static string FormatSec(double seconds) =>

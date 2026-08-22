@@ -130,9 +130,12 @@ public static class CutPlayMerge
         string url,
         bool mergeHasFrame,
         double playhead,
-        double playingMergeEnd)
+        double playingMergeEnd,
+        double totalSec)
     {
         if (!samePlayer || !mergeHasFrame || string.IsNullOrWhiteSpace(url))
+            return false;
+        if (PlayingFileEndedBeforeTimeline(playhead, playingMergeEnd, totalSec))
             return false;
         if (string.Equals(boundUrl, url, StringComparison.Ordinal))
             return true;
@@ -140,11 +143,45 @@ public static class CutPlayMerge
             && playhead < playingMergeEnd - 0.05;
     }
 
+    /// <summary>
+    /// The file on the player ended, but the timeline still has scenes.
+    /// Same-URL reuse here leaves Play stuck on Stop at that join.
+    /// </summary>
+    public static bool PlayingFileEndedBeforeTimeline(
+        double playhead, double playingMergeEnd, double totalSec) =>
+        !EndedIsStop(playhead, totalSec) && playhead >= playingMergeEnd - 0.05;
+
+    public static double PlayheadAfterMovieEnded(
+        double playhead, double playingMergeEnd, double totalSec)
+    {
+        var edge = Math.Max(playhead, playingMergeEnd);
+        if (totalSec <= 0)
+            return Math.Max(0, edge);
+        return Math.Clamp(edge, 0, totalSec);
+    }
+
     public static bool ShouldRetryMergeSwap(
         bool wantPlay,
         bool showingMerge,
         string? mergeUrl) =>
-        wantPlay && !showingMerge && !string.IsNullOrWhiteSpace(mergeUrl);
+        ShouldRetryMergeSwap(wantPlay, showingMerge, mergeUrl, 0, 0, 0, 0);
+
+    public static bool ShouldRetryMergeSwap(
+        bool wantPlay,
+        bool showingMerge,
+        string? mergeUrl,
+        double playhead,
+        double playingMergeEnd,
+        double newMergeEnd,
+        double totalSec)
+    {
+        if (!wantPlay || string.IsNullOrWhiteSpace(mergeUrl))
+            return false;
+        if (!showingMerge)
+            return true;
+        return PlayingFileEndedBeforeTimeline(playhead, playingMergeEnd, totalSec)
+            && newMergeEnd > playingMergeEnd + 0.05;
+    }
 
     /// <summary>
     /// Play/seek time is the playhead. Never the scene's first clip or
@@ -161,19 +198,38 @@ public static class CutPlayMerge
     }
 
     /// <summary>
-    /// First hop→merge swap at a Fade to white / Dissolve / Dip must start
-    /// a fade-length before the join. Timeline time has no overlap; the
-    /// composed file xfades the last <see cref="CutComposeContract.XfadeSeconds"/>
-    /// of the outgoing scene. Seeking the merge to the hop EOF lands after
-    /// that look.
+    /// Hop→merge and later-join swaps at a Fade to white / Dissolve / Dip
+    /// must start a fade-length before the join. Timeline time has no
+    /// overlap; the composed file xfades the last
+    /// <see cref="CutComposeContract.XfadeSeconds"/> of the outgoing scene.
+    /// Seeking the merge to the join lands after that look.
     /// </summary>
     public static double HandoffSeekSec(
-        IReadOnlyList<CutClip> clips, double playhead, bool firstSwapToMerge)
+        IReadOnlyList<CutClip> clips, double playhead, bool applyJoinLeadIn)
     {
         var seek = PlaySeekSec(clips, playhead);
-        if (!firstSwapToMerge)
+        if (!applyJoinLeadIn)
             return seek;
         return PlaySeekSec(clips, seek - JoinLeadInAt(clips, seek));
+    }
+
+    /// <summary>
+    /// Swap onto a longer merge as the current file reaches a scene join.
+    /// Mid-scene prefix growth still does not replace src.
+    /// </summary>
+    public static bool ShouldHandoffAtJoin(
+        double playhead,
+        double playingMergeEnd,
+        double newMergeEnd,
+        double totalSec,
+        IReadOnlyList<CutClip> clips)
+    {
+        if (newMergeEnd <= playingMergeEnd + 0.05)
+            return false;
+        if (EndedIsStop(playhead, totalSec))
+            return false;
+        var lead = JoinLeadInAt(clips, playingMergeEnd);
+        return playhead >= playingMergeEnd - lead - 0.05;
     }
 
     public static double JoinLeadInAt(IReadOnlyList<CutClip> clips, double playhead)
@@ -264,7 +320,28 @@ public static class CutPlayMerge
         && playhead < window.TimelineEnd - 0.001;
 
     public static bool ShouldSwitchToMergeOnPrefix(bool wantPlay, bool waiting, bool playingFirstStart) =>
-        wantPlay && (waiting || playingFirstStart);
+        ShouldSwitchToMergeOnPrefix(wantPlay, waiting, playingFirstStart, atPlayingFileEnd: false);
+
+    public static bool ShouldSwitchToMergeOnPrefix(
+        bool wantPlay, bool waiting, bool playingFirstStart, bool atPlayingFileEnd) =>
+        wantPlay && (waiting || playingFirstStart || atPlayingFileEnd);
+
+    public readonly record struct PreviewLengthCaption(double TrackSec, double FileSec, bool FromMerge);
+
+    /// <summary>
+    /// Once Play is on the merge, the caption is that file's coverage —
+    /// not the leftover hop take (5.04s) still selected on the timeline.
+    /// </summary>
+    public static PreviewLengthCaption PreviewCaption(
+        bool showingMerge,
+        double mergeSec,
+        double selectedTrackSec,
+        double selectedFileSec)
+    {
+        if (showingMerge && mergeSec > 0.05)
+            return new PreviewLengthCaption(mergeSec, mergeSec, true);
+        return new PreviewLengthCaption(selectedTrackSec, selectedFileSec, false);
+    }
 
     public static bool IsFreshMerge(
         string? savedFingerprint,
