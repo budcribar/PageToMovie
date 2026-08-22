@@ -33,7 +33,7 @@ public sealed class CutClip
         get
         {
             if (SelectedTakeNumber <= 0)
-                return $"{Label}: no current take. Add {CutClipNaming.CurrentTakePointerFileName(Scene, Clip)} or pick a take.";
+                return $"{Label}: no current take. Add {CutClipNaming.CurrentTakePointerFileName(Scene, Clip)}.";
             if (SelectedTake is null)
                 return $"{Label}: current take {SelectedTakeNumber} is missing.";
             return SelectedTake.MissingReason;
@@ -90,14 +90,6 @@ public sealed class CutClip
     {
         // Current is .current.json only — do not fall back to another take.
         SelectedTakeNumber = ActiveTakeNumber > 0 ? ActiveTakeNumber : 0;
-    }
-
-    public void SelectTake(int take)
-    {
-        if (!Takes.Any(t => t.Take == take))
-            return;
-        SelectedTakeNumber = take;
-        ActiveTakeNumber = take;
     }
 
     public void SetDuration(double seconds) => SelectedTake?.SetDuration(seconds);

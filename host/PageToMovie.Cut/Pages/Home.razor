@@ -37,25 +37,6 @@
             }
             else
             {
-                <div class="cut-takes" aria-label="Takes">
-                    @foreach (var take in _selected.Takes)
-                    {
-                        var isActive = take.Take == _selected.ActiveTakeNumber && take.Take == _selected.SelectedTakeNumber;
-                        <button type="button"
-                                class="cut-take @(isActive ? "is-active is-using" : "")"
-                                disabled="@(take.Missing || _busy)"
-                                @onclick="() => SelectTakeAsync(take.Take)">
-                            @if (isActive)
-                            {
-                                <text>★ Active · Take @take.Take</text>
-                            }
-                            else
-                            {
-                                <text>Take @take.Take</text>
-                            }
-                        </button>
-                    }
-                </div>
                 @if (_selected.Missing)
                 {
                     <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
@@ -65,15 +46,21 @@
                     <div class="cut-preview-stage">
                         <video @ref="MoviePlayer"
                                class="cut-preview-video @(ShowMovie ? "" : "is-off")"
-                               src="@ActiveMovieUrl"
+                               src="@MoviePlayerSrc"
                                playsinline
                                preload="auto"></video>
                         <video @ref="ClipPlayer"
                                class="cut-preview-video @(ShowMovie ? "is-off" : "")"
-                               src="@_selected.PreviewUrl"
+                               src="@ClipPlayerSrc"
                                playsinline
                                preload="metadata"
                                @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                        <div @ref="TextOverlay"
+                             class="cut-text-overlay is-off"
+                             data-testid="cut-text-overlay"
+                             aria-hidden="true">
+                            <p class="cut-text-overlay-line"></p>
+                        </div>
                         @if (ShowComposeOverlay)
                         {
                             <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">

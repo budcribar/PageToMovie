@@ -90,7 +90,7 @@ public sealed class CutFolderService : IAsyncDisposable
 
     private async Task AttachTakeUrlsAsync(List<CutClip> clips)
     {
-        foreach (var take in clips.SelectMany(c => c.Takes).Where(t => !t.Missing))
+        foreach (var take in clips.Select(c => c.SelectedTake).OfType<CutTake>().Where(t => !t.Missing))
         {
             var blob = await _js.InvokeAsync<JsResult>("PageToMovieCut.getFileBlobUrlAsync", take.RelativePath);
             if (blob.Success && !string.IsNullOrWhiteSpace(blob.Url))
@@ -130,22 +130,6 @@ public sealed class CutFolderService : IAsyncDisposable
 
         FolderError = null;
         return true;
-    }
-
-    /// <summary>
-    /// Switch the in-memory current take and persist <c>.current.json</c>. Never writes an alias MP4.
-    /// </summary>
-    public async Task SetCurrentTakeAsync(CutClip clip, int take)
-    {
-        clip.SelectTake(take);
-        if (string.IsNullOrWhiteSpace(clip.PointerRelativePath))
-            clip.PointerRelativePath = CutClipNaming.PointerPathBeside(clip.RelativePath, clip.Scene, clip.Clip);
-        if (string.IsNullOrWhiteSpace(clip.PointerRelativePath))
-            return;
-        var json = CutClipNaming.CurrentPointerJson(clip.Scene, clip.Clip, take);
-        var wrote = await _js.InvokeAsync<JsResult>("PageToMovieCut.writeTextFileAsync", clip.PointerRelativePath, json);
-        if (!wrote.Success && !string.IsNullOrWhiteSpace(wrote.Error))
-            FolderError = wrote.Error;
     }
 
     private async Task RevokePreviewUrlsAsync()

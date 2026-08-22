@@ -71,16 +71,12 @@ public class CutClipNamingTests
 
         var first = Assert.Single(clips);
         Assert.Equal((1, 1), (first.Scene, first.Clip));
-        Assert.Equal(new[] { 1, 2 }, first.Takes.Select(t => t.Take));
+        Assert.Equal(2, Assert.Single(first.Takes).Take);
         Assert.Equal(2, first.ActiveTakeNumber);
         Assert.Equal(2, first.SelectedTakeNumber);
         Assert.Equal("scene_01_clip_01_take_02.mp4", first.FileName);
         Assert.DoesNotContain(first.Takes, t => t.FileName == "scene_01_clip_01.mp4");
-
-        first.SelectTake(1);
-        Assert.Equal(1, first.SelectedTakeNumber);
-        Assert.Equal(1, first.ActiveTakeNumber);
-        Assert.Equal("scene_01_clip_01_take_01.mp4", first.FileName);
+        Assert.DoesNotContain(first.Takes, t => t.Take == 1);
         Assert.Equal("assets/video/scene_01_clip_01.current.json", first.PointerRelativePath);
     }
 
@@ -96,8 +92,10 @@ public class CutClipNamingTests
         var clip = Assert.Single(clips);
         Assert.Equal(0, clip.ActiveTakeNumber);
         Assert.Equal(0, clip.SelectedTakeNumber);
+        Assert.Empty(clip.Takes);
         Assert.Null(clip.SelectedTake);
         Assert.True(clip.Missing);
+        Assert.DoesNotContain("pick a take", clip.MissingReason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
