@@ -383,9 +383,10 @@ public partial class Home : IAsyncDisposable
         _playhead = Math.Max(0, timelineSec);
         var ready = CutJitPlay.ReadyThroughSec(Folder.Clips, _prefixClipCount);
         var nativeEnd = CutJitPlay.NativeReachableThrough(Folder.Clips);
+        var total = CutJitPlay.TotalSec(Folder.Clips);
         var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
 
-        if (CutJitPlay.NeedsWait(_playhead, ready))
+        if (CutJitPlay.NeedsWait(_playhead, ready, total))
         {
             await EnterWaitAsync();
             return;
@@ -521,9 +522,19 @@ public partial class Home : IAsyncDisposable
 
     private void OnMovieEnded()
     {
-        _wantPlay = false;
-        _playMode = PlayMode.Idle;
-        _ = InvokeAsync(StateHasChanged);
+        if (!_wantPlay)
+            return;
+        var total = CutJitPlay.TotalSec(Folder.Clips);
+        if (CutJitPlay.IsTimelineEnd(_playhead, total))
+        {
+            _wantPlay = false;
+            _playMode = PlayMode.Idle;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // S01 prefix EOF is not Stop — wait for the scene-change stitch or play it.
+        _ = ContinuePlayAsync(_playhead);
     }
 
     private async Task BindPlaybackAsync(ElementReference player, Action<double> onTime, Action onEnded)
