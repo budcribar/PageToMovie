@@ -14,6 +14,14 @@ public sealed class CutMusic
     public double MarkIn { get; set; }
     public double MarkOut { get; set; }
     public double DurationSec { get; private set; }
+    public int VolumePercent { get; set; } = CutMusicMix.DefaultVolumePercent;
+    public double FadeInSec { get; set; } = CutMusicMix.DefaultFadeSec;
+    public double FadeOutSec { get; set; } = CutMusicMix.DefaultFadeSec;
+
+    public bool HasMixEdits =>
+        VolumePercent != CutMusicMix.DefaultVolumePercent
+        || FadeInSec > 0.001
+        || FadeOutSec > 0.001;
 
     public bool HasFile => !string.IsNullOrWhiteSpace(FileName);
     public string Label => CutMusicEdit.Label(this);
@@ -35,6 +43,9 @@ public sealed class CutMusic
         MarkIn = 0;
         MarkOut = 0;
         DurationSec = 0;
+        VolumePercent = CutMusicMix.DefaultVolumePercent;
+        FadeInSec = CutMusicMix.DefaultFadeSec;
+        FadeOutSec = CutMusicMix.DefaultFadeSec;
     }
 
     public void SetFile(string? fileName)
@@ -45,7 +56,19 @@ public sealed class CutMusic
         MarkIn = 0;
         MarkOut = 0;
         DurationSec = 0;
+        VolumePercent = CutMusicMix.DefaultVolumePercent;
+        FadeInSec = CutMusicMix.DefaultFadeSec;
+        FadeOutSec = CutMusicMix.DefaultFadeSec;
     }
+
+    public void SetVolumePercent(int percent) =>
+        VolumePercent = CutMusicMix.ClampVolume(percent);
+
+    public void SetFadeIn(double seconds) =>
+        FadeInSec = CutMusicMix.ClampFade(seconds);
+
+    public void SetFadeOut(double seconds) =>
+        FadeOutSec = CutMusicMix.ClampFade(seconds);
 
     public void SetDuration(double seconds)
     {

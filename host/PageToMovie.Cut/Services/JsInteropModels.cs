@@ -140,6 +140,21 @@ public sealed class JsMusicMix
 
     [JsonPropertyName("markOut")]
     public double MarkOut { get; set; }
+
+    [JsonPropertyName("volume")]
+    public double Volume { get; set; } = 1;
+
+    [JsonPropertyName("fadeIn")]
+    public double FadeIn { get; set; }
+
+    [JsonPropertyName("fadeOut")]
+    public double FadeOut { get; set; }
+
+    [JsonPropertyName("filter")]
+    public string? Filter { get; set; }
+
+    [JsonPropertyName("fallbackFilter")]
+    public string? FallbackFilter { get; set; }
 }
 
 public sealed class JsExportClip
@@ -225,11 +240,23 @@ public sealed class JsTextStyle
     [JsonPropertyName("y")]
     public int Y { get; set; } = CutTextStyle.CenterY;
 
+    [JsonPropertyName("x")]
+    public int X { get; set; } = CutTextStyle.CenterX;
+
     [JsonPropertyName("bar")]
     public bool Bar { get; set; }
 
     [JsonPropertyName("fadeSec")]
     public double FadeSec { get; set; }
+
+    [JsonPropertyName("font")]
+    public string Font { get; set; } = "sans";
+
+    [JsonPropertyName("align")]
+    public string Align { get; set; } = "center";
+
+    [JsonPropertyName("cssFont")]
+    public string CssFont { get; set; } = CutTextStyle.DefaultCssFont;
 }
 
 public sealed class ExportProgressSink : IDisposable

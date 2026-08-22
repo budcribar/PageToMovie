@@ -66,7 +66,7 @@
                              @oncontextmenu="e => OnPickedOverlayContextMenuAsync(e, picked.Id)"
                              @oncontextmenu:preventDefault="true">
                             <p class="cut-text-overlay-line @(look.HasBar ? "has-bar" : "")"
-                               style="color: @look.ColorHex; font-size: @(look.FontPx)px; top: @((look.Y / 7.2).ToString(System.Globalization.CultureInfo.InvariantCulture))%">@picked.DisplayText</p>
+                               style="color: @look.ColorHex; font-size: @(look.FontPx)px; font-family: @look.CssFont; text-align: @look.CssAlign; left: @look.OverlayLeft; right: @look.OverlayRight; transform: @look.OverlayTransform; top: @((look.Y / 7.2).ToString(System.Globalization.CultureInfo.InvariantCulture))%">@picked.DisplayText</p>
                         </div>
                     }
                     @if (ShowComposeOverlay)

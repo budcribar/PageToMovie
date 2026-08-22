@@ -73,6 +73,15 @@ public class CutPlayMergeTests
         var placed = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
         Assert.NotEqual(fp, placed);
         Assert.True(CutPlayMerge.IsFreshMerge(placed, clips, titles, "score.mp3", music));
+
+        music.SetVolumePercent(50);
+        music.SetFadeOut(1.2);
+        var mixed = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
+        Assert.NotEqual(placed, mixed);
+        titles[0].Style.Font = CutTextFont.Arial;
+        titles[0].Style.Align = CutTextAlign.Right;
+        var styled = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
+        Assert.NotEqual(mixed, styled);
     }
 
     [Fact]

@@ -1,0 +1,107 @@
+@if (Music is { HasFile: true } track)
+{
+    <div class="cut-tl-inspector" data-testid="cut-tl-music-inspector">
+        <span class="cut-tl-inspector-kicker">Music</span>
+        <label class="cut-tl-inspector-group cut-tl-inspector-slider">
+            <span>Volume</span>
+            <input type="range"
+                   min="0"
+                   max="100"
+                   step="1"
+                   value="@track.VolumePercent"
+                   aria-label="Volume"
+                   data-testid="cut-tl-music-volume"
+                   disabled="@Busy"
+                   @oninput="OnVolumeInput"
+                   @onchange="OnVolumeChangeAsync" />
+            <em>@track.VolumePercent%</em>
+        </label>
+        <label class="cut-tl-inspector-group cut-tl-inspector-slider">
+            <span>Fade in</span>
+            <input type="range"
+                   min="0"
+                   max="@CutMusicMix.MaxFadeSeconds"
+                   step="0.1"
+                   value="@FadeWire(track.FadeInSec)"
+                   aria-label="Fade in"
+                   data-testid="cut-tl-music-fade-in"
+                   disabled="@Busy"
+                   @oninput="e => OnFadeInput(e, fadeOut: false)"
+                   @onchange="e => OnFadeChangeAsync(e, fadeOut: false)" />
+            <em>@FadeWire(track.FadeInSec)s</em>
+        </label>
+        <label class="cut-tl-inspector-group cut-tl-inspector-slider">
+            <span>Fade out</span>
+            <input type="range"
+                   min="0"
+                   max="@CutMusicMix.MaxFadeSeconds"
+                   step="0.1"
+                   value="@FadeWire(track.FadeOutSec)"
+                   aria-label="Fade out"
+                   data-testid="cut-tl-music-fade-out"
+                   disabled="@Busy"
+                   @oninput="e => OnFadeInput(e, fadeOut: true)"
+                   @onchange="e => OnFadeChangeAsync(e, fadeOut: true)" />
+            <em>@FadeWire(track.FadeOutSec)s</em>
+        </label>
+        <button type="button"
+                class="cut-tl-inspector-del"
+                title="Delete music"
+                data-testid="cut-tl-music-del"
+                disabled="@Busy"
+                @onclick="OnDelete">Delete</button>
+    </div>
+}
+
+@code {
+    [Parameter] public CutMusic? Music { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback MixChanged { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private static string FadeWire(double seconds) =>
+        CutMusicMix.ClampFade(seconds).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    private void OnVolumeInput(ChangeEventArgs e)
+    {
+        if (Music is null || !TryParseInt(e.Value, out var percent))
+            return;
+        Music.SetVolumePercent(percent);
+    }
+
+    private async Task OnVolumeChangeAsync(ChangeEventArgs e)
+    {
+        OnVolumeInput(e);
+        await MixChanged.InvokeAsync();
+    }
+
+    private void OnFadeInput(ChangeEventArgs e, bool fadeOut)
+    {
+        if (Music is null || !TryParseDouble(e.Value, out var seconds))
+            return;
+        if (fadeOut)
+            Music.SetFadeOut(seconds);
+        else
+            Music.SetFadeIn(seconds);
+    }
+
+    private async Task OnFadeChangeAsync(ChangeEventArgs e, bool fadeOut)
+    {
+        OnFadeInput(e, fadeOut);
+        await MixChanged.InvokeAsync();
+    }
+
+    private static bool TryParseInt(object? value, out int number)
+    {
+        var raw = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+        return int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out number);
+    }
+
+    private static bool TryParseDouble(object? value, out double number)
+    {
+        var raw = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+        return double.TryParse(raw, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out number);
+    }
+}

@@ -34,6 +34,11 @@ public static class CutProjectFile
             MusicIn = track.MarkIn,
             MusicOut = track.MarkOut,
             MusicLabel = string.IsNullOrWhiteSpace(track.DisplayName) ? null : track.DisplayName.Trim(),
+            MusicVolume = track.VolumePercent == CutMusicMix.DefaultVolumePercent
+                ? null
+                : track.VolumePercent,
+            MusicFadeIn = track.FadeInSec > 0.001 ? track.FadeInSec : null,
+            MusicFadeOut = track.FadeOutSec > 0.001 ? track.FadeOutSec : null,
             MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
             PictureFingerprint = string.IsNullOrWhiteSpace(mergeCache?.PictureFingerprint)
                 ? null
@@ -109,6 +114,9 @@ public static class CutProjectFile
         music.DisplayName = string.IsNullOrWhiteSpace(dto.MusicLabel) ? null : dto.MusicLabel.Trim();
         music.SetStart(dto.MusicStart);
         music.ApplyInOut(dto.MusicIn, dto.MusicOut);
+        music.SetVolumePercent(dto.MusicVolume ?? CutMusicMix.DefaultVolumePercent);
+        music.SetFadeIn(dto.MusicFadeIn ?? CutMusicMix.DefaultFadeSec);
+        music.SetFadeOut(dto.MusicFadeOut ?? CutMusicMix.DefaultFadeSec);
         ApplyClipRows(clips, dto.Clips);
 
         foreach (var row in dto.TextClips ?? [])
@@ -251,6 +259,8 @@ public static class CutProjectFile
                 Color = CutTextStyle.WireColor(style.Color),
                 Background = CutTextStyle.WireBackground(style.Background),
                 Fade = CutTextStyle.WireFade(style.Fade),
+                Font = style.Font == CutTextFont.Sans ? null : CutTextStyle.WireFont(style.Font),
+                Align = style.Align == CutTextAlign.Center ? null : CutTextStyle.WireAlign(style.Align),
             };
 
     private static void ApplyStyle(CutTextStyle target, StyleDto? dto)
@@ -262,6 +272,8 @@ public static class CutProjectFile
         target.Color = CutTextStyle.ParseColor(dto.Color);
         target.Background = CutTextStyle.ParseBackground(dto.Background);
         target.Fade = CutTextStyle.ParseFade(dto.Fade);
+        target.Font = CutTextStyle.ParseFont(dto.Font);
+        target.Align = CutTextStyle.ParseAlign(dto.Align);
     }
 
     private static CutJoinKind? ParseJoinOverride(string? wire) =>
@@ -287,6 +299,9 @@ public static class CutProjectFile
         public double MusicIn { get; set; }
         public double MusicOut { get; set; }
         public string? MusicLabel { get; set; }
+        public int? MusicVolume { get; set; }
+        public double? MusicFadeIn { get; set; }
+        public double? MusicFadeOut { get; set; }
         public string? MovieFingerprint { get; set; }
         public string? PictureFingerprint { get; set; }
         public string? MusicFingerprint { get; set; }
@@ -388,5 +403,7 @@ public static class CutProjectFile
         public string? Color { get; set; }
         public string? Background { get; set; }
         public string? Fade { get; set; }
+        public string? Font { get; set; }
+        public string? Align { get; set; }
     }
 }

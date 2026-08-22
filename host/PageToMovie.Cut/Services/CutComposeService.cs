@@ -69,6 +69,9 @@ public sealed class CutComposeService : IAsyncDisposable
         Music.DisplayName = saved.DisplayName;
         Music.SetStart(saved.StartSec);
         Music.ApplyInOut(saved.MarkIn, saved.MarkOut > saved.MarkIn ? saved.MarkOut : Music.MarkOut);
+        Music.SetVolumePercent(saved.VolumePercent);
+        Music.SetFadeIn(saved.FadeInSec);
+        Music.SetFadeOut(saved.FadeOutSec);
     }
 
     public async Task ProbeMusicDurationAsync()
@@ -403,17 +406,24 @@ public sealed class CutComposeService : IAsyncDisposable
         }
     }
 
-    private object? MusicMixArg()
+    private object? MusicMixArg() =>
+        string.IsNullOrWhiteSpace(_audioUrl) ? null : ToJsMix(_audioUrl, Music);
+
+    internal static JsMusicMix ToJsMix(string url, CutMusic music)
     {
-        if (string.IsNullOrWhiteSpace(_audioUrl))
-            return null;
-        var (inn, outt) = Music.ResolvedInOut();
+        ArgumentNullException.ThrowIfNull(music);
+        var (inn, outt) = music.ResolvedInOut();
         return new JsMusicMix
         {
-            Url = _audioUrl,
-            Start = Music.StartSec,
+            Url = url,
+            Start = music.StartSec,
             MarkIn = inn,
             MarkOut = outt,
+            Volume = CutMusicMix.GainOf(music.VolumePercent),
+            FadeIn = music.FadeInSec,
+            FadeOut = music.FadeOutSec,
+            Filter = CutMusicMix.ComplexFilter(music),
+            FallbackFilter = CutMusicMix.MusicOnlyFilter(music),
         };
     }
 
@@ -434,8 +444,12 @@ public sealed class CutComposeService : IAsyncDisposable
             FontPx = look.FontPx,
             Color = look.ColorHex,
             Y = look.Y,
+            X = look.X,
             Bar = look.HasBar,
             FadeSec = look.FadeSec(holdSeconds),
+            Font = CutTextStyle.WireFont(look.Font),
+            Align = CutTextStyle.WireAlign(look.Align),
+            CssFont = look.CssFont,
         };
     }
 

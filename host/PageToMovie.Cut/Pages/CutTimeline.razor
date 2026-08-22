@@ -263,6 +263,14 @@
                                OnDelete="DeleteSelectedTextAsync"
                                FieldFocusChanged="OnInspectorFieldFocus" />
 
+    @if (_musicSelected && ShowMusic)
+    {
+        <CutTimeline_MusicInspector Music="Music"
+                                    Busy="Busy"
+                                    MixChanged="OnEdited"
+                                    OnDelete="DeleteMusicAsync" />
+    }
+
     <CutTimeline_TextMenu @ref="_textMenu"
                           Open="_menuOpen"
                           X="_menuX"
