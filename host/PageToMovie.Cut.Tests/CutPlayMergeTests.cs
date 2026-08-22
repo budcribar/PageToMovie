@@ -87,16 +87,20 @@ public class CutPlayMergeTests
         Assert.Equal(8, s01End, 5);
         Assert.False(CutPlayMerge.ShouldContinueAfterPrefixEnded);
         Assert.False(CutPlayClock.ShouldContinuePlayOnPrefixEnded);
-        Assert.False(CutPlayMerge.PrefixEndedIsStop(s01End, CutJitPlay.TotalSec(clips), 2, clips.Length));
-        Assert.True(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 2, out var edge));
+        Assert.False(CutPlayMerge.EndedIsStop(s01End, CutJitPlay.TotalSec(clips)));
+        Assert.False(CutPlayMerge.PrefixEndedIsStop(s01End, s01End, CutJitPlay.TotalSec(clips), 2, clips.Length));
+        Assert.True(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 2, s01End, out var edge));
         Assert.Equal(8, edge, 5);
         Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 2, edge, CutJitPlay.At(clips, 0)));
         Assert.True(CutPlayMerge.WouldRewindMerge(currentPlayhead: 8, targetPlayhead: 4));
         Assert.False(CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek: false));
         Assert.True(CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek: true));
 
-        Assert.True(CutPlayMerge.PrefixEndedIsStop(13, 13, 3, clips.Length));
-        Assert.False(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 3, out _));
+        Assert.True(CutPlayMerge.PrefixEndedIsStop(13, 13, 13, 3, clips.Length));
+        Assert.True(CutPlayMerge.EndedIsStop(13, 13));
+        Assert.False(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 3, 13, out _));
+        Assert.True(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 3, s01End, out var hopEdge));
+        Assert.Equal(s01End, hopEdge, 5);
         Assert.Equal(3, CutPlayMerge.CoveredClipCount("blob:full", "blob:full", prefixClipCount: 1, clipCount: 3));
         Assert.Equal(2, CutPlayMerge.CoveredClipCount("blob:s01", "blob:full", prefixClipCount: 2, clipCount: 3));
     }
@@ -148,6 +152,7 @@ public class CutPlayMergeTests
         Assert.True(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true));
         Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: false));
         Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: false, composing: true));
+        Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true, showingMerge: true));
         Assert.True(CutPlayClock.ShouldRenderAfterComposeSettles);
     }
 
@@ -183,6 +188,60 @@ public class CutPlayMergeTests
         Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 2, 8, first));
         Assert.True(CutPlayMerge.ShouldPlayMerge("blob:s01s02", clips, 3, 8, first));
         Assert.Equal(8, CutPlayMerge.PlaySeekSec(clips, 8), 5);
+    }
+
+    [Fact]
+    public void Hop_eof_waits_for_merge_swap_and_does_not_stop()
+    {
+        var s01 = NewClip(1, 1, 5.04);
+        s01.JoinOverride = CutJoinKind.FadeWhite;
+        var s02 = NewClip(2, 1, 20);
+        s02.JoinOverride = CutJoinKind.Dissolve;
+        var s03 = NewClip(3, 1, 40);
+        var s04 = NewClip(4, 1, 39.63);
+        var clips = new[] { s01, s02, s03, s04 };
+        var first = CutJitPlay.At(clips, 0);
+        Assert.NotNull(first);
+        var hopEnd = first.Value.TimelineEnd;
+        var total = CutJitPlay.TotalSec(clips);
+        var s02End = CutPlayMerge.MergeReadyThroughSec(clips, 2);
+
+        Assert.Equal(5.04, hopEnd, 5);
+        Assert.True(total > hopEnd + 1);
+        Assert.False(CutJitPlay.IsTimelineEnd(hopEnd, total));
+        Assert.False(CutPlayMerge.EndedIsStop(hopEnd, total));
+        Assert.False(CutPlayMerge.PrefixEndedIsStop(hopEnd, hopEnd, total, coveredClipCount: clips.Length, clipCount: clips.Length));
+        Assert.True(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, clips.Length, hopEnd, out var wait));
+        Assert.Equal(hopEnd, wait, 5);
+
+        Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 1, hopEnd, first));
+        Assert.True(CutPlayMerge.ShouldPlayMerge("blob:full", clips, clips.Length, hopEnd, first));
+        Assert.True(CutPlayMerge.ShouldPlayMerge("blob:full", clips, clips.Length, 0, first));
+        Assert.True(CutPlayMerge.MergeCoversTimeline(clips, clips.Length));
+        Assert.False(CutPlayMerge.ShouldPlayFirstStart(first, hopEnd, playMerge: true));
+        Assert.True(CutPlayMerge.ShouldSwitchToMergeOnPrefix(true, waiting: true, playingFirstStart: false));
+        Assert.True(CutPlayMerge.ShouldRetryMergeSwap(wantPlay: true, showingMerge: false, "blob:full"));
+        Assert.False(CutPlayMerge.ShouldRetryMergeSwap(wantPlay: true, showingMerge: true, "blob:full"));
+
+        Assert.False(CutPlayMerge.ShouldReusePlayingMovie(
+            samePlayer: true, boundUrl: "blob:full", url: "blob:full",
+            mergeHasFrame: false, playhead: hopEnd, playingMergeEnd: total));
+        Assert.True(CutPlayMerge.ShouldReusePlayingMovie(
+            samePlayer: true, boundUrl: "blob:full", url: "blob:full",
+            mergeHasFrame: true, playhead: hopEnd, playingMergeEnd: total));
+
+        Assert.True(CutPlayMerge.ShouldPlayMerge("blob:full", clips, clips.Length, s02End, first));
+        Assert.False(CutPlayMerge.EndedIsStop(s02End, total));
+        Assert.Equal("Fade to white", CutTransitionMap.TickLabel(s01.JoinToNext(s02)));
+        Assert.Equal("Dissolve", CutTransitionMap.TickLabel(s02.JoinToNext(s03)));
+
+        var fade = CutComposeContract.XfadeSecondsFor(hopEnd);
+        Assert.Equal(hopEnd - fade, CutPlayMerge.HandoffSeekSec(clips, hopEnd, firstSwapToMerge: true), 5);
+        Assert.Equal(hopEnd, CutPlayMerge.HandoffSeekSec(clips, hopEnd, firstSwapToMerge: false), 5);
+        Assert.Equal(0, CutPlayMerge.JoinLeadInAt(clips, 1.0), 5);
+        Assert.Equal(fade, CutPlayMerge.JoinLeadInAt(clips, hopEnd), 5);
+        Assert.Equal(CutComposeContract.XfadeSecondsFor(20), CutPlayMerge.JoinLeadInAt(clips, s02End), 5);
+        Assert.Equal(s02End, CutPlayMerge.PlaySeekSec(clips, s02End), 5);
     }
 
     [Fact]

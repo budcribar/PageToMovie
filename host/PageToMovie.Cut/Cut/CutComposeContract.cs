@@ -15,6 +15,14 @@ public static class CutComposeContract
     /// <summary>Instant black hold between scenes. Not a chapter card.</summary>
     public const double CutToBlackHoldSeconds = 0.4;
 
+    /// <summary>
+    /// ffmpeg xfade duration cap. Same formula as Cut <c>xfadeAsync</c>:
+    /// <c>min(0.5, max(0.2, leftSec / 4))</c>.
+    /// </summary>
+    public const double XfadeSeconds = 0.5;
+
+    public const double XfadeMinSeconds = 0.2;
+
     public static bool CanReusePreview(string? moviePreviewUrl) =>
         !string.IsNullOrWhiteSpace(moviePreviewUrl);
 
@@ -33,6 +41,16 @@ public static class CutComposeContract
 
     public static double HoldSeconds(CutJoinKind kind) =>
         JoinInsertsBlackHold(kind) ? CutToBlackHoldSeconds : 0;
+
+    public static bool JoinIsXfade(CutJoinKind kind) =>
+        AudioJoin(kind) == CutComposeAudioJoin.AcrossfadeOrHardCut;
+
+    public static double XfadeSecondsFor(double leftSec)
+    {
+        if (leftSec <= 0 || double.IsNaN(leftSec) || double.IsInfinity(leftSec))
+            return XfadeMinSeconds;
+        return Math.Min(XfadeSeconds, Math.Max(XfadeMinSeconds, leftSec / 4));
+    }
 
     public static CutComposeAudioJoin AudioJoin(CutJoinKind kind) =>
         kind switch

@@ -40,6 +40,15 @@ public static class CutPlayMerge
     public static bool MergeCovers(IReadOnlyList<CutClip> clips, int prefixClipCount, double playhead) =>
         MergeReadyThroughSec(clips, prefixClipCount) >= playhead - 0.001;
 
+    public static bool MergeCoversTimeline(IReadOnlyList<CutClip> clips, int prefixClipCount)
+    {
+        if (clips.Count <= 0 || prefixClipCount <= 0)
+            return false;
+        if (prefixClipCount >= clips.Count)
+            return true;
+        return MergeReadyThroughSec(clips, prefixClipCount) >= CutJitPlay.TotalSec(clips) - 0.05;
+    }
+
     /// <summary>
     /// A completed movie URL covers every clip. A JIT prefix only covers
     /// the clips that have been joined so far.
@@ -60,31 +69,82 @@ public static class CutPlayMerge
     }
 
     /// <summary>
-    /// Prefix video EOF is Stop only when that file is the real timeline
-    /// end. An S01-only prefix must wait at the ready edge — not Stop,
-    /// not seek back into the last hops of that scene.
+    /// Prefix / hop EOF is Stop only at the real timeline end. An S01-only
+    /// hop file must wait at that edge until the merge is swapped in —
+    /// not Stop, not seek back into the last hops of that scene.
+    /// Covered-clip count must not decide Stop: a failed hop→merge swap
+    /// can make C# think the full movie is showing while the video
+    /// element is still the first take.
     /// </summary>
     public static bool ShouldContinueAfterPrefixEnded => false;
+
+    public static bool EndedIsStop(double playhead, double totalSec) =>
+        CutJitPlay.IsTimelineEnd(playhead, totalSec);
 
     public static bool PrefixEndedIsStop(
         double readyEdge,
         double totalSec,
         int coveredClipCount,
         int clipCount) =>
-        clipCount <= 0
-        || coveredClipCount >= clipCount
-        || CutJitPlay.IsTimelineEnd(readyEdge, totalSec);
+        PrefixEndedIsStop(readyEdge, readyEdge, totalSec, coveredClipCount, clipCount);
+
+    public static bool PrefixEndedIsStop(
+        double playhead,
+        double readyEdge,
+        double totalSec,
+        int coveredClipCount,
+        int clipCount)
+    {
+        _ = readyEdge;
+        _ = coveredClipCount;
+        return clipCount <= 0 || EndedIsStop(playhead, totalSec);
+    }
 
     public static bool TryWaitEdgeAfterPrefixEnded(
         IReadOnlyList<CutClip> clips,
         int coveredClipCount,
+        out double waitEdge) =>
+        TryWaitEdgeAfterPrefixEnded(clips, coveredClipCount, MergeReadyThroughSec(clips, coveredClipCount), out waitEdge);
+
+    public static bool TryWaitEdgeAfterPrefixEnded(
+        IReadOnlyList<CutClip> clips,
+        int coveredClipCount,
+        double playhead,
         out double waitEdge)
     {
-        waitEdge = MergeReadyThroughSec(clips, coveredClipCount);
-        if (PrefixEndedIsStop(waitEdge, CutJitPlay.TotalSec(clips), coveredClipCount, clips.Count))
+        _ = coveredClipCount;
+        waitEdge = playhead;
+        if (EndedIsStop(playhead, CutJitPlay.TotalSec(clips)))
             return false;
         return true;
     }
+
+    /// <summary>
+    /// C# must not treat a merge URL as on-screen until JS swapped and
+    /// decoded a frame. Reusing a "playing" merge we never showed leaves
+    /// Play stuck on the hop file at Ready 100%.
+    /// </summary>
+    public static bool ShouldReusePlayingMovie(
+        bool samePlayer,
+        string? boundUrl,
+        string url,
+        bool mergeHasFrame,
+        double playhead,
+        double playingMergeEnd)
+    {
+        if (!samePlayer || !mergeHasFrame || string.IsNullOrWhiteSpace(url))
+            return false;
+        if (string.Equals(boundUrl, url, StringComparison.Ordinal))
+            return true;
+        return !ShouldReplaceMergeSrcWhilePlaying
+            && playhead < playingMergeEnd - 0.05;
+    }
+
+    public static bool ShouldRetryMergeSwap(
+        bool wantPlay,
+        bool showingMerge,
+        string? mergeUrl) =>
+        wantPlay && !showingMerge && !string.IsNullOrWhiteSpace(mergeUrl);
 
     /// <summary>
     /// Play/seek time is the playhead. Never the scene's first clip or
@@ -98,6 +158,39 @@ public static class CutPlayMerge
         if (total <= 0)
             return 0;
         return Math.Clamp(playhead, 0, total);
+    }
+
+    /// <summary>
+    /// First hop→merge swap at a Fade to white / Dissolve / Dip must start
+    /// a fade-length before the join. Timeline time has no overlap; the
+    /// composed file xfades the last <see cref="CutComposeContract.XfadeSeconds"/>
+    /// of the outgoing scene. Seeking the merge to the hop EOF lands after
+    /// that look.
+    /// </summary>
+    public static double HandoffSeekSec(
+        IReadOnlyList<CutClip> clips, double playhead, bool firstSwapToMerge)
+    {
+        var seek = PlaySeekSec(clips, playhead);
+        if (!firstSwapToMerge)
+            return seek;
+        return PlaySeekSec(clips, seek - JoinLeadInAt(clips, seek));
+    }
+
+    public static double JoinLeadInAt(IReadOnlyList<CutClip> clips, double playhead)
+    {
+        for (var i = 0; i < clips.Count - 1; i++)
+        {
+            var join = clips[i].JoinToNext(clips[i + 1]);
+            if (!CutComposeContract.JoinIsXfade(join))
+                continue;
+            var joinAt = CutJitPlay.TimelineEndOf(clips, i);
+            var leftSec = joinAt - CutJitPlay.TimelineStartOf(clips, i);
+            var fade = CutComposeContract.XfadeSecondsFor(leftSec);
+            if (playhead >= joinAt - fade - 0.05 && playhead <= joinAt + 0.05)
+                return fade;
+        }
+
+        return 0;
     }
 
     public static bool WouldRewindMerge(double currentPlayhead, double targetPlayhead) =>
@@ -153,6 +246,8 @@ public static class CutPlayMerge
         var mergeEnd = MergeReadyThroughSec(clips, prefixClipCount);
         if (playhead > mergeEnd + 0.05)
             return false;
+        if (MergeCoversTimeline(clips, prefixClipCount))
+            return true;
         var total = CutJitPlay.TotalSec(clips);
         if (total > mergeEnd + 0.05 && playhead >= mergeEnd - 0.001)
             return false;

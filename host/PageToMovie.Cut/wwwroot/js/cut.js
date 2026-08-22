@@ -35,6 +35,9 @@
 
     /** Matches CutComposeContract.CutToBlackHoldSeconds — black hold, not a card. */
     const CUT_TO_BLACK_HOLD_SEC = 0.4;
+    /** Matches CutComposeContract.XfadeSeconds / XfadeMinSeconds. */
+    const CUT_XFADE_SEC = 0.5;
+    const CUT_XFADE_MIN_SEC = 0.2;
 
     function messageOf(err, fallback) {
         return err?.message || fallback;
@@ -452,7 +455,7 @@
                 await ffmpeg.writeFile(bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
-                const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
+                const fade = Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
                 const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
@@ -1203,7 +1206,7 @@
         return s.clip;
     }
 
-    function preparePlayAt(video, url, seconds) {
+    function preparePlayAt(video, url, seconds, waitMs) {
         return new Promise(function (resolve) {
             if (!video || !url) {
                 resolve(false);
@@ -1211,6 +1214,7 @@
             }
             const t = Number(seconds);
             const seek = Number.isFinite(t) && t >= 0 ? t : 0;
+            const timeoutMs = Number(waitMs) > 0 ? Number(waitMs) : 1500;
             let settled = false;
             let timer = 0;
             const finish = function (ok) {
@@ -1242,7 +1246,7 @@
                     finish(false);
                 }
             };
-            timer = setTimeout(function () { finish(video.readyState >= 2); }, 1500);
+            timer = setTimeout(function () { finish(video.readyState >= 2); }, timeoutMs);
             video.addEventListener("seeked", onSeeked);
             video.addEventListener("error", onErr);
             video.muted = true;
@@ -1260,27 +1264,36 @@
 
     function swapPlayTo(incoming, url, seconds, play) {
         if (!incoming || !url)
-            return Promise.resolve();
+            return Promise.resolve({ success: false });
         const seq = play ? ++cut._playSwapSeq : cut._playSwapSeq;
         incoming._cutAdvanceSent = false;
-        return preparePlayAt(incoming, url, seconds).then(function (ok) {
-            if (play && seq !== cut._playSwapSeq)
-                return;
-            if (!play) {
-                if (incoming !== cut._playSurfaces.front)
-                    cut.pauseVideo(incoming);
-                return;
-            }
-            const hasFrame = ok || incoming.readyState >= 2;
-            if (!hasFrame && cut._playSurfaces.front)
-                return;
-            const outgoing = cut._playSurfaces.front;
-            if (outgoing && outgoing !== incoming)
-                cut.pauseVideo(outgoing);
-            incoming.muted = false;
-            cut.playVideo(incoming);
-            showOnlyPlaySurface(incoming);
-        });
+        const maxTries = play ? 3 : 1;
+        const waitMs = play ? 6000 : 1500;
+        const attempt = function (triesLeft) {
+            return preparePlayAt(incoming, url, seconds, waitMs).then(function (ok) {
+                if (play && seq !== cut._playSwapSeq)
+                    return { success: false };
+                if (!play) {
+                    if (incoming !== cut._playSurfaces.front)
+                        cut.pauseVideo(incoming);
+                    return { success: !!ok };
+                }
+                const hasFrame = ok || incoming.readyState >= 2;
+                if (!hasFrame && cut._playSurfaces.front) {
+                    if (triesLeft > 1)
+                        return attempt(triesLeft - 1);
+                    return { success: false };
+                }
+                const outgoing = cut._playSurfaces.front;
+                if (outgoing && outgoing !== incoming)
+                    cut.pauseVideo(outgoing);
+                incoming.muted = false;
+                cut.playVideo(incoming);
+                showOnlyPlaySurface(incoming);
+                return { success: true };
+            });
+        };
+        return attempt(maxTries);
     }
 
     cut.primeUrlAt = function (url, seconds, surface) {
@@ -1291,11 +1304,11 @@
     };
 
     cut.playUrlAt = function (el, url, seconds) {
-        if (!url) return Promise.resolve();
+        if (!url) return Promise.resolve({ success: false });
         const s = cut._playSurfaces || {};
         const surface = (el && el === s.movie) ? "movie" : "native";
         const incoming = incomingPlayEl(surface) || el;
-        if (!incoming) return Promise.resolve();
+        if (!incoming) return Promise.resolve({ success: false });
         const t = Number(seconds);
         const seek = Number.isFinite(t) && t >= 0 ? t : 0;
         if (incoming === s.front && playUrlOf(incoming) === url && incoming.readyState >= 1) {
@@ -1306,7 +1319,7 @@
                 console.debug("Cut: playUrlAt seek", err);
             }
             cut.playVideo(incoming);
-            return Promise.resolve();
+            return Promise.resolve({ success: true });
         }
         return swapPlayTo(incoming, url, seconds, true);
     };
