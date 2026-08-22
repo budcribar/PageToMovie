@@ -37,7 +37,7 @@ public class FountainSceneJoinTests
         var cut = FountainSceneJoin.WriteIncoming(withDissolve, 2, FountainSceneJoinKind.Cut, null);
         var afterCut = FountainParser.Parse(cut);
         Assert.Null(TransitionImmediatelyBefore(afterCut, "KITCHEN"));
-        Assert.DoesNotContain(cut, "DISSOLVE TO:", StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DISSOLVE TO:", cut, StringComparison.OrdinalIgnoreCase);
 
         var cutIncoming = FountainSceneJoin.ReadIncoming(cut);
         Assert.Contains(cutIncoming, j => j.IncomingHeadingIndex == 2 && j.Kind == FountainSceneJoinKind.Cut);

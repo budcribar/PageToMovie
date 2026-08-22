@@ -5696,7 +5696,9 @@ public sealed partial class ProjectStore
             try
             {
                 var draftPath = ScreenplayService.GetDraftPath(this, projectId);
-                var fountain = File.Exists(draftPath) ? File.ReadAllText(draftPath) : "";
+                var fountain = File.Exists(draftPath)
+                    ? await File.ReadAllTextAsync(draftPath, ct).ConfigureAwait(false)
+                    : "";
                 ScreenplayService.ApplyIncomingJoins(ordered, fountain);
             }
             catch

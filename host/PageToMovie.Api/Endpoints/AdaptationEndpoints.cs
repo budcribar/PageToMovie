@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PageToMovie.Api.Auth;
 using PageToMovie.Core.Auth;
@@ -308,10 +309,10 @@ public static class AdaptationEndpoints
     private static async Task<IResult> PutProjectsIdScreenplayJoin(string id, HttpRequest req, ProjectStore store, IUserContext user,
     PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
     PageToMovie.Engine.Collaboration.IProjectAclService acl,
-    IHubContext<PageToMovie.Api.Collaboration.ProjectHub>? hub,
-    IOptions<PageToMovieOptions> opts,
     CancellationToken ct)
     {
+        var opts = req.HttpContext.RequestServices.GetRequiredService<IOptions<PageToMovieOptions>>();
+        var hub = req.HttpContext.RequestServices.GetService<IHubContext<PageToMovie.Api.Collaboration.ProjectHub>>();
         if (AuthGate.RequireLogin(user, opts) is { } denied)
             return denied;
         try
@@ -348,9 +349,9 @@ public static class AdaptationEndpoints
 
     private sealed class ScreenplayJoinRequest
     {
-        public int BeforeScene { get; set; }
-        public string? Kind { get; set; }
-        public string? Card { get; set; }
+        public int BeforeScene { get; set; } = 0;
+        public string? Kind { get; set; } = "cut";
+        public string? Card { get; set; } = null;
     }
 
     private static async Task<IResult?> TryAcquireScriptLeaseAsync(
