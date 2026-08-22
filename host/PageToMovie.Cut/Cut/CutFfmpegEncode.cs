@@ -61,7 +61,12 @@ public static class CutFfmpegEncode
 
     private static string[] MixArgv() =>
     [
-        "-filter_complex", "[1:a]volume=0.22,apad[bg];[0:a][bg]amix=inputs=2:duration=first[a]",
+        "-filter_complex", CutMusicMix.ComplexFilter(
+            CutMusicMix.DefaultVolumePercent,
+            CutMusicMix.DefaultFadeSec,
+            CutMusicMix.DefaultFadeSec,
+            0,
+            0),
         "-map", "0:v", "-map", "[a]",
         "-t", "VIDEO_DURATION",
         .. VideoArgs,

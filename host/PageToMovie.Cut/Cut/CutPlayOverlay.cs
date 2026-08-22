@@ -29,8 +29,12 @@ public static class CutPlayOverlay
                 FontPx = look.FontPx,
                 ColorHex = look.ColorHex,
                 Y = look.Y,
+                X = look.X,
                 Bar = look.HasBar,
                 FadeSec = look.FadeSec(block.Seconds),
+                Font = CutTextStyle.WireFont(look.Font),
+                Align = CutTextStyle.WireAlign(look.Align),
+                CssFont = look.CssFont,
             });
         }
 
@@ -90,9 +94,21 @@ public sealed class CutPlayOverlayCue
     [JsonPropertyName("y")]
     public int Y { get; init; } = CutTextStyle.CenterY;
 
+    [JsonPropertyName("x")]
+    public int X { get; init; } = CutTextStyle.CenterX;
+
     [JsonPropertyName("bar")]
     public bool Bar { get; init; }
 
     [JsonPropertyName("fadeSec")]
     public double FadeSec { get; init; }
+
+    [JsonPropertyName("font")]
+    public string Font { get; init; } = "sans";
+
+    [JsonPropertyName("align")]
+    public string Align { get; init; } = "center";
+
+    [JsonPropertyName("cssFont")]
+    public string CssFont { get; init; } = CutTextStyle.DefaultCssFont;
 }

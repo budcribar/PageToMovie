@@ -365,6 +365,12 @@ public static class CutPlayMerge
             sb.Append("M").Append(Num(music.StartSec))
                 .Append('/').Append(Num(music.MarkIn))
                 .Append('-').Append(Num(music.MarkOut));
+            if (music.HasMixEdits)
+            {
+                sb.Append('V').Append(music.VolumePercent)
+                    .Append('I').Append(Num(music.FadeInSec))
+                    .Append('O').Append(Num(music.FadeOutSec));
+            }
         }
         foreach (var clip in clips)
         {
@@ -376,7 +382,11 @@ public static class CutPlayMerge
                 ? CutTransitionMap.WireName(join)
                 : clip.FountainTransition ?? "");
             if (clip.Card.Enabled)
+            {
                 sb.Append("C").Append(clip.Card.Text).Append('/').Append(Num(clip.Card.HoldSeconds));
+                if (!clip.Card.Style.IsDefault)
+                    sb.Append('L').Append(CutTextStyle.WireLook(clip.Card.Style));
+            }
         }
 
         foreach (var title in texts ?? [])
@@ -384,6 +394,8 @@ public static class CutPlayMerge
             sb.Append("#").Append(title.Text)
                 .Append('@').Append(Num(title.StartSec))
                 .Append('x').Append(Num(title.HoldSeconds));
+            if (!title.Style.IsDefault)
+                sb.Append('L').Append(CutTextStyle.WireLook(title.Style));
         }
 
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());

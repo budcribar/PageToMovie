@@ -33,6 +33,22 @@ public enum CutTextFade
     Short,
 }
 
+public enum CutTextFont
+{
+    Sans,
+    Arial,
+    Georgia,
+    Impact,
+    Courier,
+}
+
+public enum CutTextAlign
+{
+    Center,
+    Left,
+    Right,
+}
+
 /// <summary>
 /// Clipchamp-like title/card look. Defaults stay centered white, no bar,
 /// no fade — Mary19 cards match until an option changes.
@@ -41,7 +57,11 @@ public sealed class CutTextStyle
 {
     public const int DefaultFontPx = 48;
     public const int CenterY = 360;
+    public const int CenterX = 640;
+    public const int LeftX = 96;
+    public const int RightX = 1184;
     public const string DefaultColorHex = "#ffffff";
+    public const string DefaultCssFont = "sans-serif";
     public const double ShortFadeSeconds = 0.3;
 
     public CutTextPosition Position { get; set; } = CutTextPosition.Center;
@@ -49,18 +69,29 @@ public sealed class CutTextStyle
     public CutTextColor Color { get; set; } = CutTextColor.White;
     public CutTextBackground Background { get; set; } = CutTextBackground.None;
     public CutTextFade Fade { get; set; } = CutTextFade.None;
+    public CutTextFont Font { get; set; } = CutTextFont.Sans;
+    public CutTextAlign Align { get; set; } = CutTextAlign.Center;
 
     public bool IsDefault =>
         Position == CutTextPosition.Center
         && Size == CutTextSize.M
         && Color == CutTextColor.White
         && Background == CutTextBackground.None
-        && Fade == CutTextFade.None;
+        && Fade == CutTextFade.None
+        && Font == CutTextFont.Sans
+        && Align == CutTextAlign.Center;
 
     public int FontPx => FontPxOf(Size);
     public string ColorHex => ColorHexOf(Color);
     public int Y => YOf(Position);
+    public int X => XOf(Align);
     public bool HasBar => Background == CutTextBackground.DarkBar;
+    public string CssFont => CssFontOf(Font);
+    public string CssAlign => WireAlign(Align);
+    public string OverlayLeft => Align == CutTextAlign.Left ? "7%" : Align == CutTextAlign.Right ? "auto" : "50%";
+    public string OverlayRight => Align == CutTextAlign.Right ? "7%" : "auto";
+    public string OverlayTransform =>
+        Align == CutTextAlign.Center ? "translate(-50%, -50%)" : "translate(0, -50%)";
 
     public static int FontPxOf(CutTextSize size) => size switch
     {
@@ -81,6 +112,22 @@ public sealed class CutTextStyle
         CutTextPosition.Top => 120,
         CutTextPosition.LowerThird => 600,
         _ => CenterY,
+    };
+
+    public static int XOf(CutTextAlign align) => align switch
+    {
+        CutTextAlign.Left => LeftX,
+        CutTextAlign.Right => RightX,
+        _ => CenterX,
+    };
+
+    public static string CssFontOf(CutTextFont font) => font switch
+    {
+        CutTextFont.Arial => "Arial, Helvetica, sans-serif",
+        CutTextFont.Georgia => "Georgia, 'Times New Roman', serif",
+        CutTextFont.Impact => "Impact, Haettenschweiler, sans-serif",
+        CutTextFont.Courier => "'Courier New', Courier, monospace",
+        _ => DefaultCssFont,
     };
 
     public static double FadeSeconds(CutTextFade fade, double holdSeconds)
@@ -122,6 +169,35 @@ public sealed class CutTextStyle
     public static string WireFade(CutTextFade value) =>
         value == CutTextFade.Short ? "short" : "none";
 
+    public static string WireFont(CutTextFont value) => value switch
+    {
+        CutTextFont.Arial => "arial",
+        CutTextFont.Georgia => "georgia",
+        CutTextFont.Impact => "impact",
+        CutTextFont.Courier => "courier",
+        _ => "sans",
+    };
+
+    public static string WireAlign(CutTextAlign value) => value switch
+    {
+        CutTextAlign.Left => "left",
+        CutTextAlign.Right => "right",
+        _ => "center",
+    };
+
+    public static string WireLook(CutTextStyle? style)
+    {
+        var look = style ?? new CutTextStyle();
+        return string.Concat(
+            WirePosition(look.Position), "|",
+            WireSize(look.Size), "|",
+            WireColor(look.Color), "|",
+            WireBackground(look.Background), "|",
+            WireFade(look.Fade), "|",
+            WireFont(look.Font), "|",
+            WireAlign(look.Align));
+    }
+
     public static CutTextPosition ParsePosition(string? wire) =>
         (wire ?? "").Trim().ToLowerInvariant() switch
         {
@@ -160,6 +236,24 @@ public sealed class CutTextStyle
             _ => CutTextFade.None,
         };
 
+    public static CutTextFont ParseFont(string? wire) =>
+        (wire ?? "").Trim().ToLowerInvariant() switch
+        {
+            "arial" or "helvetica" => CutTextFont.Arial,
+            "georgia" => CutTextFont.Georgia,
+            "impact" => CutTextFont.Impact,
+            "courier" or "couriernew" or "courier-new" or "monospace" => CutTextFont.Courier,
+            _ => CutTextFont.Sans,
+        };
+
+    public static CutTextAlign ParseAlign(string? wire) =>
+        (wire ?? "").Trim().ToLowerInvariant() switch
+        {
+            "left" => CutTextAlign.Left,
+            "right" => CutTextAlign.Right,
+            _ => CutTextAlign.Center,
+        };
+
     public void CopyFrom(CutTextStyle? other)
     {
         if (other is null)
@@ -169,6 +263,8 @@ public sealed class CutTextStyle
         Color = other.Color;
         Background = other.Background;
         Fade = other.Fade;
+        Font = other.Font;
+        Align = other.Align;
     }
 
     public static readonly (CutTextPosition Value, string Label)[] PositionChoices =
@@ -202,5 +298,21 @@ public sealed class CutTextStyle
     [
         (CutTextFade.None, "None"),
         (CutTextFade.Short, "Fade"),
+    ];
+
+    public static readonly (CutTextFont Value, string Label)[] FontChoices =
+    [
+        (CutTextFont.Sans, "Sans"),
+        (CutTextFont.Arial, "Arial"),
+        (CutTextFont.Georgia, "Georgia"),
+        (CutTextFont.Impact, "Impact"),
+        (CutTextFont.Courier, "Courier"),
+    ];
+
+    public static readonly (CutTextAlign Value, string Label)[] AlignChoices =
+    [
+        (CutTextAlign.Left, "Left"),
+        (CutTextAlign.Center, "Center"),
+        (CutTextAlign.Right, "Right"),
     ];
 }

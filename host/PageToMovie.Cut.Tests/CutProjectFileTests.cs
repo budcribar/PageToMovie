@@ -104,10 +104,16 @@ public class CutProjectFileTests
         titles[0].Style.Position = CutTextPosition.LowerThird;
         titles[0].Style.Size = CutTextSize.S;
         titles[0].Style.Color = CutTextColor.Black;
+        titles[0].Style.Font = CutTextFont.Arial;
+        titles[0].Style.Align = CutTextAlign.Left;
+        clip.Card.Style.Font = CutTextFont.Courier;
+        clip.Card.Style.Align = CutTextAlign.Right;
 
         var json = CutProjectFile.Serialize([clip], null, titles);
         Assert.Contains("lowerThird", json, StringComparison.Ordinal);
         Assert.Contains("yellow", json, StringComparison.Ordinal);
+        Assert.Contains("arial", json, StringComparison.Ordinal);
+        Assert.Contains("courier", json, StringComparison.Ordinal);
 
         var reload = NewClip(1, 1);
         reload.SetDuration(10);
@@ -117,12 +123,42 @@ public class CutProjectFileTests
         Assert.Equal(CutTextColor.Yellow, reload.Card.Style.Color);
         Assert.Equal(CutTextBackground.DarkBar, reload.Card.Style.Background);
         Assert.Equal(CutTextFade.Short, reload.Card.Style.Fade);
+        Assert.Equal(CutTextFont.Courier, reload.Card.Style.Font);
+        Assert.Equal(CutTextAlign.Right, reload.Card.Style.Align);
         var one = Assert.Single(loaded);
         Assert.Equal(CutTextPosition.LowerThird, one.Style.Position);
         Assert.Equal(CutTextSize.S, one.Style.Size);
         Assert.Equal(CutTextColor.Black, one.Style.Color);
+        Assert.Equal(CutTextFont.Arial, one.Style.Font);
+        Assert.Equal(CutTextAlign.Left, one.Style.Align);
         Assert.True(one.Style.Background == CutTextBackground.None);
         Assert.True(one.Style.Fade == CutTextFade.None);
+    }
+
+    [Fact]
+    public void Round_trips_music_volume_and_fades()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(10);
+        var track = new CutMusic { FileName = "score.mp3" };
+        track.SetStart(4);
+        track.ApplyInOut(1, 8);
+        track.SetVolumePercent(40);
+        track.SetFadeIn(1.5);
+        track.SetFadeOut(2);
+
+        var json = CutProjectFile.Serialize([clip], "score.mp3", music: track);
+        Assert.Contains("musicVolume", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("musicFadeIn", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("musicFadeOut", json, StringComparison.OrdinalIgnoreCase);
+
+        var reload = NewClip(1, 1);
+        reload.SetDuration(10);
+        Assert.True(CutProjectFile.TryApply([reload], json, out _, out _, out _, out var loaded));
+        Assert.Equal(40, loaded.VolumePercent);
+        Assert.Equal(1.5, loaded.FadeInSec);
+        Assert.Equal(2, loaded.FadeOutSec);
+        Assert.Equal(4, loaded.StartSec);
     }
 
     [Fact]

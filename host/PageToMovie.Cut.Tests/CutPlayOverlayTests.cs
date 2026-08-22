@@ -27,6 +27,8 @@ public class CutPlayOverlayTests
         titles[0].Style.Color = CutTextColor.Yellow;
         titles[0].Style.Background = CutTextBackground.DarkBar;
         titles[0].Style.Fade = CutTextFade.Short;
+        titles[0].Style.Font = CutTextFont.Georgia;
+        titles[0].Style.Align = CutTextAlign.Left;
 
         var cues = CutPlayOverlay.Cues([a], titles);
         Assert.Equal(2, cues.Count);
@@ -45,6 +47,10 @@ public class CutPlayOverlayTests
         Assert.Equal(CutTextStyle.ColorHexOf(CutTextColor.Yellow), title.ColorHex);
         Assert.True(title.Bar);
         Assert.True(title.FadeSec > 0);
+        Assert.Equal("georgia", title.Font);
+        Assert.Equal("left", title.Align);
+        Assert.Contains("Georgia", title.CssFont, StringComparison.Ordinal);
+        Assert.Equal(CutTextStyle.LeftX, title.X);
 
         Assert.Equal(card, CutPlayOverlay.ActiveAt(cues, 0.2));
         Assert.Null(CutPlayOverlay.ActiveAt(cues, 2.1));

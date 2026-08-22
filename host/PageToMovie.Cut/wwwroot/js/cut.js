@@ -329,14 +329,40 @@
         return "";
     }
 
+    function cssFontOf(raw) {
+        if (raw && raw.cssFont)
+            return String(raw.cssFont);
+        const name = String((raw && (raw.font || raw.fontFamily)) || "").toLowerCase();
+        if (name === "arial") return "Arial, Helvetica, sans-serif";
+        if (name === "georgia") return "Georgia, 'Times New Roman', serif";
+        if (name === "impact") return "Impact, Haettenschweiler, sans-serif";
+        if (name === "courier" || name === "courier new") return "'Courier New', Courier, monospace";
+        return "sans-serif";
+    }
+
+    function textAlignOf(raw) {
+        const a = String((raw && raw.align) || "").toLowerCase();
+        if (a === "left" || a === "right")
+            return a;
+        return "center";
+    }
+
     function textStyle(raw) {
         const fontPx = Number(raw && raw.fontPx) > 0 ? Number(raw.fontPx) : 48;
         const y = Number(raw && raw.y) > 0 ? Number(raw.y) : 360;
+        const align = textAlignOf(raw);
+        const xRaw = Number(raw && raw.x);
+        const x = Number.isFinite(xRaw) && xRaw > 0
+            ? xRaw
+            : (align === "left" ? 96 : align === "right" ? 1184 : 640);
         const fadeSec = Number(raw && raw.fadeSec);
         return {
             fontPx: fontPx,
             color: (raw && raw.color) || "#ffffff",
             y: y,
+            x: x,
+            align: align,
+            cssFont: cssFontOf(raw),
             bar: !!(raw && raw.bar),
             fadeSec: Number.isFinite(fadeSec) && fadeSec > 0 ? fadeSec : 0,
         };
@@ -352,17 +378,23 @@
         const label = String(text || "").trim();
         if (!label)
             return;
-        ctx.font = style.fontPx + "px sans-serif";
-        ctx.textAlign = "center";
+        ctx.font = style.fontPx + "px " + (style.cssFont || "sans-serif");
+        ctx.textAlign = style.align || "center";
         ctx.textBaseline = "middle";
+        const x = Number(style.x) > 0 ? Number(style.x) : 640;
         if (style.bar) {
             const width = Math.min(1100, Math.max(220, ctx.measureText(label).width + 64));
             const h = Math.round(style.fontPx * 1.35);
+            let barX = x - width / 2;
+            if (style.align === "left")
+                barX = x;
+            else if (style.align === "right")
+                barX = x - width;
             ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
-            ctx.fillRect(640 - width / 2, style.y - h / 2, width, h);
+            ctx.fillRect(barX, style.y - h / 2, width, h);
         }
         ctx.fillStyle = style.color;
-        ctx.fillText(label, 640, style.y, 1100);
+        ctx.fillText(label, x, style.y, 1100);
     }
 
     function cardPngUrl(text, style) {
@@ -622,11 +654,17 @@
         const url = audio.url || "";
         if (!url)
             return null;
+        const volume = Number(audio.volume);
         return {
             url: url,
             start: Math.max(0, Number(audio.start) || 0),
             markIn: Math.max(0, Number(audio.markIn) || 0),
             markOut: Math.max(0, Number(audio.markOut) || 0),
+            volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
+            fadeIn: Math.max(0, Number(audio.fadeIn) || 0),
+            fadeOut: Math.max(0, Number(audio.fadeOut) || 0),
+            filter: audio.filter || "",
+            fallbackFilter: audio.fallbackFilter || "",
         };
     }
 
@@ -672,7 +710,26 @@
         });
     }
 
-    async function mixMovieAudioAsync(api, videoUrl, musicUrl, onProgress) {
+    function mixFiltersOf(spec) {
+        const hold = spec && spec.markOut > spec.markIn ? spec.markOut - spec.markIn : 0;
+        const volume = spec && Number.isFinite(spec.volume) ? spec.volume : 1;
+        const fadeIn = spec && spec.fadeIn > 0 ? spec.fadeIn : 0;
+        const fadeOut = spec && spec.fadeOut > 0 ? spec.fadeOut : 0;
+        const start = spec && spec.start > 0 ? spec.start : 0;
+        let chain = "volume=" + (Math.round(volume * 100) / 100);
+        if (fadeIn > 0.001)
+            chain += ",afade=t=in:st=" + start + ":d=" + fadeIn;
+        if (fadeOut > 0.001) {
+            const outAt = hold > 0.05 ? Math.max(start, start + hold - fadeOut) : start;
+            chain += ",afade=t=out:st=" + outAt + ":d=" + fadeOut;
+        }
+        return {
+            withVo: (spec && spec.filter) || ("[1:a]" + chain + ",apad[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]"),
+            musicOnly: (spec && spec.fallbackFilter) || ("[1:a]" + chain + ",apad[a]"),
+        };
+    }
+
+    async function mixMovieAudioAsync(api, videoUrl, musicUrl, onProgress, spec) {
         return api._runExclusiveAsync(async function () {
             const load = await api.ensureLoadedAsync(onProgress);
             if (!load.success)
@@ -682,18 +739,15 @@
             const inVideo = "cut_mix_v_" + seq + ".mp4";
             const inMusic = "cut_mix_m_" + seq + ".m4a";
             const outName = "cut_mix_o_" + seq + ".mp4";
+            const filters = mixFiltersOf(spec);
             try {
                 await ffmpeg.writeFile(inVideo, await api._safeFetchFile(videoUrl));
                 await ffmpeg.writeFile(inMusic, await api._safeFetchFile(musicUrl));
                 const probe = await api._probeDurationMemfsAsync(inVideo);
                 const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
-                const fadeStart = Math.max(0, durationSec - 1.5);
-                const vol = "[1:a]volume=0.22"
-                    + (durationSec > 0 ? ",afade=t=out:st=" + fadeStart.toFixed(1) + ":d=1.5" : "")
-                    + ",apad[bg]";
                 const args = [
                     "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                    "-filter_complex", vol + ";[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]",
+                    "-filter_complex", filters.withVo,
                     "-map", "0:v", "-map", "[a]",
                 ];
                 if (durationSec > 0.05)
@@ -709,7 +763,7 @@
                     }
                     const fallback = [
                         "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                        "-filter_complex", "[1:a]volume=0.22,apad[a]",
+                        "-filter_complex", filters.musicOnly,
                         "-map", "0:v", "-map", "[a]",
                     ];
                     if (durationSec > 0.05)
@@ -741,7 +795,7 @@
             return placed;
         return withPinnedUrls([videoUrl, placed.url], async function () {
             onProgress?.(80, "Mixing audio…");
-            return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress);
+            return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress, spec);
         });
     }
 
@@ -1125,12 +1179,28 @@
         }
         const fontPx = Number(cue.fontPx) || 48;
         const y = Number(cue.y);
+        const align = textAlignOf(cue);
         const stage = el.parentElement;
         const scale = stage && stage.clientWidth > 0 ? stage.clientWidth / 1280 : 1;
         line.textContent = String(cue.text || "");
         line.style.fontSize = Math.max(12, fontPx * scale) + "px";
+        line.style.fontFamily = cssFontOf(cue);
         line.style.color = cue.colorHex || "#ffffff";
         line.style.top = ((Number.isFinite(y) ? y : 360) / 720 * 100) + "%";
+        line.style.textAlign = align;
+        if (align === "left") {
+            line.style.left = "7%";
+            line.style.right = "auto";
+            line.style.transform = "translate(0, -50%)";
+        } else if (align === "right") {
+            line.style.left = "auto";
+            line.style.right = "7%";
+            line.style.transform = "translate(0, -50%)";
+        } else {
+            line.style.left = "50%";
+            line.style.right = "auto";
+            line.style.transform = "translate(-50%, -50%)";
+        }
         line.style.opacity = String(opacity);
         line.classList.toggle("has-bar", !!cue.bar);
     };

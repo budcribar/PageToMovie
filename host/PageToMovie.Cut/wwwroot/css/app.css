@@ -849,7 +849,8 @@ html, body {
 
 .cut-tl-inspector-del:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.cut-tl-inspector-duration input {
+.cut-tl-inspector-duration input,
+.cut-tl-inspector-font select {
     width: 4.2rem;
     height: 1.55rem;
     border: 1px solid var(--fs-border-color);
@@ -858,6 +859,23 @@ html, body {
     color: var(--fs-text-secondary);
     padding: 0 0.35rem;
     font-size: 0.72rem;
+}
+
+.cut-tl-inspector-font select { width: 7.2rem; }
+
+.cut-tl-inspector-slider {
+    gap: 0.35rem;
+}
+
+.cut-tl-inspector-slider input[type="range"] {
+    width: 7.2rem;
+    accent-color: #6b4ea8;
+}
+
+.cut-tl-inspector-slider em {
+    min-width: 2.4rem;
+    font-style: normal;
+    color: var(--fs-text-secondary);
 }
 
 .cut-text-menu-host,

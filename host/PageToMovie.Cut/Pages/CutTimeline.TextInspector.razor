@@ -13,6 +13,29 @@
                         @onclick="() => SetAsync(s => s.Position = choice.Value)">@choice.Label</button>
             }
         </div>
+        <label class="cut-tl-inspector-group cut-tl-inspector-font">
+            <span>Font</span>
+            <select data-testid="cut-tl-text-font"
+                    aria-label="Font"
+                    disabled="@Busy"
+                    value="@CutTextStyle.WireFont(look.Font)"
+                    @onchange="OnFontAsync">
+                @foreach (var choice in CutTextStyle.FontChoices)
+                {
+                    <option value="@CutTextStyle.WireFont(choice.Value)">@choice.Label</option>
+                }
+            </select>
+        </label>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-align">
+            <span>Align</span>
+            @foreach (var choice in CutTextStyle.AlignChoices)
+            {
+                <button type="button"
+                        class="@(look.Align == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Align = choice.Value)">@choice.Label</button>
+            }
+        </div>
         <div class="cut-tl-inspector-group" data-testid="cut-tl-text-size">
             <span>Size</span>
             @foreach (var choice in CutTextStyle.SizeChoices)
@@ -106,6 +129,9 @@
         CutTextTrack.SetStyle(block, edit);
         await StyleChanged.InvokeAsync();
     }
+
+    private Task OnFontAsync(ChangeEventArgs e) =>
+        SetAsync(s => s.Font = CutTextStyle.ParseFont(Convert.ToString(e.Value, System.Globalization.CultureInfo.InvariantCulture)));
 
     private async Task OnDurationAsync(ChangeEventArgs e)
     {

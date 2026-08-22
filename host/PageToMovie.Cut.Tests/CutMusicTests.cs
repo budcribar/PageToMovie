@@ -52,6 +52,9 @@ public class CutMusicTests
         music.TrimOut(12);
         music.DisplayName = "Ocean Sunrise";
 
+        music.SetVolumePercent(30);
+        music.SetFadeIn(1);
+        music.SetFadeOut(2);
         CutMusicEdit.Delete(music);
         Assert.False(music.HasFile);
         Assert.Null(music.FileName);
@@ -59,6 +62,9 @@ public class CutMusicTests
         Assert.Equal(0, music.StartSec);
         Assert.Equal(0, music.MarkIn);
         Assert.Equal(0, music.MarkOut);
+        Assert.Equal(100, music.VolumePercent);
+        Assert.Equal(0, music.FadeInSec);
+        Assert.Equal(0, music.FadeOutSec);
     }
 
     [Fact]
