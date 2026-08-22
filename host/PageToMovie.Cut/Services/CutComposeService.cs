@@ -227,11 +227,13 @@ public sealed class CutComposeService : IAsyncDisposable
         Action<string, int>? onPrefix)
     {
         RefreshPlan(clips, texts);
-        var url = CutComposeContract.CanReuseExport(MoviePreviewUrl, LastDiff)
-            ? MoviePreviewUrl
-            : LastDiff.MovieFresh && string.IsNullOrWhiteSpace(AudioFileName)
-                ? Cache.PictureUrl
-                : null;
+        string? url;
+        if (CutComposeContract.CanReuseExport(MoviePreviewUrl, LastDiff))
+            url = MoviePreviewUrl;
+        else if (LastDiff.MovieFresh && string.IsNullOrWhiteSpace(AudioFileName))
+            url = Cache.PictureUrl;
+        else
+            url = null;
         if (string.IsNullOrWhiteSpace(url))
             return false;
         MoviePreviewUrl = url;
