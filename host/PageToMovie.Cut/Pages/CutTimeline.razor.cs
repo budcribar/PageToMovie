@@ -8,7 +8,7 @@ namespace PageToMovie.Cut.Pages;
 
 public partial class CutTimeline
 {
-    [Inject] private IJSRuntime Js { get; set; } = default!;
+    [Inject] private IJSRuntime? Js { get; set; }
 
     [Parameter] public IReadOnlyList<CutClip> Clips { get; set; } = [];
     [Parameter] public CutClip? Selected { get; set; }
@@ -25,8 +25,8 @@ public partial class CutTimeline
     [Parameter] public EventCallback OnStepForward { get; set; }
     [Parameter] public EventCallback OnEdited { get; set; }
 
-    private ElementReference _scroll;
-    private ElementReference _inner;
+    private ElementReference _scroll = default;
+    private ElementReference _inner = default;
     private double _pxPerSec = CutTimelineLayout.DefaultPxPerSec;
     private int _lastCount = -1;
     private bool _needFit;
@@ -46,6 +46,12 @@ public partial class CutTimeline
     private double RangePx => (RangeHi - RangeLo) * _pxPerSec;
     private string PlayheadClock => CutTimelineLayout.Clock(PlayheadSec);
     private string TotalClock => CutTimelineLayout.Clock(Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec);
+
+    protected override void OnInitialized()
+    {
+        _scroll = default;
+        _inner = default;
+    }
 
     protected override void OnParametersSet()
     {
@@ -68,6 +74,8 @@ public partial class CutTimeline
 
     private async Task FitAsync()
     {
+        if (Js is null)
+            return;
         try
         {
             var rect = await Js.InvokeAsync<JsRect>("PageToMovieCut.elementRect", _scroll);
@@ -102,7 +110,7 @@ public partial class CutTimeline
         _dragOriginX = e.ClientX;
         _dragMarkIn = clip.MarkIn;
         _dragMarkOut = clip.MarkOut;
-        await Js.InvokeVoidAsync("PageToMovieCut.setPointerCapture", _inner, e.PointerId);
+        await CapturePointerAsync(e.PointerId);
         await SelectClip(clip);
     }
 
@@ -115,7 +123,7 @@ public partial class CutTimeline
         _drag = DragKind.Range;
         _rangeA = t;
         _rangeB = t;
-        await Js.InvokeVoidAsync("PageToMovieCut.setPointerCapture", _inner, e.PointerId);
+        await CapturePointerAsync(e.PointerId);
     }
 
     private async Task BeginPlayheadAsync(PointerEventArgs e)
@@ -123,7 +131,7 @@ public partial class CutTimeline
         if (Busy)
             return;
         _drag = DragKind.Playhead;
-        await Js.InvokeVoidAsync("PageToMovieCut.setPointerCapture", _inner, e.PointerId);
+        await CapturePointerAsync(e.PointerId);
         await SeekToAsync(await TimeAtAsync(e.ClientX));
     }
 
@@ -212,8 +220,17 @@ public partial class CutTimeline
         await PlayheadChanged.InvokeAsync(t);
     }
 
+    private async Task CapturePointerAsync(long pointerId)
+    {
+        if (Js is null)
+            return;
+        await Js.InvokeVoidAsync("PageToMovieCut.setPointerCapture", _inner, pointerId);
+    }
+
     private async Task<double> TimeAtAsync(double clientX)
     {
+        if (Js is null)
+            return PlayheadSec;
         try
         {
             var rect = await Js.InvokeAsync<JsRect>("PageToMovieCut.elementRect", _inner);

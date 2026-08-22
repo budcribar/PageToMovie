@@ -201,7 +201,7 @@ public sealed class CutTimelineLayout
 
     public static IReadOnlyList<CutTimelineRulerMark> BuildRuler(double totalSec, double pxPerSec)
     {
-        var step = pxPerSec >= 60 ? 1.0 : pxPerSec >= 28 ? 2.0 : 5.0;
+        var step = RulerStep(pxPerSec);
         var marks = new List<CutTimelineRulerMark>();
         if (totalSec <= 0)
             return marks;
@@ -212,6 +212,15 @@ public sealed class CutTimelineLayout
         }
 
         return marks;
+    }
+
+    private static double RulerStep(double pxPerSec)
+    {
+        if (pxPerSec >= 60)
+            return 1.0;
+        if (pxPerSec >= 28)
+            return 2.0;
+        return 5.0;
     }
 
     internal static double LocalFromKeepOffset(CutClip clip, double offsetInKeep)

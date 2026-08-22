@@ -22,6 +22,7 @@ public partial class Home : IAsyncDisposable
     internal string? ProgressMessage { get; private set; }
     internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
     internal string? SavedNote { get; private set; }
+    private const string SeekMediaJs = "PageToMovieCut.seekMedia";
 
     private bool ExportDisabled =>
         _busy
@@ -98,18 +99,13 @@ public partial class Home : IAsyncDisposable
             _error = _selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.";
         if (!string.IsNullOrWhiteSpace(Folder.PendingMusicFileName))
             await Compose.TrySetAudioFromFolderAsync(Folder.PendingMusicFileName);
-        await ProbeAllTakesAsync();
-        await SeekPreviewToInAsync();
-        _ = CaptureAllFilmstripsAsync();
-    }
-
-    private async Task ProbeAllTakesAsync()
-    {
         foreach (var clip in Folder.Clips)
             await ProbeAndStripTakeAsync(clip.SelectedTake, captureStrip: false);
+        await SeekPreviewToInAsync();
+        _ = FillFilmstripsAsync();
     }
 
-    private async Task CaptureAllFilmstripsAsync()
+    private async Task FillFilmstripsAsync()
     {
         foreach (var clip in Folder.Clips)
         {
@@ -174,7 +170,7 @@ public partial class Home : IAsyncDisposable
             return;
         try
         {
-            await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", ClipPlayer, _selected.MarkIn);
+            await Js.InvokeVoidAsync(SeekMediaJs, ClipPlayer, _selected.MarkIn);
         }
         catch (JSException)
         {
@@ -191,12 +187,12 @@ public partial class Home : IAsyncDisposable
         {
             if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", MoviePlayer, _playhead);
+                await Js.InvokeVoidAsync(SeekMediaJs, MoviePlayer, _playhead);
                 return;
             }
 
             if (CutTimelineLayout.HitTest(Folder.Clips, _playhead) is { } hit && hit.Clip == _selected)
-                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", ClipPlayer, hit.LocalSec);
+                await Js.InvokeVoidAsync(SeekMediaJs, ClipPlayer, hit.LocalSec);
         }
         catch (JSException)
         {
@@ -257,7 +253,7 @@ public partial class Home : IAsyncDisposable
                     _ = InvokeAsync(StateHasChanged);
                 }));
                 await Js.InvokeVoidAsync("PageToMovieCut.bindTimeUpdate", MoviePlayer, _timeRef);
-                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", MoviePlayer, _playhead);
+                await Js.InvokeVoidAsync(SeekMediaJs, MoviePlayer, _playhead);
                 await Js.InvokeVoidAsync("PageToMovieCut.playVideo", MoviePlayer);
             }
         }

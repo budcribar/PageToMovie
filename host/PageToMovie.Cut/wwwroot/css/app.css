@@ -513,7 +513,10 @@ html, body {
 }
 
 .cut-tl-join-menu button.is-on,
-.cut-tl-join-menu button:hover { background: rgba(139, 106, 212, 0.22); color: #fff; }
+.cut-tl-join-menu button:hover {
+    background: #4a3278;
+    color: #f7f4ff;
+}
 
 .cut-tl-music {
     height: 28px;
