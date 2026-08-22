@@ -9,6 +9,7 @@
         _fallbackFiles: null,
         _trimSeq: 0,
         _ownedMovieUrl: null,
+        _ownedPrefixUrls: [],
     };
 
     function messageOf(err, fallback) {
@@ -38,6 +39,25 @@
                 console.debug("Cut: progress sink gone", err);
             }
         };
+    }
+
+    function emitPrefix(dotNetRef, url, clipCount) {
+        if (!dotNetRef || !url) return;
+        try {
+            dotNetRef.invokeMethodAsync("OnPrefix", url, clipCount);
+        } catch (err) {
+            console.debug("Cut: prefix sink gone", err);
+        }
+    }
+
+    function keepPrefixUrl(url) {
+        if (typeof url !== "string" || !url.startsWith("blob:")) return;
+        cut._ownedPrefixUrls.push(url);
+        while (cut._ownedPrefixUrls.length > 3) {
+            const old = cut._ownedPrefixUrls.shift();
+            if (old && old !== cut._ownedMovieUrl && old !== url)
+                cut.revokeBlobUrl(old);
+        }
     }
 
     async function collectMediaFile(handle, name, path, files) {
@@ -459,9 +479,22 @@
     };
 
     cut.bindTimeUpdate = function (el, dotNetRef) {
-        if (!el || !dotNetRef) return { success: false };
+        return cut.bindPlayback(el, dotNetRef);
+    };
+
+    cut.unbindPlayback = function (el) {
+        if (!el) return;
         if (el._cutTimeHandler)
             el.removeEventListener("timeupdate", el._cutTimeHandler);
+        if (el._cutEndedHandler)
+            el.removeEventListener("ended", el._cutEndedHandler);
+        el._cutTimeHandler = null;
+        el._cutEndedHandler = null;
+    };
+
+    cut.bindPlayback = function (el, dotNetRef) {
+        if (!el || !dotNetRef) return { success: false };
+        cut.unbindPlayback(el);
         el._cutTimeHandler = function () {
             try {
                 dotNetRef.invokeMethodAsync("OnTime", el.currentTime || 0);
@@ -469,7 +502,15 @@
                 console.debug("Cut: timeupdate sink gone", err);
             }
         };
+        el._cutEndedHandler = function () {
+            try {
+                dotNetRef.invokeMethodAsync("OnEnded");
+            } catch (err) {
+                console.debug("Cut: ended sink gone", err);
+            }
+        };
         el.addEventListener("timeupdate", el._cutTimeHandler);
+        el.addEventListener("ended", el._cutEndedHandler);
         return { success: true };
     };
 
@@ -581,6 +622,43 @@
         }
     };
 
+    cut.pauseVideo = function (el) {
+        if (!el || typeof el.pause !== "function") return;
+        try {
+            el.pause();
+        } catch (err) {
+            console.debug("Cut: pause", err);
+        }
+    };
+
+    cut.playUrlAt = function (el, url, seconds) {
+        if (!el || !url) return;
+        const t = Number(seconds);
+        const seek = Number.isFinite(t) && t >= 0 ? t : 0;
+        const start = function () {
+            try {
+                el.currentTime = seek;
+            } catch (err) {
+                console.debug("Cut: playUrlAt seek", err);
+            }
+            cut.playVideo(el);
+        };
+        const same = el.currentSrc === url || el.src === url;
+        if (same && el.readyState >= 1) {
+            start();
+            return;
+        }
+        const onReady = function () {
+            el.removeEventListener("loadedmetadata", onReady);
+            start();
+        };
+        el.addEventListener("loadedmetadata", onReady);
+        if (!same)
+            el.src = url;
+        else if (el.readyState < 1)
+            el.load();
+    };
+
     cut.downloadUrlAs = function (url, fileName) {
         const a = document.createElement("a");
         a.href = url;
@@ -633,43 +711,59 @@
         });
     };
 
-    cut.composeMovieAsync = async function (clips, audioUrl, dotNetRef) {
+    cut.composeMovieAsync = async function (clips, audioUrl, dotNetRef, jit) {
         const onProgress = asProgress(dotNetRef);
         const api = window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         if (!clips || clips.length === 0)
             return { success: false, error: "No clips to export." };
 
-        const items = [];
         const sourceUrls = [];
+        let acc = null;
+        let pendingJoin = "cut";
+        let sourceCount = 0;
         for (let i = 0; i < clips.length; i++) {
             const c = clips[i];
             if (c.card?.text) {
                 const card = await stillVideoAsync(cardPngUrl(c.card.text), c.card.seconds || 2, onProgress);
                 if (!card.success)
                     return { success: false, error: card.error || "Card failed." };
-                items.push({ url: card.url, joinOut: "dip" });
+                if (!acc)
+                    acc = card.url;
+                else {
+                    const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress);
+                    if (!joined.success) return joined;
+                    acc = joined.url;
+                }
+                pendingJoin = "dip";
             }
             const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
             sourceUrls.push(one.source);
-            items.push({ url: one.url, joinOut: c.joinOut || "cut" });
+            if (!acc)
+                acc = one.url;
+            else {
+                // Hard cut ("cut") is concat with no xfade — keeps native audio.
+                const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress);
+                if (!joined.success) return joined;
+                acc = joined.url;
+            }
+            pendingJoin = c.joinOut || "cut";
+            sourceCount++;
+            if (jit) {
+                keepPrefixUrl(acc);
+                emitPrefix(dotNetRef, acc, sourceCount);
+            }
         }
 
         onProgress?.(55, "Combining clips…");
-        let acc = items[0].url;
-        for (let i = 1; i < items.length; i++) {
-            // Hard cut ("cut") is concat with no xfade — keeps native audio.
-            const joined = await joinPairAsync(api, acc, items[i].url, items[i - 1].joinOut, onProgress);
-            if (!joined.success) return joined;
-            acc = joined.url;
-        }
-
         const mixed = await mixOptionalAudio(api, acc, audioUrl, onProgress);
         if (!mixed.success) return mixed;
 
         onProgress?.(100, "Ready");
+        if (jit)
+            emitPrefix(dotNetRef, mixed.url, sourceCount);
         return { success: true, url: mixed.url, owned: !sourceUrls.includes(mixed.url) };
     };
 
@@ -681,7 +775,16 @@
     };
 
     cut.previewMovieAsync = async function (clips, audioUrl, dotNetRef) {
-        const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef);
+        const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef, false);
+        if (!r.success) return r;
+        if (cut._ownedMovieUrl && cut._ownedMovieUrl !== r.url)
+            cut.revokeBlobUrl(cut._ownedMovieUrl);
+        cut._ownedMovieUrl = r.owned ? r.url : null;
+        return r;
+    };
+
+    cut.previewMovieJitAsync = async function (clips, audioUrl, dotNetRef) {
+        const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef, true);
         if (!r.success) return r;
         if (cut._ownedMovieUrl && cut._ownedMovieUrl !== r.url)
             cut.revokeBlobUrl(cut._ownedMovieUrl);
