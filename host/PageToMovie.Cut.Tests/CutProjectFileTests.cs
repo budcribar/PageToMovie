@@ -59,6 +59,47 @@ public class CutProjectFileTests
         Assert.Equal("Opening", one.Text);
         Assert.Equal(1.25, one.StartSec);
         Assert.Equal(3, one.HoldSeconds);
+        Assert.True(one.Style.IsDefault);
+    }
+
+    [Fact]
+    public void Round_trips_text_and_card_style_options()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(10);
+        clip.Card.Enabled = true;
+        clip.Card.Text = "Chapter 1";
+        clip.Card.Style.Position = CutTextPosition.Top;
+        clip.Card.Style.Size = CutTextSize.L;
+        clip.Card.Style.Color = CutTextColor.Yellow;
+        clip.Card.Style.Background = CutTextBackground.DarkBar;
+        clip.Card.Style.Fade = CutTextFade.Short;
+        var titles = new List<CutTextClip>
+        {
+            new() { Id = "title-1", Text = "Opening", StartSec = 1, Seconds = 2 },
+        };
+        titles[0].Style.Position = CutTextPosition.LowerThird;
+        titles[0].Style.Size = CutTextSize.S;
+        titles[0].Style.Color = CutTextColor.Black;
+
+        var json = CutProjectFile.Serialize([clip], null, titles);
+        Assert.Contains("lowerThird", json, StringComparison.Ordinal);
+        Assert.Contains("yellow", json, StringComparison.Ordinal);
+
+        var reload = NewClip(1, 1);
+        reload.SetDuration(10);
+        Assert.True(CutProjectFile.TryApply([reload], json, out _, out var loaded));
+        Assert.Equal(CutTextPosition.Top, reload.Card.Style.Position);
+        Assert.Equal(CutTextSize.L, reload.Card.Style.Size);
+        Assert.Equal(CutTextColor.Yellow, reload.Card.Style.Color);
+        Assert.Equal(CutTextBackground.DarkBar, reload.Card.Style.Background);
+        Assert.Equal(CutTextFade.Short, reload.Card.Style.Fade);
+        var one = Assert.Single(loaded);
+        Assert.Equal(CutTextPosition.LowerThird, one.Style.Position);
+        Assert.Equal(CutTextSize.S, one.Style.Size);
+        Assert.Equal(CutTextColor.Black, one.Style.Color);
+        Assert.True(one.Style.Background == CutTextBackground.None);
+        Assert.True(one.Style.Fade == CutTextFade.None);
     }
 
     [Fact]
@@ -77,6 +118,26 @@ public class CutProjectFileTests
         Assert.True(CutProjectFile.TryApply([reload], json, out _));
         Assert.Equal(6, reload.MarkIn);
         Assert.Equal(9, reload.MarkOut);
+    }
+
+    [Fact]
+    public void Round_trips_scissors_windows_of_the_same_take()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(10);
+        var clips = new List<CutClip> { clip };
+        Assert.True(CutSplit.TryAt(clips, 4, out _));
+
+        var json = CutProjectFile.Serialize(clips, null);
+        var reload = new List<CutClip> { NewClip(1, 1) };
+        reload[0].SetDuration(10);
+        Assert.True(CutProjectFile.TryApply(reload, json, out _));
+        Assert.Equal(2, reload.Count);
+        Assert.Equal(0, reload[0].MarkIn);
+        Assert.Equal(4, reload[0].MarkOut);
+        Assert.Equal(4, reload[1].MarkIn);
+        Assert.Equal(10, reload[1].MarkOut);
+        Assert.Equal(reload[0].FileName, reload[1].FileName);
     }
 
     [Fact]

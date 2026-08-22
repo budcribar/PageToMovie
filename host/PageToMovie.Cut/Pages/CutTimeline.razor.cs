@@ -21,10 +21,12 @@ public partial class CutTimeline
     [Parameter] public string? AudioName { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public bool PlayDisabled { get; set; }
+    [Parameter] public bool IsPlaying { get; set; }
     [Parameter] public EventCallback OnPlay { get; set; }
     [Parameter] public EventCallback OnSkipStart { get; set; }
     [Parameter] public EventCallback OnStepBack { get; set; }
     [Parameter] public EventCallback OnStepForward { get; set; }
+    [Parameter] public EventCallback OnSplit { get; set; }
     [Parameter] public EventCallback OnEdited { get; set; }
 
     private ElementReference _scroll = default;
@@ -57,6 +59,24 @@ public partial class CutTimeline
     private double RangePx => (RangeHi - RangeLo) * _pxPerSec;
     private string PlayheadClock => CutTimelineLayout.Clock(PlayheadSec);
     private string TotalClock => CutTimelineLayout.Clock(Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec);
+    private bool PlayOrStopDisabled => IsPlaying ? Busy : PlayDisabled;
+    private bool SplitDisabled => Busy || !CutSplit.CanAt(Clips, PlayheadSec);
+
+    internal CutTextBlock? SelectedTextBlock
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_selectedTextId))
+                return null;
+            foreach (var block in TextBlocks)
+            {
+                if (block.Id == _selectedTextId)
+                    return block;
+            }
+
+            return null;
+        }
+    }
 
     protected override void OnInitialized()
     {

@@ -1,0 +1,71 @@
+@if (Block is { } block)
+{
+    var look = CutTextTrack.StyleOf(block);
+    <div class="cut-tl-inspector" data-testid="cut-tl-text-inspector">
+        <span class="cut-tl-inspector-kicker">@(block.Kind == CutTextKind.SceneCard ? "Card" : "Title")</span>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-position">
+            <span>Place</span>
+            @foreach (var choice in CutTextStyle.PositionChoices)
+            {
+                <button type="button"
+                        class="@(look.Position == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Position = choice.Value)">@choice.Label</button>
+            }
+        </div>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-size">
+            <span>Size</span>
+            @foreach (var choice in CutTextStyle.SizeChoices)
+            {
+                <button type="button"
+                        class="@(look.Size == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Size = choice.Value)">@choice.Label</button>
+            }
+        </div>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-color">
+            <span>Color</span>
+            @foreach (var choice in CutTextStyle.ColorChoices)
+            {
+                <button type="button"
+                        class="@(look.Color == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Color = choice.Value)">@choice.Label</button>
+            }
+        </div>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-background">
+            <span>Bar</span>
+            @foreach (var choice in CutTextStyle.BackgroundChoices)
+            {
+                <button type="button"
+                        class="@(look.Background == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Background = choice.Value)">@choice.Label</button>
+            }
+        </div>
+        <div class="cut-tl-inspector-group" data-testid="cut-tl-text-fade">
+            <span>Fade</span>
+            @foreach (var choice in CutTextStyle.FadeChoices)
+            {
+                <button type="button"
+                        class="@(look.Fade == choice.Value ? "is-on" : "")"
+                        disabled="@Busy"
+                        @onclick="() => SetAsync(s => s.Fade = choice.Value)">@choice.Label</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public CutTextBlock? Block { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback StyleChanged { get; set; }
+
+    private async Task SetAsync(Action<CutTextStyle> edit)
+    {
+        if (Block is not { } block || Busy)
+            return;
+        CutTextTrack.SetStyle(block, edit);
+        await StyleChanged.InvokeAsync();
+    }
+}

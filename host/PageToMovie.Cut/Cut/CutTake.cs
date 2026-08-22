@@ -78,4 +78,30 @@ public sealed class CutTake
         MarkIn = a;
         MarkOut = b;
     }
+
+    /// <summary>
+    /// Same take file and hop — independent in/out for a scissors split.
+    /// </summary>
+    public CutTake CloneIdentity()
+    {
+        var copy = new CutTake
+        {
+            Take = Take,
+            FileName = FileName,
+            RelativePath = RelativePath,
+            SizeBytes = SizeBytes,
+            PreviewUrl = PreviewUrl,
+            Missing = Missing,
+            MissingReason = MissingReason,
+        };
+        copy.Hop = Hop;
+        copy.ProviderLeadInSeconds = ProviderLeadInSeconds;
+        copy.ProviderClipStartSeconds = ProviderClipStartSeconds;
+        copy.ProviderClipStopSeconds = ProviderClipStopSeconds;
+        if (HasDuration)
+            copy.SetDuration(DurationSec);
+        copy.ApplyInOut(MarkIn, MarkOut);
+        copy.Filmstrip.AddRange(Filmstrip);
+        return copy;
+    }
 }

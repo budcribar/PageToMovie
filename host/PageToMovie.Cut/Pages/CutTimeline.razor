@@ -2,8 +2,26 @@
     <div class="cut-tl-transport">
         <button type="button" class="cut-tl-icon" title="Skip to start" disabled="@Busy" @onclick="OnSkipStart">⏮</button>
         <button type="button" class="cut-tl-icon" title="Back 5s" disabled="@Busy" @onclick="OnStepBack">⏪</button>
-        <button type="button" class="cut-tl-play" title="Play" disabled="@PlayDisabled" @onclick="OnPlay">▶</button>
+        <button type="button"
+                class="@CutTransport.PlayButtonClass(IsPlaying)"
+                title="@CutTransport.PlayTitle(IsPlaying)"
+                data-testid="cut-tl-play"
+                disabled="@PlayOrStopDisabled"
+                @onclick="OnPlay">@CutTransport.PlayGlyph(IsPlaying)</button>
         <button type="button" class="cut-tl-icon" title="Forward 5s" disabled="@Busy" @onclick="OnStepForward">⏩</button>
+        <button type="button"
+                class="cut-tl-icon @CutTransport.ScissorsClass"
+                title="Split at playhead"
+                data-testid="cut-tl-scissors"
+                disabled="@SplitDisabled"
+                @onclick="OnSplit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6.2" cy="7" r="2.35" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <circle cx="6.2" cy="17" r="2.35" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                      d="M8.2 8.4 20 18.2M8.2 15.6 20 5.8" />
+            </svg>
+        </button>
         <span class="cut-tl-clock">@PlayheadClock / @TotalClock</span>
         @if (HasRange)
         {
@@ -36,9 +54,10 @@
                     </div>
                 }
                 <button type="button"
-                        class="cut-tl-playhead"
+                        class="@CutTransport.PlayheadClass"
                         style="left: @(PlayheadSec * _pxPerSec)px"
                         title="Playhead"
+                        data-testid="cut-tl-playhead"
                         @onpointerdown:stopPropagation="true"
                         @onpointerdown="BeginPlayheadAsync"></button>
             </div>
@@ -198,6 +217,8 @@
             </div>
         </div>
     </div>
+
+    <CutTimeline_TextInspector Block="SelectedTextBlock" Busy="Busy" StyleChanged="OnEdited" />
 
     <div class="cut-tl-chrome">
         <div class="cut-tl-zoom" data-testid="cut-tl-zoom">

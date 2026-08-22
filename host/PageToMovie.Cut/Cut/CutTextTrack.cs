@@ -105,6 +105,15 @@ public static class CutTextTrack
             title.StartSec = Math.Max(0, startSec);
     }
 
+    public static CutTextStyle StyleOf(CutTextBlock block) =>
+        block.Title?.Style ?? block.CardClip?.Card.Style ?? new CutTextStyle();
+
+    public static void SetStyle(CutTextBlock block, Action<CutTextStyle> edit)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+        edit(StyleOf(block));
+    }
+
     /// <summary>
     /// Backspace/Delete remove the selected text clip only when no
     /// label field is focused. While an input is focused, the key
@@ -176,7 +185,7 @@ public static class CutTextTrack
             }
 
             var local = Math.Max(0, title.StartSec - layout.Lanes[idx].StartSec);
-            result.Add(new CutTextOverlay(idx, local, title.DisplayText, title.HoldSeconds));
+            result.Add(new CutTextOverlay(idx, local, title.DisplayText, title.HoldSeconds, title.Style));
         }
 
         return result;
@@ -199,4 +208,5 @@ public readonly record struct CutTextOverlay(
     int ClipIndex,
     double LocalStart,
     string Text,
-    double Seconds);
+    double Seconds,
+    CutTextStyle Style);

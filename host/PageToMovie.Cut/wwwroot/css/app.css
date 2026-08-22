@@ -16,6 +16,7 @@
     --fs-ok-bg: rgba(107, 155, 122, 0.12);
     --fs-ok-text: #a8d0b4;
     --fs-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --cut-playhead: #ffffff;
     font-family: Inter, system-ui, sans-serif;
 }
 
@@ -359,6 +360,7 @@ html, body {
 }
 
 .cut-tl-play:disabled { opacity: 0.4; cursor: not-allowed; }
+.cut-tl-play.is-stop { letter-spacing: 0; }
 
 .cut-tl-icon {
     appearance: none;
@@ -372,6 +374,18 @@ html, body {
 }
 
 .cut-tl-del { margin-left: 0.4rem; }
+
+.cut-tl-scissors {
+    display: grid;
+    place-items: center;
+    padding: 0 0.25rem;
+}
+
+.cut-tl-scissors svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    display: block;
+}
 
 .cut-tl-scroll {
     width: 100%;
@@ -433,7 +447,8 @@ html, body {
     width: 2px;
     padding: 0;
     border: 0;
-    background: #111;
+    background: var(--cut-playhead);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
     transform: translateX(-1px);
     cursor: grab;
     z-index: 5;
@@ -446,7 +461,8 @@ html, body {
     left: 50%;
     width: 12px;
     height: 12px;
-    background: #111;
+    background: var(--cut-playhead);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
     border-radius: 4px 4px 2px 2px;
     transform: translateX(-50%);
 }
@@ -713,6 +729,54 @@ html, body {
     font-size: 0.78rem;
     padding: 0.35rem 0.2rem;
 }
+
+.cut-tl-inspector {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.85rem;
+    margin: 0.4rem 0 0;
+    padding: 0.35rem 0.15rem 0.1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cut-tl-inspector-kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fs-text-muted);
+}
+
+.cut-tl-inspector-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--fs-text-muted);
+}
+
+.cut-tl-inspector-group button {
+    appearance: none;
+    border: 1px solid var(--fs-border-color);
+    background: #181b22;
+    color: var(--fs-text-secondary);
+    border-radius: 6px;
+    min-width: 1.7rem;
+    height: 1.55rem;
+    padding: 0 0.4rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.cut-tl-inspector-group button.is-on,
+.cut-tl-inspector-group button:hover {
+    background: #4a3278;
+    border-color: #6b4ea8;
+    color: #f7f4ff;
+}
+
+.cut-tl-inspector-group button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .cut-tl-chrome {
     display: flex;

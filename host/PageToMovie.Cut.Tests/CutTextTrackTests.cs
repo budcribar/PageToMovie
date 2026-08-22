@@ -133,6 +133,31 @@ public class CutTextTrackTests
         var wired = Assert.Single(payload[1].Texts);
         Assert.Equal("Hello", wired.Text);
         Assert.Equal(1.5, wired.Start, 5);
+        Assert.Equal(48, wired.Style!.FontPx);
+        Assert.Equal("#ffffff", wired.Style.Color);
+        Assert.Equal(360, wired.Style.Y);
+        Assert.False(wired.Style.Bar);
+        Assert.Equal(0, wired.Style.FadeSec);
+    }
+
+    [Fact]
+    public void SetStyle_updates_card_and_title()
+    {
+        var clip = NewClip(1, 1, 6);
+        clip.Card.Enabled = true;
+        clip.Card.Text = "Chapter 1";
+        var titles = new List<CutTextClip>();
+        CutTextTrack.Add(titles, 1, "Title");
+        var blocks = CutTextTrack.Build([clip], titles, pxPerSec: 10);
+        var card = blocks.First(b => b.Kind == CutTextKind.SceneCard);
+        var title = blocks.First(b => b.Kind == CutTextKind.Title);
+
+        CutTextTrack.SetStyle(card, s => s.Color = CutTextColor.Yellow);
+        CutTextTrack.SetStyle(title, s => s.Position = CutTextPosition.LowerThird);
+        Assert.Equal(CutTextColor.Yellow, clip.Card.Style.Color);
+        Assert.Equal(CutTextPosition.LowerThird, titles[0].Style.Position);
+        Assert.Same(clip.Card.Style, CutTextTrack.StyleOf(card));
+        Assert.Same(titles[0].Style, CutTextTrack.StyleOf(title));
     }
 
     private static CutClip NewClip(int scene, int clip, double duration)
