@@ -86,4 +86,14 @@ public class ClipTakeNamingTests
         Assert.Equal("assets/video/scene_03_clip_07.mp4", ClipTakeNaming.CanonicalRelativePath(3, 7));
         Assert.DoesNotContain("2026", ClipTakeNaming.TakeMp4FileName(3, 7, 5));
     }
+
+    [Fact]
+    public void CurrentTakePath_comes_from_pointer_take_number()
+    {
+        Assert.Equal("assets/video/scene_01_clip_02_take_03.mp4", ClipTakeNaming.CurrentTakePath(1, 2, 3));
+        Assert.Null(ClipTakeNaming.CurrentTakePath(1, 2, 0));
+        Assert.Equal(2, ClipTakeNaming.ParseCurrentTakePointer("""{"scene":1,"clip":2,"take":2}"""));
+        Assert.Equal(0, ClipTakeNaming.ParseCurrentTakePointer("""{"scene":1,"clip":2}"""));
+        Assert.Equal("assets/video/scene_01_clip_02.current.json", ClipTakeNaming.CurrentTakePointerRelativePath(1, 2));
+    }
 }

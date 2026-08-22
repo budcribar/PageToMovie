@@ -123,12 +123,28 @@ public sealed class ClipSidecarService
             return 0;
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (doc.RootElement.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
-                return n;
+            return ClipTakeNaming.ParseCurrentTakePointer(File.ReadAllText(path));
         }
         catch { /* best-effort pointer */ }
         return 0;
+    }
+
+    /// <summary>
+    /// Player file for this clip: <c>take_NN.mp4</c> named by <c>.current.json</c>.
+    /// Never the leftover bare <c>scene_SS_clip_CC.mp4</c> alias.
+    /// </summary>
+    public static string? CurrentTakePath(string videoDir, int scene, int clip)
+    {
+        var take = ReadCurrentTake(videoDir, scene, clip);
+        var name = ClipTakeNaming.CurrentTakeFileName(scene, clip, take);
+        return name is null ? null : Path.Combine(videoDir, name);
+    }
+
+    /// <summary>Project-relative player path from <c>.current.json</c>, or null.</summary>
+    public static string? CurrentTakeRelativePath(string videoDir, int scene, int clip)
+    {
+        var take = ReadCurrentTake(videoDir, scene, clip);
+        return ClipTakeNaming.CurrentTakePath(scene, clip, take);
     }
 
     public static void WriteCurrentTake(string videoDir, int scene, int clip, int take)
@@ -254,8 +270,8 @@ public sealed class ClipSidecarService
 
     /// <summary>
     /// After any generator (catalog video, VideoEdit, or the ffmpeg credits card) produces
-    /// bytes: next unique take, <c>take_NN.mp4</c> + sidecar, current pointer, optional alias.
-    /// Does not delete prior take files.
+    /// bytes: next unique take, <c>take_NN.mp4</c> + sidecar, current pointer.
+    /// Does not write or refresh a leftover <c>scene_SS_clip_CC.mp4</c> alias.
     /// </summary>
     public async Task<int> PersistGeneratedTakeAsync(
         string projectDir,
@@ -273,12 +289,6 @@ public sealed class ClipSidecarService
         var take = NextTakeNumber(videoDir, scene, clip);
         var takeMp4Name = ClipTakeNaming.TakeMp4FileName(scene, clip, take);
         await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
-        if (options.UpdateAlias)
-        {
-            await File.WriteAllBytesAsync(
-                Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip)), bytes, ct)
-                .ConfigureAwait(false);
-        }
 
         var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
         await WriteSidecarWithTakeAsync(
@@ -352,7 +362,7 @@ public sealed class ClipSidecarService
 
     /// <summary>
     /// Bring leftover clip files onto the stable take model: <c>scene_SS_clip_CC_take_NN</c>
-    /// with no timestamp. Already-converted take trees and the current player alias
+    /// with no timestamp. Already-converted take trees and leftover bare aliases
     /// (<c>scene_SS_clip_CC.mp4</c>) are left alone. Timestamped leftovers are
     /// <b>renumbered</b> onto the next free take so they never clobber an existing
     /// <c>take_01</c>.
@@ -694,7 +704,7 @@ public sealed class ClipSidecarService
 }
 
 /// <summary>
-/// Sidecar metadata and alias-publish flag for <see cref="ClipSidecarService.PersistGeneratedTakeAsync"/>.
+/// Sidecar metadata for <see cref="ClipSidecarService.PersistGeneratedTakeAsync"/>.
 /// Identity (project, scene, clip, bytes) stays on that method.
 /// </summary>
 public sealed class PersistGeneratedTakeOptions
@@ -707,5 +717,4 @@ public sealed class PersistGeneratedTakeOptions
     public int? EditedFromTake { get; init; }
     public string? SourceUrl { get; init; }
     public string? SourceProvider { get; init; }
-    public bool UpdateAlias { get; init; } = true;
 }

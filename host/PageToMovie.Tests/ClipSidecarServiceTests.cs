@@ -213,14 +213,72 @@ public class ClipSidecarServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
         Assert.Equal(take1Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
-        Assert.Equal(take2Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.False(File.Exists(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
         Assert.Equal(3, ClipSidecarService.NextTakeNumber(videoDir, 2, 1));
         Assert.Equal(2, ClipSidecarService.ReadCurrentTake(videoDir, 2, 1));
+        Assert.Equal(
+            Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4"),
+            ClipSidecarService.CurrentTakePath(videoDir, 2, 1));
 
         var promoted = await projects.PromoteClipVersionAsync("CreditsTakes", 2, 1, "scene_02_clip_01_take_01.mp4");
         Assert.True(promoted);
         Assert.Equal(1, ClipSidecarService.ReadCurrentTake(videoDir, 2, 1));
-        Assert.Equal(take1Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.False(File.Exists(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.Equal(
+            Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4"),
+            ClipSidecarService.CurrentTakePath(videoDir, 2, 1));
         Assert.Equal(take2Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
+    }
+
+    [Fact]
+    public async Task PersistGeneratedTake_does_not_create_or_refresh_a_bare_alias()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "NoAlias");
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        var leftover = Path.Combine(videoDir, "scene_01_clip_01.mp4");
+        var leftoverBytes = "stale-leftover-alias-bytes--------"u8.ToArray();
+        await File.WriteAllBytesAsync(leftover, leftoverBytes);
+
+        var takeBytes = "fresh-take-two-bytes--------------"u8.ToArray();
+        Assert.Equal(1, await service.PersistGeneratedTakeAsync(projectDir, 1, 1, takeBytes));
+
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4")));
+        Assert.Equal(leftoverBytes, await File.ReadAllBytesAsync(leftover));
+        Assert.Equal(1, ClipSidecarService.ReadCurrentTake(videoDir, 1, 1));
+        Assert.Equal(
+            Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4"),
+            ClipSidecarService.CurrentTakePath(videoDir, 1, 1));
+    }
+
+    [Fact]
+    public void ResolveClipVideoPath_ignores_leftover_alias_when_pointer_and_take_exist()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "ResolveIgnore");
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllBytes(Path.Combine(videoDir, "scene_04_clip_01.mp4"), new byte[2048]);
+        File.WriteAllBytes(Path.Combine(videoDir, "scene_04_clip_01_take_03.mp4"), new byte[2048]);
+        ClipSidecarService.WriteCurrentTake(videoDir, 4, 1, 3);
+
+        var resolved = projects.ResolveClipVideoPath("ResolveIgnore", 4, 1);
+        Assert.Equal(Path.Combine(videoDir, "scene_04_clip_01_take_03.mp4"), resolved);
+    }
+
+    [Fact]
+    public void CurrentTakePath_ignores_leftover_alias_when_pointer_and_take_exist()
+    {
+        var videoDir = Path.Combine(_tempWorkspace, "projects", "IgnoreAlias", "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllBytes(Path.Combine(videoDir, "scene_03_clip_04.mp4"), "stale-alias----------------"u8.ToArray());
+        File.WriteAllBytes(Path.Combine(videoDir, "scene_03_clip_04_take_02.mp4"), "current-take---------------"u8.ToArray());
+        ClipSidecarService.WriteCurrentTake(videoDir, 3, 4, 2);
+
+        var current = ClipSidecarService.CurrentTakePath(videoDir, 3, 4);
+        Assert.Equal(Path.Combine(videoDir, "scene_03_clip_04_take_02.mp4"), current);
+        Assert.NotEqual(Path.Combine(videoDir, "scene_03_clip_04.mp4"), current);
     }
 }

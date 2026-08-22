@@ -99,12 +99,9 @@ public partial class Scenes
         {
             try
             {
-                var relPath = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
                 var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
-
-                var localBlob = expectedSize is long exp
-                    ? await S.MediaFolder.GetCurrentBlobUrlAsync(S._projectId, relPath, exp)
-                    : await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, relPath);
+                var localBlob = await S.MediaFolder.GetCurrentTakeBlobUrlAsync(
+                    S._projectId, scene, clip, expectedSize);
                 if (!string.IsNullOrWhiteSpace(localBlob))
                 {
                     _clipVideoUrl = localBlob;
@@ -253,7 +250,12 @@ public partial class Scenes
 
         foreach (var (scene, clip) in needed)
         {
-            var rel = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var rel = await S.MediaFolder.ResolveCurrentTakeRelativePathAsync(S._projectId, scene, clip);
+            if (string.IsNullOrWhiteSpace(rel))
+            {
+                _localVideoReady[(scene, clip)] = false;
+                continue;
+            }
             var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
             _localVideoReady[(scene, clip)] = found && size >= ScenePlayGate.MinPlayableVideoBytes;
         }
@@ -708,7 +710,9 @@ public partial class Scenes
         if (!string.IsNullOrEmpty(v.Mp4FileName)
             && !ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName))
             return $"{ClipTakeNaming.AssetsVideoPrefix}/{v.Mp4FileName}";
-        return ClipTakeNaming.CanonicalRelativePath(S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+        return ClipTakeNaming.CurrentTakePath(
+            S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber, v.Take)
+            ?? ClipTakeNaming.TakeRelativePath(S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber, Math.Max(1, v.Take));
     }
 
     private async Task<string?> TryGetLocalCompareBlobUrlAsync(string relPath)

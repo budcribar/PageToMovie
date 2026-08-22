@@ -169,9 +169,12 @@ public static class MediaEndpoints
                 src.Model, CatalogApiKey.TryReadProjectVideoModel(projectDir));
             var providerId = CatalogApiKey.ProviderIdForVideo(modelId, src.SourceProvider);
 
-            var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var take = ClipSidecarService.ReadCurrentTake(videoDir, scene, clip);
+            if (take <= 0)
+                take = Math.Max(1, ClipSidecarService.ParseTakeNumber(Path.GetFileName(sidecar)));
+            var fileName = ClipTakeNaming.TakeMp4FileName(scene, clip, take);
             entries.Add(new ProviderRecoverySyncEntry(
-                RelativePath: $"{ApiText.AssetsFolder}/{ApiText.VideoFolder}/{fileName}",
+                RelativePath: ClipTakeNaming.TakeRelativePath(scene, clip, take),
                 FileName: fileName,
                 SizeBytes: 0,
                 Sha256: null,

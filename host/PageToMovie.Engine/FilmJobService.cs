@@ -2367,8 +2367,17 @@ public sealed class FilmJobService
 
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
-            var activeMp4Path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{req.Clip:D2}.mp4");
-            if (!File.Exists(activeMp4Path))
+            var activeMp4Path = ClipSidecarService.CurrentTakePath(videoDir, req.Scene, req.Clip);
+            if (activeMp4Path is null || !File.Exists(activeMp4Path))
+                activeMp4Path = _projects.ResolveClipVideoPath(projectId, req.Scene, req.Clip);
+            if (activeMp4Path is null || !File.Exists(activeMp4Path))
+            {
+                // Legacy tree with only a leftover bare alias — edit input only, not the player file.
+                var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(req.Scene, req.Clip));
+                if (File.Exists(leftover))
+                    activeMp4Path = leftover;
+            }
+            if (activeMp4Path is null || !File.Exists(activeMp4Path))
                 throw new InvalidOperationException($"Scene {req.Scene} clip {req.Clip}: no clip on disk to edit.");
 
             // ResolveOrDefault doesn't consult the capability's own defaultModelId automatically —
@@ -2426,7 +2435,7 @@ public sealed class FilmJobService
             var editTake = await PersistEditedTakeAsync(
                     projectDir, req, current, entry, url, bytes, ct)
                 .ConfigureAwait(false);
-            // Same client-folder contract as regen: take_NN.mp4 + current alias.
+            // Same client-folder contract as regen: take_NN.mp4; current take is .current.json.
             await PublishClipClientMediaAsync(req.Scene, req.Clip, url, editTake).ConfigureAwait(false);
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
@@ -2479,7 +2488,6 @@ public sealed class FilmJobService
                 EditedFromTake = current?.Take is > 0 ? current.Take : 1,
                 SourceUrl = sourceUrl,
                 SourceProvider = entry.ProviderId,
-                UpdateAlias = false,
             },
             ct).ConfigureAwait(false);
     }
@@ -5692,7 +5700,8 @@ public sealed class FilmJobService
             msg => { _ = AppendLogAsync($"  [Grok] {msg}"); },
             ctx.Ct);
 
-        var mp4Path = Path.Combine(ctx.VideoDir, $"scene_{ctx.Scene:D2}_clip_{ctx.Clip:D2}.mp4");
+        var nextTake = ClipSidecarService.NextTakeNumber(ctx.VideoDir, ctx.Scene, ctx.Clip);
+        var mp4Path = Path.Combine(ctx.VideoDir, ClipTakeNaming.TakeMp4FileName(ctx.Scene, ctx.Clip, nextTake));
         var overrunSec = await DownloadClipAndRecordTelemetryAsync(
             ctx, built, url, mp4Path, duration, supportsContinue).ConfigureAwait(false);
 
@@ -5950,7 +5959,8 @@ public sealed class FilmJobService
     }
 
     /// <summary>
-    /// Publish take_NN + current alias to the client folder (regen and AI Edit).
+    /// Publish take_NN to the client folder (regen and AI Edit). Current take is
+    /// <c>.current.json</c> — do not write a leftover bare alias.
     /// <paramref name="takeNumber"/> is the unique take already written via
     /// <see cref="ClipSidecarService.NextTakeNumber"/> / <see cref="ClipTakeNaming.ParseTakeNumber"/>.
     /// </summary>
@@ -5972,7 +5982,7 @@ public sealed class FilmJobService
             s.PredecessorDurationSec = predecessorDurationSec;
         });
         await AppendLogAsync(
-            $"  video ready for client save → take {take:D2} + current alias (server copy is transient; provider-hosted)");
+            $"  video ready for client save → take {take:D2} (current is .current.json; server copy is transient; provider-hosted)");
     }
 
     /// <returns>Overrun seconds versus requested duration (MP4 box probe). Combined extend files

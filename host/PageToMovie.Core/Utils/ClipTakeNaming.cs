@@ -5,9 +5,9 @@ namespace PageToMovie.Core.Utils;
 
 /// <summary>
 /// Single source of truth for film-take identity and clip video paths.
-/// Take files are <c>scene_SS_clip_CC_take_NN</c> (no timestamp). The current player
-/// alias is <c>scene_SS_clip_CC.mp4</c>. Bytes live on the client folder or the
-/// provider — never as a durable copy on the app server.
+/// Take files are <c>scene_SS_clip_CC_take_NN</c> (no timestamp). Current take is
+/// <c>scene_SS_clip_CC.current.json</c> only. A leftover <c>scene_SS_clip_CC.mp4</c>
+/// alias is not the player file. Bytes live on the client folder or the provider.
 /// </summary>
 public static class ClipTakeNaming
 {
@@ -49,6 +49,34 @@ public static class ClipTakeNaming
 
     public static string CurrentTakePointerFileName(int scene, int clip) =>
         $"{SceneClipPrefix(scene, clip)}{CurrentTakePointerSuffix}";
+
+    public static string CurrentTakePointerRelativePath(int scene, int clip) =>
+        $"{AssetsVideoPrefix}/{CurrentTakePointerFileName(scene, clip)}";
+
+    /// <summary>
+    /// Current player file from a take number in <c>.current.json</c>.
+    /// Null when <paramref name="take"/> is not a positive take.
+    /// </summary>
+    public static string? CurrentTakePath(int scene, int clip, int take) =>
+        take > 0 ? TakeRelativePath(scene, clip, take) : null;
+
+    public static string? CurrentTakeFileName(int scene, int clip, int take) =>
+        take > 0 ? TakeMp4FileName(scene, clip, take) : null;
+
+    /// <summary>Parse <c>{"take":N}</c> from a current-take pointer. 0 when absent or invalid.</summary>
+    public static int ParseCurrentTakePointer(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return 0;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
+                return n;
+        }
+        catch { /* best-effort pointer */ }
+        return 0;
+    }
 
     public static string TakeStem(int scene, int clip, int take) =>
         $"{SceneClipPrefix(scene, clip)}_take_{take:D2}";

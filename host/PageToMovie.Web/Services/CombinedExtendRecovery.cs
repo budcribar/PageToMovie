@@ -19,7 +19,7 @@ internal static class CombinedExtendRecovery
     internal const double CombinedLeadInThresholdSeconds = 0.1;
 
     private static readonly Regex ClipRelPathRx = new(
-        @"assets/video/scene_(\d{2})_clip_(\d{2})\.mp4$",
+        @"assets/video/scene_(\d{2})_clip_(\d{2})(?:_take_\d+)?\.mp4$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
         CommonRegex.Timeout);
 
@@ -84,11 +84,11 @@ internal static class CombinedExtendRecovery
     }
 
     /// <summary>
-    /// Path format matches <c>MediaRegistryService.ClipRelativePath</c> (Engine) —
-    /// Web cannot reference Engine, so the format string lives here next to the only parser.
+    /// Locator for a clip's take file (not the leftover bare alias). JS prefix
+    /// search resolves the current take when the exact take_01 name is absent.
     /// </summary>
     internal static string ClipRelativePath(int scene, int clip) =>
-        ClipTakeNaming.CanonicalRelativePath(scene, clip);
+        ClipTakeNaming.TakeRelativePath(scene, clip, 1);
 
     internal static bool TryGetNthPreviousClipRelativePath(
         string? relativePath, int steps, out string previousRelativePath)

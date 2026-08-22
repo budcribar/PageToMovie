@@ -152,9 +152,11 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         Assert.True(archived.Length >= 1, "expected the pre-edit clip archived into history/");
         Assert.Equal(originalBytes, File.ReadAllBytes(archived[0]));
 
-        // The active clip's bytes must have changed (replaced by the edited result).
-        var newBytes = File.ReadAllBytes(activeMp4Path);
-        Assert.NotEqual(originalBytes, newBytes);
+        // Leftover bare alias is not refreshed as the player file.
+        Assert.Equal(originalBytes, File.ReadAllBytes(activeMp4Path));
+        var take02Mp4 = Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4");
+        Assert.True(File.Exists(take02Mp4));
+        Assert.NotEqual(originalBytes, File.ReadAllBytes(take02Mp4));
 
         // Take identity is the numbered sidecar, not the leftover player-alias .clip.json.
         var take01Sidecar = Path.Combine(videoDir, "scene_01_clip_01_take_01.clip.json");
