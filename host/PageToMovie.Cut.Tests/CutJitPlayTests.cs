@@ -105,6 +105,21 @@ public class CutJitPlayTests
     }
 
     [Fact]
+    public void Prefix_grow_does_not_restart_native_play()
+    {
+        var a = NewClip(1, 1, 4);
+        var b = NewClip(1, 2, 4);
+        var c = NewClip(2, 1, 5);
+        var clips = new[] { a, b, c };
+
+        Assert.Equal(8, CutJitPlay.NativeReachableThrough(clips));
+        Assert.False(CutJitPlay.NeedsWait(3.5, CutJitPlay.ReadyThroughSec(clips, 1), CutJitPlay.TotalSec(clips)));
+        Assert.True(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: true));
+        Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: false));
+        Assert.False(CutPlayClock.ShouldRestartNativeOnPrefixGrow);
+    }
+
+    [Fact]
     public void Cached_full_preview_still_skips_compose()
     {
         Assert.True(CutJitPlay.CanReuseFullPreview("blob:cut-preview"));

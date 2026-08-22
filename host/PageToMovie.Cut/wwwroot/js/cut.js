@@ -16,6 +16,17 @@
         _progressRef: null,
         _aborted: false,
         _composeGate: Promise.resolve(),
+        _playClock: {
+            mode: "idle",
+            timelineStart: 0,
+            localStart: 0,
+            localEnd: 0,
+            pxPerSec: 36,
+            totalSec: 0,
+            liveText: true,
+        },
+        _textOverlayEl: null,
+        _textCues: [],
     };
 
     function messageOf(err, fallback) {
@@ -730,11 +741,145 @@
         el._cutEndedHandler = null;
     };
 
+    function formatPlayClock(seconds) {
+        let s = Number(seconds);
+        if (!Number.isFinite(s) || s < 0)
+            s = 0;
+        const m = Math.floor(s / 60);
+        const rem = s - m * 60;
+        return m + ":" + rem.toFixed(2).padStart(5, "0");
+    }
+
+    function hideTextOverlay() {
+        const el = cut._textOverlayEl;
+        if (el)
+            el.classList.add("is-off");
+    }
+
+    cut.bindPlayClock = function (pxPerSec, totalSec) {
+        const px = Number(pxPerSec);
+        const total = Number(totalSec);
+        if (Number.isFinite(px) && px > 0)
+            cut._playClock.pxPerSec = px;
+        if (Number.isFinite(total) && total >= 0)
+            cut._playClock.totalSec = total;
+    };
+
+    cut.setPlayClockWindow = function (mode, timelineStart, localStart, localEnd) {
+        cut._playClock.mode = mode || "idle";
+        cut._playClock.timelineStart = Number(timelineStart) || 0;
+        cut._playClock.localStart = Number(localStart) || 0;
+        cut._playClock.localEnd = Number(localEnd) || 0;
+    };
+
+    cut.timelineFromMedia = function (localSec) {
+        const c = cut._playClock;
+        const t = Number(localSec) || 0;
+        if (c.mode === "movie")
+            return Math.max(0, t);
+        return c.timelineStart + Math.max(0, t - c.localStart);
+    };
+
+    cut.paintPlayhead = function (timelineSec) {
+        const t = Math.max(0, Number(timelineSec) || 0);
+        const needle = document.querySelector("[data-testid=\"cut-tl-playhead\"]");
+        if (needle)
+            needle.style.left = (t * cut._playClock.pxPerSec) + "px";
+        const clock = document.querySelector(".cut-tl-clock");
+        if (clock)
+            clock.textContent = formatPlayClock(t) + " / " + formatPlayClock(cut._playClock.totalSec);
+        cut.paintTextOverlay(t);
+    };
+
+    cut.setPreviewSurface = function (movieEl, clipEl, showMovie) {
+        if (movieEl && movieEl.classList)
+            movieEl.classList.toggle("is-off", !showMovie);
+        if (clipEl && clipEl.classList)
+            clipEl.classList.toggle("is-off", !!showMovie);
+        cut.setLiveTextOverlay(!showMovie);
+    };
+
+    cut.setLiveTextOverlay = function (on) {
+        cut._playClock.liveText = !!on;
+        if (!on)
+            hideTextOverlay();
+    };
+
+    cut.setTextCues = function (el, cues) {
+        cut._textOverlayEl = el || null;
+        cut._textCues = Array.isArray(cues) ? cues : [];
+    };
+
+    cut.paintTextOverlay = function (timelineSec) {
+        const el = cut._textOverlayEl;
+        if (!el)
+            return;
+        if (!cut._playClock.liveText) {
+            el.classList.add("is-off");
+            return;
+        }
+        const t = Number(timelineSec) || 0;
+        const cues = cut._textCues || [];
+        let cue = null;
+        for (let i = cues.length - 1; i >= 0; i--) {
+            const c = cues[i];
+            const start = Number(c.startSec) || 0;
+            const end = Number(c.endSec) || 0;
+            if (t >= start && t < end) {
+                cue = c;
+                break;
+            }
+        }
+        const line = el.querySelector(".cut-text-overlay-line");
+        if (!cue || !line) {
+            el.classList.add("is-off");
+            return;
+        }
+        el.classList.remove("is-off");
+        const start = Number(cue.startSec) || 0;
+        const end = Number(cue.endSec) || 0;
+        const fade = Number(cue.fadeSec) || 0;
+        const hold = Math.max(0, end - start);
+        let opacity = 1;
+        if (fade > 0.05 && hold > 0) {
+            const edge = Math.min(fade, hold / 3);
+            if (t < start + edge)
+                opacity = Math.max(0, (t - start) / edge);
+            else if (t > end - edge)
+                opacity = Math.max(0, (end - t) / edge);
+        }
+        const fontPx = Number(cue.fontPx) || 48;
+        const y = Number(cue.y);
+        const stage = el.parentElement;
+        const scale = stage && stage.clientWidth > 0 ? stage.clientWidth / 1280 : 1;
+        line.textContent = String(cue.text || "");
+        line.style.fontSize = Math.max(12, fontPx * scale) + "px";
+        line.style.color = cue.colorHex || "#ffffff";
+        line.style.top = ((Number.isFinite(y) ? y : 360) / 720 * 100) + "%";
+        line.style.opacity = String(opacity);
+        line.classList.toggle("has-bar", !!cue.bar);
+    };
+
+    cut.readCurrentTime = function (el) {
+        const t = el && typeof el.currentTime === "number" ? el.currentTime : 0;
+        return Number.isFinite(t) && t > 0 ? t : 0;
+    };
+
     cut.bindPlayback = function (el, dotNetRef) {
         if (!el || !dotNetRef) return { success: false };
         cut.unbindPlayback(el);
+        el._cutAdvanceSent = false;
         el._cutTimeHandler = function () {
-            invokeQuiet(dotNetRef, "OnTime", el.currentTime || 0);
+            const local = el.currentTime || 0;
+            cut.paintPlayhead(cut.timelineFromMedia(local));
+            if (cut._playClock.mode === "native"
+                && cut._playClock.localEnd > 0
+                && local >= cut._playClock.localEnd - 0.04) {
+                if (!el._cutAdvanceSent) {
+                    el._cutAdvanceSent = true;
+                    invokeQuiet(dotNetRef, "OnEnded");
+                }
+            }
         };
         el._cutEndedHandler = function () {
             invokeQuiet(dotNetRef, "OnEnded");
@@ -863,6 +1008,7 @@
 
     cut.playUrlAt = function (el, url, seconds) {
         if (!el || !url) return;
+        el._cutAdvanceSent = false;
         const t = Number(seconds);
         const seek = Number.isFinite(t) && t >= 0 ? t : 0;
         const start = function () {

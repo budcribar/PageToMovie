@@ -49,6 +49,7 @@ public partial class CutTimeline
     private bool _textFieldFocused;
     private bool _focusTextInput;
     private ElementReference _textLabelInput = default;
+    private TimelineRenderSnap _renderSnap;
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
     private IReadOnlyList<CutTextBlock> TextBlocks => CutTextTrack.Build(Clips, TextClips, _pxPerSec);
@@ -95,8 +96,28 @@ public partial class CutTimeline
         }
     }
 
+    protected override bool ShouldRender()
+    {
+        if (!IsPlaying)
+            return true;
+        return CaptureRenderSnap() != _renderSnap;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        _renderSnap = CaptureRenderSnap();
+        if (Js is not null)
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("PageToMovieCut.bindPlayClock", _pxPerSec, Layout.TotalSec);
+            }
+            catch (JSException)
+            {
+                // clock paint is best-effort
+            }
+        }
+
         if (_focusTextInput)
         {
             _focusTextInput = false;
@@ -433,6 +454,20 @@ public partial class CutTimeline
             _ => " is-cut",
         };
 
+    private TimelineRenderSnap CaptureRenderSnap() =>
+        new(
+            Clips.Count,
+            _pxPerSec,
+            IsPlaying,
+            Busy,
+            HasAudio,
+            TextClips.Count,
+            Selected?.Label,
+            PlayDisabled,
+            HasRange,
+            _joinMenu,
+            _selectedTextId);
+
     private enum DragKind
     {
         None,
@@ -443,4 +478,17 @@ public partial class CutTimeline
         TextIn,
         TextOut,
     }
+
+    private readonly record struct TimelineRenderSnap(
+        int Clips,
+        double Px,
+        bool Playing,
+        bool Busy,
+        bool Audio,
+        int Texts,
+        string? Selected,
+        bool PlayDisabled,
+        bool HasRange,
+        int? Join,
+        string? TextId);
 }

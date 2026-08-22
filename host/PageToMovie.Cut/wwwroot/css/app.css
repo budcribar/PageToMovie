@@ -186,27 +186,37 @@ html, body {
 
 .cut-mix { margin-top: 0; }
 
-.cut-takes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 0.75rem;
+.cut-text-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 8px;
 }
 
-.cut-take {
-    appearance: none;
-    border: 1px solid var(--fs-border-color);
-    background: var(--fs-bg-input);
-    color: var(--fs-text-secondary);
-    border-radius: 999px;
-    padding: 0.28rem 0.7rem;
-    font-size: 0.8rem;
-    cursor: pointer;
+.cut-text-overlay.is-off { display: none; }
+
+.cut-text-overlay-line {
+    position: absolute;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    max-width: 86%;
+    text-align: center;
+    font-weight: 650;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.cut-take.is-active { border-color: #6b9b7a; color: var(--fs-ok-text); }
-.cut-take.is-using { background: rgba(107, 140, 174, 0.22); color: var(--fs-text-primary); }
-.cut-take:disabled { opacity: 0.45; cursor: not-allowed; }
+.cut-text-overlay-line.has-bar {
+    padding: 0.2em 0.7em;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+}
 
 @media (max-width: 800px) {
     .cut-header { flex-direction: column; align-items: flex-start; }
@@ -514,7 +524,8 @@ html, body {
     position: absolute;
     top: -0.15rem;
     left: 0;
-    z-index: 2;
+    z-index: 6;
+    pointer-events: auto;
     width: 1.15rem;
     height: 1.15rem;
     border: 1px solid rgba(255, 255, 255, 0.16);
@@ -530,6 +541,7 @@ html, body {
 .cut-tl-text-clip {
     position: absolute;
     top: 3px;
+    z-index: 1;
     height: 30px;
     border: 2px solid #7b5cbc;
     border-radius: 6px;

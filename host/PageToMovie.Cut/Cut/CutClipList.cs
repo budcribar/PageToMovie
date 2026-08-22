@@ -51,7 +51,6 @@ public static class CutClipList
                 sidecars.GetValueOrDefault(g.Key),
                 cards.GetValueOrDefault(g.Key),
                 hops))
-            .Where(c => c.Takes.Count > 0)
             .ToList();
     }
 
@@ -193,8 +192,12 @@ public static class CutClipList
             clip.Card.Enabled = true;
             clip.Card.Text = cardText.Trim();
         }
-        foreach (var file in PreferUniqueTakes(slot.Takes).OrderBy(t => t.TakeHint))
-            clip.Takes.Add(ToTake(file.TakeHint, file, HopFor(hops, slot.Scene, slot.Clip, file.TakeHint)));
+        if (pointerTake > 0)
+        {
+            var current = PreferUniqueTakes(slot.Takes).FirstOrDefault(t => t.TakeHint == pointerTake);
+            if (current is { } file)
+                clip.Takes.Add(ToTake(file.TakeHint, file, HopFor(hops, slot.Scene, slot.Clip, file.TakeHint)));
+        }
 
         var pointerPath = PreferOne(slot.Takes) is { } sample
             ? CutClipNaming.PointerPathBeside(sample.RelativePath, slot.Scene, slot.Clip)

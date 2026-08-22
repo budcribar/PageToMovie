@@ -143,22 +143,21 @@
             <div class="cut-tl-text @(HasText ? "" : "is-empty")"
                  data-testid="cut-tl-text"
                  @onpointerdown="OnTextRowDownAsync">
+                <button type="button"
+                        class="@CutTransport.TextAddClass"
+                        title="Add text"
+                        data-testid="cut-tl-text-add"
+                        style="z-index: @CutTransport.TextAddZIndex"
+                        @onpointerdown:stopPropagation="true"
+                        @onclick="() => AddTextAtAsync(PlayheadSec)">+</button>
                 @if (!HasText)
                 {
                     <span class="cut-tl-text-empty">+ Add text</span>
                 }
-                else
+                @foreach (var block in TextBlocks)
                 {
-                    <button type="button"
-                            class="cut-tl-text-add"
-                            title="Add text"
-                            data-testid="cut-tl-text-add"
-                            @onpointerdown:stopPropagation="true"
-                            @onclick="() => AddTextAtAsync(PlayheadSec)">+</button>
-                    @foreach (var block in TextBlocks)
-                    {
                         var selected = block.Id == _selectedTextId;
-                        <div class="cut-tl-text-clip @(selected ? "is-selected" : "") @(block.Kind == CutTextKind.SceneCard ? "is-card" : "")"
+                        <div class="@CutTransport.TextClipClass @(selected ? "is-selected" : "") @(block.Kind == CutTextKind.SceneCard ? "is-card" : "")"
                              style="left: @(block.StartPx)px; width: @(Math.Max(block.WidthPx, 36))px"
                              data-testid="cut-tl-text-clip"
                              title="@block.Text"
@@ -201,7 +200,6 @@
                                     @onpointerdown:stopPropagation="true"
                                     @onpointerdown="e => BeginTextTrimAsync(e, block, false)"></button>
                         </div>
-                    }
                 }
             </div>
 

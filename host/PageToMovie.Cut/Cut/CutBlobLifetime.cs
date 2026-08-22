@@ -21,13 +21,13 @@ public static class CutBlobLifetime
         IReadOnlyCollection<string> inUse,
         IReadOnlyCollection<string> pinned)
     {
-        if (!IsBlobUrl(url))
+        if (url is not string blob || !IsBlobUrl(blob))
             return false;
-        if (inUse.Contains(url!))
+        if (inUse.Contains(blob))
             return false;
-        if (pinned.Contains(url!))
+        if (pinned.Contains(blob))
             return false;
-        return ownedTemps.Contains(url!);
+        return ownedTemps.Contains(blob);
     }
 
     public static IReadOnlyList<string> Revocable(

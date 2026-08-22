@@ -24,4 +24,13 @@ public class CutTransportTests
         Assert.Equal("cut-tl-play is-stop", CutTransport.PlayButtonClass(true));
         Assert.Contains(CutTransport.StopClass, CutTransport.PlayButtonClass(true), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Add_text_stays_above_the_first_title_tile()
+    {
+        Assert.Equal("cut-tl-text-add", CutTransport.TextAddClass);
+        Assert.Equal("cut-tl-text-clip", CutTransport.TextClipClass);
+        Assert.True(CutTransport.TextAddZIndex > CutTransport.TextClipZIndex);
+        Assert.True(CutTransport.TextAddZIndex > 4);
+    }
 }

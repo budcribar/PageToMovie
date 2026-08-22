@@ -13,6 +13,7 @@ public partial class Home : IAsyncDisposable
 
     internal ElementReference ClipPlayer { get; set; }
     internal ElementReference MoviePlayer { get; set; }
+    internal ElementReference TextOverlay { get; set; }
     private CutClip? _selected;
     private bool _folderBusy;
     private bool _exporting;
@@ -28,6 +29,10 @@ public partial class Home : IAsyncDisposable
     private CutJitPlay.Window? _nativeWindow;
     private CancellationTokenSource? _composeCts;
     private DotNetObjectReference<MediaTimeSink>? _timeRef;
+    private PlaySurface _boundSurface;
+    private string? _clipSrcBound;
+    private string? _movieSrcBound;
+    private bool _needTextCues;
     internal int ProgressPercent { get; private set; }
     internal string? ProgressMessage { get; private set; }
     internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
@@ -50,6 +55,12 @@ public partial class Home : IAsyncDisposable
 
     internal string? ActiveMovieUrl => Compose.MoviePreviewUrl ?? _prefixUrl;
 
+    private string? ClipPlayerSrc =>
+        CutPlayClock.BlazorOwnsVideoSrc(IsPlaying) ? _selected?.PreviewUrl : _clipSrcBound;
+
+    private string? MoviePlayerSrc =>
+        CutPlayClock.BlazorOwnsVideoSrc(IsPlaying) ? ActiveMovieUrl : _movieSrcBound;
+
     private bool PlayDisabled =>
         TransportLocked
         || Folder.Clips.Count == 0
@@ -66,17 +77,6 @@ public partial class Home : IAsyncDisposable
         _error = clip.Missing ? (clip.MissingReason ?? $"Selected take file is missing: {clip.Label}.") : null;
         if (!_wantPlay)
             _ = SeekPreviewToInAsync();
-    }
-
-    private async Task SelectTakeAsync(int take)
-    {
-        if (_selected is null)
-            return;
-        await Folder.SetCurrentTakeAsync(_selected, take);
-        ForgetPreview();
-        _error = _selected.Missing ? (_selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.") : Folder.FolderError;
-        await ProbeAndStripTakeAsync(_selected.SelectedTake);
-        await SeekPreviewToInAsync();
     }
 
     private async Task PickFolderAsync()
@@ -133,6 +133,7 @@ public partial class Home : IAsyncDisposable
         foreach (var clip in Folder.Clips)
             await ProbeAndStripTakeAsync(clip.SelectedTake, captureStrip: false);
         await SeekPreviewToInAsync();
+        _needTextCues = true;
         _ = RefreshFilmstripsAsync();
     }
 
@@ -239,12 +240,15 @@ public partial class Home : IAsyncDisposable
         {
             // seek is best-effort while the player remounts
         }
+
+        await PaintPlayVisualsAsync();
     }
 
     private void OnTimelineEdited()
     {
         ForgetPreview();
         SavedNote = null;
+        _needTextCues = true;
         if (_selected?.SelectedTake is { } take)
             _ = CaptureFilmstripAsync(take);
         if (!_wantPlay)
@@ -282,7 +286,9 @@ public partial class Home : IAsyncDisposable
     {
         if (_wantPlay)
         {
+            await SyncPlayheadFromPlayerAsync();
             StopPlay();
+            await PaintPlayVisualsAsync();
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -295,7 +301,10 @@ public partial class Home : IAsyncDisposable
         if (TransportLocked || !CutSplit.CanAt(Folder.Clips, _playhead))
             return;
         if (_wantPlay)
+        {
+            await SyncPlayheadFromPlayerAsync();
             StopPlay();
+        }
         if (!CutSplit.TryAt(Folder.Clips, _playhead, out _))
             return;
         OnTimelineEdited();
@@ -306,6 +315,10 @@ public partial class Home : IAsyncDisposable
     {
         _error = null;
         _wantPlay = true;
+        _clipSrcBound = _selected?.PreviewUrl;
+        _movieSrcBound = ActiveMovieUrl;
+        _needTextCues = true;
+        await InvokeAsync(StateHasChanged);
         if (CutJitPlay.CanReuseFullPreview(Compose.MoviePreviewUrl))
         {
             await PlayMovieAsync(_playhead, Compose.MoviePreviewUrl);
@@ -343,13 +356,10 @@ public partial class Home : IAsyncDisposable
                         return;
                     _prefixUrl = url;
                     _prefixClipCount = count;
-                    _ = InvokeAsync(async () =>
-                    {
-                        if (_wantPlay && _playMode == PlayMode.Waiting)
-                            await ContinuePlayAsync(_playhead);
-                        else
-                            StateHasChanged();
-                    });
+                    if (CutPlayClock.ShouldResumeOnPrefix(_wantPlay, _playMode == PlayMode.Waiting))
+                        _ = InvokeAsync(() => ContinuePlayAsync(_playhead));
+                    else if (CutPlayClock.ShouldRenderOnPrefix(_playMode == PlayMode.Waiting, _wantPlay))
+                        _ = InvokeAsync(StateHasChanged);
                 },
                 cts.Token,
                 Folder.TextClips);
@@ -359,7 +369,8 @@ public partial class Home : IAsyncDisposable
             _prefixClipCount = Folder.Clips.Count;
             _composing = false;
             ProgressMessage = "Playing";
-            if (_wantPlay)
+            if (CutPlayClock.ShouldResumeOnPrefix(_wantPlay, _playMode == PlayMode.Waiting)
+                || ShouldPlayComposedPrefix())
                 await ContinuePlayAsync(_playhead);
         }
         catch (OperationCanceledException)
@@ -409,6 +420,16 @@ public partial class Home : IAsyncDisposable
         await PlayNativeAsync(_playhead);
     }
 
+    private bool ShouldPlayComposedPrefix()
+    {
+        if (!_wantPlay || _playMode == PlayMode.Waiting)
+            return false;
+        var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
+        if (string.IsNullOrWhiteSpace(playUrl) || _prefixClipCount <= 0)
+            return false;
+        return _playhead >= CutJitPlay.NativeReachableThrough(Folder.Clips) - 0.001;
+    }
+
     private async Task PlayNativeAsync(double timelineSec)
     {
         var window = CutJitPlay.At(Folder.Clips, timelineSec);
@@ -418,17 +439,21 @@ public partial class Home : IAsyncDisposable
             return;
         }
 
+        var samePlayer = _playMode == PlayMode.Native;
         _playMode = PlayMode.Native;
         _nativeWindow = window;
-        _selected = window.Value.Clip;
         var local = CutJitPlay.TimelineToLocal(window.Value, timelineSec);
-        await BindPlaybackAsync(ClipPlayer, OnNativeTime, OnNativeEnded);
+        if (CutPlayClock.ShouldRebindPlayback(samePlayer))
+            await BindPlaybackAsync(ClipPlayer, PlaySurface.Clip, OnNativeTime, OnNativeEnded);
         if (Js is not null)
         {
             try
             {
+                await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow",
+                    "native", window.Value.TimelineStart, window.Value.LocalStart, window.Value.LocalEnd);
                 await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
                 await Js.InvokeVoidAsync(PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local);
+                await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, false);
             }
             catch (JSException)
             {
@@ -436,31 +461,35 @@ public partial class Home : IAsyncDisposable
             }
         }
 
-        await InvokeAsync(StateHasChanged);
+        if (CutPlayClock.ShouldRenderOnNativeAdvance)
+            await InvokeAsync(StateHasChanged);
     }
 
     private async Task PlayMovieAsync(double timelineSec, string? url)
     {
         if (string.IsNullOrWhiteSpace(url))
             return;
+        var samePlayer = _playMode == PlayMode.Movie;
         _playMode = PlayMode.Movie;
         _nativeWindow = null;
         _playhead = Math.Max(0, timelineSec);
-        await BindPlaybackAsync(MoviePlayer, OnMovieTime, OnMovieEnded);
+        _movieSrcBound = url;
+        if (CutPlayClock.ShouldRebindPlayback(samePlayer))
+            await BindPlaybackAsync(MoviePlayer, PlaySurface.Movie, OnMovieTime, OnMovieEnded);
         if (Js is not null)
         {
             try
             {
+                await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
                 await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
                 await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, url, _playhead);
+                await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, true);
             }
             catch (JSException)
             {
                 // player may not be mounted yet
             }
         }
-
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task EnterWaitAsync()
@@ -489,9 +518,9 @@ public partial class Home : IAsyncDisposable
         if (_playMode != PlayMode.Native || _nativeWindow is not { } window)
             return;
         _playhead = CutJitPlay.LocalToTimeline(window, localSec);
-        if (localSec >= window.LocalEnd - 0.04)
+        if (CutPlayClock.ShouldAdvanceNative(localSec, window.LocalEnd))
             _ = AdvanceNativeAsync();
-        else
+        else if (CutPlayClock.ShouldRenderOnTimeUpdate)
             _ = InvokeAsync(StateHasChanged);
     }
 
@@ -517,7 +546,8 @@ public partial class Home : IAsyncDisposable
         if (_playMode != PlayMode.Movie)
             return;
         _playhead = Math.Max(0, seconds);
-        _ = InvokeAsync(StateHasChanged);
+        if (CutPlayClock.ShouldRenderOnTimeUpdate)
+            _ = InvokeAsync(StateHasChanged);
     }
 
     private void OnMovieEnded()
@@ -537,11 +567,15 @@ public partial class Home : IAsyncDisposable
         _ = ContinuePlayAsync(_playhead);
     }
 
-    private async Task BindPlaybackAsync(ElementReference player, Action<double> onTime, Action onEnded)
+    private async Task BindPlaybackAsync(
+        ElementReference player, PlaySurface surface, Action<double> onTime, Action onEnded)
     {
         if (Js is null)
             return;
+        if (_boundSurface == surface && _timeRef is not null)
+            return;
         DisposeTimeSink();
+        _boundSurface = surface;
         _timeRef = DotNetObjectReference.Create(new MediaTimeSink(onTime, onEnded));
         try
         {
@@ -558,8 +592,10 @@ public partial class Home : IAsyncDisposable
         _wantPlay = false;
         _playMode = PlayMode.Idle;
         _nativeWindow = null;
+        _boundSurface = PlaySurface.None;
         _playGen++;
         CancelCompose();
+        DisposeTimeSink();
         _ = PausePlayersAsync();
     }
 
@@ -628,7 +664,8 @@ public partial class Home : IAsyncDisposable
     {
         ProgressPercent = Math.Clamp(pct, 0, 100);
         ProgressMessage = msg;
-        _ = InvokeAsync(StateHasChanged);
+        if (CutPlayClock.ShouldRenderOnProgress(ShowComposeOverlay))
+            _ = InvokeAsync(StateHasChanged);
     }
 
     private static string FormatSec(double seconds) =>
@@ -667,11 +704,81 @@ public partial class Home : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
+    private async Task SyncPlayheadFromPlayerAsync()
+    {
+        if (Js is null)
+            return;
+        try
+        {
+            if (_playMode == PlayMode.Native && _nativeWindow is { } window)
+            {
+                var local = await Js.InvokeAsync<double>("PageToMovieCut.readCurrentTime", ClipPlayer);
+                _playhead = CutJitPlay.LocalToTimeline(window, local);
+            }
+            else if (_playMode == PlayMode.Movie)
+            {
+                _playhead = await Js.InvokeAsync<double>("PageToMovieCut.readCurrentTime", MoviePlayer);
+            }
+        }
+        catch (JSException)
+        {
+            // playhead stays at the last known time
+        }
+    }
+
+    private async Task PaintPlayVisualsAsync()
+    {
+        if (Js is null)
+            return;
+        try
+        {
+            await Js.InvokeVoidAsync(
+                "PageToMovieCut.setLiveTextOverlay",
+                CutPlayOverlay.UseLiveOverlay(ShowMovie));
+            await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", _playhead);
+        }
+        catch (JSException)
+        {
+            // paint is best-effort while the player remounts
+        }
+    }
+
+    private async Task PushTextCuesAsync()
+    {
+        if (Js is null)
+            return;
+        try
+        {
+            var cues = CutPlayOverlay.Cues(Folder.Clips, Folder.TextClips);
+            await Js.InvokeVoidAsync("PageToMovieCut.setTextCues", TextOverlay, cues);
+            await PaintPlayVisualsAsync();
+        }
+        catch (JSException)
+        {
+            // overlay mounts with the preview stage
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_needTextCues)
+            return;
+        _needTextCues = false;
+        await PushTextCuesAsync();
+    }
+
     private enum PlayMode
     {
         Idle,
         Native,
         Movie,
         Waiting,
+    }
+
+    private enum PlaySurface
+    {
+        None,
+        Clip,
+        Movie,
     }
 }
