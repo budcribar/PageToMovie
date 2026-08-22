@@ -68,14 +68,23 @@ public static class CutTextTrack
     public static string CardId(int scene) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"card:{scene}");
 
-    public static CutTextClip Add(IList<CutTextClip> titles, double startSec, string? text = null)
+    public static CutTextClip Add(IList<CutTextClip> titles, double startSec, string? text = null) =>
+        Add(titles, startSec, text, CutTextPlace.FromTitles(titles), double.PositiveInfinity);
+
+    public static CutTextClip Add(
+        IList<CutTextClip> titles,
+        double startSec,
+        string? text,
+        IReadOnlyList<CutTextPlace.Span> occupied,
+        double movieEnd)
     {
+        var hold = CutCard.DefaultHoldSeconds;
         var title = new CutTextClip
         {
             Id = CutTextClip.NewId(),
             Text = string.IsNullOrWhiteSpace(text) ? "Title" : text.Trim(),
-            StartSec = Math.Max(0, startSec),
-            Seconds = CutCard.DefaultHoldSeconds,
+            StartSec = CutTextPlace.Place(startSec, hold, occupied, movieEnd),
+            Seconds = hold,
         };
         titles.Add(title);
         return title;

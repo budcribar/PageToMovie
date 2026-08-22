@@ -28,10 +28,19 @@ public static class CutTextEdit
         return copy;
     }
 
-    public static CutTextClip Duplicate(IList<CutTextClip> titles, CutTextClip source)
+    public static CutTextClip Duplicate(IList<CutTextClip> titles, CutTextClip source) =>
+        Duplicate(titles, source, occupied: null, movieEnd: double.PositiveInfinity);
+
+    public static CutTextClip Duplicate(
+        IList<CutTextClip> titles,
+        CutTextClip source,
+        IReadOnlyList<CutTextPlace.Span>? occupied,
+        double movieEnd)
     {
         ArgumentNullException.ThrowIfNull(titles);
-        var copy = CloneAt(source, source.StartSec + DuplicateOffsetSeconds);
+        var blocked = occupied ?? CutTextPlace.FromTitles(titles);
+        var preferred = source.StartSec + DuplicateOffsetSeconds;
+        var copy = CloneAt(source, CutTextPlace.Place(preferred, source.HoldSeconds, blocked, movieEnd));
         titles.Add(copy);
         return copy;
     }
@@ -48,16 +57,26 @@ public static class CutTextEdit
         return payload;
     }
 
-    public static CutTextClip Paste(IList<CutTextClip> titles, CutTextPayload payload, double startSec)
+    public static CutTextClip Paste(IList<CutTextClip> titles, CutTextPayload payload, double startSec) =>
+        Paste(titles, payload, startSec, occupied: null, movieEnd: double.PositiveInfinity);
+
+    public static CutTextClip Paste(
+        IList<CutTextClip> titles,
+        CutTextPayload payload,
+        double startSec,
+        IReadOnlyList<CutTextPlace.Span>? occupied,
+        double movieEnd)
     {
         ArgumentNullException.ThrowIfNull(titles);
         ArgumentNullException.ThrowIfNull(payload);
+        var hold = CutCard.ResolveHold(payload.Seconds);
+        var blocked = occupied ?? CutTextPlace.FromTitles(titles);
         var copy = new CutTextClip
         {
             Id = CutTextClip.NewId(),
             Text = string.IsNullOrWhiteSpace(payload.Text) ? "Title" : payload.Text,
-            StartSec = Math.Max(0, startSec),
-            Seconds = CutCard.ResolveHold(payload.Seconds),
+            StartSec = CutTextPlace.Place(startSec, hold, blocked, movieEnd),
+            Seconds = hold,
         };
         copy.Style.CopyFrom(payload.Style);
         titles.Add(copy);
