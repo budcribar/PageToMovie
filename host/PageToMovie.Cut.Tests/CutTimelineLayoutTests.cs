@@ -147,6 +147,43 @@ public class CutTimelineLayoutTests
         Assert.Equal(CutTimelineLayout.MaxPxPerSec, CutTimelineLayout.ClampPxPerSec(999));
     }
 
+    [Fact]
+    public void Trim_handles_only_on_scene_bookends()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(1, 2, duration: 4);
+        var c = NewClip(1, 3, duration: 4);
+        var d = NewClip(2, 1, duration: 4);
+        var clips = new[] { a, b, c, d };
+
+        Assert.True(CutTimelineLayout.ShowsTrimIn(clips, 0));
+        Assert.False(CutTimelineLayout.ShowsTrimOut(clips, 0));
+        Assert.False(CutTimelineLayout.ShowsTrimIn(clips, 1));
+        Assert.False(CutTimelineLayout.ShowsTrimOut(clips, 1));
+        Assert.False(CutTimelineLayout.ShowsTrimIn(clips, 2));
+        Assert.True(CutTimelineLayout.ShowsTrimOut(clips, 2));
+        Assert.True(CutTimelineLayout.ShowsTrimIn(clips, 3));
+        Assert.True(CutTimelineLayout.ShowsTrimOut(clips, 3));
+
+        var layout = CutTimelineLayout.Build(clips, pxPerSec: 10);
+        Assert.True(layout.Lanes[0].TrimIn);
+        Assert.False(layout.Lanes[0].TrimOut);
+        Assert.False(layout.Lanes[1].TrimIn);
+        Assert.False(layout.Lanes[1].TrimOut);
+        Assert.False(layout.Lanes[2].TrimIn);
+        Assert.True(layout.Lanes[2].TrimOut);
+        Assert.True(layout.Lanes[3].TrimIn);
+        Assert.True(layout.Lanes[3].TrimOut);
+
+        Assert.True(a.IsFirstOfScene(clips));
+        Assert.False(a.IsLastOfScene(clips));
+        Assert.False(b.IsFirstOfScene(clips));
+        Assert.False(b.IsLastOfScene(clips));
+        Assert.True(c.IsLastOfScene(clips));
+        Assert.True(d.IsFirstOfScene(clips));
+        Assert.True(d.IsLastOfScene(clips));
+    }
+
     [Theory]
     [InlineData(CutJoinKind.Cut, false)]
     [InlineData(CutJoinKind.Unset, false)]

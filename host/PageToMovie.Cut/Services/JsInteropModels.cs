@@ -100,11 +100,41 @@ public sealed class ExportProgressSink
 public sealed class MediaTimeSink
 {
     private readonly Action<double> _report;
+    private readonly Action? _ended;
 
-    public MediaTimeSink(Action<double> report) => _report = report;
+    public MediaTimeSink(Action<double> report, Action? ended = null)
+    {
+        _report = report;
+        _ended = ended;
+    }
 
     [JSInvokable]
     public void OnTime(double seconds) => _report(seconds);
+
+    [JSInvokable]
+    public void OnEnded() => _ended?.Invoke();
+}
+
+public sealed class JitPreviewSink
+{
+    private readonly Action<int, string> _report;
+    private readonly Action<string, int> _prefix;
+
+    public JitPreviewSink(Action<int, string> report, Action<string, int> prefix)
+    {
+        _report = report;
+        _prefix = prefix;
+    }
+
+    [JSInvokable]
+    public void Report(int percent, string? message) => _report(percent, message ?? "");
+
+    [JSInvokable]
+    public void OnPrefix(string? url, int clipCount)
+    {
+        if (!string.IsNullOrWhiteSpace(url))
+            _prefix(url, clipCount);
+    }
 }
 
 public sealed class JsFilmstrip

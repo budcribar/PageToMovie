@@ -37,8 +37,10 @@ public sealed class CutTimelineLayout
             var clip = clips[i];
             var sliced = SlicedSeconds(clip);
             var visual = sliced > 0.05 ? sliced : PlaceholderSec;
+            var trimIn = i == 0 || clip.Scene != clips[i - 1].Scene;
+            var trimOut = i == clips.Count - 1 || clip.Scene != clips[i + 1].Scene;
             lanes.Add(new CutTimelineLane(
-                clip, i, cursor, visual, cursor * px, visual * px, sliced));
+                clip, i, cursor, visual, cursor * px, visual * px, sliced, trimIn, trimOut));
             if (!clip.Missing && sliced > 0.05)
                 playable += sliced;
             cursor += visual;
@@ -252,6 +254,18 @@ public sealed class CutTimelineLayout
             or CutJoinKind.FadeWhite
             or CutJoinKind.CutToBlack;
 
+    /// <summary>
+    /// White trim pills only on scene bookends: left on the first clip of
+    /// a scene, right on the last. Mid-scene seams have no handles.
+    /// </summary>
+    public static bool ShowsTrimIn(IReadOnlyList<CutClip> clips, int index) =>
+        index >= 0 && index < clips.Count
+        && (index == 0 || clips[index].Scene != clips[index - 1].Scene);
+
+    public static bool ShowsTrimOut(IReadOnlyList<CutClip> clips, int index) =>
+        index >= 0 && index < clips.Count
+        && (index == clips.Count - 1 || clips[index].Scene != clips[index + 1].Scene);
+
     public static string Clock(double seconds)
     {
         if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0)
@@ -310,7 +324,9 @@ public readonly record struct CutTimelineLane(
     double WidthSec,
     double StartPx,
     double WidthPx,
-    double SlicedSec);
+    double SlicedSec,
+    bool TrimIn,
+    bool TrimOut);
 
 public readonly record struct CutTimelineSceneBand(
     int Scene,

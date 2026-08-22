@@ -63,23 +63,17 @@
                 else
                 {
                     <div class="cut-preview-stage">
-                        @if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
-                        {
-                            <video @ref="MoviePlayer"
-                                   class="cut-preview-video"
-                                   src="@Compose.MoviePreviewUrl"
-                                   playsinline
-                                   preload="auto"></video>
-                        }
-                        else
-                        {
-                            <video @ref="ClipPlayer"
-                                   class="cut-preview-video"
-                                   src="@_selected.PreviewUrl"
-                                   playsinline
-                                   preload="metadata"
-                                   @onloadedmetadata="OnPreviewMetadataAsync"></video>
-                        }
+                        <video @ref="MoviePlayer"
+                               class="cut-preview-video @(ShowMovie ? "" : "is-off")"
+                               src="@ActiveMovieUrl"
+                               playsinline
+                               preload="auto"></video>
+                        <video @ref="ClipPlayer"
+                               class="cut-preview-video @(ShowMovie ? "is-off" : "")"
+                               src="@_selected.PreviewUrl"
+                               playsinline
+                               preload="metadata"
+                               @onloadedmetadata="OnPreviewMetadataAsync"></video>
                         @if (ShowComposeOverlay)
                         {
                             <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">
@@ -130,8 +124,8 @@
                      PlayheadChanged="OnPlayheadAsync"
                      HasAudio="Compose.HasAudio"
                      AudioName="Compose.AudioFileName"
-                     Busy="_busy"
-                     PlayDisabled="ExportDisabled"
+                     Busy="TransportLocked"
+                     PlayDisabled="PlayDisabled"
                      OnPlay="PlayAsync"
                      OnSkipStart="SkipStartAsync"
                      OnStepBack="() => StepAsync(-5)"
@@ -154,7 +148,7 @@
             <div class="cut-actions">
                 <button type="button" class="cut-btn cut-btn-ghost" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
             </div>
-            @if (_busy && !string.IsNullOrWhiteSpace(ProgressMessage))
+            @if (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage))
             {
                 <p class="cut-muted">@ProgressText</p>
                 <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">

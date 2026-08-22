@@ -75,18 +75,24 @@
                         </div>
                         <span class="cut-tl-clip-name">@clip.Label</span>
                         <span class="cut-tl-speaker" aria-hidden="true">🔊</span>
-                        <button type="button"
-                                class="cut-tl-handle is-in"
-                                data-testid="cut-tl-handle-in"
-                                title="Trim in"
-                                @onpointerdown:stopPropagation="true"
-                                @onpointerdown="e => BeginTrimAsync(e, clip, true)"></button>
-                        <button type="button"
-                                class="cut-tl-handle is-out"
-                                data-testid="cut-tl-handle-out"
-                                title="Trim out"
-                                @onpointerdown:stopPropagation="true"
-                                @onpointerdown="e => BeginTrimAsync(e, clip, false)"></button>
+                        @if (lane.TrimIn)
+                        {
+                            <button type="button"
+                                    class="cut-tl-handle is-in"
+                                    data-testid="cut-tl-handle-in"
+                                    title="Trim in"
+                                    @onpointerdown:stopPropagation="true"
+                                    @onpointerdown="e => BeginTrimAsync(e, clip, true)"></button>
+                        }
+                        @if (lane.TrimOut)
+                        {
+                            <button type="button"
+                                    class="cut-tl-handle is-out"
+                                    data-testid="cut-tl-handle-out"
+                                    title="Trim out"
+                                    @onpointerdown:stopPropagation="true"
+                                    @onpointerdown="e => BeginTrimAsync(e, clip, false)"></button>
+                        }
                     </div>
                 }
                 @foreach (var tick in Layout.Joins)

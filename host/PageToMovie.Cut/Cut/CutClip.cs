@@ -70,6 +70,18 @@ public sealed class CutClip
         return true;
     }
 
+    public bool IsLastOfScene(IReadOnlyList<CutClip> strip)
+    {
+        for (var i = 0; i < strip.Count; i++)
+        {
+            if (!ReferenceEquals(strip[i], this))
+                continue;
+            return i == strip.Count - 1 || strip[i + 1].Scene != Scene;
+        }
+
+        return true;
+    }
+
     public bool NeedsTrim =>
         SelectedTake is { HasDuration: true } t
         && (t.MarkIn > 0.05 || t.MarkOut < t.DurationSec - 0.05);

@@ -17,6 +17,8 @@ public sealed class CutComposeService : IAsyncDisposable
     private readonly IJSRuntime _js;
     private string? _audioUrl;
     public string? MoviePreviewUrl { get; private set; }
+    public string? PrefixPreviewUrl { get; private set; }
+    public int PrefixClipCount { get; private set; }
     public bool HasCachedMoviePreview => CutComposeContract.CanReusePreview(MoviePreviewUrl);
 
     public CutComposeService(IJSRuntime js) => _js = js;
@@ -85,19 +87,44 @@ public sealed class CutComposeService : IAsyncDisposable
         return await ComposeAsync(clips, download: false, progress, cancellationToken);
     }
 
+    public async Task<string?> PreviewMovieJitAsync(
+        IReadOnlyList<CutClip> clips,
+        Action<int, string> progress,
+        Action<string, int> onPrefix,
+        CancellationToken cancellationToken = default)
+    {
+        if (HasCachedMoviePreview)
+        {
+            var cached = MoviePreviewUrl ?? "";
+            PrefixPreviewUrl = cached;
+            PrefixClipCount = clips.Count;
+            progress(100, "Ready");
+            onPrefix(cached, clips.Count);
+            return cached;
+        }
+
+        return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix);
+    }
+
     public async Task<string?> ExportMovieAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
         CancellationToken cancellationToken = default) =>
         await ComposeAsync(clips, download: true, progress, cancellationToken);
 
-    public void ClearMoviePreview() => MoviePreviewUrl = null;
+    public void ClearMoviePreview()
+    {
+        MoviePreviewUrl = null;
+        PrefixPreviewUrl = null;
+        PrefixClipCount = 0;
+    }
 
     private async Task<string?> ComposeAsync(
         IReadOnlyList<CutClip> clips,
         bool download,
         Action<int, string> progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string, int>? onPrefix = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var missing = clips.FirstOrDefault(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
@@ -107,6 +134,40 @@ public sealed class CutComposeService : IAsyncDisposable
         if (clips.Count == 0)
             throw new InvalidOperationException("No clips to export.");
 
+        var payload = BuildExportPayload(clips);
+        string method;
+        if (download)
+            method = "PageToMovieCut.exportMovieAsync";
+        else if (onPrefix is null)
+            method = "PageToMovieCut.previewMovieAsync";
+        else
+            method = "PageToMovieCut.previewMovieJitAsync";
+        var r = onPrefix is null
+            ? await InvokeComposeAsync(method, payload, new ExportProgressSink(progress), cancellationToken)
+            : await InvokeComposeAsync(
+                method,
+                payload,
+                new JitPreviewSink(progress, (url, count) =>
+                {
+                    PrefixPreviewUrl = url;
+                    PrefixClipCount = count;
+                    onPrefix(url, count);
+                }),
+                cancellationToken);
+        if (!r.Success)
+            throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
+        if (!download)
+        {
+            MoviePreviewUrl = r.Url;
+            PrefixPreviewUrl = r.Url;
+            PrefixClipCount = clips.Count;
+        }
+
+        return r.Url;
+    }
+
+    private static List<JsExportClip> BuildExportPayload(IReadOnlyList<CutClip> clips)
+    {
         var payload = new List<JsExportClip>(clips.Count);
         for (var i = 0; i < clips.Count; i++)
         {
@@ -127,15 +188,18 @@ public sealed class CutComposeService : IAsyncDisposable
             });
         }
 
-        var sink = new ExportProgressSink(progress);
+        return payload;
+    }
+
+    private async Task<JsResult> InvokeComposeAsync<T>(
+        string method,
+        List<JsExportClip> payload,
+        T sink,
+        CancellationToken cancellationToken)
+        where T : class
+    {
         using var sinkRef = DotNetObjectReference.Create(sink);
-        var method = download ? "PageToMovieCut.exportMovieAsync" : "PageToMovieCut.previewMovieAsync";
-        var r = await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
-        if (!r.Success)
-            throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
-        if (!download)
-            MoviePreviewUrl = r.Url;
-        return r.Url;
+        return await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
     }
 
     private static JsCard? CardPayload(CutClip clip, IReadOnlyList<CutClip> strip)
