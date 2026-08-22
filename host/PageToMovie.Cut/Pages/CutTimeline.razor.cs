@@ -206,47 +206,53 @@ public partial class CutTimeline
     {
         if (_drag == DragKind.None)
             return;
-        if (_drag is DragKind.TrimIn or DragKind.TrimOut && _trimClip is { } clip)
-        {
-            var dt = (e.ClientX - _dragOriginX) / _pxPerSec;
-            if (_drag == DragKind.TrimIn)
-                CutTimelineLayout.TrimIn(clip, _dragMarkIn + dt);
-            else
-                CutTimelineLayout.TrimOut(clip, _dragMarkOut + dt);
+        if (TryApplyClipTrim(e.ClientX) || TryApplyTextTrim(e.ClientX))
             return;
-        }
-
-        if (_drag is DragKind.TextIn or DragKind.TextOut && _trimText is { } text)
-        {
-            var dt = (e.ClientX - _dragOriginX) / _pxPerSec;
-            if (_drag == DragKind.TextIn)
-            {
-                if (text.Kind == CutTextKind.Title)
-                {
-                    var end = _dragTextStart + _dragTextHold;
-                    var start = Math.Max(0, _dragTextStart + dt);
-                    start = Math.Min(start, end - CutCard.MinHoldSeconds);
-                    CutTextTrack.SetStart(text, start);
-                    CutTextTrack.SetHold(text, end - start);
-                }
-                else
-                {
-                    CutTextTrack.SetHold(text, _dragTextHold - dt);
-                }
-            }
-            else
-            {
-                CutTextTrack.SetHold(text, _dragTextHold + dt);
-            }
-
-            return;
-        }
 
         var t = await TimeAtAsync(e.ClientX);
         if (_drag == DragKind.Range)
             _rangeB = t;
         else if (_drag == DragKind.Playhead)
             await SeekToAsync(t);
+    }
+
+    private bool TryApplyClipTrim(double clientX)
+    {
+        if (_drag is not (DragKind.TrimIn or DragKind.TrimOut) || _trimClip is not { } clip)
+            return false;
+        var dt = (clientX - _dragOriginX) / _pxPerSec;
+        if (_drag == DragKind.TrimIn)
+            CutTimelineLayout.TrimIn(clip, _dragMarkIn + dt);
+        else
+            CutTimelineLayout.TrimOut(clip, _dragMarkOut + dt);
+        return true;
+    }
+
+    private bool TryApplyTextTrim(double clientX)
+    {
+        if (_drag is not (DragKind.TextIn or DragKind.TextOut) || _trimText is not { } text)
+            return false;
+        var dt = (clientX - _dragOriginX) / _pxPerSec;
+        if (_drag == DragKind.TextIn)
+            ApplyTextInTrim(text, dt);
+        else
+            CutTextTrack.SetHold(text, _dragTextHold + dt);
+        return true;
+    }
+
+    private void ApplyTextInTrim(CutTextBlock text, double dt)
+    {
+        if (text.Kind != CutTextKind.Title)
+        {
+            CutTextTrack.SetHold(text, _dragTextHold - dt);
+            return;
+        }
+
+        var end = _dragTextStart + _dragTextHold;
+        var start = Math.Max(0, _dragTextStart + dt);
+        start = Math.Min(start, end - CutCard.MinHoldSeconds);
+        CutTextTrack.SetStart(text, start);
+        CutTextTrack.SetHold(text, end - start);
     }
 
     private async Task OnPointerUp(PointerEventArgs e)
@@ -289,29 +295,39 @@ public partial class CutTimeline
 
     private async Task OnKey(KeyboardEventArgs e)
     {
-        if (e.Key is "Delete" or "Backspace")
-        {
-            if (_selectedTextId is { } id)
-            {
-                foreach (var block in TextBlocks)
-                {
-                    if (block.Id != id)
-                        continue;
-                    await DeleteTextAsync(block);
-                    return;
-                }
-            }
-
-            await DeleteRangeAsync();
+        if (await TryHandleDeleteKeyAsync(e.Key))
             return;
-        }
-
         if (e.Key is "-" or "_" or "Minus" or "Subtract")
             ZoomOut();
         else if (e.Key is "+" or "=" or "Add")
             ZoomIn();
         else if (e.Key is "0" or "f" or "F")
             await FitAsync();
+    }
+
+    private async Task<bool> TryHandleDeleteKeyAsync(string key)
+    {
+        if (key is not ("Delete" or "Backspace"))
+            return false;
+        if (await TryDeleteSelectedTextAsync())
+            return true;
+        await DeleteRangeAsync();
+        return true;
+    }
+
+    private async Task<bool> TryDeleteSelectedTextAsync()
+    {
+        if (_selectedTextId is not { } id)
+            return false;
+        foreach (var block in TextBlocks)
+        {
+            if (block.Id != id)
+                continue;
+            await DeleteTextAsync(block);
+            return true;
+        }
+
+        return false;
     }
 
     private void ToggleJoinMenu(int afterIndex) =>
