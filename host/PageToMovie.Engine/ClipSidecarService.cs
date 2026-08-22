@@ -398,7 +398,7 @@ public sealed class ClipSidecarService
         && !f.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Legacy names only: not the current alias, not a stable take, not a leftover
+    /// Legacy names only: not a leftover bare alias, not a stable take, not a leftover
     /// timestamped take (those are migrated separately so they can be renumbered).
     /// </summary>
     private static bool IsConvertibleLegacyVideoFile(string f)
@@ -511,8 +511,8 @@ public sealed class ClipSidecarService
     }
 
     /// <summary>
-    /// Canonical <c>scene_SS_clip_CC.mp4</c> is the player alias — do not rename it.
-    /// If the clip has no take sidecar yet, write <c>take_01.clip.json</c>.
+    /// Leftover <c>scene_SS_clip_CC.mp4</c> is not the player file — do not rename it.
+    /// If the clip has no take sidecar yet, write <c>take_01.clip.json</c> + <c>.current.json</c>.
     /// </summary>
     private async Task<int> BackfillCanonicalTakeSidecarsAsync(string projectDir, string videoDir, CancellationToken ct)
     {

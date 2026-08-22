@@ -74,7 +74,9 @@ public class ClipDialogueVerificationTests
                   ]
                 }
                 """);
-            File.WriteAllBytes(Path.Combine(projDir, "assets", "video", "scene_01_clip_01.mp4"), new byte[2048]);
+            var videoDir = Path.Combine(projDir, "assets", "video");
+            File.WriteAllBytes(Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4"), new byte[2048]);
+            ClipSidecarService.WriteCurrentTake(videoDir, 1, 1, 1);
 
             var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = tempDir });
             var store = new ProjectStore(opts);

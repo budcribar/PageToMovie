@@ -197,7 +197,7 @@ public class ClipSidecarServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Two_generated_takes_then_promote_first_makes_it_current_and_alias()
+    public async Task Two_generated_takes_then_promote_first_makes_it_current()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
         var service = new ClipSidecarService(projects);

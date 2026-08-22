@@ -451,8 +451,8 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// One card per take sidecar (provider-hosted or local). The canonical
-    /// <c>scene_SS_clip_CC.mp4</c> is the player alias, not a separate take.
+    /// One card per take sidecar (provider-hosted or local). A leftover
+    /// <c>scene_SS_clip_CC.mp4</c> is not a take and not the player file.
     /// </summary>
     private static void AddTakeSidecarVersions(List<ClipVersionItem> result, string videoDir, int scene, int clip)
     {
@@ -497,8 +497,8 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Legacy trees with only the player alias (no <c>_take_NN</c> sidecars) still
-    /// need one current card so compare/promote keep working.
+    /// Legacy trees with only a leftover alias (no <c>_take_NN</c> sidecars) still
+    /// need one card so compare/promote can surface the leftover.
     /// </summary>
     private static void AddCanonicalAliasIfNoTakes(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
     {
