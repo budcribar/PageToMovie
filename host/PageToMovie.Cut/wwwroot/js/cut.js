@@ -388,6 +388,158 @@
         return (typeof d === "number" && Number.isFinite(d) && d > 0) ? d : 0;
     };
 
+    cut.probeUrlDuration = function (url) {
+        return new Promise(function (resolve) {
+            if (!url) {
+                resolve(0);
+                return;
+            }
+            const v = document.createElement("video");
+            v.preload = "metadata";
+            v.muted = true;
+            const done = function (d) {
+                try {
+                    v.removeAttribute("src");
+                    v.load();
+                } catch (err) {
+                    console.debug("Cut: probe cleanup", err);
+                }
+                resolve(d);
+            };
+            v.onloadedmetadata = function () {
+                const d = v.duration;
+                done((typeof d === "number" && Number.isFinite(d) && d > 0) ? d : 0);
+            };
+            v.onerror = function () { done(0); };
+            setTimeout(function () { done(0); }, 8000);
+            v.src = url;
+        });
+    };
+
+    cut.seekMedia = function (el, seconds) {
+        if (!el) return;
+        const t = Number(seconds);
+        if (!Number.isFinite(t) || t < 0) return;
+        try {
+            el.currentTime = t;
+        } catch (err) {
+            console.debug("Cut: seek", err);
+        }
+    };
+
+    cut.bindTimeUpdate = function (el, dotNetRef) {
+        if (!el || !dotNetRef) return { success: false };
+        if (el._cutTimeHandler)
+            el.removeEventListener("timeupdate", el._cutTimeHandler);
+        el._cutTimeHandler = function () {
+            try {
+                dotNetRef.invokeMethodAsync("OnTime", el.currentTime || 0);
+            } catch (err) {
+                console.debug("Cut: timeupdate sink gone", err);
+            }
+        };
+        el.addEventListener("timeupdate", el._cutTimeHandler);
+        return { success: true };
+    };
+
+    cut.elementRect = function (el) {
+        if (!el || typeof el.getBoundingClientRect !== "function")
+            return { x: 0, y: 0, width: 0, height: 0 };
+        const r = el.getBoundingClientRect();
+        return { x: r.left, y: r.top, width: r.width, height: r.height };
+    };
+
+    cut.setPointerCapture = function (el, pointerId) {
+        if (!el || typeof el.setPointerCapture !== "function") return;
+        try {
+            el.setPointerCapture(pointerId);
+        } catch (err) {
+            console.debug("Cut: pointer capture", err);
+        }
+    };
+
+    function waitSeeked(video, t) {
+        return new Promise(function (resolve) {
+            const finish = function () {
+                video.removeEventListener("seeked", onSeeked);
+                video.removeEventListener("error", onErr);
+                clearTimeout(timer);
+                resolve();
+            };
+            const onSeeked = function () { finish(); };
+            const onErr = function () { finish(); };
+            const timer = setTimeout(finish, 900);
+            video.addEventListener("seeked", onSeeked);
+            video.addEventListener("error", onErr);
+            try {
+                video.currentTime = t;
+            } catch (err) {
+                finish();
+            }
+        });
+    }
+
+    cut.captureFilmstrip = async function (url, startSec, endSec, count) {
+        if (!url)
+            return { success: false, frames: [] };
+        const n = Math.max(1, Math.min(10, Number(count) || 4));
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "auto";
+        video.playsInline = true;
+        const frames = [];
+        try {
+            await new Promise(function (resolve, reject) {
+                video.onloadeddata = function () { resolve(); };
+                video.onerror = function () { reject(new Error("filmstrip load")); };
+                setTimeout(function () { reject(new Error("filmstrip timeout")); }, 8000);
+                video.src = url;
+            });
+            const duration = (typeof video.duration === "number" && Number.isFinite(video.duration))
+                ? video.duration
+                : 0;
+            let start = Number(startSec);
+            let end = Number(endSec);
+            if (!Number.isFinite(start) || start < 0) start = 0;
+            if (!Number.isFinite(end) || end <= start)
+                end = duration > start ? duration : start + 0.1;
+            if (duration > 0) {
+                if (start > duration) start = Math.max(0, duration - 0.05);
+                if (end > duration) end = duration;
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = 96;
+            canvas.height = 54;
+            const ctx = canvas.getContext("2d");
+            const span = Math.max(0.05, end - start);
+            for (let i = 0; i < n; i++) {
+                const t = start + ((i + 0.5) / n) * span;
+                await waitSeeked(video, t);
+                if (ctx) {
+                    ctx.fillStyle = "#111";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    } catch (err) {
+                        console.debug("Cut: filmstrip frame", err);
+                    }
+                    frames.push(canvas.toDataURL("image/jpeg", 0.62));
+                }
+            }
+            return { success: frames.length > 0, frames: frames };
+        } catch (err) {
+            console.debug("Cut: filmstrip", err);
+            return { success: false, frames: frames };
+        } finally {
+            try {
+                video.removeAttribute("src");
+                video.load();
+            } catch (err) {
+                console.debug("Cut: filmstrip cleanup", err);
+            }
+        }
+    };
+
     cut.playVideo = function (el) {
         if (!el || typeof el.play !== "function") return;
         const playing = el.play();

@@ -2,7 +2,7 @@
 
 Standalone finish editor. Film already owns order, deletes, and current takes. Cut reads that folder and finishes the movie (trim, transitions, music, cards, export). It is **not** wired into Film Studio yet.
 
-**1.0 (finish, not assembly):** [CUT-1.0.md](CUT-1.0.md) — trim, range-delete, Fountain joins, scene cards, music, save/reload. Do not stack two agents on the same slice. Do not add reorder / whole-clip delete / take-picking product work.
+**1.0 (finish, not assembly):** [CUT-1.0.md](CUT-1.0.md) — Clipchamp-style timeline, hop-aware in/out, range-delete, Fountain join ticks, scene cards, music, save/reload. Do not stack two agents on the same slice. Do not add reorder / whole-clip delete / take-picking product work.
 
 Open this folder’s solution — do **not** add it to `host/PageToMovie.slnx`.
 No Engine, API, Railway, catalog, or auth. Clip bytes stay on the client.
@@ -41,8 +41,8 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
 
 1. Pick a local folder (or a handful of MP4s).
 2. Load current takes from `_take_NN.mp4` + `.current.json` in Film scene/clip order. Ignore alias MP4s.
-3. Per-clip preview, in/out, and **range-delete** (gap closes; not whole-clip delete).
-4. Joins: Fountain sidecar when present; same-scene cut / scene-change dissolve; UI override cut / dissolve / dip.
+3. Timeline: filmstrip clips in Film order, white trim handles, purple ruler range-delete (gap closes; not whole-clip delete). Hop fields seed in/out so an extended take does not play from t=0.
+4. Join ticks between clips (Cut / Dissolve / Dip to black / Fade to white / Cut to black). Fountain sidecar when present; `cut.project.json` can override.
 5. Optional scene card (~2s, dip) and one background music track (8 MiB cap).
 6. **Play** stitches that finish (ffmpeg.wasm) and plays in-page. **Make movie** downloads `movie.mp4`.
 7. **Save cut** writes `cut.project.json` and reloads it with the folder.

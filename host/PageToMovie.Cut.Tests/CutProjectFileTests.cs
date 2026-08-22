@@ -12,7 +12,7 @@ public class CutProjectFileTests
         clip.ApplyInOut(0.5, 8);
         clip.SetDuration(10);
         Assert.True(CutRangeDelete.TryAdd(clip.RangeDeletes, 2, 3, clip.MarkIn, clip.MarkOut, out _));
-        clip.JoinOverride = CutJoinKind.Dissolve;
+        clip.JoinOverride = CutJoinKind.FadeWhite;
         clip.FountainTransition = "DISSOLVE TO:";
         clip.Card.Enabled = true;
         clip.Card.Text = "Chapter 1";
@@ -31,10 +31,28 @@ public class CutProjectFileTests
         var del = Assert.Single(reload.RangeDeletes);
         Assert.Equal(2, del.Start);
         Assert.Equal(3, del.End);
-        Assert.Equal(CutJoinKind.Dissolve, reload.JoinOverride);
+        Assert.Equal(CutJoinKind.FadeWhite, reload.JoinOverride);
         Assert.Equal("DISSOLVE TO:", reload.FountainTransition);
         Assert.True(reload.Card.Enabled);
         Assert.Equal("Chapter 1", reload.Card.Text);
+    }
+
+    [Fact]
+    public void Saved_marks_override_hop_seed()
+    {
+        var clip = NewClip(1, 2);
+        clip.SelectedTake!.SetHop(new CutHop(5, 5, 10, 5));
+        clip.SetDuration(10);
+        clip.ApplyInOut(6, 9);
+        var json = CutProjectFile.Serialize([clip], null);
+
+        var reload = NewClip(1, 2);
+        reload.SelectedTake!.SetHop(new CutHop(5, 5, 10, 5));
+        reload.SetDuration(10);
+        Assert.Equal(5, reload.MarkIn);
+        Assert.True(CutProjectFile.TryApply([reload], json, out _));
+        Assert.Equal(6, reload.MarkIn);
+        Assert.Equal(9, reload.MarkOut);
     }
 
     [Fact]

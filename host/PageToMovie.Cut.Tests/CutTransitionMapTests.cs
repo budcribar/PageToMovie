@@ -35,10 +35,12 @@ public class CutTransitionMapTests
         Assert.Equal(CutJoinKind.Cut, CutTransitionMap.Resolve("CUT TO:", sceneChanged: true, null));
 
     [Fact]
-    public void Ui_override_is_cut_dissolve_or_dip()
+    public void Ui_override_wins_including_fade_white_and_cut_to_black()
     {
         Assert.Equal(CutJoinKind.Dip, CutTransitionMap.Resolve("DISSOLVE TO:", true, CutJoinKind.Dip));
         Assert.Equal(CutJoinKind.Dissolve, CutTransitionMap.Resolve("CUT TO:", true, CutJoinKind.Dissolve));
+        Assert.Equal(CutJoinKind.FadeWhite, CutTransitionMap.Resolve("CUT TO:", true, CutJoinKind.FadeWhite));
+        Assert.Equal(CutJoinKind.CutToBlack, CutTransitionMap.Resolve("DISSOLVE TO:", true, CutJoinKind.CutToBlack));
         Assert.Equal(CutJoinKind.FadeIn, CutTransitionMap.Resolve("FADE IN:", false, CutJoinKind.Unset));
     }
 

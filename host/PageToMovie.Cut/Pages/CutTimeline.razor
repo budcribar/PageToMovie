@@ -1,0 +1,125 @@
+<div class="cut-tl" data-testid="cut-timeline" tabindex="0" @onkeydown="OnKey">
+    <div class="cut-tl-transport">
+        <button type="button" class="cut-tl-icon" title="Skip to start" disabled="@Busy" @onclick="OnSkipStart">⏮</button>
+        <button type="button" class="cut-tl-icon" title="Back 5s" disabled="@Busy" @onclick="OnStepBack">⏪</button>
+        <button type="button" class="cut-tl-play" title="Play" disabled="@PlayDisabled" @onclick="OnPlay">▶</button>
+        <button type="button" class="cut-tl-icon" title="Forward 5s" disabled="@Busy" @onclick="OnStepForward">⏩</button>
+        <span class="cut-tl-clock">@PlayheadClock / @TotalClock</span>
+        @if (HasRange)
+        {
+            <button type="button" class="cut-btn cut-btn-ghost cut-tl-del" disabled="@Busy" @onclick="DeleteRangeAsync">
+                Delete @CutTimelineLayout.Clock(RangeHi - RangeLo)
+            </button>
+        }
+    </div>
+
+    <div class="cut-tl-scroll" @ref="_scroll">
+        <div class="cut-tl-inner"
+             @ref="_inner"
+             style="width: @(Math.Max(Layout.WidthPx, 240))px"
+             @onpointermove="OnPointerMove"
+             @onpointerup="OnPointerUp">
+            <div class="cut-tl-ruler" data-testid="cut-tl-ruler" @onpointerdown="BeginRulerAsync">
+                @foreach (var mark in Layout.Ruler)
+                {
+                    <span class="cut-tl-tick @(mark.Major ? "is-major" : "")" style="left: @(mark.Px)px">
+                        @if (mark.Major)
+                        {
+                            <span>@mark.Label</span>
+                        }
+                    </span>
+                }
+                @if (HasRange)
+                {
+                    <div class="cut-tl-range" style="left: @(RangeLo * _pxPerSec)px; width: @(Math.Max(RangePx, 2))px">
+                        <span class="cut-tl-range-pill">@CutTimelineLayout.Clock(RangeHi - RangeLo)</span>
+                    </div>
+                }
+                <button type="button"
+                        class="cut-tl-playhead"
+                        style="left: @(PlayheadSec * _pxPerSec)px"
+                        title="Playhead"
+                        @onpointerdown:stopPropagation="true"
+                        @onpointerdown="BeginPlayheadAsync"></button>
+            </div>
+
+            <div class="cut-tl-video" data-testid="cut-tl-video">
+                @foreach (var lane in Layout.Lanes)
+                {
+                    var clip = lane.Clip;
+                    <div class="cut-tl-clip @(clip == Selected ? "is-selected" : "") @(clip.Missing ? "is-missing" : "")"
+                         style="left: @(lane.StartPx)px; width: @(Math.Max(lane.WidthPx, 28))px"
+                         data-testid="cut-tl-clip"
+                         title="@clip.FileName"
+                         @onclick="() => SelectClip(clip)">
+                        <div class="cut-tl-film">
+                            @if (clip.Filmstrip.Count > 0)
+                            {
+                                @foreach (var frame in clip.Filmstrip)
+                                {
+                                    <img src="@frame" alt="" />
+                                }
+                            }
+                        </div>
+                        <span class="cut-tl-clip-name">@clip.FileName</span>
+                        <span class="cut-tl-speaker" aria-hidden="true">🔊</span>
+                        <button type="button"
+                                class="cut-tl-handle is-in"
+                                data-testid="cut-tl-handle-in"
+                                title="Trim in"
+                                @onpointerdown:stopPropagation="true"
+                                @onpointerdown="e => BeginTrimAsync(e, clip, true)"></button>
+                        <button type="button"
+                                class="cut-tl-handle is-out"
+                                data-testid="cut-tl-handle-out"
+                                title="Trim out"
+                                @onpointerdown:stopPropagation="true"
+                                @onpointerdown="e => BeginTrimAsync(e, clip, false)"></button>
+                    </div>
+                }
+                @foreach (var tick in Layout.Joins)
+                {
+                    <div class="cut-tl-join-wrap" style="left: @(tick.AtPx)px">
+                        <button type="button"
+                                class="@JoinClass(tick)"
+                                data-testid="cut-tl-join"
+                                title="@CutTransitionMap.TickLabel(tick.Kind)"
+                                @onclick="() => ToggleJoinMenu(tick.AfterIndex)">
+                            @CutTransitionMap.TickLabel(tick.Kind)
+                        </button>
+                        @if (_joinMenu == tick.AfterIndex)
+                        {
+                            <div class="cut-tl-join-menu">
+                                @foreach (var kind in CutTimelineLayout.EditableJoins)
+                                {
+                                    <button type="button"
+                                            class="@(kind == tick.Kind ? "is-on" : "")"
+                                            @onclick="() => SetJoinAsync(tick.AfterIndex, kind)">
+                                        @CutTransitionMap.TickLabel(kind)
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="cut-tl-audio" data-testid="cut-tl-audio">
+                @if (HasAudio)
+                {
+                    <div class="cut-tl-music" style="width: @(Math.Max(Layout.WidthPx, 80))px">@AudioName</div>
+                }
+                else
+                {
+                    <span class="cut-tl-audio-empty">+ Add audio</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="cut-tl-zoom">
+        <button type="button" class="cut-tl-icon" title="Zoom out" @onclick="ZoomOut">−</button>
+        <button type="button" class="cut-tl-icon" title="Zoom in" @onclick="ZoomIn">+</button>
+        <button type="button" class="cut-tl-icon" title="Fit" @onclick="FitAsync">⟷</button>
+    </div>
+</div>

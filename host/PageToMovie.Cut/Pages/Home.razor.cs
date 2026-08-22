@@ -7,7 +7,7 @@ using PageToMovie.Cut.Services;
 
 namespace PageToMovie.Cut.Pages;
 
-public partial class Home
+public partial class Home : IAsyncDisposable
 {
     [Inject] private IJSRuntime? Js { get; set; }
 
@@ -16,46 +16,26 @@ public partial class Home
     private CutClip? _selected;
     private bool _busy;
     private string? _error;
+    private double _playhead;
+    private DotNetObjectReference<MediaTimeSink>? _timeRef;
     internal int ProgressPercent { get; private set; }
     internal string? ProgressMessage { get; private set; }
     internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
-
-    private double _spanFrom;
-    private double _spanTo;
     internal string? SavedNote { get; private set; }
 
-    private double RangeMax => _selected is { HasDuration: true } ? _selected.DurationSec : 1;
     private bool ExportDisabled =>
         _busy
         || Folder.Clips.Count == 0
         || Folder.Clips.Any(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
 
-    private CutClip? NextAfterSelected
-    {
-        get
-        {
-            if (_selected is null)
-                return null;
-            for (var i = 0; i < Folder.Clips.Count - 1; i++)
-            {
-                if (ReferenceEquals(Folder.Clips[i], _selected))
-                    return Folder.Clips[i + 1];
-            }
-
-            return null;
-        }
-    }
-
     private bool ShowCard => _selected is not null && _selected.IsFirstOfScene(Folder.Clips);
-    private CutJoinKind ResolvedJoin =>
-        _selected is null ? CutJoinKind.Cut : _selected.JoinToNext(NextAfterSelected);
 
     private void Select(CutClip clip)
     {
         _selected = clip;
         SavedNote = null;
-        SeedSpanDefaults();
         _error = clip.Missing ? (clip.MissingReason ?? $"Selected take file is missing: {clip.Label}.") : null;
+        _ = SeekPreviewToInAsync();
     }
 
     private async Task SelectTakeAsync(int take)
@@ -65,6 +45,8 @@ public partial class Home
         await Folder.SetCurrentTakeAsync(_selected, take);
         Compose.ClearMoviePreview();
         _error = _selected.Missing ? (_selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.") : Folder.FolderError;
+        await ProbeAndStripTakeAsync(_selected.SelectedTake);
+        await SeekPreviewToInAsync();
     }
 
     private async Task PickFolderAsync()
@@ -111,25 +93,70 @@ public partial class Home
         SavedNote = null;
         _error = Folder.FolderError;
         _selected = Folder.Clips.FirstOrDefault();
-        SeedSpanDefaults();
+        _playhead = 0;
         if (_selected?.Missing == true && string.IsNullOrWhiteSpace(_error))
             _error = _selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.";
         if (!string.IsNullOrWhiteSpace(Folder.PendingMusicFileName))
             await Compose.TrySetAudioFromFolderAsync(Folder.PendingMusicFileName);
+        await ProbeAllTakesAsync();
+        await SeekPreviewToInAsync();
+        _ = CaptureAllFilmstripsAsync();
     }
 
-    private void SeedSpanDefaults()
+    private async Task ProbeAllTakesAsync()
     {
-        if (_selected is not { HasDuration: true } c)
+        foreach (var clip in Folder.Clips)
+            await ProbeAndStripTakeAsync(clip.SelectedTake, captureStrip: false);
+    }
+
+    private async Task CaptureAllFilmstripsAsync()
+    {
+        foreach (var clip in Folder.Clips)
         {
-            _spanFrom = 0;
-            _spanTo = 0;
+            await CaptureFilmstripAsync(clip.SelectedTake);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ProbeAndStripTakeAsync(CutTake? take, bool captureStrip = true)
+    {
+        if (take is null || take.Missing || string.IsNullOrWhiteSpace(take.PreviewUrl) || Js is null)
             return;
+        try
+        {
+            var seconds = await Js.InvokeAsync<double>("PageToMovieCut.probeUrlDuration", take.PreviewUrl);
+            take.SetDuration(seconds);
+        }
+        catch (JSException)
+        {
+            // probe is best-effort; metadata on the preview player still applies hop
         }
 
-        var mid = (c.MarkIn + c.MarkOut) / 2;
-        _spanFrom = Math.Max(c.MarkIn, mid - 0.25);
-        _spanTo = Math.Min(c.MarkOut, mid + 0.25);
+        if (captureStrip)
+            await CaptureFilmstripAsync(take);
+    }
+
+    private async Task CaptureFilmstripAsync(CutTake? take)
+    {
+        if (take is null || take.Missing || string.IsNullOrWhiteSpace(take.PreviewUrl) || Js is null)
+            return;
+        var start = take.MarkIn;
+        var stop = take.MarkOut > take.MarkIn ? take.MarkOut : take.DurationSec;
+        if (stop <= start)
+            return;
+        var count = Math.Clamp((int)Math.Round((stop - start) / 0.85), 2, 8);
+        try
+        {
+            var strip = await Js.InvokeAsync<JsFilmstrip>(
+                "PageToMovieCut.captureFilmstrip", take.PreviewUrl, start, stop, count);
+            take.Filmstrip.Clear();
+            if (strip.Success)
+                take.Filmstrip.AddRange(strip.Frames);
+        }
+        catch (JSException)
+        {
+            // thumbs are optional
+        }
     }
 
     private async Task OnPreviewMetadataAsync()
@@ -138,25 +165,51 @@ public partial class Home
             return;
         var seconds = await Compose.ReadMediaDurationAsync(ClipPlayer);
         _selected.SetDuration(seconds);
-        SeedSpanDefaults();
+        await SeekPreviewToInAsync();
     }
 
-    private void SetIn(object? value)
+    private async Task SeekPreviewToInAsync()
     {
-        if (_selected is null || !TryParseSec(value, out var seconds))
+        if (Js is null || _selected is null || _selected.Missing)
             return;
-        _selected.ApplyInOut(seconds, _selected.MarkOut);
-        Compose.ClearMoviePreview();
-        SavedNote = null;
+        try
+        {
+            await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", ClipPlayer, _selected.MarkIn);
+        }
+        catch (JSException)
+        {
+            // player may not be mounted yet
+        }
     }
 
-    private void SetOut(object? value)
+    private async Task OnPlayheadAsync(double timelineSec)
     {
-        if (_selected is null || !TryParseSec(value, out var seconds))
+        _playhead = Math.Max(0, timelineSec);
+        if (Js is null)
             return;
-        _selected.ApplyInOut(_selected.MarkIn, seconds);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
+            {
+                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", MoviePlayer, _playhead);
+                return;
+            }
+
+            if (CutTimelineLayout.HitTest(Folder.Clips, _playhead) is { } hit && hit.Clip == _selected)
+                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", ClipPlayer, hit.LocalSec);
+        }
+        catch (JSException)
+        {
+            // seek is best-effort while the player remounts
+        }
+    }
+
+    private void OnTimelineEdited()
+    {
         Compose.ClearMoviePreview();
         SavedNote = null;
+        if (_selected?.SelectedTake is { } take)
+            _ = CaptureFilmstripAsync(take);
     }
 
     private async Task OnAudioAsync(InputFileChangeEventArgs e)
@@ -196,7 +249,17 @@ public partial class Home
             ProgressMessage = "Playing";
             await InvokeAsync(StateHasChanged);
             if (Js is not null)
+            {
+                DisposeTimeSink();
+                _timeRef = DotNetObjectReference.Create(new MediaTimeSink(sec =>
+                {
+                    _playhead = sec;
+                    _ = InvokeAsync(StateHasChanged);
+                }));
+                await Js.InvokeVoidAsync("PageToMovieCut.bindTimeUpdate", MoviePlayer, _timeRef);
+                await Js.InvokeVoidAsync("PageToMovieCut.seekMedia", MoviePlayer, _playhead);
                 await Js.InvokeVoidAsync("PageToMovieCut.playVideo", MoviePlayer);
+            }
         }
         catch (Exception ex)
         {
@@ -207,6 +270,11 @@ public partial class Home
             _busy = false;
         }
     }
+
+    private async Task SkipStartAsync() => await OnPlayheadAsync(0);
+
+    private async Task StepAsync(double delta) =>
+        await OnPlayheadAsync(Math.Max(0, _playhead + delta));
 
     private async Task ExportAsync()
     {
@@ -239,54 +307,9 @@ public partial class Home
     private static string FormatSec(double seconds) =>
         seconds.ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static bool TryParseSec(object? value, out double seconds)
-    {
-        seconds = 0;
-        if (value is null)
-            return false;
-        return double.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture),
-            NumberStyles.Float, CultureInfo.InvariantCulture, out seconds);
-    }
-
-    private void SetSpanFrom(object? value)
-    {
-        if (TryParseSec(value, out var seconds))
-            _spanFrom = seconds;
-    }
-
-    private void SetSpanTo(object? value)
-    {
-        if (TryParseSec(value, out var seconds))
-            _spanTo = seconds;
-    }
-
-    private void AddRangeDelete()
-    {
-        if (_selected is null)
-            return;
-        _error = null;
-        if (!CutRangeDelete.TryAdd(_selected.RangeDeletes, _spanFrom, _spanTo, _selected.MarkIn, _selected.MarkOut, out _))
-        {
-            _error = "That span is too small or would remove the whole clip.";
-            return;
-        }
-
-        Compose.ClearMoviePreview();
-        SavedNote = null;
-    }
-
     private void RemoveRangeDelete(CutRangeSpan span)
     {
         _selected?.RangeDeletes.Remove(span);
-        Compose.ClearMoviePreview();
-        SavedNote = null;
-    }
-
-    private void SetJoin(CutJoinKind kind)
-    {
-        if (_selected is null)
-            return;
-        _selected.JoinOverride = kind;
         Compose.ClearMoviePreview();
         SavedNote = null;
     }
@@ -327,5 +350,17 @@ public partial class Home
         }
 
         SavedNote = "Saved cut.project.json";
+    }
+
+    private void DisposeTimeSink()
+    {
+        _timeRef?.Dispose();
+        _timeRef = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        DisposeTimeSink();
+        return ValueTask.CompletedTask;
     }
 }

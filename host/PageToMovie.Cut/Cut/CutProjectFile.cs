@@ -95,7 +95,10 @@ public static class CutProjectFile
             {
                 "cut" => CutJoinKind.Cut,
                 "dissolve" => CutJoinKind.Dissolve,
-                "dip" => CutJoinKind.Dip,
+                "dip" or "fadeout" => CutJoinKind.Dip,
+                "fadein" => CutJoinKind.FadeIn,
+                "fadewhite" => CutJoinKind.FadeWhite,
+                "cuttoblack" => CutJoinKind.CutToBlack,
                 _ => null,
             };
 

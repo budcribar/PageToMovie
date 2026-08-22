@@ -44,6 +44,8 @@ public sealed class CutClip
     public double MarkIn => SelectedTake?.MarkIn ?? 0;
     public double MarkOut => SelectedTake?.MarkOut ?? 0;
     public bool HasDuration => SelectedTake?.HasDuration ?? false;
+    public IReadOnlyList<string> Filmstrip => SelectedTake?.Filmstrip ?? [];
+    public double SlicedDurationSec => CutTimelineLayout.SlicedSeconds(this);
 
     public List<CutRangeSpan> RangeDeletes { get; } = [];
     public CutJoinKind? JoinOverride { get; set; }
