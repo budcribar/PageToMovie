@@ -557,23 +557,40 @@ public sealed partial class ProjectStore
         {
             if (!Directory.Exists(sDir)) continue;
             foreach (var mp4 in Directory.EnumerateFiles(sDir, $"{prefix}*.mp4"))
-            {
-                if (string.Equals(mp4, activeMp4, StringComparison.OrdinalIgnoreCase)) continue;
-                var stem = ClipTakeNaming.ClipStem(Path.GetFileName(mp4));
-                if (string.IsNullOrEmpty(stem) || !knownStems.Add(stem))
-                    continue;
-                var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
-                if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
-                var fi = new FileInfo(mp4);
-                var take = ClipTakeNaming.ResolveTakeNumber(Path.GetFileName(mp4), ReadSidecarTakeField(sidecar));
-                var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
-                if (string.IsNullOrEmpty(item.RelativePath))
-                    item.RelativePath = Path.GetFileName(sDir).Equals(StoreLit.History, StringComparison.OrdinalIgnoreCase)
-                        ? $"{ClipTakeNaming.AssetsVideoPrefix}/{StoreLit.History}/{Path.GetFileName(mp4)}"
-                        : $"{ClipTakeNaming.AssetsVideoPrefix}/{Path.GetFileName(mp4)}";
-                result.Add(item);
-            }
+                TryAddHistoricalMp4Version(result, knownStems, sDir, mp4, activeMp4, scene, clip);
         }
+    }
+
+    private static void TryAddHistoricalMp4Version(
+        List<ClipVersionItem> result, HashSet<string> knownStems, string searchDir, string mp4,
+        string activeMp4, int scene, int clip)
+    {
+        if (string.Equals(mp4, activeMp4, StringComparison.OrdinalIgnoreCase))
+            return;
+        var stem = ClipTakeNaming.ClipStem(Path.GetFileName(mp4));
+        if (string.IsNullOrEmpty(stem) || !knownStems.Add(stem))
+            return;
+        var sidecar = ResolveHistoricalSidecarPath(mp4);
+        var fi = new FileInfo(mp4);
+        var take = ClipTakeNaming.ResolveTakeNumber(Path.GetFileName(mp4), ReadSidecarTakeField(sidecar));
+        var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
+        if (string.IsNullOrEmpty(item.RelativePath))
+            item.RelativePath = HistoricalClipRelativePath(searchDir, mp4);
+        result.Add(item);
+    }
+
+    private static string ResolveHistoricalSidecarPath(string mp4)
+    {
+        var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
+        return File.Exists(sidecar) ? sidecar : Path.ChangeExtension(mp4, ".meta.json");
+    }
+
+    private static string HistoricalClipRelativePath(string searchDir, string mp4)
+    {
+        var fileName = Path.GetFileName(mp4);
+        return Path.GetFileName(searchDir).Equals(StoreLit.History, StringComparison.OrdinalIgnoreCase)
+            ? $"{ClipTakeNaming.AssetsVideoPrefix}/{StoreLit.History}/{fileName}"
+            : $"{ClipTakeNaming.AssetsVideoPrefix}/{fileName}";
     }
 
     private async Task MergeRegisteredClipVersionsAsync(
@@ -638,45 +655,61 @@ public sealed partial class ProjectStore
         if (target is null || target.IsCurrent) return false;
 
         var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
-        var targetMp4Path = Path.Combine(videoDir, target.Mp4FileName);
-        if (!File.Exists(targetMp4Path))
-        {
-            targetMp4Path = Path.Combine(videoDir, StoreLit.History, target.Mp4FileName);
-        }
-
-        var hasLocalTakeMp4 = File.Exists(targetMp4Path);
-        var hasProviderCopy = !string.IsNullOrWhiteSpace(target.SourceUrl)
-            || !string.IsNullOrWhiteSpace(target.SourceFileId);
-        if (!hasLocalTakeMp4 && !hasProviderCopy)
+        var (canPromote, targetMp4Path, hasLocalTakeMp4) = ResolvePromoteTakeSource(videoDir, target);
+        if (!canPromote)
             return false;
 
-        var activeMp4Path = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
-
         if (hasLocalTakeMp4)
-        {
-            if (File.Exists(activeMp4Path))
-            {
-                var historyDir = Path.Combine(videoDir, StoreLit.History);
-                Directory.CreateDirectory(historyDir);
-                var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-                try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
-            }
-
-            File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
-        }
+            CopyLocalTakeToActiveClip(videoDir, scene, clip, targetMp4Path);
 
         ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, Math.Max(1, target.Take));
-
-        if (!string.IsNullOrWhiteSpace(target.VisualPrompt))
-        {
-            try { UpdateClipVisualPrompt(projectId, scene, clip, target.VisualPrompt); } catch { /* prompt restore is best-effort */ }
-        }
+        TryRestoreClipVisualPrompt(projectId, scene, clip, target.VisualPrompt);
 
         InvalidateSceneListCache(projectId);
         var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
         TriggerAutoGitCommit(projectId, $"Restored clip S{scene:D2}C{clip:D2} to version {target.Mp4FileName}", who);
         return true;
+    }
+
+    /// <summary>
+    /// Local take bytes (video dir or history) or a provider pointer — never the app server as storage.
+    /// </summary>
+    private static (bool CanPromote, string TargetMp4Path, bool HasLocalTakeMp4) ResolvePromoteTakeSource(
+        string videoDir, ClipVersionItem target)
+    {
+        var targetMp4Path = Path.Combine(videoDir, target.Mp4FileName);
+        if (!File.Exists(targetMp4Path))
+            targetMp4Path = Path.Combine(videoDir, StoreLit.History, target.Mp4FileName);
+
+        var hasLocalTakeMp4 = File.Exists(targetMp4Path);
+        var hasProviderCopy = HasProviderClipCopy(target);
+        return (hasLocalTakeMp4 || hasProviderCopy, targetMp4Path, hasLocalTakeMp4);
+    }
+
+    private static bool HasProviderClipCopy(ClipVersionItem target) =>
+        !string.IsNullOrWhiteSpace(target.SourceUrl)
+        || !string.IsNullOrWhiteSpace(target.SourceFileId);
+
+    private static void CopyLocalTakeToActiveClip(string videoDir, int scene, int clip, string targetMp4Path)
+    {
+        var activeMp4Path = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        if (File.Exists(activeMp4Path))
+        {
+            var historyDir = Path.Combine(videoDir, StoreLit.History);
+            Directory.CreateDirectory(historyDir);
+            var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
+            try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
+        }
+
+        File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
+    }
+
+    private void TryRestoreClipVisualPrompt(string projectId, int scene, int clip, string? visualPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(visualPrompt))
+            return;
+        try { UpdateClipVisualPrompt(projectId, scene, clip, visualPrompt); } catch { /* prompt restore is best-effort */ }
     }
 
     /// <summary>
