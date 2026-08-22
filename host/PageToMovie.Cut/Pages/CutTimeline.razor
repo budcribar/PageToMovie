@@ -129,37 +129,39 @@
         </div>
     </div>
 
-    <div class="cut-tl-zoom" data-testid="cut-tl-zoom">
-        <button type="button" class="cut-tl-icon" title="Zoom out" data-testid="cut-tl-zoom-out" @onclick="ZoomOut">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8" />
-            </svg>
-        </button>
-        <button type="button" class="cut-tl-icon" title="Zoom in" data-testid="cut-tl-zoom-in" @onclick="ZoomIn">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8M10.5 7.6v5.8" />
-            </svg>
-        </button>
-        <button type="button" class="cut-tl-icon" title="Fit timeline" data-testid="cut-tl-fit" @onclick="FitAsync">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M3 5h2v14H3V5zm16 0h2v14h-2V5z" />
-                <path fill="currentColor" d="M8.2 11.1h7.6v1.8H8.2z" />
-                <path fill="currentColor" d="M9.4 7.8 5.8 12l3.6 4.2V7.8zm5.2 0v8.4L18.2 12 14.6 7.8z" />
-            </svg>
-        </button>
-        <input type="range"
-               class="cut-tl-zoom-slider"
-               min="@CutTimelineLayout.MinPxPerSec"
-               max="@CutTimelineLayout.MaxPxPerSec"
-               step="1"
-               value="@_pxPerSec"
-               title="Zoom"
-               aria-label="Zoom"
-               data-testid="cut-tl-zoom-slider"
-               @oninput="OnZoomSlider" />
+    <div class="cut-tl-chrome">
+        <div class="cut-tl-zoom" data-testid="cut-tl-zoom">
+            <button type="button" class="cut-tl-icon" title="Zoom out" data-testid="cut-tl-zoom-out" @onclick="ZoomOut">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8" />
+                </svg>
+            </button>
+            <button type="button" class="cut-tl-icon" title="Zoom in" data-testid="cut-tl-zoom-in" @onclick="ZoomIn">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" stroke-width="2" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M15.3 15.3 21 21" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M7.6 10.5h5.8M10.5 7.6v5.8" />
+                </svg>
+            </button>
+            <button type="button" class="cut-tl-icon" title="Fit timeline" data-testid="cut-tl-fit" @onclick="FitAsync">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M3 5h2v14H3V5zm16 0h2v14h-2V5z" />
+                    <path fill="currentColor" d="M8.2 11.1h7.6v1.8H8.2z" />
+                    <path fill="currentColor" d="M9.4 7.8 5.8 12l3.6 4.2V7.8zm5.2 0v8.4L18.2 12 14.6 7.8z" />
+                </svg>
+            </button>
+            <input type="range"
+                   class="cut-tl-zoom-slider"
+                   min="@CutTimelineLayout.MinPxPerSec"
+                   max="@CutTimelineLayout.MaxPxPerSec"
+                   step="1"
+                   value="@_pxPerSec"
+                   title="Zoom"
+                   aria-label="Zoom"
+                   data-testid="cut-tl-zoom-slider"
+                   @oninput="OnZoomSlider" />
+        </div>
     </div>
 </div>

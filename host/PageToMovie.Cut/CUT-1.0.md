@@ -17,7 +17,7 @@ Cut **reads** `_take_NN.mp4` + `.current.json` only, in Film scene/clip order. I
 5. **Hop / extend:** seed MarkIn/MarkOut from sidecar `provider_clip_start_seconds` / `provider_clip_stop_seconds`, or `provider_lead_in_seconds` + duration. Timeline width, filmstrip, and preview start at the hop — not t=0 of a combined take file.
 6. **Chapter/scene cards:** optional text card at scene boundaries, hold ~2s, usually with a dip.
 7. **Save/reload** the finish to `cut.project.json` (trims, range-deletes, join types, cards, music filename).
-8. **Play / audio:** Clipchamp zoom cluster (out / in / Fit timeline). Compose keeps each clip’s native VO (hop/trim window); optional music mixes under. Hard-cut concat keeps audio. Xfade tries acrossfade, else hard-cut audio through the join (never `-an`). First Play shows a preview overlay (spinner + progress); a valid composed preview is cached so the next Play is immediate.
+8. **Play / audio:** Clipchamp zoom cluster (out / in / Fit timeline) is pinned in the timeline chrome — always visible; only the filmstrip scroller moves. Compose keeps each clip’s native VO (hop/trim window); optional music mixes under. Hard-cut concat keeps audio. Xfade tries acrossfade, else hard-cut audio through the join (never `-an`). First Play shows a preview overlay (spinner + progress); a valid composed preview is cached so the next Play is immediate.
 9. Tests: hop-seeded in/out, trim handles, range-delete, scene bands, visible-join ticks, zoom/fit, naming, `.current.json`.
 
 ## Fountain → join
