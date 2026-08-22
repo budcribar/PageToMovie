@@ -17,6 +17,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderName { get; private set; }
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
+    public CutMusic PendingMusic { get; } = new();
     public string? SavedMovieFingerprint { get; private set; }
     public string? MovieMp4Path { get; private set; }
     public List<CutClip> Clips { get; private set; } = [];
@@ -109,6 +110,7 @@ public sealed class CutFolderService : IAsyncDisposable
     private void ApplySavedFinish(IEnumerable<JsFileEntry> files, List<CutClip> clips)
     {
         PendingMusicFileName = null;
+        PendingMusic.Clear();
         SavedMovieFingerprint = null;
         MovieMp4Path = null;
         TextClips.Clear();
@@ -119,17 +121,24 @@ public sealed class CutFolderService : IAsyncDisposable
             MovieMp4Path = string.IsNullOrWhiteSpace(movie.RelativePath) ? movie.FileName : movie.RelativePath;
         var project = list.FirstOrDefault(f =>
             CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
-        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music, out var texts, out var fp))
+        if (project is not null
+            && CutProjectFile.TryApply(clips, project.Text, out var music, out var texts, out var fp, out var track))
         {
             PendingMusicFileName = music;
+            PendingMusic.FileName = track.FileName;
+            PendingMusic.SetStart(track.StartSec);
+            PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
             SavedMovieFingerprint = fp;
             TextClips.AddRange(texts);
         }
     }
 
-    public async Task<bool> SaveFinishAsync(string? musicFileName, string? movieFingerprint = null)
+    public async Task<bool> SaveFinishAsync(
+        string? musicFileName,
+        string? movieFingerprint = null,
+        CutMusic? music = null)
     {
-        var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips, movieFingerprint);
+        var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips, movieFingerprint, music);
         var wrote = await _js.InvokeAsync<JsResult>(
             "PageToMovieCut.writeTextFileAsync", CutClipNaming.ProjectFileName, json);
         if (!wrote.Success)

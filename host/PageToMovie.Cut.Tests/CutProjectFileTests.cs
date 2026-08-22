@@ -18,14 +18,21 @@ public class CutProjectFileTests
         clip.Card.Text = "Chapter 1";
         clip.Card.Seconds = 2;
 
-        var json = CutProjectFile.Serialize([clip], "score.mp3");
+        var track = new CutMusic { FileName = "score.mp3" };
+        track.SetStart(18);
+        track.ApplyInOut(1.5, 9);
+        var json = CutProjectFile.Serialize([clip], "score.mp3", music: track);
         Assert.Contains("score.mp3", json, StringComparison.Ordinal);
+        Assert.Contains("musicStart", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"take\"", json, StringComparison.OrdinalIgnoreCase);
 
         var reload = NewClip(1, 1);
         reload.SetDuration(10);
-        Assert.True(CutProjectFile.TryApply([reload], json, out var music));
+        Assert.True(CutProjectFile.TryApply([reload], json, out var music, out _, out _, out var loadedTrack));
         Assert.Equal("score.mp3", music);
+        Assert.Equal(18, loadedTrack.StartSec);
+        Assert.Equal(1.5, loadedTrack.MarkIn);
+        Assert.Equal(9, loadedTrack.MarkOut);
         Assert.Equal(0.5, reload.MarkIn);
         Assert.Equal(8, reload.MarkOut);
         var del = Assert.Single(reload.RangeDeletes);

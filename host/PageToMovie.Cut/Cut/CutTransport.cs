@@ -14,11 +14,42 @@ public static class CutTransport
     public const string TextClipClass = "cut-tl-text-clip";
 
     /// <summary>
-    /// Add text stays above title/card tiles (handles are 3, delete is 4).
+    /// Add text stays above title/card tiles (handles are 3).
+    /// Delete lives on the inspector, not on the trim handle.
     /// Live video overlay never uses this stacking context.
     /// </summary>
     public const int TextAddZIndex = 6;
     public const int TextClipZIndex = 1;
+
+    /// <summary>
+    /// Play is enabled once any current-take clip is loaded. Do not wait
+    /// for movie.mp4 or a finished merge.
+    /// </summary>
+    public static bool IsPlayable(CutClip clip) =>
+        !clip.Missing && !string.IsNullOrWhiteSpace(clip.PreviewUrl);
+
+    public static bool CanPlay(IEnumerable<CutClip> clips)
+    {
+        foreach (var clip in clips)
+        {
+            if (IsPlayable(clip))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static List<CutClip> PlayableClips(IEnumerable<CutClip> clips)
+    {
+        var ready = new List<CutClip>();
+        foreach (var clip in clips)
+        {
+            if (IsPlayable(clip))
+                ready.Add(clip);
+        }
+
+        return ready;
+    }
 
     public static string PlayTitle(bool isPlaying) => isPlaying ? "Stop" : "Play";
 

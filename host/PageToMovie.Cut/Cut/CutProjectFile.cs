@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace PageToMovie.Cut.Cut;
 
-/// <summary>Finish file <c>cut.project.json</c> — trims, range-deletes, joins, cards, text clips, music name.</summary>
+/// <summary>Finish file <c>cut.project.json</c> — trims, range-deletes, joins, cards, text clips, music place/trim.</summary>
 public static class CutProjectFile
 {
     public const int Version = 1;
@@ -19,12 +19,19 @@ public static class CutProjectFile
         IReadOnlyList<CutClip> clips,
         string? musicFileName,
         IReadOnlyList<CutTextClip>? textClips = null,
-        string? movieFingerprint = null)
+        string? movieFingerprint = null,
+        CutMusic? music = null)
     {
+        var track = music ?? new CutMusic { FileName = musicFileName };
+        if (!track.HasFile && !string.IsNullOrWhiteSpace(musicFileName))
+            track.FileName = musicFileName;
         var dto = new ProjectDto
         {
             SchemaVersion = Version,
-            MusicFileName = string.IsNullOrWhiteSpace(musicFileName) ? null : musicFileName,
+            MusicFileName = string.IsNullOrWhiteSpace(track.FileName) ? null : track.FileName,
+            MusicStart = track.StartSec,
+            MusicIn = track.MarkIn,
+            MusicOut = track.MarkOut,
             MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
             Clips = clips.Select(ToDto).ToList(),
             TextClips = textClips is { Count: > 0 } ? textClips.Select(ToTextDto).ToList() : null,
@@ -47,11 +54,21 @@ public static class CutProjectFile
         string? json,
         out string? musicFileName,
         out List<CutTextClip> textClips,
-        out string? movieFingerprint)
+        out string? movieFingerprint) =>
+        TryApply(clips, json, out musicFileName, out textClips, out movieFingerprint, out _);
+
+    public static bool TryApply(
+        IReadOnlyList<CutClip> clips,
+        string? json,
+        out string? musicFileName,
+        out List<CutTextClip> textClips,
+        out string? movieFingerprint,
+        out CutMusic music)
     {
         musicFileName = null;
         textClips = [];
         movieFingerprint = null;
+        music = new CutMusic();
         if (string.IsNullOrWhiteSpace(json))
             return false;
         ProjectDto? dto;
@@ -68,6 +85,9 @@ public static class CutProjectFile
             return false;
         musicFileName = dto.MusicFileName;
         movieFingerprint = dto.MovieFingerprint;
+        music.FileName = dto.MusicFileName;
+        music.SetStart(dto.MusicStart);
+        music.ApplyInOut(dto.MusicIn, dto.MusicOut);
         ApplyClipRows(clips, dto.Clips);
 
         foreach (var row in dto.TextClips ?? [])
@@ -239,6 +259,9 @@ public static class CutProjectFile
         [JsonPropertyName("version")]
         public int SchemaVersion { get; set; }
         public string? MusicFileName { get; set; }
+        public double MusicStart { get; set; }
+        public double MusicIn { get; set; }
+        public double MusicOut { get; set; }
         public string? MovieFingerprint { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
         public List<TextClipDto>? TextClips { get; set; }

@@ -17,6 +17,7 @@ public sealed class CutComposeService : IAsyncDisposable
     private readonly IJSRuntime _js;
     private int _composeGen;
     private string? _audioUrl;
+    public CutMusic Music { get; } = new();
     public string? MoviePreviewUrl { get; private set; }
     public string? PrefixPreviewUrl { get; private set; }
     public int PrefixClipCount { get; private set; }
@@ -40,6 +41,8 @@ public sealed class CutComposeService : IAsyncDisposable
             throw new InvalidOperationException(r.Error ?? "Could not read the audio file.");
         _audioUrl = r.Url;
         AudioFileName = file.Name;
+        Music.SetFile(file.Name);
+        await ProbeMusicDurationAsync();
     }
 
     public async Task<bool> TrySetAudioFromFolderAsync(string relativePath)
@@ -50,7 +53,30 @@ public sealed class CutComposeService : IAsyncDisposable
         await ClearAudioAsync();
         _audioUrl = r.Url;
         AudioFileName = CutClipNaming.FileNameOnly(relativePath);
+        Music.SetFile(AudioFileName);
+        await ProbeMusicDurationAsync();
         return true;
+    }
+
+    public void ApplySavedMusic(CutMusic saved)
+    {
+        Music.SetStart(saved.StartSec);
+        Music.ApplyInOut(saved.MarkIn, saved.MarkOut > saved.MarkIn ? saved.MarkOut : Music.MarkOut);
+    }
+
+    public async Task ProbeMusicDurationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_audioUrl))
+            return;
+        try
+        {
+            var seconds = await _js.InvokeAsync<double>("PageToMovieCut.probeUrlDuration", _audioUrl);
+            Music.SetDuration(seconds);
+        }
+        catch (JSException)
+        {
+            // duration is optional until Play/export probes again
+        }
     }
 
     public async Task ClearAudioAsync()
@@ -69,6 +95,7 @@ public sealed class CutComposeService : IAsyncDisposable
 
         _audioUrl = null;
         AudioFileName = null;
+        Music.Clear();
     }
 
     public async Task<double> ReadMediaDurationAsync(ElementReference media) =>
@@ -151,14 +178,11 @@ public sealed class CutComposeService : IAsyncDisposable
         IReadOnlyList<CutTextClip>? texts = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var missing = clips.FirstOrDefault(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
-        if (missing is not null)
-            throw new InvalidOperationException(
-                missing.MissingReason ?? $"Selected take file is missing: {missing.Label}.");
-        if (clips.Count == 0)
-            throw new InvalidOperationException("No clips to export.");
+        var ready = CutTransport.PlayableClips(clips);
+        if (ready.Count == 0)
+            throw new InvalidOperationException("No current takes to export.");
 
-        var payload = BuildExportPayload(clips, texts);
+        var payload = BuildExportPayload(ready, texts);
         string method;
         if (download)
             method = "PageToMovieCut.exportMovieAsync";
@@ -182,7 +206,7 @@ public sealed class CutComposeService : IAsyncDisposable
             throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
         MoviePreviewUrl = r.Url;
         PrefixPreviewUrl = r.Url;
-        PrefixClipCount = clips.Count;
+        PrefixClipCount = ready.Count;
         return r.Url;
     }
 
@@ -237,7 +261,7 @@ public sealed class CutComposeService : IAsyncDisposable
         var sinkRef = DotNetObjectReference.Create(sink);
         try
         {
-            return await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, _audioUrl, sinkRef);
+            return await _js.InvokeAsync<JsResult>(method, cancellationToken, payload, MusicMixArg(), sinkRef);
         }
         catch (OperationCanceledException)
         {
@@ -262,6 +286,20 @@ public sealed class CutComposeService : IAsyncDisposable
         {
             // Circuit or helper may already be gone.
         }
+    }
+
+    private object? MusicMixArg()
+    {
+        if (string.IsNullOrWhiteSpace(_audioUrl))
+            return null;
+        var (inn, outt) = Music.ResolvedInOut();
+        return new JsMusicMix
+        {
+            Url = _audioUrl,
+            Start = Music.StartSec,
+            MarkIn = inn,
+            MarkOut = outt,
+        };
     }
 
     private static JsCard? CardPayload(CutClip clip, IReadOnlyList<CutClip> strip)

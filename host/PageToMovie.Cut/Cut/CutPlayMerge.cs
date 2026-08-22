@@ -74,17 +74,25 @@ public static class CutPlayMerge
         string? savedFingerprint,
         IReadOnlyList<CutClip> clips,
         IReadOnlyList<CutTextClip>? texts,
-        string? audioFileName) =>
+        string? audioFileName,
+        CutMusic? music = null) =>
         !string.IsNullOrWhiteSpace(savedFingerprint)
-        && string.Equals(savedFingerprint, Fingerprint(clips, texts, audioFileName), StringComparison.Ordinal);
+        && string.Equals(savedFingerprint, Fingerprint(clips, texts, audioFileName, music), StringComparison.Ordinal);
 
     public static string Fingerprint(
         IReadOnlyList<CutClip> clips,
         IReadOnlyList<CutTextClip>? texts,
-        string? audioFileName)
+        string? audioFileName,
+        CutMusic? music = null)
     {
         var sb = new StringBuilder();
-        sb.Append(audioFileName ?? "");
+        sb.Append(audioFileName ?? music?.FileName ?? "");
+        if (music is not null)
+        {
+            sb.Append("M").Append(Num(music.StartSec))
+                .Append('/').Append(Num(music.MarkIn))
+                .Append('-').Append(Num(music.MarkOut));
+        }
         foreach (var clip in clips)
         {
             sb.Append('|').Append(clip.Scene).Append(':').Append(clip.Clip);

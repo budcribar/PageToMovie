@@ -176,12 +176,6 @@
                                        @onfocus="() => _textFieldFocused = true"
                                        @onblur="() => _textFieldFocused = false"
                                        @onchange="e => SetTextLabelAsync(block, e)" />
-                                <button type="button"
-                                        class="cut-tl-text-del"
-                                        title="Delete text"
-                                        data-testid="cut-tl-text-del"
-                                        @onpointerdown:stopPropagation="true"
-                                        @onclick="() => DeleteTextAsync(block)">✕</button>
                             }
                             else
                             {
@@ -204,9 +198,28 @@
             </div>
 
             <div class="cut-tl-audio" data-testid="cut-tl-audio">
-                @if (HasAudio)
+                @if (ShowMusic)
                 {
-                    <div class="cut-tl-music" style="width: @(Math.Max(Layout.WidthPx, 80))px">@AudioName</div>
+                    <div class="cut-tl-music"
+                         style="left: @(MusicLeftPx)px; width: @(MusicWidthPx)px"
+                         data-testid="cut-tl-music"
+                         title="@MusicLabel"
+                         @onpointerdown:stopPropagation="true"
+                         @onpointerdown="BeginMusicMoveAsync">
+                        <span class="cut-tl-music-name">@MusicLabel</span>
+                        <button type="button"
+                                class="cut-tl-handle is-in"
+                                data-testid="cut-tl-music-handle-in"
+                                title="Trim music in"
+                                @onpointerdown:stopPropagation="true"
+                                @onpointerdown="e => BeginMusicTrimAsync(e, true)"></button>
+                        <button type="button"
+                                class="cut-tl-handle is-out"
+                                data-testid="cut-tl-music-handle-out"
+                                title="Trim music out"
+                                @onpointerdown:stopPropagation="true"
+                                @onpointerdown="e => BeginMusicTrimAsync(e, false)"></button>
+                    </div>
                 }
                 else
                 {
@@ -216,7 +229,7 @@
         </div>
     </div>
 
-    <CutTimeline_TextInspector Block="SelectedTextBlock" Busy="Busy" StyleChanged="OnEdited" />
+    <CutTimeline_TextInspector Block="SelectedTextBlock" Busy="Busy" StyleChanged="OnEdited" OnDelete="DeleteSelectedTextAsync" />
 
     <div class="cut-tl-chrome">
         <div class="cut-tl-zoom" data-testid="cut-tl-zoom">

@@ -543,14 +543,76 @@
         }
     }
 
-    async function mixOptionalAudio(api, videoUrl, audioUrl, onProgress) {
-        if (!audioUrl)
+    function musicSpec(audio) {
+        if (!audio)
+            return null;
+        if (typeof audio === "string")
+            return { url: audio, start: 0, markIn: 0, markOut: 0 };
+        const url = audio.url || "";
+        if (!url)
+            return null;
+        return {
+            url: url,
+            start: Math.max(0, Number(audio.start) || 0),
+            markIn: Math.max(0, Number(audio.markIn) || 0),
+            markOut: Math.max(0, Number(audio.markOut) || 0),
+        };
+    }
+
+    async function placeMusicAsync(api, spec, onProgress) {
+        const start = spec.start;
+        const inn = spec.markIn;
+        const outt = spec.markOut;
+        const needsPlace = start > 0.02 || inn > 0.02 || outt > inn + 0.02;
+        if (!needsPlace)
+            return { success: true, url: spec.url };
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inName = "cut_mus_in_" + seq + ".bin";
+            const outName = "cut_mus_out_" + seq + ".m4a";
+            try {
+                const data = await withPinnedUrls([spec.url], function () { return api._safeFetchFile(spec.url); });
+                await ffmpeg.writeFile(inName, data);
+                const args = ["-hide_banner", "-y"];
+                if (inn > 0.02)
+                    args.push("-ss", String(inn));
+                args.push("-i", inName);
+                if (outt > inn + 0.02)
+                    args.push("-t", String(Math.max(0.3, outt - inn)));
+                const delayMs = Math.round(start * 1000);
+                if (delayMs > 0)
+                    args.push("-af", "adelay=" + delayMs + ":all=1");
+                args.push("-c:a", "aac", "-b:a", "192k", outName);
+                await ffmpeg.exec(args);
+                const out = await ffmpeg.readFile(outName);
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "audio/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
+            } catch (err) {
+                return { success: false, error: messageOf(err, "Could not place music.") };
+            } finally {
+                await deleteMemfs(ffmpeg, inName);
+                await deleteMemfs(ffmpeg, outName);
+            }
+        });
+    }
+
+    async function mixOptionalAudio(api, videoUrl, audio, onProgress) {
+        const spec = musicSpec(audio);
+        if (!spec)
             return { success: true, url: videoUrl };
-        return withPinnedUrls([videoUrl, audioUrl], async function () {
+        const placed = await placeMusicAsync(api, spec, onProgress);
+        if (!placed.success)
+            return placed;
+        return withPinnedUrls([videoUrl, placed.url], async function () {
             onProgress?.(80, "Mixing audio…");
-            let mixed = await api.mixSceneAudioAsync(videoUrl, audioUrl, 22, onProgress);
+            let mixed = await api.mixSceneAudioAsync(videoUrl, placed.url, 22, onProgress);
             if (!mixed.success)
-                mixed = await api.replaceVideoAudioAsync(videoUrl, audioUrl, onProgress);
+                mixed = await api.replaceVideoAudioAsync(videoUrl, placed.url, onProgress);
             return mixed;
         });
     }
@@ -1270,9 +1332,10 @@
             if (!clips || clips.length === 0)
                 return { success: false, error: "No clips to export." };
 
+            const spec = musicSpec(audioUrl);
             const sourceUrls = (clips || []).map(function (c) { return c && c.url; }).filter(Boolean);
-            if (audioUrl)
-                sourceUrls.push(audioUrl);
+            if (spec)
+                sourceUrls.push(spec.url);
 
             return await withPinnedUrls(sourceUrls, async function () {
             const usedSources = [];

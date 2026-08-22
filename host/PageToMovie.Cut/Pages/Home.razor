@@ -35,36 +35,36 @@
             {
                 <p class="cut-muted">Select a clip.</p>
             }
-            else
+            else if (_selected.Missing)
             {
-                @if (_selected.Missing)
-                {
-                    <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
-                }
-                else
-                {
-                    <div class="cut-preview-stage">
-                        <CutPreviewVideos @ref="_preview"
-                                          Freeze="IsPlaying"
-                                          ClipSrc="@ClipPlayerSrc"
-                                          MovieSrc="@MoviePlayerSrc"
-                                          ShowMovie="ShowMovie"
-                                          OnClipMetadata="OnPreviewMetadataAsync" />
-                        <div @ref="TextOverlay"
-                             class="cut-text-overlay is-off"
-                             data-testid="cut-text-overlay"
-                             aria-hidden="true">
-                            <p class="cut-text-overlay-line"></p>
-                        </div>
-                        @if (ShowComposeOverlay)
-                        {
-                            <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">
-                                <div class="cut-compose-spinner" aria-hidden="true"></div>
-                                <p class="cut-compose-copy">@ProgressMessage @ProgressPercent%</p>
-                            </div>
-                        }
+                <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
+            }
+            @if (CutTransport.CanPlay(Folder.Clips))
+            {
+                <div class="cut-preview-stage">
+                    <CutPreviewVideos @ref="_preview"
+                                      Freeze="IsPlaying"
+                                      ClipSrc="@ClipPlayerSrc"
+                                      MovieSrc="@MoviePlayerSrc"
+                                      ShowMovie="ShowMovie"
+                                      OnClipMetadata="OnPreviewMetadataAsync" />
+                    <div @ref="TextOverlay"
+                         class="cut-text-overlay is-off"
+                         data-testid="cut-text-overlay"
+                         aria-hidden="true">
+                        <p class="cut-text-overlay-line"></p>
                     </div>
-                }
+                    @if (ShowComposeOverlay)
+                    {
+                        <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">
+                            <div class="cut-compose-spinner" aria-hidden="true"></div>
+                            <p class="cut-compose-copy">@ProgressMessage @ProgressPercent%</p>
+                        </div>
+                    }
+                </div>
+            }
+            @if (_selected is not null)
+            {
                 <p class="cut-muted">
                     @if (_selected.HasDuration)
                     {
@@ -96,7 +96,8 @@
                      PlayheadChanged="OnPlayheadAsync"
                      TextClips="Folder.TextClips"
                      HasAudio="Compose.HasAudio"
-                     AudioName="Compose.AudioFileName"
+                     AudioName="@Compose.AudioFileName"
+                     Music="Compose.Music"
                      Busy="TransportLocked"
                      PlayDisabled="PlayDisabled"
                      IsPlaying="IsPlaying"
@@ -121,7 +122,7 @@
                 }
             </div>
             <div class="cut-actions">
-                <button type="button" class="cut-btn cut-btn-ghost" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
+                <button type="button" class="cut-btn cut-btn-ghost" data-testid="cut-make-movie" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
             </div>
             @if (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage))
             {

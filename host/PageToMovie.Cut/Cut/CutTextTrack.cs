@@ -90,9 +90,9 @@ public static class CutTextTrack
             title.Text = value.Length > 0 ? value : "Title";
     }
 
-    public static void SetHold(CutTextBlock block, double seconds)
+    public static void SetHold(CutTextBlock block, double seconds, double maxSeconds = double.PositiveInfinity)
     {
-        var hold = CutCard.ResolveHold(seconds);
+        var hold = CutCard.ResolveHold(seconds, maxSeconds);
         if (block.CardClip is { } clip)
             clip.Card.Seconds = hold;
         else if (block.Title is { } title)

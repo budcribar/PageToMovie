@@ -586,24 +586,7 @@ html, body {
 
 .cut-tl-text-clip input.cut-tl-text-label {
     outline: none;
-    padding-right: 1.4rem;
-}
-
-.cut-tl-text-del {
-    position: absolute;
-    top: 4px;
-    right: 10px;
-    width: 1rem;
-    height: 1rem;
-    padding: 0;
-    border: 0;
-    border-radius: 99px;
-    background: rgba(0, 0, 0, 0.35);
-    color: #fff;
-    font-size: 0.62rem;
-    line-height: 1rem;
-    cursor: pointer;
-    z-index: 4;
+    padding-right: 0.75rem;
 }
 
 .cut-tl-clip {
@@ -735,8 +718,9 @@ html, body {
 }
 
 .cut-tl-music {
+    position: absolute;
+    top: 2px;
     height: 28px;
-    margin-top: 2px;
     border-radius: 6px;
     background: repeating-linear-gradient(
         90deg,
@@ -747,6 +731,21 @@ html, body {
     font-size: 0.72rem;
     line-height: 28px;
     padding: 0 0.55rem;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.cut-tl-music-name {
+    display: block;
+    padding: 0 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cut-tl-music .cut-tl-handle {
+    top: 6px;
+    bottom: 6px;
 }
 
 .cut-tl-audio-empty {
@@ -803,6 +802,21 @@ html, body {
 }
 
 .cut-tl-inspector-group button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cut-tl-inspector-del {
+    margin-left: auto;
+    appearance: none;
+    border: 1px solid var(--fs-danger-border, #8a3a3a);
+    background: #2a1818;
+    color: #f3d2d2;
+    border-radius: 6px;
+    height: 1.55rem;
+    padding: 0 0.55rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.cut-tl-inspector-del:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .cut-tl-chrome {
     display: flex;

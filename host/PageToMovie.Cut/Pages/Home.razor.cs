@@ -68,9 +68,7 @@ public partial class Home : IAsyncDisposable
         CutPlayClock.BlazorOwnsVideoSrc(IsPlaying) ? ActiveMovieUrl : _movieSrcBound;
 
     private bool PlayDisabled =>
-        TransportLocked
-        || Folder.Clips.Count == 0
-        || Folder.Clips.Any(c => c.Missing || string.IsNullOrWhiteSpace(c.PreviewUrl));
+        TransportLocked || !CutTransport.CanPlay(Folder.Clips);
 
     private bool ExportDisabled => PlayDisabled;
 
@@ -135,7 +133,11 @@ public partial class Home : IAsyncDisposable
         if (_selected?.Missing == true && string.IsNullOrWhiteSpace(_error))
             _error = _selected.MissingReason ?? $"Selected take file is missing: {_selected.Label}.";
         if (!string.IsNullOrWhiteSpace(Folder.PendingMusicFileName))
+        {
             await Compose.TrySetAudioFromFolderAsync(Folder.PendingMusicFileName);
+            if (Folder.PendingMusic.HasFile)
+                Compose.ApplySavedMusic(Folder.PendingMusic);
+        }
         foreach (var clip in Folder.Clips)
             await ProbeAndStripTakeAsync(clip.SelectedTake, captureStrip: false);
         await TryAttachFreshMovieAsync();
@@ -677,7 +679,11 @@ public partial class Home : IAsyncDisposable
     private async Task TryAttachFreshMovieAsync()
     {
         if (!CutPlayMerge.IsFreshMerge(
-                Folder.SavedMovieFingerprint, Folder.Clips, Folder.TextClips, Folder.PendingMusicFileName))
+                Folder.SavedMovieFingerprint,
+                Folder.Clips,
+                Folder.TextClips,
+                Folder.PendingMusicFileName,
+                Folder.PendingMusic))
             return;
         var url = await Folder.TryOpenMovieMp4Async();
         if (string.IsNullOrWhiteSpace(url))
@@ -688,8 +694,12 @@ public partial class Home : IAsyncDisposable
         _movieSrcBound = url;
     }
 
-    private string? CurrentMergeFingerprint() =>
-        CutPlayMerge.Fingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName);
+    private static string CurrentMergeFingerprint(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip> texts,
+        string? audioFileName,
+        CutMusic? music) =>
+        CutPlayMerge.Fingerprint(clips, texts, audioFileName, music);
 
     private void CancelCompose()
     {
@@ -764,8 +774,10 @@ public partial class Home : IAsyncDisposable
     {
         _error = null;
         SavedNote = null;
-        var fp = Compose.HasCachedMoviePreview ? CurrentMergeFingerprint() : null;
-        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp))
+        var fp = Compose.HasCachedMoviePreview
+            ? CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName, Compose.Music)
+            : null;
+        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music))
         {
             _error = Folder.FolderError ?? "Could not save the cut.";
             return;

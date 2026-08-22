@@ -66,6 +66,13 @@ public class CutPlayMergeTests
         a.ApplyInOut(1, 4);
         Assert.False(CutPlayMerge.IsFreshMerge(fp, clips, titles, "score.mp3"));
         Assert.False(CutPlayMerge.IsFreshMerge(null, clips, titles, "score.mp3"));
+
+        var music = new CutMusic { FileName = "score.mp3" };
+        music.SetStart(12);
+        music.ApplyInOut(1, 8);
+        var placed = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
+        Assert.NotEqual(fp, placed);
+        Assert.True(CutPlayMerge.IsFreshMerge(placed, clips, titles, "score.mp3", music));
     }
 
     [Fact]
