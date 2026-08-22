@@ -102,14 +102,16 @@ public partial class Home : IAsyncDisposable
         foreach (var clip in Folder.Clips)
             await ProbeAndStripTakeAsync(clip.SelectedTake, captureStrip: false);
         await SeekPreviewToInAsync();
-        _ = FillFilmstripsAsync();
+        _ = RefreshFilmstripsAsync();
     }
 
-    private async Task FillFilmstripsAsync()
+    private async Task RefreshFilmstripsAsync()
     {
         foreach (var clip in Folder.Clips)
         {
             await CaptureFilmstripAsync(clip.SelectedTake);
+            if (ReferenceEquals(clip, _selected))
+                await SeekPreviewToInAsync();
             await InvokeAsync(StateHasChanged);
         }
     }
