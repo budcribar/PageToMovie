@@ -72,6 +72,25 @@ public class CutJitPlayTests
     }
 
     [Fact]
+    public void Scene_change_waits_until_prefix_covers_the_dissolve()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(1, 2, duration: 4);
+        var c = NewClip(2, 1, duration: 5);
+        var clips = new[] { a, b, c };
+        var total = CutJitPlay.TotalSec(clips);
+
+        Assert.Equal(13, total);
+        Assert.Equal(8, CutJitPlay.NativeReachableThrough(clips));
+        Assert.False(CutJitPlay.NeedsWait(7.9, 8, total));
+        Assert.True(CutJitPlay.NeedsWait(8, 8, total));
+        Assert.True(CutJitPlay.NeedsWait(8.1, 8, total));
+        Assert.False(CutJitPlay.NeedsWait(8, CutJitPlay.ReadyThroughSec(clips, 3), total));
+        Assert.False(CutJitPlay.IsTimelineEnd(8, total));
+        Assert.True(CutJitPlay.IsTimelineEnd(12.97, total));
+    }
+
+    [Fact]
     public void Incoming_scene_card_blocks_native_join()
     {
         var a = NewClip(1, 1, duration: 4);

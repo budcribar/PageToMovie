@@ -92,8 +92,29 @@ public static class CutJitPlay
         return end;
     }
 
+    public static double TotalSec(IReadOnlyList<CutClip> clips) =>
+        clips.Count == 0 ? 0 : TimelineEndOf(clips, clips.Count - 1);
+
     public static bool NeedsWait(double playhead, double readyThroughSec) =>
-        playhead > readyThroughSec + 0.05;
+        NeedsWait(playhead, readyThroughSec, readyThroughSec);
+
+    /// <summary>
+    /// Seek past the ready prefix waits. Sitting on the ready edge while
+    /// more timeline remains (scene-change dissolve not stitched yet) also
+    /// waits — do not play the S01 prefix at EOF (that looks like Stop).
+    /// </summary>
+    public static bool NeedsWait(double playhead, double readyThroughSec, double totalSec)
+    {
+        if (readyThroughSec > 0.05
+            && totalSec > readyThroughSec + 0.05
+            && playhead >= readyThroughSec - 0.001)
+            return true;
+        return playhead > readyThroughSec + 0.05;
+    }
+
+    /// <summary>Prefix video EOF is Stop only at the real timeline end.</summary>
+    public static bool IsTimelineEnd(double playhead, double totalSec) =>
+        totalSec <= 0.05 || playhead >= totalSec - 0.05;
 
     public static bool CanReuseFullPreview(string? moviePreviewUrl) =>
         CutComposeContract.CanReusePreview(moviePreviewUrl);

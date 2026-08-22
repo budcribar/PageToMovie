@@ -17,7 +17,7 @@ public static class CutSplit
     {
         right = null;
         IReadOnlyList<CutClip> read = clips as IReadOnlyList<CutClip> ?? [..clips];
-        if (!TryLocate(read, playheadSec, out var index, out var left, out var local))
+        if (!TryLocate(read, playheadSec, out var index, out var left, out var local) || left is null)
             return false;
 
         var oldOut = left.MarkOut;
@@ -67,11 +67,11 @@ public static class CutSplit
         IReadOnlyList<CutClip> clips,
         double playheadSec,
         out int index,
-        out CutClip clip,
+        out CutClip? clip,
         out double localSec)
     {
         index = -1;
-        clip = null!;
+        clip = null;
         localSec = 0;
         if (clips.Count == 0)
             return false;

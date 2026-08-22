@@ -3,9 +3,12 @@
  * All static ffmpeg assets are served same-origin from /js/ffmpeg/ for maximum speed & zero CORS issues.
  */
 function reportProgress(onProgress, pct, msg) {
-    if (typeof onProgress === "function") {
-        try { onProgress(pct, msg); } catch (_) { }
-    }
+    if (typeof onProgress !== "function") return;
+    try {
+        const pending = onProgress(pct, msg);
+        if (pending && typeof pending.catch === "function")
+            pending.catch(function () { /* disposed progress sink */ });
+    } catch (_) { /* disposed progress sink */ }
 }
 
 window.PageToMovieFfmpeg = {
@@ -77,6 +80,8 @@ window.PageToMovieFfmpeg = {
 
     /** Load local ffmpeg assets from same-origin /js/ffmpeg/. */
     ensureLoadedAsync: async function (onProgress) {
+        if (typeof onProgress === "function")
+            this._onProgress = onProgress;
         if (this._loaded && this._ffmpeg) return { success: true };
         if (this._loading) return this._loading;
         this._loading = (async () => {
@@ -96,7 +101,7 @@ window.PageToMovieFfmpeg = {
                 ffmpeg.on("log", ({ message }) => this._log(message));
                 ffmpeg.on("progress", ({ progress }) => {
                     const pct = Math.max(0, Math.min(99, Math.round((progress || 0) * 100)));
-                    reportProgress(onProgress, pct, "Combining…");
+                    reportProgress(this._onProgress, pct, "Combining…");
                 });
 
                 reportProgress(onProgress, 5, "Loading ffmpeg engine…");

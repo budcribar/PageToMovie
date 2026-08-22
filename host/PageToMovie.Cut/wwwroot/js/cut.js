@@ -10,6 +10,12 @@
         _trimSeq: 0,
         _ownedMovieUrl: null,
         _ownedPrefixUrls: [],
+        _ownedTemps: new Set(),
+        _activeInputs: new Set(),
+        _pendingRevoke: new Set(),
+        _progressRef: null,
+        _aborted: false,
+        _composeGate: Promise.resolve(),
     };
 
     function messageOf(err, fallback) {
@@ -30,34 +36,138 @@
         return dir.getFileHandle(parts.at(-1), { create: !!create });
     }
 
+    function invokeQuiet(dotNetRef, method) {
+        if (!dotNetRef || typeof dotNetRef.invokeMethodAsync !== "function")
+            return;
+        if (dotNetRef._id === undefined || dotNetRef._id === null)
+            return;
+        const args = Array.prototype.slice.call(arguments, 2);
+        try {
+            const pending = dotNetRef.invokeMethodAsync.apply(dotNetRef, [method].concat(args));
+            if (pending && typeof pending.catch === "function")
+                pending.catch(function () { /* disposed DotNetObjectReference */ });
+        } catch (_) {
+            // Disposed or gone — progress/time is optional.
+        }
+    }
+
+    function invokeCompose(dotNetRef, method) {
+        if (cut._aborted || cut._progressRef !== dotNetRef)
+            return;
+        invokeQuiet.apply(null, arguments);
+    }
+
     function asProgress(dotNetRef) {
         if (!dotNetRef) return undefined;
+        cut._progressRef = dotNetRef;
         return function (pct, msg) {
-            try {
-                dotNetRef.invokeMethodAsync("Report", Math.round(pct || 0), msg || "");
-            } catch (err) {
-                console.debug("Cut: progress sink gone", err);
-            }
+            invokeCompose(dotNetRef, "Report", Math.round(pct || 0), msg || "");
         };
     }
 
     function emitPrefix(dotNetRef, url, clipCount) {
         if (!dotNetRef || !url) return;
+        invokeCompose(dotNetRef, "OnPrefix", url, clipCount);
+    }
+
+    function noteTemp(url) {
+        if (typeof url === "string" && url.startsWith("blob:"))
+            cut._ownedTemps.add(url);
+    }
+
+    function noteResult(r) {
+        if (r && r.success && r.url && !r.single)
+            noteTemp(r.url);
+        return r;
+    }
+
+    function pinUrl(url) {
+        if (typeof url === "string" && url.length > 0)
+            cut._activeInputs.add(url);
+    }
+
+    function unpinUrl(url) {
+        cut._activeInputs.delete(url);
+    }
+
+    function isPinnedPrefix(url) {
+        return url === cut._ownedMovieUrl || cut._ownedPrefixUrls.indexOf(url) >= 0;
+    }
+
+    /** Same rules as CutBlobLifetime.CanRevoke — never revoke an in-flight concat/JIT URL. */
+    function canRevokeTemp(url) {
+        if (typeof url !== "string" || !url.startsWith("blob:"))
+            return false;
+        if (cut._activeInputs.has(url))
+            return false;
+        if (isPinnedPrefix(url))
+            return false;
+        return cut._ownedTemps.has(url);
+    }
+
+    function actuallyRevoke(url) {
         try {
-            dotNetRef.invokeMethodAsync("OnPrefix", url, clipCount);
+            URL.revokeObjectURL(url);
         } catch (err) {
-            console.debug("Cut: prefix sink gone", err);
+            console.debug("Cut: revoke skipped", err);
+        }
+        cut._ownedTemps.delete(url);
+        cut._pendingRevoke.delete(url);
+        cut._ownedPrefixUrls = cut._ownedPrefixUrls.filter(function (u) { return u !== url; });
+        if (cut._ownedMovieUrl === url)
+            cut._ownedMovieUrl = null;
+    }
+
+    function flushPendingRevokes() {
+        Array.from(cut._pendingRevoke).forEach(function (url) {
+            if (!cut._activeInputs.has(url))
+                actuallyRevoke(url);
+        });
+    }
+
+    async function withPinnedUrls(urls, fn) {
+        const list = (urls || []).filter(function (u) { return typeof u === "string" && u.length > 0; });
+        list.forEach(pinUrl);
+        try {
+            return await fn();
+        } finally {
+            list.forEach(unpinUrl);
+            flushPendingRevokes();
         }
     }
 
     function keepPrefixUrl(url) {
         if (typeof url !== "string" || !url.startsWith("blob:")) return;
+        if (cut._ownedPrefixUrls.indexOf(url) >= 0) return;
         cut._ownedPrefixUrls.push(url);
         while (cut._ownedPrefixUrls.length > 3) {
-            const old = cut._ownedPrefixUrls.shift();
-            if (old && old !== cut._ownedMovieUrl && old !== url)
-                cut.revokeBlobUrl(old);
+            const old = cut._ownedPrefixUrls[0];
+            if (cut._activeInputs.has(old) || old === cut._ownedMovieUrl)
+                break;
+            cut._ownedPrefixUrls.shift();
+            if (canRevokeTemp(old))
+                actuallyRevoke(old);
         }
+    }
+
+    function replaceOwnedMovie(url, owned) {
+        const prev = cut._ownedMovieUrl;
+        cut._ownedMovieUrl = owned ? url : null;
+        if (prev && prev !== url) {
+            cut._ownedPrefixUrls = cut._ownedPrefixUrls.filter(function (u) { return u !== prev; });
+            if (canRevokeTemp(prev))
+                actuallyRevoke(prev);
+        }
+    }
+
+    function composeStopped() {
+        return !!cut._aborted;
+    }
+
+    async function concatPinned(api, urls, onProgress) {
+        return withPinnedUrls(urls, async function () {
+            return noteResult(await api.concatVideosAsync(urls, onProgress));
+        });
     }
 
     async function collectMediaFile(handle, name, path, files) {
@@ -200,7 +310,8 @@
             const outName = "cut_ov_out_" + seq + ".mp4";
             const pngs = [];
             try {
-                await ffmpeg.writeFile(inName, await api._safeFetchFile(videoUrl));
+                const data = await withPinnedUrls([videoUrl], function () { return api._safeFetchFile(videoUrl); });
+                await ffmpeg.writeFile(inName, data);
                 let graph = "[0:v]scale=1280:720,setsar=1[v0]";
                 let last = "v0";
                 const args = ["-hide_banner", "-y", "-i", inName];
@@ -240,7 +351,9 @@
                     ]));
                 }
                 const out = await ffmpeg.readFile(outName);
-                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
             } catch (err) {
                 return { success: false, error: messageOf(err, String(err)) };
             } finally {
@@ -278,7 +391,9 @@
                     outName,
                 ]);
                 const out = await ffmpeg.readFile(outName);
-                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
             } catch (err) {
                 return { success: false, error: messageOf(err, String(err)) };
             } finally {
@@ -306,8 +421,11 @@
             const bName = "cut_xf_b_" + seq + ".mp4";
             const outName = "cut_xf_o_" + seq + ".mp4";
             try {
-                await ffmpeg.writeFile(aName, await api._safeFetchFile(leftUrl));
-                await ffmpeg.writeFile(bName, await api._safeFetchFile(rightUrl));
+                const pair = await withPinnedUrls([leftUrl, rightUrl], async function () {
+                    return [await api._safeFetchFile(leftUrl), await api._safeFetchFile(rightUrl)];
+                });
+                await ffmpeg.writeFile(aName, pair[0]);
+                await ffmpeg.writeFile(bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
                 const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
@@ -344,7 +462,9 @@
                 if (!encoded)
                     return { success: false, error: "xfade audio failed" };
                 const out = await ffmpeg.readFile(outName);
-                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(url);
+                return { success: true, url: url };
             } catch (err) {
                 return { success: false, error: messageOf(err, String(err)) };
             } finally {
@@ -359,16 +479,16 @@
         const k = String(kind || "cut").toLowerCase();
         if (k === "cuttoblack") {
             const hold = await stillVideoAsync(cardPngUrl(""), 0.4, onProgress);
-            if (!hold.success) return api.concatVideosAsync([leftUrl, rightUrl], onProgress);
-            const mid = await api.concatVideosAsync([leftUrl, hold.url], onProgress);
+            if (!hold.success) return concatPinned(api, [leftUrl, rightUrl], onProgress);
+            const mid = await concatPinned(api, [leftUrl, hold.url], onProgress);
             if (!mid.success) return mid;
-            return api.concatVideosAsync([mid.url, rightUrl], onProgress);
+            return concatPinned(api, [mid.url, rightUrl], onProgress);
         }
         if (xfadeName(k)) {
             const faded = await xfadeAsync(leftUrl, rightUrl, k, onProgress);
             if (faded.success) return faded;
         }
-        return api.concatVideosAsync([leftUrl, rightUrl], onProgress);
+        return concatPinned(api, [leftUrl, rightUrl], onProgress);
     }
 
     async function prepareWindowsAsync(c, index, total, onProgress) {
@@ -396,7 +516,7 @@
         }
         if (urls.length === 1)
             return { url: urls[0], source: c.url };
-        const cat = await window.PageToMovieFfmpeg.concatVideosAsync(urls, onProgress);
+        const cat = await concatPinned(window.PageToMovieFfmpeg, urls, onProgress);
         if (!cat.success)
             return { error: label + ": " + (cat.error || "range join failed") };
         return { url: cat.url, source: c.url };
@@ -413,11 +533,13 @@
     async function mixOptionalAudio(api, videoUrl, audioUrl, onProgress) {
         if (!audioUrl)
             return { success: true, url: videoUrl };
-        onProgress?.(80, "Mixing audio…");
-        let mixed = await api.mixSceneAudioAsync(videoUrl, audioUrl, 22, onProgress);
-        if (!mixed.success)
-            mixed = await api.replaceVideoAudioAsync(videoUrl, audioUrl, onProgress);
-        return mixed;
+        return withPinnedUrls([videoUrl, audioUrl], async function () {
+            onProgress?.(80, "Mixing audio…");
+            let mixed = await api.mixSceneAudioAsync(videoUrl, audioUrl, 22, onProgress);
+            if (!mixed.success)
+                mixed = await api.replaceVideoAudioAsync(videoUrl, audioUrl, onProgress);
+            return mixed;
+        });
     }
 
     cut.supportsDirectoryPicker = function () {
@@ -534,13 +656,20 @@
     };
 
     cut.revokeBlobUrl = function (url) {
-        if (typeof url === "string" && url.startsWith("blob:")) {
-            try {
-                URL.revokeObjectURL(url);
-            } catch (err) {
-                console.debug("Cut: revoke skipped", err);
-            }
+        if (typeof url !== "string" || !url.startsWith("blob:"))
+            return;
+        if (cut._activeInputs.has(url)) {
+            cut._pendingRevoke.add(url);
+            return;
         }
+        actuallyRevoke(url);
+    };
+
+    cut.abortCompose = function () {
+        cut._aborted = true;
+        cut._progressRef = null;
+        if (window.PageToMovieFfmpeg)
+            window.PageToMovieFfmpeg._onProgress = null;
     };
 
     cut.readMediaDuration = function (el) {
@@ -605,18 +734,10 @@
         if (!el || !dotNetRef) return { success: false };
         cut.unbindPlayback(el);
         el._cutTimeHandler = function () {
-            try {
-                dotNetRef.invokeMethodAsync("OnTime", el.currentTime || 0);
-            } catch (err) {
-                console.debug("Cut: timeupdate sink gone", err);
-            }
+            invokeQuiet(dotNetRef, "OnTime", el.currentTime || 0);
         };
         el._cutEndedHandler = function () {
-            try {
-                dotNetRef.invokeMethodAsync("OnEnded");
-            } catch (err) {
-                console.debug("Cut: ended sink gone", err);
-            }
+            invokeQuiet(dotNetRef, "OnEnded");
         };
         el.addEventListener("timeupdate", el._cutTimeHandler);
         el.addEventListener("ended", el._cutEndedHandler);
@@ -795,7 +916,7 @@
             const outName = "cut_out_" + seq + ".mp4";
             try {
                 onProgress?.(12, "Loading clip…");
-                const data = await api._safeFetchFile(url);
+                const data = await withPinnedUrls([url], function () { return api._safeFetchFile(url); });
                 await ffmpeg.writeFile(inName, data);
                 onProgress?.(30, "Probing duration…");
                 const probe = await api._probeDurationMemfsAsync(inName);
@@ -810,7 +931,9 @@
                 }
                 const out = await ffmpeg.readFile(outName);
                 const blob = new Blob([out.buffer], { type: "video/mp4" });
-                return { success: true, url: URL.createObjectURL(blob) };
+                const urlOut = URL.createObjectURL(blob);
+                noteTemp(urlOut);
+                return { success: true, url: urlOut };
             } catch (err) {
                 return { success: false, error: messageOf(err, String(err)) };
             } finally {
@@ -820,68 +943,92 @@
         });
     };
 
-    cut.composeMovieAsync = async function (clips, audioUrl, dotNetRef, jit) {
+    async function composeWorkAsync(clips, audioUrl, dotNetRef, jit) {
+        cut._aborted = false;
         const onProgress = asProgress(dotNetRef);
-        const api = window.PageToMovieFfmpeg;
-        if (!api) return { success: false, error: "ffmpeg helper missing" };
-        if (!clips || clips.length === 0)
-            return { success: false, error: "No clips to export." };
+        try {
+            const api = window.PageToMovieFfmpeg;
+            if (!api) return { success: false, error: "ffmpeg helper missing" };
+            if (!clips || clips.length === 0)
+                return { success: false, error: "No clips to export." };
 
-        const sourceUrls = [];
-        let acc = null;
-        let pendingJoin = "cut";
-        let sourceCount = 0;
-        for (let i = 0; i < clips.length; i++) {
-            const c = clips[i];
-            if (c.card?.text) {
-                const look = textStyle(c.card.style);
-                const card = await stillVideoAsync(
-                    cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
-                if (!card.success)
-                    return { success: false, error: card.error || "Card failed." };
+            const sourceUrls = (clips || []).map(function (c) { return c && c.url; }).filter(Boolean);
+            if (audioUrl)
+                sourceUrls.push(audioUrl);
+
+            return await withPinnedUrls(sourceUrls, async function () {
+            const usedSources = [];
+            let acc = null;
+            let pendingJoin = "cut";
+            let sourceCount = 0;
+            for (let i = 0; i < clips.length; i++) {
+                if (composeStopped())
+                    return { success: false, error: "Stopped." };
+                const c = clips[i];
+                if (c.card?.text) {
+                    const look = textStyle(c.card.style);
+                    const card = await stillVideoAsync(
+                        cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
+                    if (!card.success)
+                        return { success: false, error: card.error || "Card failed." };
+                    if (!acc)
+                        acc = card.url;
+                    else {
+                        const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress);
+                        if (!joined.success) return joined;
+                        acc = joined.url;
+                    }
+                    pendingJoin = "dip";
+                }
+                const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
+                if (one.error)
+                    return { success: false, error: one.error };
+                if (c.texts && c.texts.length > 0) {
+                    const over = await overlayTextsAsync(one.url, c.texts, onProgress);
+                    if (!over.success)
+                        return { success: false, error: over.error || "Text overlay failed." };
+                    one.url = over.url;
+                }
+                usedSources.push(one.source);
                 if (!acc)
-                    acc = card.url;
+                    acc = one.url;
                 else {
-                    const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress);
+                    // Hard cut ("cut") is concat with no xfade — keeps native audio.
+                    const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress);
                     if (!joined.success) return joined;
                     acc = joined.url;
                 }
-                pendingJoin = "dip";
+                pendingJoin = c.joinOut || "cut";
+                sourceCount++;
+                if (jit) {
+                    keepPrefixUrl(acc);
+                    emitPrefix(dotNetRef, acc, sourceCount);
+                }
             }
-            const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
-            if (one.error)
-                return { success: false, error: one.error };
-            if (c.texts && c.texts.length > 0) {
-                const over = await overlayTextsAsync(one.url, c.texts, onProgress);
-                if (!over.success)
-                    return { success: false, error: over.error || "Text overlay failed." };
-                one.url = over.url;
-            }
-            sourceUrls.push(one.source);
-            if (!acc)
-                acc = one.url;
-            else {
-                // Hard cut ("cut") is concat with no xfade — keeps native audio.
-                const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress);
-                if (!joined.success) return joined;
-                acc = joined.url;
-            }
-            pendingJoin = c.joinOut || "cut";
-            sourceCount++;
-            if (jit) {
-                keepPrefixUrl(acc);
-                emitPrefix(dotNetRef, acc, sourceCount);
-            }
+
+            if (composeStopped())
+                return { success: false, error: "Stopped." };
+            onProgress?.(55, "Combining clips…");
+            const mixed = await mixOptionalAudio(api, acc, audioUrl, onProgress);
+            if (!mixed.success) return mixed;
+            noteResult(mixed);
+
+            onProgress?.(100, "Ready");
+            if (jit)
+                emitPrefix(dotNetRef, mixed.url, sourceCount);
+            return { success: true, url: mixed.url, owned: usedSources.indexOf(mixed.url) < 0 };
+            });
+        } finally {
+            if (cut._progressRef === dotNetRef)
+                cut._progressRef = null;
         }
+    }
 
-        onProgress?.(55, "Combining clips…");
-        const mixed = await mixOptionalAudio(api, acc, audioUrl, onProgress);
-        if (!mixed.success) return mixed;
-
-        onProgress?.(100, "Ready");
-        if (jit)
-            emitPrefix(dotNetRef, mixed.url, sourceCount);
-        return { success: true, url: mixed.url, owned: !sourceUrls.includes(mixed.url) };
+    cut.composeMovieAsync = async function (clips, audioUrl, dotNetRef, jit) {
+        const run = function () { return composeWorkAsync(clips, audioUrl, dotNetRef, jit); };
+        const done = cut._composeGate.then(run, run);
+        cut._composeGate = done.then(function () {}, function () {});
+        return done;
     };
 
     cut.exportMovieAsync = async function (clips, audioUrl, dotNetRef) {
@@ -894,18 +1041,14 @@
     cut.previewMovieAsync = async function (clips, audioUrl, dotNetRef) {
         const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef, false);
         if (!r.success) return r;
-        if (cut._ownedMovieUrl && cut._ownedMovieUrl !== r.url)
-            cut.revokeBlobUrl(cut._ownedMovieUrl);
-        cut._ownedMovieUrl = r.owned ? r.url : null;
+        replaceOwnedMovie(r.url, !!r.owned);
         return r;
     };
 
     cut.previewMovieJitAsync = async function (clips, audioUrl, dotNetRef) {
         const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef, true);
         if (!r.success) return r;
-        if (cut._ownedMovieUrl && cut._ownedMovieUrl !== r.url)
-            cut.revokeBlobUrl(cut._ownedMovieUrl);
-        cut._ownedMovieUrl = r.owned ? r.url : null;
+        replaceOwnedMovie(r.url, !!r.owned);
         return r;
     };
 
