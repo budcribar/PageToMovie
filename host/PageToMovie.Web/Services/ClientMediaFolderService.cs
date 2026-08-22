@@ -594,8 +594,8 @@ public sealed class ClientMediaFolderService
             Clip = snap.Clip,
         });
 
-        await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.Sha256, saved.SizeBytes,
-            isCredits, isMusic, isSpeakBatch);
+        if (!isCredits && !isMusic && !isSpeakBatch)
+            await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.SizeBytes);
 
         var sil = string.IsNullOrWhiteSpace(silenceMessage)
             ? ""
@@ -618,14 +618,8 @@ public sealed class ClientMediaFolderService
         string pid,
         string takeRel,
         string urlToSave,
-        string _sha256,
-        long sizeBytes,
-        bool isCredits,
-        bool isMusic,
-        bool isSpeakBatch)
+        long sizeBytes)
     {
-        if (isCredits || isMusic || isSpeakBatch)
-            return;
         if (snap.Scene is not int scene || snap.Clip is not int clip)
             return;
         if (!ClipTakeNaming.IsStableTakeName(Path.GetFileName(takeRel)))

@@ -2423,30 +2423,8 @@ public sealed class FilmJobService
             }
 
             _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
-
-            if (_sidecars is not null)
-            {
-                // Legacy trees only have the player-alias sidecar. Persist that as take 1
-                // first so this edit is take 2 (unique, comparable) instead of colliding.
-                ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
-                var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-                var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
-                var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
-                File.WriteAllBytes(Path.Combine(videoDir, takeMp4Name), bytes);
-                await _sidecars.WriteSidecarWithTakeAsync(
-                    projectDir, req.Scene, req.Clip,
-                    take: editTake,
-                    prompt: req.Prompt,
-                    scriptText: current?.ScriptText ?? "",
-                    model: entry.Id,
-                    resolution: current?.Resolution ?? "",
-                    durationSeconds: current?.DurationSeconds ?? 0,
-                    sha256: sha256,
-                    sizeBytes: bytes.LongLength,
-                    mp4FileName: takeMp4Name,
-                    editedFromTake: current?.Take is > 0 ? current.Take : 1,
-                    ct: ct).ConfigureAwait(false);
-            }
+            await PersistEditedTakeAsync(projectDir, videoDir, req, current, entry.Id, bytes, ct)
+                .ConfigureAwait(false);
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
@@ -2469,6 +2447,41 @@ public sealed class FilmJobService
             _log.LogError(ex, "Video edit failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Persist the edited bytes as the next unique take (legacy alias sidecar becomes
+    /// take 1 first) and write <c>take_NN.mp4</c> so compare can play it.
+    /// </summary>
+    private async Task PersistEditedTakeAsync(
+        string projectDir,
+        string videoDir,
+        StartVideoEditRequest req,
+        ClipVersionItem? current,
+        string modelId,
+        byte[] bytes,
+        CancellationToken ct)
+    {
+        if (_sidecars is null)
+            return;
+        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
+        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+        var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
+        var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
+        await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
+        await _sidecars.WriteSidecarWithTakeAsync(
+            projectDir, req.Scene, req.Clip,
+            take: editTake,
+            prompt: req.Prompt,
+            scriptText: current?.ScriptText ?? "",
+            model: modelId,
+            resolution: current?.Resolution ?? "",
+            durationSeconds: current?.DurationSeconds ?? 0,
+            sha256: sha256,
+            sizeBytes: bytes.LongLength,
+            mp4FileName: takeMp4Name,
+            editedFromTake: current?.Take is > 0 ? current.Take : 1,
+            ct: ct).ConfigureAwait(false);
     }
 
     private async Task RunLocationVariantsAsync(StartLocationVariantsRequest req, string projectId, CancellationToken ct)
