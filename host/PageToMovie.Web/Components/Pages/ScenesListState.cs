@@ -342,6 +342,35 @@ public partial class Scenes
 
 
 
+    internal async Task SetSceneJoinAsync((int BeforeScene, string Kind, string? Card) change)
+    {
+        if (S._busy || S.Gen.JobRunning)
+            return;
+        S._busy = true;
+        S._error = null;
+        try
+        {
+            await S.Engine.SetScreenplayJoinAsync(S._projectId, change.BeforeScene, change.Kind, change.Card);
+            if (_scenes is not null)
+            {
+                var row = _scenes.FirstOrDefault(s => s.SceneNumber == change.BeforeScene);
+                if (row is not null)
+                {
+                    row.IncomingJoinKind = string.IsNullOrWhiteSpace(change.Kind) ? "cut" : change.Kind;
+                    row.IncomingJoinCard = string.IsNullOrWhiteSpace(change.Card) ? null : change.Card.Trim();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+        }
+        finally
+        {
+            S._busy = false;
+        }
+    }
+
     internal void RequestDeleteScene(int sn) => _deleteSceneTarget = sn;
 
     /// <summary>

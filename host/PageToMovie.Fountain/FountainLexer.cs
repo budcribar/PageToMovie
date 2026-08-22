@@ -146,16 +146,16 @@ public static class FountainLexer
     }
 
     /// <summary>True when the line before index <paramref name="i"/> is blank (or start of file).</summary>
-    public static bool PrevBlank(string[] lines, int i)
+    public static bool PrevBlank(IReadOnlyList<string> lines, int i)
     {
         if (i <= 0) return true;
         return string.IsNullOrWhiteSpace(lines[i - 1]);
     }
 
     /// <summary>True when the line after index <paramref name="i"/> is blank (or end of file).</summary>
-    public static bool NextBlank(string[] lines, int i)
+    public static bool NextBlank(IReadOnlyList<string> lines, int i)
     {
-        if (i + 1 >= lines.Length) return true;
+        if (i + 1 >= lines.Count) return true;
         return string.IsNullOrWhiteSpace(lines[i + 1]);
     }
 

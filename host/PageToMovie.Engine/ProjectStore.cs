@@ -5692,7 +5692,21 @@ public sealed partial class ProjectStore
                     rows.Add(row);
             }
 
-            return rows.OrderBy(r => r.SceneNumber).ToList();
+            var ordered = rows.OrderBy(r => r.SceneNumber).ToList();
+            try
+            {
+                var draftPath = ScreenplayService.GetDraftPath(this, projectId);
+                var fountain = File.Exists(draftPath)
+                    ? await File.ReadAllTextAsync(draftPath, ct).ConfigureAwait(false)
+                    : "";
+                ScreenplayService.ApplyIncomingJoins(ordered, fountain);
+            }
+            catch
+            {
+                // Join attach is advisory — never block the scene list.
+            }
+
+            return ordered;
         }
         finally
         {

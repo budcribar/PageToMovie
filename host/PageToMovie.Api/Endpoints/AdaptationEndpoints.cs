@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PageToMovie.Api.Auth;
 using PageToMovie.Core.Auth;
@@ -37,6 +38,8 @@ public static class AdaptationEndpoints
         app.MapGet("/api/projects/{id}/screenplay", GetProjectsIdScreenplay);
         // <summary>Save Fountain draft (no Stage 1 write). I6: requires script lease when collab.</summary>
         app.MapPut("/api/projects/{id}/screenplay", PutProjectsIdScreenplay);
+        // Write/omit the Fountain transition immediately before the incoming scene heading (Film join row).
+        app.MapPut("/api/projects/{id}/screenplay/join", PutProjectsIdScreenplayJoin);
         // <summary>
         // Approve the Fountain draft: materialise Stage 1 (scenes.json).
         // Optional body text saves first. Marks shot plan stale when hash changes.
@@ -302,6 +305,54 @@ public static class AdaptationEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task<IResult> PutProjectsIdScreenplayJoin(string id, HttpRequest req, ProjectStore store, IUserContext user,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    PageToMovie.Engine.Collaboration.IProjectAclService acl,
+    CancellationToken ct)
+    {
+        var opts = req.HttpContext.RequestServices.GetRequiredService<IOptions<PageToMovieOptions>>();
+        var hub = req.HttpContext.RequestServices.GetService<IHubContext<PageToMovie.Api.Collaboration.ProjectHub>>();
+        if (AuthGate.RequireLogin(user, opts) is { } denied)
+            return denied;
+        try
+        {
+            var uid = user.UserId ?? "";
+            if (await TryAcquireScriptLeaseAsync(id, uid, leases, acl, ct) is { } locked)
+                return locked;
+            var body = await req.ReadFromJsonAsync<ScreenplayJoinRequest>(cancellationToken: ct)
+                ?? new ScreenplayJoinRequest();
+            if (body.BeforeScene < 2)
+                return Results.BadRequest(new { ok = false, error = "Join is between consecutive scenes." });
+
+            var result = ScreenplayService.SetSceneJoin(store, id, body.BeforeScene, body.Kind, body.Card);
+            if (!result.Ok)
+                return Results.BadRequest(new { ok = false, error = result.Error });
+
+            await NotifyPlanDirtyAsync(id, uid, acl, hub, ct);
+            return Results.Ok(new
+            {
+                ok = true,
+                projectId = id,
+                beforeScene = body.BeforeScene,
+                kind = body.Kind,
+                card = body.Card,
+                message = result.Message,
+                screenplay = result.Status,
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
+
+    private sealed class ScreenplayJoinRequest
+    {
+        public int BeforeScene { get; set; } = 0;
+        public string? Kind { get; set; } = "cut";
+        public string? Card { get; set; } = null;
+    }
 
     private static async Task<IResult?> TryAcquireScriptLeaseAsync(
         string id,

@@ -3409,6 +3409,24 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         return JsonSerializer.Deserialize<ScreenplaySaveDto>(body, JsonOpts);
     }
 
+    public async Task<ScreenplaySaveDto?> SetScreenplayJoinAsync(
+        string projectId,
+        int beforeScene,
+        string kind,
+        string? card,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PutAsJsonAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/screenplay/join",
+            new { beforeScene, kind, card },
+            JsonOpts,
+            ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException(TryError(body) ?? resp.ReasonPhrase);
+        return JsonSerializer.Deserialize<ScreenplaySaveDto>(body, JsonOpts);
+    }
+
     public async Task<ScreenplaySignOffDto?> SignOffScreenplayAsync(
         string projectId,
         string? text = null,

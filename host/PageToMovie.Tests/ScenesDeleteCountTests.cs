@@ -60,6 +60,37 @@ public class ScenesDeleteCountTests
     }
 
     [Fact]
+    public void ApplyIncomingJoins_does_not_change_bound_clip_counts()
+    {
+        var page = new Scenes();
+        var list = page.List;
+        list._scenes = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 2, ClipsOnDisk = 2, ClipsComplete = true },
+            new() { SceneNumber = 2, ClipCount = 4, ClipsOnDisk = 3, ClipsComplete = false },
+        };
+
+        ScreenplayService.ApplyIncomingJoins(list._scenes, """
+            EXT. A - DAY
+
+            One.
+
+            DISSOLVE TO:
+
+            INT. B - NIGHT
+
+            Two.
+            """);
+
+        Assert.Equal("dissolve", list._scenes[1].IncomingJoinKind);
+        Assert.Equal(6, list._scenes.Sum(s => s.ClipCount));
+        Assert.Equal(5, list._scenes.Sum(s => s.ClipsOnDisk));
+        Assert.Equal(2, list.MovieReadiness.Scenes);
+        Assert.Equal(6, list.MovieReadiness.ClipsPlanned);
+        Assert.Equal(1, list.MovieReadiness.ScenesComplete);
+    }
+
+    [Fact]
     public void ReconcileSelectedSceneWithList_drops_open_scene_that_is_gone()
     {
         var page = new Scenes();

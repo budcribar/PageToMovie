@@ -137,6 +137,24 @@ public partial class ScenesSceneIndex : PageSliceComponent
         return "";
     }
 
+    /// <summary>
+    /// Show a join only when the next visible row is the next scene in film order
+    /// (hide when a filter skips a neighbor).
+    /// </summary>
+    internal static bool ShouldShowJoin(Scenes.ScenesListState list, IReadOnlyList<SceneSummary> shown, int index)
+    {
+        if (index < 0 || index + 1 >= shown.Count)
+            return false;
+        var current = shown[index].SceneNumber;
+        var nextVisible = shown[index + 1].SceneNumber;
+        var nextInFilm = list._scenes?
+            .Where(s => s.SceneNumber > current)
+            .OrderBy(s => s.SceneNumber)
+            .Select(s => s.SceneNumber)
+            .FirstOrDefault() ?? 0;
+        return nextInFilm > 0 && nextInFilm == nextVisible;
+    }
+
     private static string ItemTitle(SceneSummary s)
     {
         var dur = FormatSceneDuration(s);

@@ -296,8 +296,10 @@ else
     @* ---- Scene list ---- *@
     <div class="list-group list-group-flush border rounded scene-index-list"
          style="max-height: 72vh; overflow-y: auto;">
-        @foreach (var s in scenes)
+        @{ var shown = scenes; }
+        @for (var i = 0; i < shown.Count; i++)
         {
+            var s = shown[i];
             var sn = s.SceneNumber;
             var isSel = list._selected.Contains(sn);
             var isActive = list._selectedScene == sn;
@@ -365,6 +367,17 @@ else
                     }
                 </div>
             </div>
+
+            @if (i + 1 < shown.Count && ShouldShowJoin(list, shown, i))
+            {
+                var incoming = shown[i + 1];
+                <Scenes_JoinRow @key="@($"join-{incoming.SceneNumber}")"
+                                BeforeScene="incoming.SceneNumber"
+                                Kind="@(string.IsNullOrWhiteSpace(incoming.IncomingJoinKind) ? "cut" : incoming.IncomingJoinKind)"
+                                Card="@incoming.IncomingJoinCard"
+                                Disabled="@(Host._busy || Host.Gen.JobRunning)"
+                                OnChanged="list.SetSceneJoinAsync" />
+            }
         }
 
         @if (scenes.Count == 0)

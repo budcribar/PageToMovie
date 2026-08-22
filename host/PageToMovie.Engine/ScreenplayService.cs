@@ -446,6 +446,79 @@ public static string NormalizeText(string text)
                !name.Equals(MaxBaseFileName, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Write or omit the Fountain transition immediately before the incoming scene heading.
+    /// Cut deletes the line. Card is a Fountain <c>[[CARD: …]]</c> note on the same join.
+    /// </summary>
+    public static SaveResult SetSceneJoin(
+        ProjectStore store, string projectId, int beforeScene, string? kind, string? card)
+    {
+        if (beforeScene < 2)
+        {
+            return new SaveResult
+            {
+                Ok = false,
+                Error = "Join is between consecutive scenes — pick the incoming scene (2 or later).",
+            };
+        }
+
+        var doc = Get(store, projectId);
+        if (string.IsNullOrWhiteSpace(doc.Text))
+        {
+            return new SaveResult
+            {
+                Ok = false,
+                Error = "No screenplay draft yet. Approve a screenplay first.",
+            };
+        }
+
+        try
+        {
+            var next = FountainSceneJoin.WriteIncoming(
+                doc.Text, beforeScene, FountainSceneJoin.ParseKind(kind), card);
+            var save = SaveDraft(store, projectId, next);
+            store.InvalidateSceneListCache(projectId);
+            return save;
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return new SaveResult { Ok = false, Error = ex.Message };
+        }
+    }
+
+    /// <summary>Copy Fountain between-scene joins onto shot-plan rows (incoming = before that scene).</summary>
+    public static void ApplyIncomingJoins(IList<SceneSummary> rows, string? fountain)
+    {
+        if (rows is null || rows.Count == 0)
+            return;
+        foreach (var row in rows)
+        {
+            row.IncomingJoinKind = FountainSceneJoin.WireName(FountainSceneJoinKind.Cut);
+            row.IncomingJoinCard = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(fountain))
+            return;
+
+        var incoming = FountainSceneJoin.ReadIncoming(fountain);
+        if (incoming.Count == 0)
+            return;
+
+        var byKey = incoming
+            .GroupBy(j => j.IncomingHeadingIndex)
+            .ToDictionary(g => g.Key, g => g.Last());
+        var ordered = rows.OrderBy(r => r.SceneNumber).ToList();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var headingIndex = i + 1;
+            if (!byKey.TryGetValue(ordered[i].SceneNumber, out var join)
+                && !byKey.TryGetValue(headingIndex, out join))
+                continue;
+            ordered[i].IncomingJoinKind = FountainSceneJoin.WireName(join.Kind);
+            ordered[i].IncomingJoinCard = join.CardText;
+        }
+    }
+
     public static SaveResult SaveDraft(ProjectStore store, string projectId, string text)
     {
         text = NormalizeText(text ?? "");
@@ -465,6 +538,7 @@ public static string NormalizeText(string text)
         meta.LastSavedAt = DateTime.UtcNow.ToString("o");
         WriteMeta(store, projectId, meta);
         store.TriggerAutoGitCommit(projectId, "Save screenplay draft");
+        store.InvalidateSceneListCache(projectId);
 
         var stage1 = ReadStage1Lite(store, projectId);
         var status = ReadStatus(store, projectId, stage1);
