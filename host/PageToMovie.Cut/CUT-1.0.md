@@ -19,8 +19,15 @@ Cut **reads** `_take_NN.mp4` + `.current.json` only, in Film scene/clip order. I
 
 ## Fountain → join
 
-| Fountain (sidecar) | Join |
-|--------------------|------|
+Film writes the join as a Fountain transition immediately before the next scene heading
+(empty / omitted = hard cut). That line is the SSoT — not `transition_type` on the shot plan.
+
+Optional chapter/scene card lives on the same join as a Fountain note:
+`[[CARD: Chapter 1]]` (after the transition, or alone before the heading on a hard cut).
+`cut.project.json` remains Cut's finish override, not Film's store.
+
+| Fountain (sidecar / screenplay line) | Join |
+|--------------------------------------|------|
 | CUT TO / SMASH / MATCH / JUMP | hard cut |
 | DISSOLVE TO | crossfade |
 | FADE IN | from black |
@@ -28,6 +35,7 @@ Cut **reads** `_take_NN.mp4` + `.current.json` only, in Film scene/clip order. I
 | FADE TO WHITE | through white |
 | CUT TO BLACK | instant black hold |
 | WIPE TO | skip (hard cut tonight) |
+| `[[CARD: …]]` | optional text card at that incoming scene |
 
 Same-scene default = hard cut. Scene-number change default = dissolve if no Fountain line.
 
