@@ -491,11 +491,7 @@ public partial class Home : IAsyncDisposable
             return;
         var seekSec = CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
         var samePlayer = _playMode == PlayMode.Movie;
-        var sameUrl = samePlayer && string.Equals(_movieSrcBound, url, StringComparison.Ordinal);
-        var stillInsidePlayingMerge = samePlayer
-            && !CutPlayClock.ShouldReplaceMergeSrcWhilePlaying
-            && _playhead < CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips) - 0.05;
-        if (sameUrl || stillInsidePlayingMerge)
+        if (ShouldReusePlayingMovie(samePlayer, url))
         {
             if (!CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek))
                 return;
@@ -539,6 +535,16 @@ public partial class Home : IAsyncDisposable
                 // player may not be mounted yet
             }
         }
+    }
+
+    private bool ShouldReusePlayingMovie(bool samePlayer, string url)
+    {
+        if (!samePlayer)
+            return false;
+        if (string.Equals(_movieSrcBound, url, StringComparison.Ordinal))
+            return true;
+        return !CutPlayClock.ShouldReplaceMergeSrcWhilePlaying
+            && _playhead < CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips) - 0.05;
     }
 
     private async Task EnterWaitAsync()
@@ -821,13 +827,17 @@ public partial class Home : IAsyncDisposable
             return;
         try
         {
-            var timeline = await Js.InvokeAsync<double>("PageToMovieCut.readTimelineSec");
+            var timeline = await Js.InvokeAsync<double>("PageToMovieCut.readTimelineSec", ComposeToken);
             if (timeline > 0 || _playhead <= 0)
                 _playhead = CutPlayMerge.PlaySeekSec(Folder.Clips, timeline);
         }
         catch (JSException)
         {
             // playhead stays at the last known time
+        }
+        catch (OperationCanceledException)
+        {
+            // Stop cancelled the in-flight timeline read
         }
     }
 
