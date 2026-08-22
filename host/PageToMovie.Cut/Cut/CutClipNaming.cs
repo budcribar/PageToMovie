@@ -12,6 +12,7 @@ public static class CutClipNaming
 {
     public const string ClipJsonSuffix = ".clip.json";
     public const string CurrentTakePointerSuffix = ".current.json";
+    public const string ProjectFileName = "cut.project.json";
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
 
@@ -102,6 +103,16 @@ public static class CutClipNaming
         var name = FileNameOnly(fileName);
         return name.EndsWith(CurrentTakePointerSuffix, StringComparison.OrdinalIgnoreCase)
                && IsCanonicalClipName(name);
+    }
+
+    public static bool IsProjectFileName(string? fileName) =>
+        string.Equals(FileNameOnly(fileName), ProjectFileName, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsClipSidecarName(string? fileName)
+    {
+        var name = FileNameOnly(fileName);
+        return name.EndsWith(ClipJsonSuffix, StringComparison.OrdinalIgnoreCase)
+               && TryParseSceneClip(name, out _, out _);
     }
 
     public static int ParseTakeNumber(string? fileName)

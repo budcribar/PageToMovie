@@ -38,6 +38,17 @@ public sealed class CutComposeService : IAsyncDisposable
         AudioFileName = file.Name;
     }
 
+    public async Task<bool> TrySetAudioFromFolderAsync(string relativePath)
+    {
+        var r = await _js.InvokeAsync<JsResult>("PageToMovieCut.getFileBlobUrlAsync", relativePath);
+        if (!r.Success || string.IsNullOrWhiteSpace(r.Url))
+            return false;
+        await ClearAudioAsync();
+        _audioUrl = r.Url;
+        AudioFileName = CutClipNaming.FileNameOnly(relativePath);
+        return true;
+    }
+
     public async Task ClearAudioAsync()
     {
         if (!string.IsNullOrWhiteSpace(_audioUrl))
@@ -87,15 +98,25 @@ public sealed class CutComposeService : IAsyncDisposable
         if (clips.Count == 0)
             throw new InvalidOperationException("No clips to export.");
 
-        var payload = clips.Select(c => new JsExportClip
+        var payload = new List<JsExportClip>(clips.Count);
+        for (var i = 0; i < clips.Count; i++)
         {
-            Url = c.PreviewUrl,
-            Label = c.Label,
-            FileName = c.FileName,
-            MarkIn = c.MarkIn,
-            MarkOut = c.HasDuration ? c.MarkOut : 0,
-            Duration = c.DurationSec,
-        }).ToList();
+            var c = clips[i];
+            var next = i + 1 < clips.Count ? clips[i + 1] : null;
+            var windows = c.KeepWindows();
+            payload.Add(new JsExportClip
+            {
+                Url = c.PreviewUrl,
+                Label = c.Label,
+                FileName = c.FileName,
+                MarkIn = c.MarkIn,
+                MarkOut = c.HasDuration ? c.MarkOut : 0,
+                Duration = c.DurationSec,
+                Windows = windows.Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
+                JoinOut = next is null ? "cut" : CutTransitionMap.WireName(c.JoinToNext(next)),
+                Card = CardPayload(c, clips),
+            });
+        }
 
         var sink = new ExportProgressSink(progress);
         using var sinkRef = DotNetObjectReference.Create(sink);
@@ -106,6 +127,14 @@ public sealed class CutComposeService : IAsyncDisposable
         if (!download)
             MoviePreviewUrl = r.Url;
         return r.Url;
+    }
+
+    private static JsCard? CardPayload(CutClip clip, IReadOnlyList<CutClip> strip)
+    {
+        if (!clip.Card.Enabled || !clip.IsFirstOfScene(strip))
+            return null;
+        var text = string.IsNullOrWhiteSpace(clip.Card.Text) ? $"Scene {clip.Scene}" : clip.Card.Text.Trim();
+        return new JsCard { Text = text, Seconds = clip.Card.HoldSeconds };
     }
 
     public async ValueTask DisposeAsync()

@@ -13,8 +13,10 @@ public sealed class CutFolderService : IAsyncDisposable
     public CutFolderService(IJSRuntime js) => _js = js;
 
     public bool HasFolder { get; private set; }
+    public bool CanWrite { get; private set; }
     public string? FolderName { get; private set; }
     public string? FolderError { get; private set; }
+    public string? PendingMusicFileName { get; private set; }
     public IReadOnlyList<CutClip> Clips { get; private set; } = [];
 
     public async Task<bool> BrowserSupportsFolderPickerAsync()
@@ -35,6 +37,7 @@ public sealed class CutFolderService : IAsyncDisposable
 
         FolderName = pick.FolderName;
         HasFolder = true;
+        CanWrite = true;
         await LoadClipsFromCurrentFolderAsync();
     }
 
@@ -50,6 +53,7 @@ public sealed class CutFolderService : IAsyncDisposable
 
         FolderName = pick.FolderName ?? "Selected files";
         HasFolder = true;
+        CanWrite = false;
         await ApplyListedFilesAsync(pick.Files);
     }
 
@@ -96,8 +100,28 @@ public sealed class CutFolderService : IAsyncDisposable
         }
 
         Clips = clips;
+        PendingMusicFileName = null;
+        var project = files.FirstOrDefault(f =>
+            CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
+        if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music))
+            PendingMusicFileName = music;
         if (clips.Count == 0)
             FolderError = "No takes named scene_SS_clip_CC_take_NN.mp4 in that folder.";
+    }
+
+    public async Task<bool> SaveFinishAsync(string? musicFileName)
+    {
+        var json = CutProjectFile.Serialize(Clips, musicFileName);
+        var wrote = await _js.InvokeAsync<JsResult>(
+            "PageToMovieCut.writeTextFileAsync", CutClipNaming.ProjectFileName, json);
+        if (!wrote.Success)
+        {
+            FolderError = wrote.Error ?? "Could not save the cut.";
+            return false;
+        }
+
+        FolderError = null;
+        return true;
     }
 
     /// <summary>

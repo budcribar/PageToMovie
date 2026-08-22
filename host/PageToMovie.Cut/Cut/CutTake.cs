@@ -37,6 +37,13 @@ public sealed class CutTake
 
     public void ApplyInOut(double markIn, double markOut)
     {
+        if (!HasDuration)
+        {
+            MarkIn = markIn;
+            MarkOut = markOut;
+            return;
+        }
+
         var (a, b) = ClipInOut.Clamp(markIn, markOut, DurationSec);
         MarkIn = a;
         MarkOut = b;

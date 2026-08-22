@@ -58,6 +58,33 @@ public sealed class JsExportClip
 
     [JsonPropertyName("duration")]
     public double Duration { get; set; }
+
+    [JsonPropertyName("windows")]
+    public List<JsKeepWindow> Windows { get; set; } = [];
+
+    [JsonPropertyName("joinOut")]
+    public string JoinOut { get; set; } = "cut";
+
+    [JsonPropertyName("card")]
+    public JsCard? Card { get; set; }
+}
+
+public sealed class JsKeepWindow
+{
+    [JsonPropertyName("start")]
+    public double Start { get; set; }
+
+    [JsonPropertyName("end")]
+    public double End { get; set; }
+}
+
+public sealed class JsCard
+{
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
+
+    [JsonPropertyName("seconds")]
+    public double Seconds { get; set; } = 2;
 }
 
 public sealed class ExportProgressSink

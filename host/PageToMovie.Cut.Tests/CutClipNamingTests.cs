@@ -133,4 +133,12 @@ public class CutClipNamingTests
         Assert.DoesNotContain(".mp4", json, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("scene_03_clip_07.current.json", CutClipNaming.CurrentTakePointerFileName(3, 7));
     }
+
+    [Fact]
+    public void Finish_file_and_sidecar_names()
+    {
+        Assert.True(CutClipNaming.IsProjectFileName("cut.project.json"));
+        Assert.True(CutClipNaming.IsClipSidecarName("scene_03_clip_07.clip.json"));
+        Assert.False(CutClipNaming.IsClipSidecarName("scene_03_clip_07.current.json"));
+    }
 }

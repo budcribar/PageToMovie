@@ -45,6 +45,29 @@ public sealed class CutClip
     public double MarkOut => SelectedTake?.MarkOut ?? 0;
     public bool HasDuration => SelectedTake?.HasDuration ?? false;
 
+    public List<CutRangeSpan> RangeDeletes { get; } = [];
+    public CutJoinKind? JoinOverride { get; set; }
+    public string? FountainTransition { get; set; }
+    public CutCard Card { get; } = new();
+
+    public IReadOnlyList<(double Start, double End)> KeepWindows() =>
+        CutRangeDelete.KeepWindows(MarkIn, MarkOut, RangeDeletes.Select(r => (r.Start, r.End)));
+
+    public CutJoinKind JoinToNext(CutClip? next) =>
+        CutTransitionMap.Resolve(FountainTransition, next is not null && next.Scene != Scene, JoinOverride);
+
+    public bool IsFirstOfScene(IReadOnlyList<CutClip> strip)
+    {
+        for (var i = 0; i < strip.Count; i++)
+        {
+            if (!ReferenceEquals(strip[i], this))
+                continue;
+            return i == 0 || strip[i - 1].Scene != Scene;
+        }
+
+        return true;
+    }
+
     public bool NeedsTrim =>
         SelectedTake is { HasDuration: true } t
         && (t.MarkIn > 0.05 || t.MarkOut < t.DurationSec - 0.05);

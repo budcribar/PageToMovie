@@ -237,6 +237,46 @@ html, body {
 
 .cut-ok { color: var(--fs-ok-text); }
 
+.cut-range, .cut-joins, .cut-card-edit {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.cut-range label, .cut-card-edit label {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--fs-text-secondary);
+}
+
+.cut-range input[type="number"], .cut-card-edit input[type="text"] {
+    width: 5.5rem;
+    background: var(--fs-bg-input);
+    border: 1px solid var(--fs-border-color);
+    color: var(--fs-text-primary);
+    border-radius: 6px;
+    padding: 0.25rem 0.4rem;
+}
+
+.cut-card-edit input[type="text"] { width: 10rem; }
+
+.cut-span {
+    appearance: none;
+    border: 1px solid var(--fs-danger-border);
+    background: var(--fs-danger-bg);
+    color: var(--fs-danger-text);
+    border-radius: 999px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.cut-check { gap: 0.4rem; }
+
 .cut-actions {
     margin-top: 1rem;
     display: flex;

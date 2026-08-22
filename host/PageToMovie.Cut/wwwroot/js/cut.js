@@ -42,9 +42,12 @@
 
     async function collectMediaFile(handle, name, path, files) {
         if (handle.kind !== "file") return;
-        const isMp4 = /\.mp4$/i.test(name);
-        const isPointer = /\.current\.json$/i.test(name);
-        if (!isMp4 && !isPointer) return;
+            const keep = /\.mp4$/i.test(name)
+                || /\.current\.json$/i.test(name)
+                || /\.clip\.json$/i.test(name)
+                || /^cut\.project\.json$/i.test(name);
+            if (!keep) return;
+            const isPointer = !/\.mp4$/i.test(name);
         try {
             const file = await handle.getFile();
             const entry = {
@@ -89,11 +92,154 @@
         const args = ["-hide_banner", "-y"];
         if (start > 0.001) args.push("-ss", String(start));
         args.push("-i", inName, "-t", String(keep),
+            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart",
             outName);
         return args;
+    }
+
+    function xfadeName(kind) {
+        const k = String(kind || "cut").toLowerCase();
+        if (k === "dissolve") return "fade";
+        if (k === "fadewhite") return "fadewhite";
+        if (k === "dip" || k === "fadein" || k === "fadeout") return "fadeblack";
+        return "";
+    }
+
+    function cardPngUrl(text) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, 1280, 720);
+        ctx.fillStyle = "#f1f3f7";
+        ctx.font = "48px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(text || "Scene"), 640, 360, 1100);
+        return canvas.toDataURL("image/png");
+    }
+
+    async function stillVideoAsync(pngUrl, seconds, onProgress) {
+        const api = window.PageToMovieFfmpeg;
+        if (!api) return { success: false, error: "ffmpeg helper missing" };
+        const hold = Math.max(0.3, Number(seconds) || 2);
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success) return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inName = "cut_card_" + seq + ".png";
+            const outName = "cut_card_" + seq + ".mp4";
+            try {
+                const data = await api._safeFetchFile(pngUrl);
+                await ffmpeg.writeFile(inName, data);
+                await ffmpeg.exec([
+                    "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
+                    "-vf", "scale=1280:720,setsar=1",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+                    "-an", "-movflags", "+faststart",
+                    outName,
+                ]);
+                const out = await ffmpeg.readFile(outName);
+                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+            } catch (err) {
+                return { success: false, error: messageOf(err, String(err)) };
+            } finally {
+                await deleteMemfs(ffmpeg, inName);
+                await deleteMemfs(ffmpeg, outName);
+            }
+        });
+    }
+
+    async function xfadeAsync(leftUrl, rightUrl, kind, onProgress) {
+        const api = window.PageToMovieFfmpeg;
+        const trans = xfadeName(kind);
+        if (!api || !trans) return { success: false, error: "no xfade" };
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success) return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const aName = "cut_xf_a_" + seq + ".mp4";
+            const bName = "cut_xf_b_" + seq + ".mp4";
+            const outName = "cut_xf_o_" + seq + ".mp4";
+            try {
+                await ffmpeg.writeFile(aName, await api._safeFetchFile(leftUrl));
+                await ffmpeg.writeFile(bName, await api._safeFetchFile(rightUrl));
+                const probe = await api._probeDurationMemfsAsync(aName);
+                const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
+                const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
+                const offset = Math.max(0, leftSec - fade);
+                const graph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
+                    + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
+                await ffmpeg.exec([
+                    "-hide_banner", "-y", "-i", aName, "-i", bName,
+                    "-filter_complex", graph, "-map", "[v]", "-an",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-movflags", "+faststart",
+                    outName,
+                ]);
+                const out = await ffmpeg.readFile(outName);
+                return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
+            } catch (err) {
+                return { success: false, error: messageOf(err, String(err)) };
+            } finally {
+                await deleteMemfs(ffmpeg, aName);
+                await deleteMemfs(ffmpeg, bName);
+                await deleteMemfs(ffmpeg, outName);
+            }
+        });
+    }
+
+    async function joinPairAsync(api, leftUrl, rightUrl, kind, onProgress) {
+        const k = String(kind || "cut").toLowerCase();
+        if (k === "cuttoblack") {
+            const hold = await stillVideoAsync(cardPngUrl(""), 0.4, onProgress);
+            if (!hold.success) return api.concatVideosAsync([leftUrl, rightUrl], onProgress);
+            const mid = await api.concatVideosAsync([leftUrl, hold.url], onProgress);
+            if (!mid.success) return mid;
+            return api.concatVideosAsync([mid.url, rightUrl], onProgress);
+        }
+        if (xfadeName(k)) {
+            const faded = await xfadeAsync(leftUrl, rightUrl, k, onProgress);
+            if (faded.success) return faded;
+        }
+        return api.concatVideosAsync([leftUrl, rightUrl], onProgress);
+    }
+
+    async function prepareWindowsAsync(c, index, total, onProgress) {
+        const label = c.label || c.fileName || ("clip " + (index + 1));
+        if (!c.url)
+            return { error: "Selected take file is missing: " + label };
+        onProgress?.(Math.round((index / Math.max(total, 1)) * 40), "Preparing " + label + "…");
+        const windows = Array.isArray(c.windows) && c.windows.length > 0
+            ? c.windows
+            : [{ start: Number(c.markIn) || 0, end: Number(c.markOut) || 0 }];
+        const urls = [];
+        for (const w of windows) {
+            const start = Number(w.start) || 0;
+            const end = Number(w.end) || 0;
+            const duration = Number(c.duration) || 0;
+            const needTrim = duration <= 0 || start > 0.05 || (end > 0 && end < duration - 0.05);
+            if (!needTrim) {
+                urls.push(c.url);
+                continue;
+            }
+            const trimmed = await cut.trimRangeAsync(c.url, start, end, onProgress);
+            if (!trimmed.success)
+                return { error: label + ": " + (trimmed.error || "trim failed") };
+            urls.push(trimmed.url);
+        }
+        if (urls.length === 1)
+            return { url: urls[0], source: c.url };
+        const cat = await window.PageToMovieFfmpeg.concatVideosAsync(urls, onProgress);
+        if (!cat.success)
+            return { error: label + ": " + (cat.error || "range join failed") };
+        return { url: cat.url, source: c.url };
     }
 
     async function deleteMemfs(ffmpeg, name) {
@@ -102,23 +248,6 @@
         } catch (err) {
             console.debug("Cut: memfs cleanup", name, err);
         }
-    }
-
-    async function prepareOneClip(c, index, total, onProgress) {
-        const label = c.label || c.fileName || ("clip " + (index + 1));
-        if (!c.url)
-            return { error: "Selected take file is missing: " + label };
-        onProgress?.(Math.round((index / total) * 50), "Preparing " + label + "…");
-        const duration = Number(c.duration) || 0;
-        const markIn = Number(c.markIn) || 0;
-        const markOut = Number(c.markOut) || 0;
-        const needTrim = duration > 0 && (markIn > 0.05 || (markOut > 0 && markOut < duration - 0.05));
-        if (!needTrim)
-            return { url: c.url, source: c.url };
-        const trimmed = await cut.trimRangeAsync(c.url, markIn, markOut, onProgress);
-        if (!trimmed.success)
-            return { error: label + ": " + (trimmed.error || "trim failed") };
-        return { url: trimmed.url, source: c.url };
     }
 
     async function mixOptionalAudio(api, videoUrl, audioUrl, onProgress) {
@@ -323,21 +452,32 @@
         if (!clips || clips.length === 0)
             return { success: false, error: "No clips to export." };
 
-        const prepared = [];
+        const items = [];
         const sourceUrls = [];
         for (let i = 0; i < clips.length; i++) {
-            const one = await prepareOneClip(clips[i], i, clips.length, onProgress);
+            const c = clips[i];
+            if (c.card?.text) {
+                const card = await stillVideoAsync(cardPngUrl(c.card.text), c.card.seconds || 2, onProgress);
+                if (!card.success)
+                    return { success: false, error: card.error || "Card failed." };
+                items.push({ url: card.url, joinOut: "dip" });
+            }
+            const one = await prepareWindowsAsync(c, i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
             sourceUrls.push(one.source);
-            prepared.push(one.url);
+            items.push({ url: one.url, joinOut: c.joinOut || "cut" });
         }
 
         onProgress?.(55, "Combining clips…");
-        const concat = await api.concatVideosAsync(prepared, onProgress);
-        if (!concat.success) return concat;
+        let acc = items[0].url;
+        for (let i = 1; i < items.length; i++) {
+            const joined = await joinPairAsync(api, acc, items[i].url, items[i - 1].joinOut, onProgress);
+            if (!joined.success) return joined;
+            acc = joined.url;
+        }
 
-        const mixed = await mixOptionalAudio(api, concat.url, audioUrl, onProgress);
+        const mixed = await mixOptionalAudio(api, acc, audioUrl, onProgress);
         if (!mixed.success) return mixed;
 
         onProgress?.(100, "Ready");

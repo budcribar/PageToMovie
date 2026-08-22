@@ -12,6 +12,7 @@ public static class CutClipList
     {
         var list = files.ToList();
         var pointers = ReadPointers(list);
+        var sidecars = ReadSidecarTransitions(list);
         var groups = new Dictionary<(int Scene, int Clip), Slot>();
 
         foreach (var file in list)
@@ -42,7 +43,7 @@ public static class CutClipList
         return groups
             .OrderBy(g => g.Key.Scene)
             .ThenBy(g => g.Key.Clip)
-            .Select(g => ToClip(g.Value, pointers.GetValueOrDefault(g.Key)))
+            .Select(g => ToClip(g.Value, pointers.GetValueOrDefault(g.Key), sidecars.GetValueOrDefault(g.Key)))
             .Where(c => c.Takes.Count > 0)
             .ToList();
     }
@@ -88,9 +89,33 @@ public static class CutClipList
         return 0;
     }
 
-    private static CutClip ToClip(Slot slot, int pointerTake)
+    private static Dictionary<(int Scene, int Clip), string> ReadSidecarTransitions(IEnumerable<FoundMediaFile> files)
+    {
+        var best = new Dictionary<(int Scene, int Clip), (string Line, int Score)>();
+        foreach (var file in files)
+        {
+            if (!CutClipNaming.IsClipSidecarName(file.FileName)
+                && !CutClipNaming.IsClipSidecarName(file.RelativePath))
+                continue;
+            if (!CutClipNaming.TryParseSceneClip(file.FileName, out var scene, out var clip)
+                && !CutClipNaming.TryParseSceneClip(file.RelativePath, out scene, out clip))
+                continue;
+            var line = CutTransitionMap.ReadSidecarTransition(file.Text);
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+            var key = (scene, clip);
+            var score = PathScore(file.RelativePath);
+            if (!best.TryGetValue(key, out var cur) || score < cur.Score)
+                best[key] = (line, score);
+        }
+
+        return best.ToDictionary(kv => kv.Key, kv => kv.Value.Line);
+    }
+
+    private static CutClip ToClip(Slot slot, int pointerTake, string? fountainTransition)
     {
         var clip = new CutClip { Scene = slot.Scene, Clip = slot.Clip, ActiveTakeNumber = pointerTake };
+        clip.FountainTransition = fountainTransition;
         foreach (var file in PreferUniqueTakes(slot.Takes).OrderBy(t => t.TakeHint))
             clip.Takes.Add(ToTake(file.TakeHint, file));
 
