@@ -124,14 +124,15 @@
                      OnSplit="SplitAtPlayheadAsync"
                      OnStepBack="() => StepAsync(-5)"
                      OnStepForward="() => StepAsync(5)"
-                     OnEdited="OnTimelineEdited" />
+                     OnEdited="OnTimelineEdited"
+                     OnMusicRemoved="ClearAudioAsync" />
 
         <section class="cut-card cut-mix">
             <div class="cut-drop">
                 <InputFile OnChange="OnAudioAsync" accept="audio/*,.wav,.mp3,.m4a,.aac" />
                 @if (Compose.HasAudio)
                 {
-                    <p class="cut-ok">@Compose.AudioFileName</p>
+                    <p class="cut-ok">@Compose.Music.Label</p>
                     <button type="button" class="cut-btn cut-btn-ghost" @onclick="ClearAudioAsync" disabled="@_busy">Remove</button>
                 }
                 else

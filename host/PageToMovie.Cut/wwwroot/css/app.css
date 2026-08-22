@@ -755,6 +755,20 @@ html, body {
     white-space: nowrap;
 }
 
+.cut-tl-music.is-selected {
+    box-shadow: 0 0 0 1px #c4b0f0;
+}
+
+.cut-tl-music input.cut-tl-music-name {
+    height: 100%;
+    width: calc(100% - 18px);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
 .cut-tl-music .cut-tl-handle {
     top: 6px;
     bottom: 6px;

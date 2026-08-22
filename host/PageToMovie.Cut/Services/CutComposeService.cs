@@ -60,6 +60,7 @@ public sealed class CutComposeService : IAsyncDisposable
 
     public void ApplySavedMusic(CutMusic saved)
     {
+        Music.DisplayName = saved.DisplayName;
         Music.SetStart(saved.StartSec);
         Music.ApplyInOut(saved.MarkIn, saved.MarkOut > saved.MarkIn ? saved.MarkOut : Music.MarkOut);
     }

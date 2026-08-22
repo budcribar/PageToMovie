@@ -126,6 +126,7 @@ public sealed class CutFolderService : IAsyncDisposable
         {
             PendingMusicFileName = music;
             PendingMusic.FileName = track.FileName;
+            PendingMusic.DisplayName = track.DisplayName;
             PendingMusic.SetStart(track.StartSec);
             PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
             SavedMovieFingerprint = fp;

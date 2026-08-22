@@ -9,12 +9,14 @@ public sealed class CutMusic
     public const double MinSpanSeconds = 0.3;
 
     public string? FileName { get; set; }
+    public string? DisplayName { get; set; }
     public double StartSec { get; set; }
     public double MarkIn { get; set; }
     public double MarkOut { get; set; }
     public double DurationSec { get; private set; }
 
     public bool HasFile => !string.IsNullOrWhiteSpace(FileName);
+    public string Label => CutMusicEdit.Label(this);
     public bool HasDuration => DurationSec > 0.05;
     public double SlicedDurationSec
     {
@@ -28,6 +30,7 @@ public sealed class CutMusic
     public void Clear()
     {
         FileName = null;
+        DisplayName = null;
         StartSec = 0;
         MarkIn = 0;
         MarkOut = 0;
@@ -37,6 +40,7 @@ public sealed class CutMusic
     public void SetFile(string? fileName)
     {
         FileName = string.IsNullOrWhiteSpace(fileName) ? null : CutClipNaming.FileNameOnly(fileName);
+        DisplayName = null;
         StartSec = 0;
         MarkIn = 0;
         MarkOut = 0;

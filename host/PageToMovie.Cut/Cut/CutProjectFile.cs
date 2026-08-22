@@ -32,6 +32,7 @@ public static class CutProjectFile
             MusicStart = track.StartSec,
             MusicIn = track.MarkIn,
             MusicOut = track.MarkOut,
+            MusicLabel = string.IsNullOrWhiteSpace(track.DisplayName) ? null : track.DisplayName.Trim(),
             MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
             Clips = clips.Select(ToDto).ToList(),
             TextClips = textClips is { Count: > 0 } ? textClips.Select(ToTextDto).ToList() : null,
@@ -86,6 +87,7 @@ public static class CutProjectFile
         musicFileName = dto.MusicFileName;
         movieFingerprint = dto.MovieFingerprint;
         music.FileName = dto.MusicFileName;
+        music.DisplayName = string.IsNullOrWhiteSpace(dto.MusicLabel) ? null : dto.MusicLabel.Trim();
         music.SetStart(dto.MusicStart);
         music.ApplyInOut(dto.MusicIn, dto.MusicOut);
         ApplyClipRows(clips, dto.Clips);
@@ -262,6 +264,7 @@ public static class CutProjectFile
         public double MusicStart { get; set; }
         public double MusicIn { get; set; }
         public double MusicOut { get; set; }
+        public string? MusicLabel { get; set; }
         public string? MovieFingerprint { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
         public List<TextClipDto>? TextClips { get; set; }
