@@ -1,89 +1,105 @@
 @if (Open)
 {
-    <div class="cut-text-menu-back"
+    <div class="@CutTextMenu.HostClass @CutTextMenu.BackClass"
          data-testid="cut-text-menu-back"
-         @onclick="Close"
-         @oncontextmenu="Close"
-         @oncontextmenu:preventDefault="true"></div>
-    <div class="@CutTransport.TextMenuClass"
-         data-testid="@TestId"
-         role="menu"
-         style="left: @(X.ToString(System.Globalization.CultureInfo.InvariantCulture))px; top: @(Y.ToString(System.Globalization.CultureInfo.InvariantCulture))px">
-        @if (ShowDuplicate)
-        {
-        <button type="button"
-                class="cut-text-menu-item"
-                data-testid="@(TestId)-duplicate"
-                disabled="@Busy"
-                @onclick="OnDuplicate">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 7h9a2 2 0 0 1 2 2v9H8V7zm-3 3h2v9a2 2 0 0 0 2 2h9v1H7a2 2 0 0 1-2-2v-10zm10.2.4v1.8H17v1.6h-1.8V16h-1.6v-1.8H12v-1.6h1.8V10.4h1.4z"/></svg>
-            <span>Duplicate</span>
-            <kbd>@CutTextEdit.DuplicateKeys</kbd>
-        </button>
-        }
-        <button type="button"
-                class="cut-text-menu-item"
-                data-testid="@(TestId)-copy"
-                disabled="@Busy"
-                @onclick="OnCopy">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 6h10a2 2 0 0 1 2 2v10H8V6zm-3 3h2v10a2 2 0 0 0 2 2h10v1H7a2 2 0 0 1-2-2V9z"/></svg>
-            <span>Copy</span>
-            <kbd>@CutTextEdit.CopyKeys</kbd>
-        </button>
-        <button type="button"
-                class="cut-text-menu-item"
-                data-testid="@(TestId)-paste"
-                disabled="@(Busy || !CanPaste)"
-                @onclick="OnPaste">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1-2zm3 5.5A2.5 2.5 0 1 0 12 14a2.5 2.5 0 0 0 0-4.5z"/></svg>
-            <span>Paste</span>
-            <kbd>@CutTextEdit.PasteKeys</kbd>
-        </button>
-        <button type="button"
-                class="cut-text-menu-item"
-                data-testid="@(TestId)-delete"
-                disabled="@Busy"
-                @onclick="OnDelete">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h4v2H4V6h4l1-2zm1 6h2v8h-2v-8zm4 0h2v8h-2v-8z"/></svg>
-            <span>Delete</span>
-            <kbd>@CutTextEdit.DeleteKeys</kbd>
-        </button>
-        <div class="cut-text-menu-rule"></div>
-        @if (CanSplit || !HideSplitWhenDisabled)
-        {
+         style="z-index: @CutTextMenu.HostZIndex"
+         @onclick="OnBackdropAsync"
+         @oncontextmenu="OnBackdropAsync"
+         @oncontextmenu:preventDefault="true">
+        <div @ref="_panel"
+             class="@CutTransport.TextMenuClass"
+             data-testid="@TestId"
+             role="menu"
+             tabindex="-1"
+             style="left: @(X.ToString(System.Globalization.CultureInfo.InvariantCulture))px; top: @(Y.ToString(System.Globalization.CultureInfo.InvariantCulture))px"
+             @onclick:stopPropagation="true"
+             @onpointerdown:stopPropagation="true"
+             @onmousedown:stopPropagation="true"
+             @oncontextmenu:stopPropagation="true"
+             @oncontextmenu:preventDefault="true">
+            @if (ShowDuplicate)
+            {
             <button type="button"
                     class="cut-text-menu-item"
-                    data-testid="@(TestId)-split"
-                    disabled="@(Busy || !CanSplit)"
-                    @onclick="OnSplit">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="6.2" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
-                    <circle cx="6.2" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
-                    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.2 8.4 20 18.2M8.2 15.6 20 5.8" />
-                </svg>
-                <span>Split</span>
-                <kbd>@CutTextEdit.SplitKeys</kbd>
-            </button>
-        }
-        <button type="button"
-                class="cut-text-menu-item"
-                data-testid="@(TestId)-duration"
-                disabled="@Busy"
-                @onclick="OnEditDuration">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm.8 3h-1.6v5.2l3.7 2.2.8-1.3-2.9-1.7V7z"/></svg>
-            <span>Edit duration</span>
-        </button>
-        @if (ShowRename)
-        {
-            <button type="button"
-                    class="cut-text-menu-item"
-                    data-testid="@(TestId)-rename"
+                    data-testid="@(TestId)-duplicate"
                     disabled="@Busy"
-                    @onclick="OnRename">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 17.2 14.6 6.6l2.8 2.8L6.8 20H4v-2.8zM16.7 4.5l1.8 1.8 1.1-1.1a1.2 1.2 0 0 0 0-1.7l-.1-.1a1.2 1.2 0 0 0-1.7 0l-1.1 1.1z"/></svg>
-                <span>Rename</span>
+                    @onclick="() => OnItemAsync(OnDuplicate)"
+                    @onclick:stopPropagation="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 7h9a2 2 0 0 1 2 2v9H8V7zm-3 3h2v9a2 2 0 0 0 2 2h9v1H7a2 2 0 0 1-2-2v-10zm10.2.4v1.8H17v1.6h-1.8V16h-1.6v-1.8H12v-1.6h1.8V10.4h1.4z"/></svg>
+                <span>Duplicate</span>
+                <kbd>@CutTextEdit.DuplicateKeys</kbd>
             </button>
-        }
+            }
+            <button type="button"
+                    class="cut-text-menu-item"
+                    data-testid="@(TestId)-copy"
+                    disabled="@Busy"
+                    @onclick="() => OnItemAsync(OnCopy)"
+                    @onclick:stopPropagation="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 6h10a2 2 0 0 1 2 2v10H8V6zm-3 3h2v10a2 2 0 0 0 2 2h10v1H7a2 2 0 0 1-2-2V9z"/></svg>
+                <span>Copy</span>
+                <kbd>@CutTextEdit.CopyKeys</kbd>
+            </button>
+            <button type="button"
+                    class="cut-text-menu-item"
+                    data-testid="@(TestId)-paste"
+                    disabled="@(Busy || !CanPaste)"
+                    @onclick="() => OnItemAsync(OnPaste)"
+                    @onclick:stopPropagation="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1-2zm3 5.5A2.5 2.5 0 1 0 12 14a2.5 2.5 0 0 0 0-4.5z"/></svg>
+                <span>Paste</span>
+                <kbd>@CutTextEdit.PasteKeys</kbd>
+            </button>
+            <button type="button"
+                    class="cut-text-menu-item"
+                    data-testid="@(TestId)-delete"
+                    disabled="@Busy"
+                    @onclick="() => OnItemAsync(OnDelete)"
+                    @onclick:stopPropagation="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4h6l1 2h4v2H4V6h4l1-2zm1 6h2v8h-2v-8zm4 0h2v8h-2v-8z"/></svg>
+                <span>Delete</span>
+                <kbd>@CutTextEdit.DeleteKeys</kbd>
+            </button>
+            <div class="cut-text-menu-rule"></div>
+            @if (CanSplit || !HideSplitWhenDisabled)
+            {
+                <button type="button"
+                        class="cut-text-menu-item"
+                        data-testid="@(TestId)-split"
+                        disabled="@(Busy || !CanSplit)"
+                        @onclick="() => OnItemAsync(OnSplit)"
+                        @onclick:stopPropagation="true">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="6.2" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                        <circle cx="6.2" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.2 8.4 20 18.2M8.2 15.6 20 5.8" />
+                    </svg>
+                    <span>Split</span>
+                    <kbd>@CutTextEdit.SplitKeys</kbd>
+                </button>
+            }
+            <button type="button"
+                    class="cut-text-menu-item"
+                    data-testid="@(TestId)-duration"
+                    disabled="@Busy"
+                    @onclick="() => OnItemAsync(OnEditDuration)"
+                    @onclick:stopPropagation="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm.8 3h-1.6v5.2l3.7 2.2.8-1.3-2.9-1.7V7z"/></svg>
+                <span>Edit duration</span>
+            </button>
+            @if (ShowRename)
+            {
+                <button type="button"
+                        class="cut-text-menu-item"
+                        data-testid="@(TestId)-rename"
+                        disabled="@Busy"
+                        @onclick="() => OnItemAsync(OnRename)"
+                        @onclick:stopPropagation="true">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 17.2 14.6 6.6l2.8 2.8L6.8 20H4v-2.8zM16.7 4.5l1.8 1.8 1.1-1.1a1.2 1.2 0 0 0 0-1.7l-.1-.1a1.2 1.2 0 0 0-1.7 0l-1.1 1.1z"/></svg>
+                    <span>Rename</span>
+                </button>
+            }
+        </div>
     </div>
 }
 
@@ -106,4 +122,16 @@
     [Parameter] public EventCallback OnEditDuration { get; set; }
     [Parameter] public EventCallback OnRename { get; set; }
     [Parameter] public EventCallback Close { get; set; }
+
+    private ElementReference _panel;
+
+    internal Task FocusPanelAsync() => CutElementFocus.TryFocusAsync(_panel);
+
+    private Task OnBackdropAsync() =>
+        CutTextMenu.ShouldDismiss(pointerInsideMenu: false)
+            ? Close.InvokeAsync()
+            : Task.CompletedTask;
+
+    private static Task OnItemAsync(EventCallback command) =>
+        CutTextMenu.ItemOwnsPointer(true) ? command.InvokeAsync() : Task.CompletedTask;
 }

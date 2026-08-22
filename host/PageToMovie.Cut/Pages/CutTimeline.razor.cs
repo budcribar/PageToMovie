@@ -67,6 +67,9 @@ public partial class CutTimeline
     private bool _focusMusicName;
     private bool _focusMusicOut;
     private bool _focusDuration;
+    private bool _focusMenu;
+    private string? _menuTitleId;
+    private CutTimeline_TextMenu? _textMenu = null;
     private ElementReference _textLabelInput = default;
     private ElementReference _musicNameInput = default;
     private ElementReference _musicOutHandle = default;
@@ -87,7 +90,7 @@ public partial class CutTimeline
     private bool PreventTitleKey =>
         !_textFieldFocused && (!string.IsNullOrEmpty(_selectedTextId) || _musicSelected);
     private bool CanSplitSelectedTitle =>
-        SelectedTitle is { } title && CutTextEdit.CanSplit(title, PlayheadSec);
+        MenuTitle is { } title && CutTextEdit.CanSplit(title, PlayheadSec);
     private bool MenuCanPaste =>
         _menuKind == CtxMenuKind.Music ? _musicClipboard is not null : _clipboard is not null;
     private bool MenuCanSplit =>
@@ -96,6 +99,8 @@ public partial class CutTimeline
             : CanSplitSelectedTitle;
     private CutTextClip? SelectedTitle =>
         SelectedTextBlock is { Title: { } title } ? title : CutTextEdit.Find(TextClips, _selectedTextId);
+    private CutTextClip? MenuTitle =>
+        CutTextMenu.TargetOf(TextClips, _menuTitleId, _selectedTextId);
     private bool ShowMusic => Music is { HasFile: true };
     private double MusicLeftPx => (Music?.StartSec ?? 0) * _pxPerSec;
     private double MusicWidthPx
@@ -196,6 +201,13 @@ public partial class CutTimeline
             await EditDurationAsync(_inspector);
         }
 
+        if (_focusMenu)
+        {
+            _focusMenu = false;
+            if (_textMenu is not null)
+                await _textMenu.FocusPanelAsync();
+        }
+
         if (_needFit && Clips.Count > 0)
         {
             _needFit = false;
@@ -272,8 +284,9 @@ public partial class CutTimeline
 
     internal async Task OpenTitleMenuAsync(double clientX, double clientY, string titleId)
     {
+        _menuTitleId = titleId;
         await SelectTitleAsync(titleId);
-        if (CutTextEdit.Find(TextClips, titleId) is null)
+        if (CutTextMenu.TargetOf(TextClips, titleId, _selectedTextId) is null)
             return;
         await OpenCtxMenuAsync(clientX, clientY, CtxMenuKind.Title);
     }
@@ -289,6 +302,8 @@ public partial class CutTimeline
     {
         _menuOpen = false;
         _menuKind = CtxMenuKind.None;
+        _menuTitleId = null;
+        _focusMenu = false;
     }
 
     private void SelectMusic()
@@ -302,6 +317,7 @@ public partial class CutTimeline
     {
         if (Music is null || !Music.HasFile)
             return;
+        _menuTitleId = null;
         SelectMusic();
         _ = OpenCtxMenuAsync(e.ClientX, e.ClientY, CtxMenuKind.Music);
     }
@@ -312,7 +328,7 @@ public partial class CutTimeline
         _menuX = clientX;
         _menuY = clientY;
         _menuOpen = true;
-        await CutElementFocus.TryFocusAsync(_root);
+        _focusMenu = true;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -328,7 +344,7 @@ public partial class CutTimeline
         _menuKind == CtxMenuKind.Music ? PasteMusicPlacementAsync() : PasteTitleAsync();
 
     private Task OnMenuDeleteAsync() =>
-        _menuKind == CtxMenuKind.Music ? DeleteMusicAsync() : DeleteSelectedTextAsync();
+        _menuKind == CtxMenuKind.Music ? DeleteMusicAsync() : DeleteMenuTitleAsync();
 
     private Task OnMenuSplitAsync() =>
         _menuKind == CtxMenuKind.Music ? Task.CompletedTask : SplitSelectedTitleAsync();
@@ -454,19 +470,18 @@ public partial class CutTimeline
 
     private async Task DuplicateSelectedTitleAsync()
     {
-        if (Busy || SelectedTitle is not { } title)
+        if (!CutTextMenu.TryDuplicate(Busy, TextClips, MenuTitle, out var copy) || copy is null)
             return;
         CloseTitleMenu();
-        var copy = CutTextEdit.Duplicate(TextClips, title);
         await SetSelectedTextIdAsync(copy.Id);
         await OnEdited.InvokeAsync();
     }
 
     private void CopySelectedTitle()
     {
-        if (SelectedTitle is not { } title)
+        if (!CutTextMenu.TryCopy(MenuTitle, out var payload) || payload is null)
             return;
-        _clipboard = CutTextEdit.Copy(title);
+        _clipboard = payload;
         CloseTitleMenu();
     }
 
@@ -474,8 +489,8 @@ public partial class CutTimeline
     {
         if (Busy || _clipboard is null)
             return;
+        var start = CutTextEdit.PasteStart(PlayheadSec, MenuTitle);
         CloseTitleMenu();
-        var start = CutTextEdit.PasteStart(PlayheadSec, SelectedTitle);
         var pasted = CutTextEdit.Paste(TextClips, _clipboard, start);
         await SetSelectedTextIdAsync(pasted.Id);
         await OnEdited.InvokeAsync();
@@ -483,16 +498,28 @@ public partial class CutTimeline
 
     private async Task SplitSelectedTitleAsync()
     {
-        if (Busy || SelectedTitle is not { } title)
+        if (!CutTextMenu.TrySplit(Busy, TextClips, MenuTitle, PlayheadSec))
             return;
         CloseTitleMenu();
-        if (!CutTextEdit.TrySplit(TextClips, title, PlayheadSec, out _))
+        await OnEdited.InvokeAsync();
+    }
+
+    private async Task DeleteMenuTitleAsync()
+    {
+        var id = _menuTitleId ?? _selectedTextId;
+        if (!CutTextMenu.TryDelete(Busy, TextClips, id))
             return;
+        CloseTitleMenu();
+        if (_selectedTextId == id)
+            await SetSelectedTextIdAsync(null);
+        _textFieldFocused = false;
         await OnEdited.InvokeAsync();
     }
 
     private async Task EditDurationAsync()
     {
+        if (MenuTitle is { } title && _selectedTextId != title.Id)
+            await SetSelectedTextIdAsync(title.Id);
         CloseTitleMenu();
         _focusDuration = true;
         await InvokeAsync(StateHasChanged);
