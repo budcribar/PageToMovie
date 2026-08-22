@@ -23,6 +23,8 @@
             localEnd: 0,
             pxPerSec: 36,
             totalSec: 0,
+            timelineSec: 0,
+            holdSec: null,
             liveText: true,
         },
         _playSurfaces: { clip: null, movie: null, front: null },
@@ -876,8 +878,30 @@
         return c.timelineStart + Math.max(0, t - c.localStart);
     };
 
+    cut.holdPlayhead = function (timelineSec) {
+        const t = Math.max(0, Number(timelineSec) || 0);
+        cut._playClock.holdSec = t;
+        cut._playClock.timelineSec = t;
+        cut.paintPlayhead(t);
+    };
+
+    cut.readTimelineSec = function () {
+        const front = cut._playSurfaces && cut._playSurfaces.front;
+        if (front && !front.paused && typeof front.currentTime === "number") {
+            const live = cut.timelineFromMedia(front.currentTime);
+            if (Number.isFinite(live) && live >= 0)
+                return live;
+        }
+        const held = cut._playClock.holdSec;
+        if (typeof held === "number" && Number.isFinite(held) && held >= 0)
+            return held;
+        const last = cut._playClock.timelineSec;
+        return Number.isFinite(last) && last >= 0 ? last : 0;
+    };
+
     cut.paintPlayhead = function (timelineSec) {
         const t = Math.max(0, Number(timelineSec) || 0);
+        cut._playClock.timelineSec = t;
         const needle = document.querySelector("[data-testid=\"cut-tl-playhead\"]");
         if (needle)
             needle.style.left = (t * cut._playClock.pxPerSec) + "px";
@@ -999,8 +1023,16 @@
         el._cutTimeHandler = function () {
             if (cut._playSurfaces.front && el !== cut._playSurfaces.front)
                 return;
+            if (el.paused)
+                return;
             const local = el.currentTime || 0;
-            cut.paintPlayhead(cut.timelineFromMedia(local));
+            const painted = cut.timelineFromMedia(local);
+            const hold = cut._playClock.holdSec;
+            if (typeof hold === "number" && Math.abs(painted - hold) > 0.2 && el.seeking)
+                return;
+            cut.paintPlayhead(painted);
+            if (typeof hold === "number" && Math.abs(painted - hold) <= 0.2)
+                cut._playClock.holdSec = null;
             if (cut._playClock.mode === "native"
                 && cut._playClock.localEnd > 0
                 && local >= cut._playClock.localEnd - 0.04) {

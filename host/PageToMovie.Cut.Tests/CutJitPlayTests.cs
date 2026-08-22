@@ -123,6 +123,23 @@ public class CutJitPlayTests
     }
 
     [Fact]
+    public void Last_scene_window_is_the_clip_at_the_playhead()
+    {
+        var s01 = NewClip(1, 1, 12);
+        var s02a = NewClip(2, 1, 8);
+        var s02b = NewClip(2, 2, 8);
+        var s02c = NewClip(2, 3, 8);
+        var clips = new[] { s01, s02a, s02b, s02c };
+        var window = CutJitPlay.At(clips, 24);
+        Assert.NotNull(window);
+        Assert.Equal(s02b, window.Value.Clip);
+        Assert.Equal(24, window.Value.TimelineStart, 5);
+        Assert.Equal(12, CutJitPlay.SceneStartSec(clips, 24), 5);
+        Assert.Equal(4, CutJitPlay.TimelineToLocal(window.Value, 24), 5);
+        Assert.False(CutJitPlay.IsTimelineEnd(24, CutJitPlay.TotalSec(clips)));
+    }
+
+    [Fact]
     public void Cached_full_preview_still_skips_compose()
     {
         Assert.True(CutJitPlay.CanReuseFullPreview("blob:cut-preview"));

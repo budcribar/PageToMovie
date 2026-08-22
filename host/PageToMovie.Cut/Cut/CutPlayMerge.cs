@@ -40,6 +40,82 @@ public static class CutPlayMerge
     public static bool MergeCovers(IReadOnlyList<CutClip> clips, int prefixClipCount, double playhead) =>
         MergeReadyThroughSec(clips, prefixClipCount) >= playhead - 0.001;
 
+    /// <summary>
+    /// A completed movie URL covers every clip. A JIT prefix only covers
+    /// the clips that have been joined so far.
+    /// </summary>
+    public static int CoveredClipCount(
+        string? playingUrl,
+        string? fullPreviewUrl,
+        int prefixClipCount,
+        int clipCount)
+    {
+        if (clipCount <= 0)
+            return 0;
+        if (!string.IsNullOrWhiteSpace(playingUrl)
+            && !string.IsNullOrWhiteSpace(fullPreviewUrl)
+            && string.Equals(playingUrl, fullPreviewUrl, StringComparison.Ordinal))
+            return clipCount;
+        return Math.Clamp(prefixClipCount, 0, clipCount);
+    }
+
+    /// <summary>
+    /// Prefix video EOF is Stop only when that file is the real timeline
+    /// end. An S01-only prefix must wait at the ready edge — not Stop,
+    /// not seek back into the last hops of that scene.
+    /// </summary>
+    public static bool ShouldContinueAfterPrefixEnded => false;
+
+    public static bool PrefixEndedIsStop(
+        double readyEdge,
+        double totalSec,
+        int coveredClipCount,
+        int clipCount) =>
+        clipCount <= 0
+        || coveredClipCount >= clipCount
+        || CutJitPlay.IsTimelineEnd(readyEdge, totalSec);
+
+    public static bool TryWaitEdgeAfterPrefixEnded(
+        IReadOnlyList<CutClip> clips,
+        int coveredClipCount,
+        out double waitEdge)
+    {
+        waitEdge = MergeReadyThroughSec(clips, coveredClipCount);
+        if (PrefixEndedIsStop(waitEdge, CutJitPlay.TotalSec(clips), coveredClipCount, clips.Count))
+            return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Play/seek time is the playhead. Never the scene's first clip or
+    /// scene start — last-scene markers stay where they were placed.
+    /// </summary>
+    public static double PlaySeekSec(IReadOnlyList<CutClip> clips, double playhead)
+    {
+        if (clips.Count == 0)
+            return 0;
+        var total = CutJitPlay.TotalSec(clips);
+        if (total <= 0)
+            return 0;
+        return Math.Clamp(playhead, 0, total);
+    }
+
+    public static bool WouldRewindMerge(double currentPlayhead, double targetPlayhead) =>
+        targetPlayhead < currentPlayhead - 0.05;
+
+    public static bool ShouldSeekMergeWhilePlaying(bool userSeek) => userSeek;
+
+    /// <summary>Stop pauses in place. Never seek the playhead to 0.</summary>
+    public static bool ShouldResetPlayheadOnStop => false;
+
+    public static double PlayheadAfterStop(double playhead) => Math.Max(0, playhead);
+
+    /// <summary>Mouseup/touchend keeps the drop time — not the prior playhead, scene start, or 0.</summary>
+    public static bool ShouldSnapPlayheadOnScrubEnd => false;
+
+    public static double ScrubCommitSec(IReadOnlyList<CutClip> clips, double dropSec) =>
+        PlaySeekSec(clips, dropSec);
+
     public static bool ShouldPlayMerge(
         string? mergeUrl,
         IReadOnlyList<CutClip> clips,
