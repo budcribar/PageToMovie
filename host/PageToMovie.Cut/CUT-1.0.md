@@ -38,7 +38,7 @@ Reorder, delete, take-picking product, ripple, split, multi-track, undo, Engine 
 
 - Stay under `host/PageToMovie.Cut` (+ `PageToMovie.Cut.Tests`). Own slnx only — **not** `PageToMovie.slnx` / Web slnx.
 - No ProjectReference to Engine / Api / Web / Core. No Railway, catalog, auth, LoadSim.
-- Compose is browser ffmpeg.wasm only. Reuse `wwwroot/js/pagetomovie-ffmpeg.js` + `wwwroot/js/ffmpeg/**` (vendor copy; Sonar/CPD excluded). One exclusive queue. Do not invent a second loader.
+- Compose is browser ffmpeg.wasm only. Loader SSoT is `PageToMovie.Web/wwwroot/js/pagetomovie-ffmpeg.js` (copied into Cut at build). One exclusive queue. Do not invent a second loader or commit a second copy.
 - Generalize: no book/cast/page hardcodes in product code.
 - Same PR 193 for Cut finish slices. Do not merge until Bud asks.
 - **Do not stack two agents on the same slice.**

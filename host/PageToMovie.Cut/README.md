@@ -48,7 +48,7 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
 
 Remaining 1.0 work (save/reload finish, transitions, chapter/scene cards, Film mount) is listed in [CUT-1.0.md](CUT-1.0.md).
 
-ffmpeg assets and `pagetomovie-ffmpeg.js` are copied from `PageToMovie.Web/wwwroot/js/` so the loader, concat, duration probe, and encode args stay the same. Ops share that file’s exclusive queue.
+The ffmpeg loader is **Web’s file**, copied into Cut `wwwroot/js/` at build (`CopyWebFfmpegToCut`). Do not commit a second `pagetomovie-ffmpeg.js` or `ffmpeg/` tree. Ops share that file’s exclusive queue.
 
 ## Out of 1.0
 

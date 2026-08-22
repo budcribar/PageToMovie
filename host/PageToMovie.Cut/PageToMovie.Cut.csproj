@@ -20,4 +20,22 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- Loader SSoT is Web. Copy at build so Cut does not commit a second copy (Sonar CPD). -->
+  <Target Name="CopyWebFfmpegToCut" BeforeTargets="ResolveStaticWebAssetsConfiguration;CoreCompile">
+    <PropertyGroup>
+      <_WebJsDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../PageToMovie.Web/wwwroot/js'))</_WebJsDir>
+      <_CutJsDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)wwwroot/js'))</_CutJsDir>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_WebJsDir)/pagetomovie-ffmpeg.js')"
+           Text="Cut needs PageToMovie.Web/wwwroot/js/pagetomovie-ffmpeg.js (ffmpeg loader SSoT)." />
+    <MakeDir Directories="$(_CutJsDir)/ffmpeg" />
+    <Copy SourceFiles="$(_WebJsDir)/pagetomovie-ffmpeg.js" DestinationFolder="$(_CutJsDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_WebFfmpeg Include="$(_WebJsDir)/ffmpeg/**/*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WebFfmpeg)"
+          DestinationFiles="@(_WebFfmpeg->'$(_CutJsDir)/ffmpeg/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
