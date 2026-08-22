@@ -66,6 +66,7 @@ public partial class CutTimeline
     private bool _musicNameEditing;
     private bool _focusMusicName;
     private bool _focusMusicOut;
+    private bool _focusDuration;
     private ElementReference _textLabelInput = default;
     private ElementReference _musicNameInput = default;
     private ElementReference _musicOutHandle = default;
@@ -173,41 +174,26 @@ public partial class CutTimeline
         {
             _focusTextInput = false;
             _textFieldFocused = true;
-            try
-            {
-                await _textLabelInput.FocusAsync();
-            }
-            catch (JSException)
-            {
-                // Input may have been removed on the same render.
-            }
+            await CutElementFocus.TryFocusAsync(_textLabelInput);
         }
 
         if (_focusMusicName)
         {
             _focusMusicName = false;
             _textFieldFocused = true;
-            try
-            {
-                await _musicNameInput.FocusAsync();
-            }
-            catch (JSException)
-            {
-                // Name field mounts with the music block.
-            }
+            await CutElementFocus.TryFocusAsync(_musicNameInput);
         }
 
         if (_focusMusicOut)
         {
             _focusMusicOut = false;
-            try
-            {
-                await _musicOutHandle.FocusAsync();
-            }
-            catch (JSException)
-            {
-                // Out handle mounts with the music block.
-            }
+            await CutElementFocus.TryFocusAsync(_musicOutHandle);
+        }
+
+        if (_focusDuration)
+        {
+            _focusDuration = false;
+            await EditDurationAsync(_inspector);
         }
 
         if (_needFit && Clips.Count > 0)
@@ -326,14 +312,7 @@ public partial class CutTimeline
         _menuX = clientX;
         _menuY = clientY;
         _menuOpen = true;
-        try
-        {
-            await _root.FocusAsync();
-        }
-        catch (JSException)
-        {
-            // Timeline may not be mounted yet.
-        }
+        await CutElementFocus.TryFocusAsync(_root);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -515,9 +494,16 @@ public partial class CutTimeline
     private async Task EditDurationAsync()
     {
         CloseTitleMenu();
-        if (_inspector is not null)
-            await _inspector.FocusDurationAsync();
+        _focusDuration = true;
+        await InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// Focus the inspector duration field after it is mounted. A missing
+    /// inspector or unbound input must not throw.
+    /// </summary>
+    internal static Task EditDurationAsync(CutTimeline_TextInspector? inspector) =>
+        inspector is null ? Task.CompletedTask : inspector.FocusDurationAsync();
 
     private async Task BeginTextTrimAsync(PointerEventArgs e, CutTextBlock block, bool fromStart)
     {
@@ -878,6 +864,7 @@ public partial class CutTimeline
             _menuY,
             _musicSelected,
             _musicNameEditing,
+            _focusDuration,
             Music?.StartSec,
             Music?.MarkIn,
             Music?.MarkOut,
@@ -922,6 +909,7 @@ public partial class CutTimeline
         double MenuY,
         bool MusicOn,
         bool MusicName,
+        bool FocusDuration,
         double? MusicStart,
         double? MusicIn,
         double? MusicOut,

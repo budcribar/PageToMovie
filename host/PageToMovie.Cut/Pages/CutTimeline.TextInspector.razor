@@ -93,15 +93,10 @@
 
     internal async Task FocusDurationAsync()
     {
+        if (!CutElementFocus.IsReady(_durationInput))
+            return;
         await FieldFocusChanged.InvokeAsync(true);
-        try
-        {
-            await _durationInput.FocusAsync();
-        }
-        catch (JSException)
-        {
-            // Inspector may have closed on the same render.
-        }
+        await CutElementFocus.TryFocusAsync(_durationInput);
     }
 
     private async Task SetAsync(Action<CutTextStyle> edit)
