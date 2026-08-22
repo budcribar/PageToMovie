@@ -67,7 +67,10 @@ public sealed class MediaRegistryService
     }
 
     public static string ClipRelativePath(int scene, int clip) =>
-        $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+        ClipTakeNaming.CanonicalRelativePath(scene, clip);
+
+    public static string TakeRelativePath(int scene, int clip, int take) =>
+        ClipTakeNaming.TakeRelativePath(scene, clip, take);
 
     /// <summary>
     /// Per-clip TTS audio for narrator re-voice (server speak-batch → client media folder).

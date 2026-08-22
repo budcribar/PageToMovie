@@ -455,9 +455,14 @@ When debugging runtime behavior on the live Railway server across coding agent s
   2. When generating a scene continuation (`extend_previous`) that requires the previous scene's video file on the server for AI continuation.
 - **Remote copy is the provider, not Railway**: Generated MP4 clip files come from the video provider (xAI Files / source_url / source_file_id). They are NOT stored on the Railway app server. Storage is only: (1) the local client project folder, or (2) the provider (xAI). Railway may keep sidecars (`.clip.json`) and pointers (`source_url`, `source_file_id`), but never the clip bytes as a recovery source. After a local folder wipe, MP4s must be re-downloaded from the provider via those sidecar pointers. Do not expect Railway media-sync to serve MP4 bytes from disk.
 
+### 8. Film take identity (`ClipTakeNaming`)
+- **Take files** are `scene_SS_clip_CC_take_NN.mp4` + matching `.clip.json` — no timestamp suffix. Take number SSoT is `ParseTakeNumber(filename)` else sidecar `take`. Never `result.Count+1`.
+- **Current player alias** is `scene_SS_clip_CC.mp4` (and `scene_SS_clip_CC.current.json` for which take is current). After regen the client saves the new take MP4 **and** replaces the alias.
+- **Bytes stay client or provider.** The server writes the new take sidecar (and current pointer) and may keep a transient download for probes; it does not keep take MP4s. Compare plays each take from its take MP4 or `source_url` / `file_id` proxy.
+
 ---
 
-*Last updated: 2026-08-20 — provider (not Railway) is the remote MP4 copy; P5 share the master; P4 trim-is-a-view; P3 write from index.*
+*Last updated: 2026-08-22 — take identity is `_take_NN`; current alias is `scene_SS_clip_CC.mp4`; bytes stay client or provider.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

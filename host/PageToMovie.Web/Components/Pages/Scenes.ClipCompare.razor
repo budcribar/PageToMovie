@@ -45,7 +45,7 @@
                                     <div class="card bg-dark border-secondary h-100 p-2 @(isCurrent ? "border-success shadow-sm" : "")">
                                         <div class="d-flex justify-content-between align-items-center mb-2">
                                             <span class="badge @(isCurrent ? "bg-success" : "bg-primary")">
-                                                @(isCurrent ? "★ Active Take" : $"Take {v.Take}")
+                                                @(isCurrent ? $"★ Active · Take {v.Take}" : $"Take {v.Take}")
                                             </span>
                                             <span class="small text-muted">@v.CreatedAtUtc.ToLocalTime().ToString("MMM d, h:mm tt")</span>
                                         </div>
@@ -106,7 +106,7 @@
                             <div class="col-md-6 border-end border-secondary">
                                 <div class="card bg-dark border-secondary h-100 p-2">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <span class="badge bg-success">★ Active Take</span>
+                                        <span class="badge bg-success">★ Active · Take @activeVersion.Take</span>
                                         <span class="small text-muted">Take @activeVersion.Take · @activeVersion.CreatedAtUtc.ToLocalTime().ToString("MMM d, h:mm tt")</span>
                                     </div>
                                     <video controls playsinline style="width:100%;max-height:40vh;background:#000;border-radius:0.35rem;" src="@VideoUrlFor(activeVersion)">

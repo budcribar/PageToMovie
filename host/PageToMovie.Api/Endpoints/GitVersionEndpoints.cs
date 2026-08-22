@@ -224,10 +224,11 @@ public static class GitVersionEndpoints
         var videoDir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "video");
         foreach (var v in versions)
         {
-            if (string.IsNullOrWhiteSpace(v.SourceUrl)) continue;
+            if (string.IsNullOrWhiteSpace(v.SourceUrl) && string.IsNullOrWhiteSpace(v.SourceFileId))
+                continue;
             var onServer = File.Exists(Path.Combine(videoDir, v.Mp4FileName)) || File.Exists(Path.Combine(videoDir, "history", v.Mp4FileName));
             if (onServer || v.ClientOnly) continue;
-            v.ProviderPlaybackUrl = $"/api/media/proxy/{tickets.Issue(v.SourceUrl, TimeSpan.FromMinutes(45))}";
+            v.ProviderPlaybackUrl = $"/api/media/proxy/{tickets.Issue(v.SourceUrl ?? "", TimeSpan.FromMinutes(45), v.SourceFileId)}";
         }
         return Results.Ok(new { ok = true, versions });
     }

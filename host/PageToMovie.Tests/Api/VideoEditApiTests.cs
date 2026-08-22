@@ -155,11 +155,22 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         var newBytes = File.ReadAllBytes(activeMp4Path);
         Assert.NotEqual(originalBytes, newBytes);
 
-        // Sidecar records the edit prompt and which take it was derived from.
-        var sidecarPath = Path.ChangeExtension(activeMp4Path, ".clip.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(sidecarPath));
-        Assert.Equal("change her jacket to red", doc.RootElement.GetProperty("visual_prompt").GetString());
-        Assert.True(doc.RootElement.TryGetProperty("edited_from_take", out _), "expected edited_from_take provenance");
+        // Take identity is the numbered sidecar, not the leftover player-alias .clip.json.
+        var take01Sidecar = Path.Combine(videoDir, "scene_01_clip_01_take_01.clip.json");
+        var take02Sidecar = Path.Combine(videoDir, "scene_01_clip_01_take_02.clip.json");
+        Assert.True(File.Exists(take01Sidecar), "original must stay as take 1");
+        Assert.True(File.Exists(take02Sidecar), "edit must be a new take_02 sidecar");
+        using (var origDoc = JsonDocument.Parse(File.ReadAllText(take01Sidecar)))
+            Assert.Equal("original prompt", origDoc.RootElement.GetProperty("visual_prompt").GetString());
+        using (var editDoc = JsonDocument.Parse(File.ReadAllText(take02Sidecar)))
+        {
+            Assert.Equal("change her jacket to red", editDoc.RootElement.GetProperty("visual_prompt").GetString());
+            Assert.Equal(2, editDoc.RootElement.GetProperty("take").GetInt32());
+            Assert.Equal(1, editDoc.RootElement.GetProperty("edited_from_take").GetInt32());
+        }
+        using (var pointer = JsonDocument.Parse(File.ReadAllText(Path.Combine(videoDir, "scene_01_clip_01.current.json"))))
+            Assert.Equal(2, pointer.RootElement.GetProperty("take").GetInt32());
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4")));
 
         // The versions list must show one more entry, with the new one current.
         var versionsResp = await _client.GetAsync($"/api/projects/{Uri.EscapeDataString(_projectId)}/scenes/1/clips/1/versions");
@@ -167,7 +178,12 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         var versionsJson = await versionsResp.Content.ReadFromJsonAsync<JsonElement>();
         var versions = versionsJson.GetProperty("versions").EnumerateArray().ToList();
         Assert.True(versions.Count >= 2, $"expected >=2 versions (original archived + new active), got {versions.Count}");
-        Assert.Contains(versions, v => v.GetProperty("isCurrent").GetBoolean());
+        var current = versions.Single(v => v.GetProperty("isCurrent").GetBoolean());
+        Assert.Equal(2, current.GetProperty("take").GetInt32());
+        var takeNumbers = versions.Select(v => v.GetProperty("take").GetInt32()).ToList();
+        Assert.Equal(takeNumbers.Count, takeNumbers.Distinct().Count());
+        Assert.Contains(1, takeNumbers);
+        Assert.Contains(2, takeNumbers);
     }
 
     [Fact]

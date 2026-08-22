@@ -2422,25 +2422,9 @@ public sealed class FilmJobService
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best effort */ }
             }
 
-            var newFileName = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
-
-            if (_sidecars is not null)
-            {
-                var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-                await _sidecars.WriteSidecarWithTakeAsync(
-                    projectDir, req.Scene, req.Clip,
-                    take: (current?.Take ?? 0) + 1,
-                    prompt: req.Prompt,
-                    scriptText: current?.ScriptText ?? "",
-                    model: entry.Id,
-                    resolution: current?.Resolution ?? "",
-                    durationSeconds: current?.DurationSeconds ?? 0,
-                    sha256: sha256,
-                    sizeBytes: bytes.LongLength,
-                    mp4FileName: newFileName,
-                    editedFromTake: current?.Take,
-                    ct: ct).ConfigureAwait(false);
-            }
+            _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
+            await PersistEditedTakeAsync(projectDir, videoDir, req, current, entry.Id, bytes, ct)
+                .ConfigureAwait(false);
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
@@ -2463,6 +2447,41 @@ public sealed class FilmJobService
             _log.LogError(ex, "Video edit failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Persist the edited bytes as the next unique take (legacy alias sidecar becomes
+    /// take 1 first) and write <c>take_NN.mp4</c> so compare can play it.
+    /// </summary>
+    private async Task PersistEditedTakeAsync(
+        string projectDir,
+        string videoDir,
+        StartVideoEditRequest req,
+        ClipVersionItem? current,
+        string modelId,
+        byte[] bytes,
+        CancellationToken ct)
+    {
+        if (_sidecars is null)
+            return;
+        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
+        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+        var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
+        var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
+        await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
+        await _sidecars.WriteSidecarWithTakeAsync(
+            projectDir, req.Scene, req.Clip,
+            take: editTake,
+            prompt: req.Prompt,
+            scriptText: current?.ScriptText ?? "",
+            model: modelId,
+            resolution: current?.Resolution ?? "",
+            durationSeconds: current?.DurationSeconds ?? 0,
+            sha256: sha256,
+            sizeBytes: bytes.LongLength,
+            mp4FileName: takeMp4Name,
+            editedFromTake: current?.Take is > 0 ? current.Take : 1,
+            ct: ct).ConfigureAwait(false);
     }
 
     private async Task RunLocationVariantsAsync(StartLocationVariantsRequest req, string projectId, CancellationToken ct)
@@ -5680,8 +5699,8 @@ public sealed class FilmJobService
         // Video-extend: the provider URL is the combined video. Record the lead-in so the
         // browser (ffmpeg.wasm) slices the predecessor head. Combined files stay combined.
         var leadIn = ctx.ExtendInputDurationSec is { } pd && pd > 0.1 && (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null) ? pd : (double?)null;
-        await PublishClipClientMediaAsync(ctx, url).ConfigureAwait(false);
-        await WriteClipSidecarIfConfiguredAsync(ctx, built, url, requestId, duration, leadIn).ConfigureAwait(false);
+        var take = await WriteClipSidecarIfConfiguredAsync(ctx, built, url, requestId, duration, leadIn).ConfigureAwait(false);
+        await PublishClipClientMediaAsync(ctx, url, take).ConfigureAwait(false);
         await RecordClipCostAsync(ctx, built, requestId, duration).ConfigureAwait(false);
         return overrunSec;
     }
@@ -5924,9 +5943,11 @@ public sealed class FilmJobService
         return duration;
     }
 
-    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url)
+    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url, int takeNumber = 0)
     {
-        var relPath = MediaRegistryService.ClipRelativePath(ctx.Scene, ctx.Clip);
+        var take = takeNumber > 0 ? takeNumber : ClipSidecarService.NextTakeNumber(ctx.VideoDir, ctx.Scene, ctx.Clip) - 1;
+        if (take <= 0) take = 1;
+        var relPath = ClipTakeNaming.TakeRelativePath(ctx.Scene, ctx.Clip, take);
         // Provider URL + lead-in: the browser (ffmpeg.wasm) slices combined extend files.
         var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
         var clientUrl = $"/api/media/proxy/{ticket}";
@@ -5934,12 +5955,13 @@ public sealed class FilmJobService
         {
             s.ClientMediaUrl = clientUrl;
             s.ClientRelativePath = relPath;
+            s.ClientTakeNumber = take;
             s.Scene = ctx.Scene;
             s.Clip = ctx.Clip;
             s.PredecessorDurationSec = ctx.ExtendInputDurationSec;
         });
         await AppendLogAsync(
-            $"  [Grok] video ready for client save → {relPath} (server copy is transient; provider-hosted)");
+            $"  video ready for client save → take {take:D2} + current alias (server copy is transient; provider-hosted)");
     }
 
     /// <returns>Overrun seconds versus requested duration (MP4 box probe). Combined extend files
@@ -6179,7 +6201,7 @@ public sealed class FilmJobService
         return ClipDialogueVerificationService.LooksTruncated(verification);
     }
 
-    private async Task WriteClipSidecarIfConfiguredAsync(
+    private async Task<int> WriteClipSidecarIfConfiguredAsync(
         ClipGenContext ctx,
         ClipVideoPromptBuilder.PromptBuildResult built,
         string url,
@@ -6188,7 +6210,7 @@ public sealed class FilmJobService
         double? providerLeadInSeconds = null)
     {
         if (_sidecars is null)
-            return;
+            return 0;
         try
         {
             var projDir = await _projects.GetProjectDirAsync(
@@ -6206,7 +6228,7 @@ public sealed class FilmJobService
                 clipStart = window.Start;
                 clipStop = window.Stop;
             }
-            await _sidecars.WriteSidecarAsync(
+            var sidecarPath = await _sidecars.WriteSidecarAsync(
                 projDir,
                 ctx.Scene,
                 ctx.Clip,
@@ -6227,10 +6249,12 @@ public sealed class FilmJobService
                 providerClipStartSeconds: clipStart,
                 providerClipStopSeconds: clipStop,
                 ct: ctx.Ct).ConfigureAwait(false);
+            return ClipTakeNaming.ParseTakeNumber(Path.GetFileName(sidecarPath));
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Could not write clip sidecar for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
+            return 0;
         }
     }
 
@@ -7232,6 +7256,8 @@ public sealed class FilmJobService
                     rec.FinishedAt = run.Snapshot.FinishedAt;
                     rec.ClientMediaUrl = run.Snapshot.ClientMediaUrl;
                     rec.ClientRelativePath = run.Snapshot.ClientRelativePath;
+                    rec.ClientTakeNumber = run.Snapshot.ClientTakeNumber;
+                    rec.PredecessorDurationSec = run.Snapshot.PredecessorDurationSec;
                     if (run.Snapshot.JobId is null)
                         run.Snapshot.JobId = rec.JobId;
                 });
@@ -7372,6 +7398,11 @@ public sealed class FilmJobService
         QueuedAt = s.QueuedAt,
         StartedAt = s.StartedAt,
         FinishedAt = s.FinishedAt,
+        ClientMediaUrl = s.ClientMediaUrl,
+        ClientRelativePath = s.ClientRelativePath,
+        ClientTakeNumber = s.ClientTakeNumber,
+        PredecessorDurationSec = s.PredecessorDurationSec,
+        MusicTakeId = s.MusicTakeId,
     };
 }
 

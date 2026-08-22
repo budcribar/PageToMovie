@@ -140,7 +140,8 @@ public sealed class ClientMediaFolderService
             string.IsNullOrWhiteSpace(snap.ProjectId))
             return;
 
-        var key = $"{snap.ProjectId}|{snap.ClientRelativePath}";
+        var key = ClipTakeNaming.JobMediaSaveKey(
+            snap.ProjectId, snap.JobId, snap.ClientRelativePath, snap.ClientTakeNumber);
         lock (_savingKeys)
         {
             if (_savedKeys.Contains(key)) return; // already completed
@@ -353,7 +354,7 @@ public sealed class ClientMediaFolderService
         pid = p;
         url0 = u;
         rel = r;
-        key = $"{pid}|{rel}";
+        key = ClipTakeNaming.JobMediaSaveKey(pid, snap.JobId, rel, snap.ClientTakeNumber);
         lock (_savingKeys)
         {
             if (!_savingKeys.Add(key))
@@ -593,6 +594,9 @@ public sealed class ClientMediaFolderService
             Clip = snap.Clip,
         });
 
+        if (!isCredits && !isMusic && !isSpeakBatch)
+            await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.SizeBytes);
+
         var sil = string.IsNullOrWhiteSpace(silenceMessage)
             ? ""
             : $" · silence: {silenceMessage}";
@@ -602,6 +606,44 @@ public sealed class ClientMediaFolderService
 
         lock (_savingKeys)
             _savedKeys.Add(key);
+    }
+
+    /// <summary>
+    /// Current player alias is <c>scene_SS_clip_CC.mp4</c>. After a take save, replace
+    /// that alias with the same bytes so playback shows the new take. Does not delete
+    /// the take file.
+    /// </summary>
+    private async Task SaveCanonicalAliasIfTakeAsync(
+        JobSnapshot snap,
+        string pid,
+        string takeRel,
+        string urlToSave,
+        long sizeBytes)
+    {
+        if (snap.Scene is not int scene || snap.Clip is not int clip)
+            return;
+        if (!ClipTakeNaming.IsStableTakeName(Path.GetFileName(takeRel)))
+            return;
+
+        var canonical = ClipTakeNaming.CanonicalRelativePath(scene, clip);
+        if (string.Equals(takeRel, canonical, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var clientPath = $"{pid}/{canonical}";
+        var alias = await _js.InvokeAsync<JsSaveResult>(
+            "PageToMovieMedia.saveFromUrlAsync", urlToSave, clientPath, null, snap.MusicTakeId);
+        if (alias is not { Success: true, Sha256: { Length: > 0 } aliasSha })
+            return;
+
+        await _api.RegisterMediaAsync(pid, new MediaRegisterRequest
+        {
+            RelativePath = canonical,
+            Sha256 = aliasSha,
+            SizeBytes = alias.SizeBytes > 0 ? alias.SizeBytes : sizeBytes,
+            Kind = "clip",
+            Scene = scene,
+            Clip = clip,
+        });
     }
 
     private static string MediaKind(bool isCredits, bool isMusic, bool isSpeakBatch)
@@ -1072,6 +1114,9 @@ public sealed class ClientMediaFolderService
         }
         if (!found) return "missing locally";
         if (file.SizeBytes <= 0) return "server size unknown";
+        if (ClipTakeNaming.IsClipSidecarName(file.FileName)
+            && ClipTakeNaming.ShouldKeepLocalSidecar(localSize, file.SizeBytes))
+            return null;
         if (localSize != file.SizeBytes) return $"size {localSize} != server {file.SizeBytes}";
         return await ClassifyHashMismatchAsync(projectId, file);
     }
