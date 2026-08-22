@@ -148,10 +148,15 @@
                             @if (selected)
                             {
                                 <input class="cut-tl-text-label"
+                                       @ref="_textLabelInput"
                                        value="@block.Text"
                                        maxlength="80"
                                        aria-label="Text"
+                                       data-testid="cut-tl-text-label"
                                        @onpointerdown:stopPropagation="true"
+                                       @onkeydown:stopPropagation="true"
+                                       @onfocus="() => _textFieldFocused = true"
+                                       @onblur="() => _textFieldFocused = false"
                                        @onchange="e => SetTextLabelAsync(block, e)" />
                                 <button type="button"
                                         class="cut-tl-text-del"

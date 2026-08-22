@@ -44,6 +44,9 @@ public partial class CutTimeline
     private double _rangeB = -1;
     private int? _joinMenu;
     private string? _selectedTextId;
+    private bool _textFieldFocused;
+    private bool _focusTextInput;
+    private ElementReference _textLabelInput;
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
     private IReadOnlyList<CutTextBlock> TextBlocks => CutTextTrack.Build(Clips, TextClips, _pxPerSec);
@@ -73,6 +76,20 @@ public partial class CutTimeline
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_focusTextInput)
+        {
+            _focusTextInput = false;
+            _textFieldFocused = true;
+            try
+            {
+                await _textLabelInput.FocusAsync();
+            }
+            catch (JSException)
+            {
+                // Input may have been removed on the same render.
+            }
+        }
+
         if (_needFit && Clips.Count > 0)
         {
             _needFit = false;
@@ -114,6 +131,7 @@ public partial class CutTimeline
     {
         _joinMenu = null;
         _selectedTextId = null;
+        _textFieldFocused = false;
         await SelectedChanged.InvokeAsync(clip);
     }
 
@@ -151,6 +169,8 @@ public partial class CutTimeline
             return;
         var title = CutTextTrack.Add(TextClips, startSec);
         _selectedTextId = title.Id;
+        _textFieldFocused = true;
+        _focusTextInput = true;
         await OnEdited.InvokeAsync();
     }
 
@@ -165,6 +185,7 @@ public partial class CutTimeline
         CutTextTrack.Delete(block, TextClips);
         if (_selectedTextId == block.Id)
             _selectedTextId = null;
+        _textFieldFocused = false;
         await OnEdited.InvokeAsync();
     }
 
@@ -308,6 +329,8 @@ public partial class CutTimeline
 
     private async Task OnKey(KeyboardEventArgs e)
     {
+        if (_textFieldFocused)
+            return;
         if (await TryHandleDeleteKeyAsync(e.Key))
             return;
         if (e.Key is "-" or "_" or "Minus" or "Subtract")
@@ -322,25 +345,16 @@ public partial class CutTimeline
     {
         if (key is not ("Delete" or "Backspace"))
             return false;
-        if (await TryDeleteSelectedTextAsync())
-            return true;
-        await DeleteRangeAsync();
-        return true;
-    }
-
-    private async Task<bool> TryDeleteSelectedTextAsync()
-    {
-        if (_selectedTextId is not { } id)
-            return false;
-        foreach (var block in TextBlocks)
+        if (CutTextTrack.TryDeleteSelectedOnKey(key, _textFieldFocused, _selectedTextId, TextBlocks, TextClips))
         {
-            if (block.Id != id)
-                continue;
-            await DeleteTextAsync(block);
+            _selectedTextId = null;
+            _textFieldFocused = false;
+            await OnEdited.InvokeAsync();
             return true;
         }
 
-        return false;
+        await DeleteRangeAsync();
+        return true;
     }
 
     private void ToggleJoinMenu(int afterIndex) =>
