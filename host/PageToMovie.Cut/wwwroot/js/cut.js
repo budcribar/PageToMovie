@@ -25,7 +25,7 @@
             totalSec: 0,
             liveText: true,
         },
-        _playSurfaces: { clipA: null, clipB: null, movie: null, front: null },
+        _playSurfaces: { clip: null, movie: null, front: null },
         _playSwapSeq: 0,
         _textOverlayEl: null,
         _textCues: [],
@@ -647,6 +647,25 @@
         }
     };
 
+    cut.writeBlobUrlFileAsync = async function (relativePath, url) {
+        if (cut._fallbackFiles)
+            return { success: false, error: "Folder write needs Pick folder (not loose files)." };
+        if (!cut._root)
+            return { success: false, error: "No folder connected." };
+        if (!url)
+            return { success: false, error: "No movie to save." };
+        try {
+            const data = await fetch(url).then(function (r) { return r.arrayBuffer(); });
+            const fh = await fileHandleAt(cut._root, relativePath, true);
+            const w = await fh.createWritable();
+            await w.write(data);
+            await w.close();
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: messageOf(err, "Could not save movie.mp4.") };
+        }
+    };
+
     cut.getFileBlobUrlAsync = async function (relativePath) {
         try {
             const file = await cut._resolveFileAsync(relativePath);
@@ -735,7 +754,7 @@
 
     function playSurfaceList() {
         const s = cut._playSurfaces || {};
-        return [s.clipA, s.clipB, s.movie].filter(Boolean);
+        return [s.clip, s.movie].filter(Boolean);
     }
 
     function unbindOne(el) {
@@ -808,7 +827,7 @@
 
     function showOnlyPlaySurface(el) {
         const s = cut._playSurfaces || {};
-        const all = [s.clipA, s.clipB, s.movie];
+        const all = [s.clip, s.movie];
         for (let i = 0; i < all.length; i++) {
             const v = all[i];
             if (!v || !v.classList) continue;
@@ -822,15 +841,14 @@
         if (movieEl)
             cut._playSurfaces.movie = movieEl;
         if (clipEl)
-            cut._playSurfaces.clipA = clipEl;
-        showOnlyPlaySurface(showMovie ? (movieEl || cut._playSurfaces.movie) : (clipEl || cut._playSurfaces.clipA));
+            cut._playSurfaces.clip = clipEl;
+        showOnlyPlaySurface(showMovie ? (movieEl || cut._playSurfaces.movie) : (clipEl || cut._playSurfaces.clip));
     };
 
-    cut.bindPlaySurfaces = function (clipA, clipB, movie) {
+    cut.bindPlaySurfaces = function (clipEl, movieEl) {
         const s = cut._playSurfaces;
-        if (clipA) s.clipA = clipA;
-        if (clipB) s.clipB = clipB;
-        if (movie) s.movie = movie;
+        if (clipEl) s.clip = clipEl;
+        if (movieEl) s.movie = movieEl;
     };
 
     cut.resetPlaySurfaces = function () {
@@ -1078,11 +1096,7 @@
         const s = cut._playSurfaces || {};
         if (surface === "movie")
             return s.movie;
-        if (s.front === s.clipA)
-            return s.clipB || s.clipA;
-        if (s.front === s.clipB)
-            return s.clipA || s.clipB;
-        return s.clipA;
+        return s.clip;
     }
 
     function preparePlayAt(video, url, seconds) {
@@ -1178,6 +1192,18 @@
         const surface = (el && el === s.movie) ? "movie" : "native";
         const incoming = incomingPlayEl(surface) || el;
         if (!incoming) return Promise.resolve();
+        const t = Number(seconds);
+        const seek = Number.isFinite(t) && t >= 0 ? t : 0;
+        if (incoming === s.front && playUrlOf(incoming) === url && incoming.readyState >= 1) {
+            incoming._cutAdvanceSent = false;
+            try {
+                incoming.currentTime = seek;
+            } catch (err) {
+                console.debug("Cut: playUrlAt seek", err);
+            }
+            cut.playVideo(incoming);
+            return Promise.resolve();
+        }
         return swapPlayTo(incoming, url, seconds, true);
     };
 

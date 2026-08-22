@@ -12,7 +12,6 @@ public partial class CutPreviewVideos : ComponentBase
     [Parameter] public EventCallback OnClipMetadata { get; set; }
 
     internal ElementReference ClipPlayer { get; set; }
-    internal ElementReference ClipStandby { get; set; }
     internal ElementReference MoviePlayer { get; set; }
 
     protected override bool ShouldRender() => !CutPlayClock.FreezePreviewMarkup(Freeze);

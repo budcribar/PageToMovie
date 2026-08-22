@@ -23,7 +23,7 @@ public class CutJitPlayTests
     }
 
     [Fact]
-    public void Hop_window_inside_stitched_scene_stays_native()
+    public void Hop_window_inside_stitched_scene_is_a_time_range_not_a_play_hop()
     {
         var a = NewClip(1, 1, duration: 4);
         var b = NewClip(1, 2, duration: 10);
@@ -38,12 +38,13 @@ public class CutJitPlayTests
         Assert.Equal(10, window.Value.LocalEnd, 5);
         Assert.Equal(5.5, window.Value.TimelineStart, 5);
         Assert.True(CutJitPlay.IsHardPlayJoin(clips, 0));
-        Assert.Equal(9, CutJitPlay.NativeReachableThrough(clips));
-        Assert.False(CutJitPlay.NeedsWait(8.9, CutJitPlay.ReadyThroughSec(clips, 0)));
+        Assert.Equal(4, CutJitPlay.NativeReachableThrough(clips));
+        Assert.True(CutJitPlay.NeedsWait(8.9, CutJitPlay.ReadyThroughSec(clips, 0)));
+        Assert.False(CutJitPlay.NeedsWait(8.9, CutJitPlay.ReadyThroughSec(clips, 2)));
     }
 
     [Fact]
-    public void Native_ready_runs_through_same_scene_hard_cuts()
+    public void Native_first_start_is_one_take_merge_covers_the_rest()
     {
         var a = NewClip(1, 1, duration: 4);
         var b = NewClip(1, 2, duration: 4);
@@ -52,10 +53,12 @@ public class CutJitPlayTests
 
         Assert.True(CutJitPlay.IsHardPlayJoin(clips, 0));
         Assert.False(CutJitPlay.IsHardPlayJoin(clips, 1));
-        Assert.Equal(8, CutJitPlay.NativeReachableThrough(clips));
-        Assert.Equal(8, CutJitPlay.ReadyThroughSec(clips, prefixClipCount: 0));
-        Assert.False(CutJitPlay.NeedsWait(7.9, 8));
-        Assert.True(CutJitPlay.NeedsWait(8.1, 8));
+        Assert.Equal(4, CutJitPlay.NativeReachableThrough(clips));
+        Assert.Equal(4, CutJitPlay.ReadyThroughSec(clips, prefixClipCount: 0));
+        Assert.Equal(8, CutJitPlay.ReadyThroughSec(clips, prefixClipCount: 2));
+        Assert.False(CutJitPlay.NeedsWait(3.9, 4));
+        Assert.True(CutJitPlay.NeedsWait(4.1, 4));
+        Assert.False(CutPlayMerge.ShouldHopTakeFiles);
     }
 
     [Fact]
@@ -81,10 +84,9 @@ public class CutJitPlayTests
         var total = CutJitPlay.TotalSec(clips);
 
         Assert.Equal(13, total);
-        Assert.Equal(8, CutJitPlay.NativeReachableThrough(clips));
-        Assert.False(CutJitPlay.NeedsWait(7.9, 8, total));
-        Assert.True(CutJitPlay.NeedsWait(8, 8, total));
-        Assert.True(CutJitPlay.NeedsWait(8.1, 8, total));
+        Assert.Equal(4, CutJitPlay.NativeReachableThrough(clips));
+        Assert.True(CutJitPlay.NeedsWait(8, 4, total));
+        Assert.True(CutJitPlay.NeedsWait(8.1, 4, total));
         Assert.False(CutJitPlay.NeedsWait(8, CutJitPlay.ReadyThroughSec(clips, 3), total));
         Assert.False(CutJitPlay.IsTimelineEnd(8, total));
         Assert.True(CutJitPlay.IsTimelineEnd(12.97, total));
@@ -105,18 +107,19 @@ public class CutJitPlayTests
     }
 
     [Fact]
-    public void Prefix_grow_does_not_restart_native_play()
+    public void Prefix_grow_does_not_restart_native_or_replace_merge_src()
     {
         var a = NewClip(1, 1, 4);
         var b = NewClip(1, 2, 4);
         var c = NewClip(2, 1, 5);
         var clips = new[] { a, b, c };
 
-        Assert.Equal(8, CutJitPlay.NativeReachableThrough(clips));
+        Assert.Equal(4, CutJitPlay.NativeReachableThrough(clips));
         Assert.False(CutJitPlay.NeedsWait(3.5, CutJitPlay.ReadyThroughSec(clips, 1), CutJitPlay.TotalSec(clips)));
         Assert.True(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: true));
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: false));
         Assert.False(CutPlayClock.ShouldRestartNativeOnPrefixGrow);
+        Assert.False(CutPlayClock.ShouldReplaceMergeSrcWhilePlaying);
     }
 
     [Fact]

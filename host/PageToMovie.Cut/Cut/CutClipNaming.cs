@@ -13,6 +13,9 @@ public static class CutClipNaming
     public const string ClipJsonSuffix = ".clip.json";
     public const string CurrentTakePointerSuffix = ".current.json";
     public const string ProjectFileName = "cut.project.json";
+    public const string MovieFileName = CutPlayMerge.MovieFileName;
+
+    public static bool IsMovieFileName(string? fileName) => CutPlayMerge.IsMovieFileName(fileName);
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
 

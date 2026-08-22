@@ -123,6 +123,15 @@ public sealed class CutComposeService : IAsyncDisposable
         PrefixClipCount = 0;
     }
 
+    public void AttachExistingMerge(string url, int clipCount)
+    {
+        if (string.IsNullOrWhiteSpace(url) || clipCount <= 0)
+            return;
+        MoviePreviewUrl = url;
+        PrefixPreviewUrl = url;
+        PrefixClipCount = clipCount;
+    }
+
     /// <summary>
     /// Stop in-flight preview/JIT so Stop / second Play does not call a
     /// disposed progress sink or revoke blobs ffmpeg still holds.
@@ -171,13 +180,9 @@ public sealed class CutComposeService : IAsyncDisposable
                 cancellationToken);
         if (!r.Success)
             throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
-        if (!download)
-        {
-            MoviePreviewUrl = r.Url;
-            PrefixPreviewUrl = r.Url;
-            PrefixClipCount = clips.Count;
-        }
-
+        MoviePreviewUrl = r.Url;
+        PrefixPreviewUrl = r.Url;
+        PrefixClipCount = clips.Count;
         return r.Url;
     }
 

@@ -18,12 +18,14 @@ public static class CutProjectFile
     public static string Serialize(
         IReadOnlyList<CutClip> clips,
         string? musicFileName,
-        IReadOnlyList<CutTextClip>? textClips = null)
+        IReadOnlyList<CutTextClip>? textClips = null,
+        string? movieFingerprint = null)
     {
         var dto = new ProjectDto
         {
             SchemaVersion = Version,
             MusicFileName = string.IsNullOrWhiteSpace(musicFileName) ? null : musicFileName,
+            MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
             Clips = clips.Select(ToDto).ToList(),
             TextClips = textClips is { Count: > 0 } ? textClips.Select(ToTextDto).ToList() : null,
         };
@@ -37,10 +39,19 @@ public static class CutProjectFile
         IReadOnlyList<CutClip> clips,
         string? json,
         out string? musicFileName,
-        out List<CutTextClip> textClips)
+        out List<CutTextClip> textClips) =>
+        TryApply(clips, json, out musicFileName, out textClips, out _);
+
+    public static bool TryApply(
+        IReadOnlyList<CutClip> clips,
+        string? json,
+        out string? musicFileName,
+        out List<CutTextClip> textClips,
+        out string? movieFingerprint)
     {
         musicFileName = null;
         textClips = [];
+        movieFingerprint = null;
         if (string.IsNullOrWhiteSpace(json))
             return false;
         ProjectDto? dto;
@@ -56,6 +67,7 @@ public static class CutProjectFile
         if (dto?.Clips is null)
             return false;
         musicFileName = dto.MusicFileName;
+        movieFingerprint = dto.MovieFingerprint;
         ApplyClipRows(clips, dto.Clips);
 
         foreach (var row in dto.TextClips ?? [])
@@ -227,6 +239,7 @@ public static class CutProjectFile
         [JsonPropertyName("version")]
         public int SchemaVersion { get; set; }
         public string? MusicFileName { get; set; }
+        public string? MovieFingerprint { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
         public List<TextClipDto>? TextClips { get; set; }
     }

@@ -38,6 +38,22 @@ public class CutProjectFileTests
     }
 
     [Fact]
+    public void Round_trips_fresh_movie_fingerprint()
+    {
+        var clip = NewClip(1, 1);
+        clip.SetDuration(4);
+        var fp = CutPlayMerge.Fingerprint([clip], [], "score.mp3");
+        var json = CutProjectFile.Serialize([clip], "score.mp3", movieFingerprint: fp);
+        Assert.Contains(fp, json, StringComparison.Ordinal);
+
+        var reload = NewClip(1, 1);
+        reload.SetDuration(4);
+        Assert.True(CutProjectFile.TryApply([reload], json, out _, out _, out var loaded));
+        Assert.Equal(fp, loaded);
+        Assert.True(CutPlayMerge.IsFreshMerge(loaded, [reload], [], "score.mp3"));
+    }
+
+    [Fact]
     public void Round_trips_text_clips_on_the_text_row()
     {
         var clip = NewClip(1, 1);

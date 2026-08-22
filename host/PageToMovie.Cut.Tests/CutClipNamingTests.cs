@@ -136,6 +136,8 @@ public class CutClipNamingTests
     public void Finish_file_and_sidecar_names()
     {
         Assert.True(CutClipNaming.IsProjectFileName("cut.project.json"));
+        Assert.True(CutClipNaming.IsMovieFileName("movie.mp4"));
+        Assert.Equal("movie.mp4", CutClipNaming.MovieFileName);
         Assert.True(CutClipNaming.IsClipSidecarName("scene_03_clip_07.clip.json"));
         Assert.False(CutClipNaming.IsClipSidecarName("scene_03_clip_07.current.json"));
     }
