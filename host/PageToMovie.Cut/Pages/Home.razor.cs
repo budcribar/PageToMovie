@@ -784,6 +784,7 @@ public partial class Home : IAsyncDisposable
     {
         StopPlay();
         DisposeTimeSink();
+        _preview = null;
         return ValueTask.CompletedTask;
     }
 
