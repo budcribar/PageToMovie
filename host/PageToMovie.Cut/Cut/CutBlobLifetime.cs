@@ -41,15 +41,8 @@ public static class CutBlobLifetime
         return owned.Where(u => CanRevoke(u, owned, busy, keep)).ToList();
     }
 
-    private static HashSet<string> ToSet(IEnumerable<string?> urls)
-    {
-        var set = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var url in urls)
-        {
-            if (!string.IsNullOrWhiteSpace(url))
-                set.Add(url);
-        }
-
-        return set;
-    }
+    private static HashSet<string> ToSet(IEnumerable<string?> urls) =>
+        urls.OfType<string>()
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .ToHashSet(StringComparer.Ordinal);
 }
