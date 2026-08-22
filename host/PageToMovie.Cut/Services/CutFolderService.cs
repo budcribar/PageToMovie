@@ -8,6 +8,8 @@ namespace PageToMovie.Cut.Services;
 /// </summary>
 public sealed class CutFolderService : IAsyncDisposable
 {
+    private const string WriteBlobUrlFileJs = "PageToMovieCut.writeBlobUrlFileAsync";
+
     private readonly IJSRuntime _js;
 
     public CutFolderService(IJSRuntime js) => _js = js;
@@ -113,6 +115,15 @@ public sealed class CutFolderService : IAsyncDisposable
 
     private void ApplySavedFinish(IEnumerable<JsFileEntry> files, List<CutClip> clips)
     {
+        ResetSavedFinish();
+        var list = files.ToList();
+        ApplySavedMoviePath(list);
+        ApplySavedCacheFiles(list);
+        ApplySavedProject(list, clips);
+    }
+
+    private void ResetSavedFinish()
+    {
         PendingMusicFileName = null;
         PendingMusic.Clear();
         SavedMovieFingerprint = null;
@@ -122,39 +133,56 @@ public sealed class CutFolderService : IAsyncDisposable
         SceneCacheFiles.Clear();
         JoinCacheFiles.Clear();
         TextClips.Clear();
-        var list = files.ToList();
+    }
+
+    private void ApplySavedMoviePath(IReadOnlyList<JsFileEntry> list)
+    {
         var movie = list.FirstOrDefault(f =>
             CutPlayMerge.IsMovieFileName(f.FileName) || CutPlayMerge.IsMovieFileName(f.RelativePath));
         if (movie is not null && movie.SizeBytes > 0)
-            MovieMp4Path = string.IsNullOrWhiteSpace(movie.RelativePath) ? movie.FileName : movie.RelativePath;
+            MovieMp4Path = RelativeOrFileName(movie);
+    }
+
+    private void ApplySavedCacheFiles(IReadOnlyList<JsFileEntry> list)
+    {
         foreach (var file in list)
         {
-            var path = string.IsNullOrWhiteSpace(file.RelativePath) ? file.FileName : file.RelativePath;
             if (file.SizeBytes <= 0)
                 continue;
-            if (CutMergeCache.IsPictureFileName(path))
-                PictureMp4Path = path;
-            else if (CutMergeCache.TryParseSceneFile(path, out var scene))
-                SceneCacheFiles[scene] = path;
-            else if (CutMergeCache.TryParseJoinFile(path, out var from))
-                JoinCacheFiles[from] = path;
+            RememberCacheFile(RelativeOrFileName(file));
         }
+    }
 
+    private void RememberCacheFile(string path)
+    {
+        if (CutMergeCache.IsPictureFileName(path))
+            PictureMp4Path = path;
+        else if (CutMergeCache.TryParseSceneFile(path, out var scene))
+            SceneCacheFiles[scene] = path;
+        else if (CutMergeCache.TryParseJoinFile(path, out var from))
+            JoinCacheFiles[from] = path;
+    }
+
+    private static string RelativeOrFileName(JsFileEntry file) =>
+        string.IsNullOrWhiteSpace(file.RelativePath) ? file.FileName : file.RelativePath;
+
+    private void ApplySavedProject(IReadOnlyList<JsFileEntry> list, List<CutClip> clips)
+    {
         var project = list.FirstOrDefault(f =>
             CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
-        if (project is not null
-            && CutProjectFile.TryApply(
+        if (project is null
+            || !CutProjectFile.TryApply(
                 clips, project.Text, out var music, out var texts, out var fp, out var track, out var cache))
-        {
-            PendingMusicFileName = music;
-            PendingMusic.FileName = track.FileName;
-            PendingMusic.DisplayName = track.DisplayName;
-            PendingMusic.SetStart(track.StartSec);
-            PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
-            SavedMovieFingerprint = fp;
-            SavedMergeCache = cache;
-            TextClips.AddRange(texts);
-        }
+            return;
+
+        PendingMusicFileName = music;
+        PendingMusic.FileName = track.FileName;
+        PendingMusic.DisplayName = track.DisplayName;
+        PendingMusic.SetStart(track.StartSec);
+        PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
+        SavedMovieFingerprint = fp;
+        SavedMergeCache = cache;
+        TextClips.AddRange(texts);
     }
 
     public async Task<bool> SaveFinishAsync(
@@ -191,9 +219,7 @@ public sealed class CutFolderService : IAsyncDisposable
     {
         if (!CanWrite || string.IsNullOrWhiteSpace(url))
             return false;
-        var wrote = await _js.InvokeAsync<JsResult>(
-            "PageToMovieCut.writeBlobUrlFileAsync", CutPlayMerge.MovieFileName, url);
-        if (!wrote.Success)
+        if (!await TryWriteBlobUrlFileAsync(CutPlayMerge.MovieFileName, url))
             return false;
         MovieMp4Path = CutPlayMerge.MovieFileName;
         return true;
@@ -241,56 +267,65 @@ public sealed class CutFolderService : IAsyncDisposable
     {
         if (!CanWrite)
             return false;
-        var wroteAny = false;
         var rebuiltScenes = compose.LastRebuiltScenes.ToHashSet();
         var rebuiltJoins = compose.LastRebuiltJoins.ToHashSet();
-        foreach (var scene in compose.CurrentPlan.Scenes)
-        {
-            if (!compose.Cache.SceneUrls.TryGetValue(scene.Scene, out var url)
-                || string.IsNullOrWhiteSpace(url))
-                continue;
-            if (rebuiltScenes.Count > 0 && !rebuiltScenes.Contains(scene.Scene)
-                && SceneCacheFiles.ContainsKey(scene.Scene))
-                continue;
-            var wrote = await _js.InvokeAsync<JsResult>(
-                "PageToMovieCut.writeBlobUrlFileAsync", scene.FileName, url);
-            if (wrote.Success)
-            {
-                SceneCacheFiles[scene.Scene] = scene.FileName;
-                wroteAny = true;
-            }
-        }
+        var wroteScenes = await PersistCacheFilesAsync(
+            compose.CurrentPlan.Scenes.Select(s => (s.Scene, s.FileName)),
+            compose.Cache.SceneUrls,
+            SceneCacheFiles,
+            rebuiltScenes);
+        var wroteJoins = await PersistCacheFilesAsync(
+            compose.CurrentPlan.Joins.Where(j => j.Encodes).Select(j => (j.FromScene, j.FileName)),
+            compose.Cache.JoinUrls,
+            JoinCacheFiles,
+            rebuiltJoins);
+        var wrotePicture = await PersistPictureCacheAsync(
+            compose.Cache.PictureUrl,
+            rebuiltScenes.Count > 0 || rebuiltJoins.Count > 0);
+        return wroteScenes || wroteJoins || wrotePicture;
+    }
 
-        foreach (var join in compose.CurrentPlan.Joins.Where(j => j.Encodes))
+    private async Task<bool> PersistCacheFilesAsync(
+        IEnumerable<(int Id, string FileName)> items,
+        IReadOnlyDictionary<int, string> urls,
+        Dictionary<int, string> dest,
+        HashSet<int> rebuilt)
+    {
+        var wroteAny = false;
+        foreach (var (id, fileName) in items)
         {
-            if (!compose.Cache.JoinUrls.TryGetValue(join.FromScene, out var url)
-                || string.IsNullOrWhiteSpace(url))
+            if (!urls.TryGetValue(id, out var url) || string.IsNullOrWhiteSpace(url))
                 continue;
-            if (rebuiltJoins.Count > 0 && !rebuiltJoins.Contains(join.FromScene)
-                && JoinCacheFiles.ContainsKey(join.FromScene))
+            if (ShouldSkipUnchangedCache(rebuilt, id, dest.ContainsKey(id)))
                 continue;
-            var wrote = await _js.InvokeAsync<JsResult>(
-                "PageToMovieCut.writeBlobUrlFileAsync", join.FileName, url);
-            if (wrote.Success)
-            {
-                JoinCacheFiles[join.FromScene] = join.FileName;
-                wroteAny = true;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(compose.Cache.PictureUrl)
-            && (rebuiltScenes.Count > 0 || rebuiltJoins.Count > 0 || string.IsNullOrWhiteSpace(PictureMp4Path)))
-        {
-            var wrote = await _js.InvokeAsync<JsResult>(
-                "PageToMovieCut.writeBlobUrlFileAsync", CutMergeCache.PictureFileName, compose.Cache.PictureUrl);
-            if (wrote.Success)
-            {
-                PictureMp4Path = CutMergeCache.PictureFileName;
-                wroteAny = true;
-            }
+            if (!await TryWriteBlobUrlFileAsync(fileName, url))
+                continue;
+            dest[id] = fileName;
+            wroteAny = true;
         }
 
         return wroteAny;
+    }
+
+    private static bool ShouldSkipUnchangedCache(HashSet<int> rebuilt, int id, bool alreadyOnDisk) =>
+        rebuilt.Count > 0 && !rebuilt.Contains(id) && alreadyOnDisk;
+
+    private async Task<bool> PersistPictureCacheAsync(string? pictureUrl, bool rebuiltAny)
+    {
+        if (string.IsNullOrWhiteSpace(pictureUrl))
+            return false;
+        if (!rebuiltAny && !string.IsNullOrWhiteSpace(PictureMp4Path))
+            return false;
+        if (!await TryWriteBlobUrlFileAsync(CutMergeCache.PictureFileName, pictureUrl))
+            return false;
+        PictureMp4Path = CutMergeCache.PictureFileName;
+        return true;
+    }
+
+    private async Task<bool> TryWriteBlobUrlFileAsync(string fileName, string url)
+    {
+        var wrote = await _js.InvokeAsync<JsResult>(WriteBlobUrlFileJs, fileName, url);
+        return wrote.Success;
     }
 
     private static CutMergeManifest CloneManifest(CutMergeManifest src) =>
