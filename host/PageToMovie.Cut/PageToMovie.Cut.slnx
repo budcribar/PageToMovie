@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PageToMovie.Cut.csproj" />
+  <Project Path="../PageToMovie.Cut.Tests/PageToMovie.Cut.Tests.csproj" />
+</Solution>

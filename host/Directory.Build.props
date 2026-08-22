@@ -1,7 +1,7 @@
 <Project>
   <!-- Override Microsoft.Data.Sqlite's transitive SQLitePCLRaw 2.1.11 (NU1903 / GHSA-2m69-gcr7-jv3q).
-       Skip Blazor Web so we don't pull native sqlite into the WASM client. -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'PageToMovie.Web' and '$(MSBuildProjectName)' != 'PageToMovie.Core'">
+       Skip Blazor WASM clients so we don't pull native sqlite into the browser. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'PageToMovie.Web' and '$(MSBuildProjectName)' != 'PageToMovie.Core' and '$(MSBuildProjectName)' != 'PageToMovie.Cut'">
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <PackageReference Include="SQLitePCLRaw.core" Version="2.1.12" />

@@ -1,0 +1,155 @@
+@page "/"
+@inject CutFolderService Folder
+@inject CutComposeService Compose
+
+<PageTitle>Cut</PageTitle>
+
+<div class="cut-toolbar">
+    <button type="button" class="cut-btn" @onclick="PickFolderAsync" disabled="@_busy">Pick folder</button>
+    <button type="button" class="cut-btn cut-btn-ghost" @onclick="PickFilesAsync" disabled="@_busy">Choose MP4s</button>
+    @if (Folder.HasFolder)
+    {
+        <span>@Folder.FolderName · @Folder.Clips.Count clip@(Folder.Clips.Count == 1 ? "" : "s")</span>
+    }
+    else
+    {
+        <span class="cut-muted">scene_SS_clip_CC_take_NN clips — current from .current.json</span>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="cut-error" role="alert">@_error</div>
+}
+
+@if (Folder.Clips.Count > 0)
+{
+    <section class="cut-strip-wrap" aria-label="Clip strip">
+        <div class="cut-strip">
+            @foreach (var clip in Folder.Clips)
+            {
+                <button type="button"
+                        class="cut-chip @(clip == _selected ? "is-selected" : "") @(clip.Missing ? "is-missing" : "")"
+                        @onclick="() => Select(clip)">
+                    @if (!string.IsNullOrWhiteSpace(clip.PreviewUrl))
+                    {
+                        <video src="@clip.PreviewUrl" muted playsinline preload="metadata"></video>
+                    }
+                    <span class="cut-chip-label">@clip.Label</span>
+                    @if (clip.Takes.Count > 1)
+                    {
+                        <span class="cut-chip-take">T@(clip.SelectedTakeNumber.ToString("D2"))</span>
+                    }
+                    @if (clip.Missing)
+                    {
+                        <span class="cut-chip-missing">Missing</span>
+                    }
+                </button>
+            }
+        </div>
+    </section>
+
+    <div class="cut-editor">
+        <section class="cut-card cut-player">
+            @if (_selected is null)
+            {
+                <p class="cut-muted">Select a clip.</p>
+            }
+            else
+            {
+                <div class="cut-takes" aria-label="Takes">
+                    @foreach (var take in _selected.Takes)
+                    {
+                        var isActive = take.Take == _selected.ActiveTakeNumber && take.Take == _selected.SelectedTakeNumber;
+                        <button type="button"
+                                class="cut-take @(isActive ? "is-active is-using" : "")"
+                                disabled="@(take.Missing || _busy)"
+                                @onclick="() => SelectTakeAsync(take.Take)">
+                            @if (isActive)
+                            {
+                                <text>★ Active · Take @take.Take</text>
+                            }
+                            else
+                            {
+                                <text>Take @take.Take</text>
+                            }
+                        </button>
+                    }
+                </div>
+                @if (_selected.Missing)
+                {
+                    <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
+                }
+                else
+                {
+                <video @ref="_player"
+                       src="@_selected.PreviewUrl"
+                       controls
+                       playsinline
+                       preload="metadata"
+                       @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                <div class="cut-marks">
+                    <label>
+                        In
+                        <input type="range" min="0" max="@RangeMax" step="0.05"
+                               value="@_selected.MarkIn"
+                               disabled="@(!_selected.HasDuration)"
+                               @oninput="e => SetIn(e.Value)" />
+                        <input type="number" min="0" max="@RangeMax" step="0.05"
+                               value="@FormatSec(_selected.MarkIn)"
+                               disabled="@(!_selected.HasDuration)"
+                               @onchange="e => SetIn(e.Value)" />
+                    </label>
+                    <label>
+                        Out
+                        <input type="range" min="0" max="@RangeMax" step="0.05"
+                               value="@_selected.MarkOut"
+                               disabled="@(!_selected.HasDuration)"
+                               @oninput="e => SetOut(e.Value)" />
+                        <input type="number" min="0" max="@RangeMax" step="0.05"
+                               value="@FormatSec(_selected.MarkOut)"
+                               disabled="@(!_selected.HasDuration)"
+                               @onchange="e => SetOut(e.Value)" />
+                    </label>
+                    <p class="cut-muted">
+                        @if (_selected.HasDuration)
+                        {
+                            <text>@FormatSec(_selected.DurationSec)s total · using @FormatSec(_selected.MarkOut - _selected.MarkIn)s</text>
+                        }
+                        else
+                        {
+                            <text>Reading length…</text>
+                        }
+                    </p>
+                </div>
+                }
+            }
+        </section>
+
+        <section class="cut-card">
+            <h2 style="margin:0 0 0.6rem;font-size:1rem;">Audio (optional)</h2>
+            <div class="cut-drop">
+                <InputFile OnChange="OnAudioAsync" accept="audio/*,.wav,.mp3,.m4a,.aac" />
+                @if (Compose.HasAudio)
+                {
+                    <p class="cut-ok">@Compose.AudioFileName</p>
+                    <button type="button" class="cut-btn cut-btn-ghost" @onclick="ClearAudioAsync" disabled="@_busy">Remove</button>
+                }
+                else
+                {
+                    <p class="cut-muted">Drop music or a wav. Mixed under the whole movie.</p>
+                }
+            </div>
+            <div style="margin-top:1rem;display:flex;flex-direction:column;gap:0.55rem;">
+                <button type="button" class="cut-btn" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
+                @if (_busy && !string.IsNullOrWhiteSpace(_progressMessage))
+                {
+                    <p class="cut-muted">@_progressPercent% · @_progressMessage</p>
+                    <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_progressPercent">
+                        <span style="width:@(_progressPercent)%"></span>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+}
