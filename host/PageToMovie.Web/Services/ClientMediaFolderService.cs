@@ -513,10 +513,11 @@ public sealed class ClientMediaFolderService
         bool IsMusic,
         bool IsSpeakBatch);
 
-    private static bool IsCreditsJobMedia(string rel, JobSnapshot snap) =>
-        rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
-        rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
-        snap.Scene == 18 ||
+    /// <summary>
+    /// Title-card generator output (silence-trim / register kind). Job kind only —
+    /// not a scene number or filename. Does not skip take/alias persistence.
+    /// </summary>
+    private static bool IsCreditsJobMedia(JobSnapshot snap) =>
         string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
 
     private async Task<PreparedSaveUrl> PrepareUrlToSaveAsync(
@@ -526,7 +527,7 @@ public sealed class ClientMediaFolderService
         // (where to cut) lives once in ClipSilenceTrimmer (Core) — JS only does
         // the ffmpeg I/O. Longer breath tail for speech-style clips; lead trim on clip 2+.
         var clipNum = snap.Clip ?? 1;
-        var isCredits = IsCreditsJobMedia(rel, snap);
+        var isCredits = IsCreditsJobMedia(snap);
         var isMusic = string.Equals(snap.Kind, "music", StringComparison.OrdinalIgnoreCase);
         var isSpeakBatch = string.Equals(snap.Kind, "speak-batch", StringComparison.OrdinalIgnoreCase);
         var keepTail = isCredits
@@ -594,8 +595,8 @@ public sealed class ClientMediaFolderService
             Clip = snap.Clip,
         });
 
-        if (!isCredits && !isMusic && !isSpeakBatch)
-            await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.SizeBytes);
+        if (!isMusic && !isSpeakBatch)
+            await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.SizeBytes, MediaKind(isCredits, isMusic, isSpeakBatch));
 
         var sil = string.IsNullOrWhiteSpace(silenceMessage)
             ? ""
@@ -618,7 +619,8 @@ public sealed class ClientMediaFolderService
         string pid,
         string takeRel,
         string urlToSave,
-        long sizeBytes)
+        long sizeBytes,
+        string kind)
     {
         if (snap.Scene is not int scene || snap.Clip is not int clip)
             return;
@@ -640,7 +642,7 @@ public sealed class ClientMediaFolderService
             RelativePath = canonical,
             Sha256 = aliasSha,
             SizeBytes = alias.SizeBytes > 0 ? alias.SizeBytes : sizeBytes,
-            Kind = "clip",
+            Kind = kind,
             Scene = scene,
             Clip = clip,
         });

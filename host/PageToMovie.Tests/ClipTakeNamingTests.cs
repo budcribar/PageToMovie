@@ -59,6 +59,16 @@ public class ClipTakeNamingTests
     }
 
     [Fact]
+    public void JobMediaSaveKey_same_job_different_takes_are_distinct()
+    {
+        var first = ClipTakeNaming.JobMediaSaveKey("P", "job-1", ClipTakeNaming.TakeRelativePath(1, 1, 2), 2);
+        var second = ClipTakeNaming.JobMediaSaveKey("P", "job-1", ClipTakeNaming.TakeRelativePath(1, 1, 3), 3);
+        Assert.Equal("P|job-1|take-02", first);
+        Assert.Equal("P|job-1|take-03", second);
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
     public void ShouldKeepLocalSidecar_when_local_is_larger()
     {
         Assert.True(ClipTakeNaming.ShouldKeepLocalSidecar(5170, 4933));

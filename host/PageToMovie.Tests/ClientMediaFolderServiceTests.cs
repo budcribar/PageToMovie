@@ -148,6 +148,73 @@ public class ClientMediaFolderServiceTests
     }
 
     [Fact]
+    public async Task A_second_video_edit_in_the_same_circuit_saves_the_next_take()
+    {
+        var (svc, js) = CreateService();
+        js.Responses["PageToMovieMedia.connectFolderAsync"] = """{"success":true,"folderName":"Test"}""";
+        js.Responses["PageToMovieFfmpeg.analyzeSilenceAsync"] = """{"success":false,"error":"no ffmpeg in test"}""";
+        js.Responses["PageToMovieMedia.saveFromUrlAsync"] = """{"success":true,"sha256":"abc","sizeBytes":100,"relativePath":"x"}""";
+
+        var first = new JobSnapshot
+        {
+            JobId = "edit-circuit",
+            Kind = "video_edit",
+            Status = "running",
+            ProjectId = "proj1",
+            ClientMediaUrl = "/api/media/proxy/tok-edit-1",
+            ClientRelativePath = "assets/video/scene_01_clip_01_take_02.mp4",
+            ClientTakeNumber = 2,
+            Scene = 1,
+            Clip = 1,
+        };
+        var second = new JobSnapshot
+        {
+            JobId = "edit-circuit",
+            Kind = "video_edit",
+            Status = "running",
+            ProjectId = "proj1",
+            ClientMediaUrl = "/api/media/proxy/tok-edit-2",
+            ClientRelativePath = "assets/video/scene_01_clip_01_take_03.mp4",
+            ClientTakeNumber = 3,
+            Scene = 1,
+            Clip = 1,
+        };
+
+        FireOnJobUpdated(svc, first);
+        await WaitForIdleAsync(svc);
+        FireOnJobUpdated(svc, second);
+        await WaitForIdleAsync(svc);
+
+        // Each edit saves take_NN plus the current alias.
+        Assert.True(js.CallCount("PageToMovieMedia.saveFromUrlAsync") >= 4);
+    }
+
+    [Fact]
+    public async Task Credits_kind_take_still_saves_the_take_and_alias()
+    {
+        var (svc, js) = CreateService();
+        js.Responses["PageToMovieMedia.connectFolderAsync"] = """{"success":true,"folderName":"Test"}""";
+        js.Responses["PageToMovieFfmpeg.analyzeSilenceAsync"] = """{"success":false,"error":"no ffmpeg in test"}""";
+        js.Responses["PageToMovieMedia.saveFromUrlAsync"] = """{"success":true,"sha256":"abc","sizeBytes":100,"relativePath":"x"}""";
+
+        FireOnJobUpdated(svc, new JobSnapshot
+        {
+            JobId = "credits-gen",
+            Kind = "credits",
+            Status = "done",
+            ProjectId = "proj1",
+            ClientMediaUrl = "/api/media/proxy/tok-credits",
+            ClientRelativePath = "assets/video/scene_02_clip_01_take_02.mp4",
+            ClientTakeNumber = 2,
+            Scene = 2,
+            Clip = 1,
+        });
+        await WaitForIdleAsync(svc);
+
+        Assert.Equal(2, js.CallCount("PageToMovieMedia.saveFromUrlAsync"));
+    }
+
+    [Fact]
     public async Task SyncProjectMedia_sets_IsSyncing_during_listing_before_downloads()
     {
         var gate = new SyncListGateHandler();

@@ -60,7 +60,10 @@ public sealed class ClipSidecarService
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipSidecarService>.Instance;
     }
 
-    /// <summary>1 + the highest take_NN among the clip's sidecars (1 when none).</summary>
+    /// <summary>
+    /// 1 + the highest <b>stable</b> <c>take_NN</c> sidecar. Timestamped leftover stubs
+    /// (<c>take_NN_yyyyMMdd_HHmmss</c>) are not takes and must not steal the next number.
+    /// </summary>
     public static int NextTakeNumber(string videoDir, int scene, int clip)
     {
         var max = 0;
@@ -68,7 +71,10 @@ public sealed class ClipSidecarService
         {
             foreach (var f in Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)))
             {
-                var n = ParseTakeNumber(Path.GetFileName(f));
+                var name = Path.GetFileName(f);
+                if (!ClipTakeNaming.IsStableTakeName(name))
+                    continue;
+                var n = ParseTakeNumber(name);
                 if (n > max) max = n;
             }
         }
@@ -243,6 +249,60 @@ public sealed class ClipSidecarService
     }
 
     /// <summary>
+    /// After any generator (catalog video, VideoEdit, or the ffmpeg credits card) produces
+    /// bytes: next unique take, <c>take_NN.mp4</c> + sidecar, current pointer, optional alias.
+    /// Does not delete prior take files.
+    /// </summary>
+    public async Task<int> PersistGeneratedTakeAsync(
+        string projectDir,
+        int scene,
+        int clip,
+        byte[] bytes,
+        string prompt = "",
+        string scriptText = "",
+        string model = "",
+        string resolution = "",
+        double durationSeconds = 0,
+        int? editedFromTake = null,
+        string? sourceUrl = null,
+        string? sourceProvider = null,
+        bool updateAlias = true,
+        CancellationToken ct = default)
+    {
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        EnsureLegacyCanonicalHasTakeSidecar(videoDir, scene, clip);
+
+        var take = NextTakeNumber(videoDir, scene, clip);
+        var takeMp4Name = ClipTakeNaming.TakeMp4FileName(scene, clip, take);
+        await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
+        if (updateAlias)
+        {
+            await File.WriteAllBytesAsync(
+                Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip)), bytes, ct)
+                .ConfigureAwait(false);
+        }
+
+        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+        await WriteSidecarWithTakeAsync(
+            projectDir, scene, clip,
+            take: take,
+            prompt: prompt,
+            scriptText: scriptText,
+            model: model,
+            resolution: resolution,
+            durationSeconds: durationSeconds,
+            sha256: sha256,
+            sizeBytes: bytes.LongLength,
+            mp4FileName: takeMp4Name,
+            editedFromTake: editedFromTake,
+            sourceUrl: sourceUrl,
+            sourceProvider: sourceProvider,
+            ct: ct).ConfigureAwait(false);
+        return take;
+    }
+
+    /// <summary>
     /// Write a .clip.json sidecar alongside an MP4 video file with take and timestamp metadata.
     /// </summary>
     public async Task<string> WriteSidecarWithTakeAsync(
@@ -260,6 +320,8 @@ public sealed class ClipSidecarService
         string mp4FileName,
         DateTime? createdUtc = null,
         int? editedFromTake = null,
+        string? sourceUrl = null,
+        string? sourceProvider = null,
         CancellationToken ct = default)
     {
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -280,6 +342,10 @@ public sealed class ClipSidecarService
         // Absent for ordinary (non-edit) takes.
         if (editedFromTake is { } fromTake)
             sidecar["edited_from_take"] = fromTake;
+        if (!string.IsNullOrWhiteSpace(sourceUrl))
+            sidecar["source_url"] = sourceUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(sourceProvider) || !string.IsNullOrWhiteSpace(sourceUrl))
+            sidecar["source_provider"] = string.IsNullOrWhiteSpace(sourceProvider) ? "" : sourceProvider.Trim();
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
         WriteCurrentTake(videoDir, scene, clip, take);

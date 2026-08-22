@@ -3045,21 +3045,35 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         byte[] videoBytes,
         CancellationToken ct = default)
     {
-        var (ok, _) = await UploadClipWithResultAsync(projectId, scene, clip, videoBytes, ct).ConfigureAwait(false);
-        return ok;
+        var result = await UploadClipWithResultAsync(projectId, scene, clip, videoBytes, ct).ConfigureAwait(false);
+        return result.Ok;
     }
 
     /// <summary>Same upload, but surfaces WHY it failed (status code + response body) instead of
     /// collapsing every failure to a bare false — a caller that treats "uploaded" as "safe to report
     /// success" (e.g. the credits-card render) needs to know when that's not true.</summary>
-    public async Task<(bool Ok, string? Error)> UploadClipWithResultAsync(
+    public Task<ClipUploadResult> UploadClipWithResultAsync(
         string projectId,
         int scene,
         int clip,
         byte[] videoBytes,
+        CancellationToken ct = default) =>
+        UploadClipWithResultAsync(projectId, scene, clip, videoBytes, kind: null, seconds: null, ct);
+
+    /// <summary>
+    /// Persist a generator's MP4 (ffmpeg credits card, or a local clip upload) through the
+    /// shared take pipeline when <paramref name="kind"/> is <c>credits</c>.
+    /// </summary>
+    public async Task<ClipUploadResult> UploadClipWithResultAsync(
+        string projectId,
+        int scene,
+        int clip,
+        byte[] videoBytes,
+        string? kind,
+        double? seconds,
         CancellationToken ct = default)
     {
-        if (videoBytes is not { Length: > 0 }) return (false, "No video bytes to upload");
+        if (videoBytes is not { Length: > 0 }) return new ClipUploadResult(false, "No video bytes to upload");
         try
         {
             using var form = new MultipartFormDataContent();
@@ -3067,15 +3081,39 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
             form.Add(byteContent, "video", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
 
-            var url = ClipUploadUrl(projectId, scene, clip);
+            var url = ClipUploadUrl(projectId, scene, clip, kind);
+            if (seconds is { } s && !string.IsNullOrEmpty(kind))
+            {
+                url += (url.Contains('?', StringComparison.Ordinal) ? "&" : "?")
+                       + "seconds=" + s.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
             using var resp = await _http.PostAsync(url, form, ct);
-            if (resp.IsSuccessStatusCode) return (true, null);
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            return (false, $"HTTP {(int)resp.StatusCode}: {(string.IsNullOrWhiteSpace(body) ? resp.ReasonPhrase : body)}");
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                return new ClipUploadResult(false,
+                    $"HTTP {(int)resp.StatusCode}: {(string.IsNullOrWhiteSpace(body) ? resp.ReasonPhrase : body)}");
+            }
+            return await ReadClipUploadResultAsync(resp, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            return (false, ex.Message);
+            return new ClipUploadResult(false, ex.Message);
+        }
+    }
+
+    private static async Task<ClipUploadResult> ReadClipUploadResultAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        try
+        {
+            var json = await resp.Content.ReadFromJsonAsync<JsonElement>(ct).ConfigureAwait(false);
+            var take = json.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) ? n : 0;
+            var rel = json.TryGetProperty("clientRelativePath", out var p) ? p.GetString() : null;
+            return new ClipUploadResult(true, null, take, rel);
+        }
+        catch
+        {
+            return new ClipUploadResult(true, null);
         }
     }
 
@@ -4695,6 +4733,12 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         catch { return null; }
     }
 }
+
+public sealed record ClipUploadResult(
+    bool Ok,
+    string? Error,
+    int Take = 0,
+    string? RelativePath = null);
 
 public sealed class ProjectsDto
 {

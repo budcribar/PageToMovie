@@ -2387,7 +2387,7 @@ public sealed class FilmJobService
             {
                 throw new InvalidOperationException(
                     $"Scene {req.Scene} clip {req.Clip} is {current.DurationSeconds:0.#}s — " +
-                    $"Grok can only edit clips up to {cap:0.#}s.");
+                    $"clips longer than {cap:0.#}s cannot be edited.");
             }
 
             string? sourceFileId = null;
@@ -2423,8 +2423,11 @@ public sealed class FilmJobService
             }
 
             _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
-            await PersistEditedTakeAsync(projectDir, videoDir, req, current, entry.Id, bytes, ct)
+            var editTake = await PersistEditedTakeAsync(
+                    projectDir, req, current, entry, url, bytes, ct)
                 .ConfigureAwait(false);
+            // Same client-folder contract as regen: take_NN.mp4 + current alias.
+            await PublishClipClientMediaAsync(req.Scene, req.Clip, url, editTake).ConfigureAwait(false);
 
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
@@ -2453,34 +2456,28 @@ public sealed class FilmJobService
     /// Persist the edited bytes as the next unique take (legacy alias sidecar becomes
     /// take 1 first) and write <c>take_NN.mp4</c> so compare can play it.
     /// </summary>
-    private async Task PersistEditedTakeAsync(
+    private async Task<int> PersistEditedTakeAsync(
         string projectDir,
-        string videoDir,
         StartVideoEditRequest req,
         ClipVersionItem? current,
-        string modelId,
+        SupportedModelEntry entry,
+        string sourceUrl,
         byte[] bytes,
         CancellationToken ct)
     {
         if (_sidecars is null)
-            return;
-        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
-        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-        var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
-        var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
-        await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
-        await _sidecars.WriteSidecarWithTakeAsync(
-            projectDir, req.Scene, req.Clip,
-            take: editTake,
+            return 0;
+        return await _sidecars.PersistGeneratedTakeAsync(
+            projectDir, req.Scene, req.Clip, bytes,
             prompt: req.Prompt,
             scriptText: current?.ScriptText ?? "",
-            model: modelId,
+            model: entry.Id,
             resolution: current?.Resolution ?? "",
             durationSeconds: current?.DurationSeconds ?? 0,
-            sha256: sha256,
-            sizeBytes: bytes.LongLength,
-            mp4FileName: takeMp4Name,
             editedFromTake: current?.Take is > 0 ? current.Take : 1,
+            sourceUrl: sourceUrl,
+            sourceProvider: entry.ProviderId,
+            updateAlias: false,
             ct: ct).ConfigureAwait(false);
     }
 
@@ -5943,11 +5940,22 @@ public sealed class FilmJobService
         return duration;
     }
 
-    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url, int takeNumber = 0)
+    private Task PublishClipClientMediaAsync(ClipGenContext ctx, string url, int takeNumber = 0)
     {
         var take = takeNumber > 0 ? takeNumber : ClipSidecarService.NextTakeNumber(ctx.VideoDir, ctx.Scene, ctx.Clip) - 1;
-        if (take <= 0) take = 1;
-        var relPath = ClipTakeNaming.TakeRelativePath(ctx.Scene, ctx.Clip, take);
+        return PublishClipClientMediaAsync(ctx.Scene, ctx.Clip, url, take, ctx.ExtendInputDurationSec);
+    }
+
+    /// <summary>
+    /// Publish take_NN + current alias to the client folder (regen and AI Edit).
+    /// <paramref name="takeNumber"/> is the unique take already written via
+    /// <see cref="ClipSidecarService.NextTakeNumber"/> / <see cref="ClipTakeNaming.ParseTakeNumber"/>.
+    /// </summary>
+    private async Task PublishClipClientMediaAsync(
+        int scene, int clip, string url, int takeNumber, double? predecessorDurationSec = null)
+    {
+        var take = takeNumber > 0 ? takeNumber : 1;
+        var relPath = ClipTakeNaming.TakeRelativePath(scene, clip, take);
         // Provider URL + lead-in: the browser (ffmpeg.wasm) slices combined extend files.
         var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
         var clientUrl = $"/api/media/proxy/{ticket}";
@@ -5956,9 +5964,9 @@ public sealed class FilmJobService
             s.ClientMediaUrl = clientUrl;
             s.ClientRelativePath = relPath;
             s.ClientTakeNumber = take;
-            s.Scene = ctx.Scene;
-            s.Clip = ctx.Clip;
-            s.PredecessorDurationSec = ctx.ExtendInputDurationSec;
+            s.Scene = scene;
+            s.Clip = clip;
+            s.PredecessorDurationSec = predecessorDurationSec;
         });
         await AppendLogAsync(
             $"  video ready for client save → take {take:D2} + current alias (server copy is transient; provider-hosted)");

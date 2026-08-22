@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -171,6 +172,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         using (var pointer = JsonDocument.Parse(File.ReadAllText(Path.Combine(videoDir, "scene_01_clip_01.current.json"))))
             Assert.Equal(2, pointer.RootElement.GetProperty("take").GetInt32());
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4")));
+        AssertPublishedClientTake(job, scene: 1, clip: 1, take: 2);
 
         // The versions list must show one more entry, with the new one current.
         var versionsResp = await _client.GetAsync($"/api/projects/{Uri.EscapeDataString(_projectId)}/scenes/1/clips/1/versions");
@@ -204,5 +206,110 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
 
         Assert.Equal("error", status);
         Assert.Contains(cap.Value.ToString("0.#"), error ?? "");
+    }
+
+    [Fact]
+    public async Task Edit_keeps_the_previous_take_and_a_second_edit_publishes_the_next_take()
+    {
+        SeedActiveClip(scene: 1, clip: 1, durationSeconds: 4.0);
+        var store = _factory.Services.GetRequiredService<ProjectStore>();
+        var videoDir = Path.Combine(store.GetProjectDir(_projectId), "assets", "video");
+        var take01Mp4 = Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4");
+        var take01Bytes = "original-take-01-bytes"u8.ToArray();
+        File.WriteAllBytes(take01Mp4, take01Bytes);
+        File.WriteAllText(Path.ChangeExtension(take01Mp4, ".clip.json"), new JsonObject
+        {
+            ["schema_version"] = "clip_sidecar.v1",
+            ["project_id"] = _projectId,
+            ["scene"] = 1,
+            ["clip"] = 1,
+            ["take"] = 1,
+            ["script_text"] = "",
+            ["visual_prompt"] = "original prompt",
+            ["model"] = "",
+            ["resolution"] = "480p",
+            ["duration_seconds"] = 4.0,
+            ["sha256"] = "",
+            ["size_bytes"] = take01Bytes.Length,
+            ["created_at_utc"] = DateTime.UtcNow.ToString("o"),
+        }.ToJsonString());
+
+        var first = await RunJobToCompletionAsync("/api/jobs/video-edit", new
+        {
+            projectId = _projectId,
+            scene = 1,
+            clip = 1,
+            prompt = "first edit",
+        });
+        Assert.Equal("done", first.Status);
+        Assert.Null(first.Error);
+        AssertPublishedClientTake(first.Job, scene: 1, clip: 1, take: 2);
+        Assert.True(File.Exists(take01Mp4), "previous take MP4 must remain");
+        Assert.Equal(take01Bytes, File.ReadAllBytes(take01Mp4));
+        var take02Mp4 = Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4");
+        Assert.True(File.Exists(take02Mp4));
+        var take02Bytes = File.ReadAllBytes(take02Mp4);
+
+        var second = await RunJobToCompletionAsync("/api/jobs/video-edit", new
+        {
+            projectId = _projectId,
+            scene = 1,
+            clip = 1,
+            prompt = "second edit",
+        });
+        Assert.Equal("done", second.Status);
+        Assert.Null(second.Error);
+        AssertPublishedClientTake(second.Job, scene: 1, clip: 1, take: 3);
+        Assert.True(File.Exists(take01Mp4), "take 1 still present after second edit");
+        Assert.Equal(take01Bytes, File.ReadAllBytes(take01Mp4));
+        Assert.True(File.Exists(take02Mp4), "take 2 still present after second edit");
+        Assert.Equal(take02Bytes, File.ReadAllBytes(take02Mp4));
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_01_take_03.mp4")));
+        using var take03 = JsonDocument.Parse(File.ReadAllText(Path.Combine(videoDir, "scene_01_clip_01_take_03.clip.json")));
+        Assert.Equal(3, take03.RootElement.GetProperty("take").GetInt32());
+        Assert.True(take03.RootElement.TryGetProperty("edited_from_take", out var from));
+        Assert.True(from.GetInt32() >= 1);
+        var firstJobId = first.Job.GetProperty("jobId").GetString();
+        var secondJobId = second.Job.GetProperty("jobId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(firstJobId));
+        Assert.False(string.IsNullOrWhiteSpace(secondJobId));
+        Assert.NotEqual(firstJobId, secondJobId);
+        Assert.NotEqual(
+            ClipTakeNaming.JobMediaSaveKey(_projectId, firstJobId, ClipTakeNaming.TakeRelativePath(1, 1, 2), 2),
+            ClipTakeNaming.JobMediaSaveKey(_projectId, secondJobId, ClipTakeNaming.TakeRelativePath(1, 1, 3), 3));
+    }
+
+    [Fact]
+    public async Task Edit_of_an_is_credits_clip_still_writes_a_numbered_take()
+    {
+        SeedActiveClip(scene: 2, clip: 1, durationSeconds: 4.0);
+        var (status, error, job) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
+        {
+            projectId = _projectId,
+            scene = 2,
+            clip = 1,
+            prompt = "brighten the card",
+        });
+
+        Assert.Equal("done", status);
+        Assert.Null(error);
+        var store = _factory.Services.GetRequiredService<ProjectStore>();
+        var videoDir = Path.Combine(store.GetProjectDir(_projectId), "assets", "video");
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.clip.json")));
+        AssertPublishedClientTake(job, scene: 2, clip: 1, take: 2);
+    }
+
+    private static void AssertPublishedClientTake(JsonElement job, int scene, int clip, int take)
+    {
+        Assert.Equal(ClipTakeNaming.TakeRelativePath(scene, clip, take), job.GetProperty("clientRelativePath").GetString());
+        Assert.Equal(take, job.GetProperty("clientTakeNumber").GetInt32());
+        var url = job.GetProperty("clientMediaUrl").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(url));
+        Assert.StartsWith("/api/media/proxy/", url);
+        Assert.False(string.Equals(
+            job.GetProperty("clientRelativePath").GetString(),
+            ClipTakeNaming.CanonicalRelativePath(scene, clip),
+            StringComparison.OrdinalIgnoreCase));
     }
 }

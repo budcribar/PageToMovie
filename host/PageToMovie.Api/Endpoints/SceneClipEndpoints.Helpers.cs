@@ -20,6 +20,7 @@ public static partial class SceneClipEndpoints
         HttpContext HttpContext,
         ProjectStore Store,
         IServiceProvider Services,
+        ClipSidecarService Sidecars,
         IUserContext User,
         IOptions<PageToMovieOptions> Opts);
 
