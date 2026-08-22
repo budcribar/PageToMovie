@@ -58,6 +58,9 @@ public class CutTransitionMapTests
     {
         Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("""{"card":"Chapter 1"}"""));
         Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("""{"card":"[[CARD: Chapter 1]]"}"""));
+        Assert.Equal("Hi", CutTransitionMap.ReadSidecarCard("""{"cardText":"Hi"}"""));
+        Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("""{"titleCard":"[[CARD: Chapter 1]]"}"""));
+        Assert.Equal("Chapter 1", CutTransitionMap.ReadSidecarCard("[[CARD: Chapter 1]]"));
         Assert.True(CutTransitionMap.TryReadCardNote("[[CARD: Chapter 1]]", out var note));
         Assert.Equal("Chapter 1", note);
         Assert.False(CutTransitionMap.TryReadCardNote("[[NOTE: hi]]", out _));
