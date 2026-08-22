@@ -40,12 +40,21 @@ public static class CutTextMenu
         bool busy,
         IList<CutTextClip> titles,
         CutTextClip? target,
-        out CutTextClip? copy)
+        out CutTextClip? copy) =>
+        TryDuplicate(busy, titles, target, out copy, occupied: null, movieEnd: double.PositiveInfinity);
+
+    public static bool TryDuplicate(
+        bool busy,
+        IList<CutTextClip> titles,
+        CutTextClip? target,
+        out CutTextClip? copy,
+        IReadOnlyList<CutTextPlace.Span>? occupied,
+        double movieEnd)
     {
         copy = null;
         if (!CanRun(busy, target) || target is null)
             return false;
-        copy = CutTextEdit.Duplicate(titles, target);
+        copy = CutTextEdit.Duplicate(titles, target, occupied, movieEnd);
         return true;
     }
 

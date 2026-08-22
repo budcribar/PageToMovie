@@ -158,7 +158,7 @@
                 {
                     <span class="cut-tl-text-empty">+ Add text</span>
                 }
-                @foreach (var block in TextBlocks)
+                @foreach (var block in TextRow)
                 {
                         var selected = block.Id == _selectedTextId;
                         <div class="@CutTransport.TextClipClass @(selected ? "is-selected" : "") @(block.Kind == CutTextKind.SceneCard ? "is-card" : "")"
@@ -166,7 +166,7 @@
                              data-testid="cut-tl-text-clip"
                              title="@block.Text"
                              @onpointerdown:stopPropagation="true"
-                             @onpointerdown="() => SelectText(block)"
+                             @onpointerdown="e => BeginTextMoveAsync(e, block)"
                              @oncontextmenu:preventDefault="true"
                              @oncontextmenu="e => OpenTitleMenu(e, block)">
                             @if (selected)

@@ -19,7 +19,7 @@ public class CutTextEditTests
         Assert.NotEqual(source.Id, copy.Id);
         Assert.Equal("Smoke", copy.Text);
         Assert.Equal(4, copy.HoldSeconds);
-        Assert.Equal(3, copy.StartSec);
+        Assert.Equal(6, copy.StartSec);
         Assert.Equal(CutTextColor.Yellow, copy.Style.Color);
         Assert.Equal(CutTextPosition.LowerThird, copy.Style.Position);
         Assert.Equal(CutTextBackground.DarkBar, copy.Style.Background);
@@ -150,7 +150,7 @@ public class CutTextEditTests
         Assert.All(loaded, t => Assert.Equal(45, t.HoldSeconds));
         Assert.All(loaded, t => Assert.Equal(CutTextColor.Yellow, t.Style.Color));
         Assert.Equal(1, loaded[0].StartSec);
-        Assert.Equal(2, loaded[1].StartSec);
+        Assert.Equal(46, loaded[1].StartSec);
 
         var blocks = CutTextTrack.Build([reload], loaded, pxPerSec: 10);
         CutTextTrack.Delete(blocks[0], loaded);

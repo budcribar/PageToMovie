@@ -20,5 +20,12 @@ public sealed class CutTextClip
         }
     }
 
+    public void Move(double startSec)
+    {
+        if (double.IsNaN(startSec) || double.IsInfinity(startSec) || startSec < 0)
+            startSec = 0;
+        StartSec = startSec;
+    }
+
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
 }

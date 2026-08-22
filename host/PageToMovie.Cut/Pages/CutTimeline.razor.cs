@@ -46,6 +46,10 @@ public partial class CutTimeline
     private double _dragMarkOut;
     private double _dragTextStart;
     private double _dragTextHold;
+    private double _dragTextPrev;
+    private double _dragTextNext;
+    private IReadOnlyList<CutTextBlock>? _dragRow;
+    private List<CutTextPlace.Span>? _dragOccupied;
     private double _dragMusicStart;
     private double _dragMusicIn;
     private double _dragMusicOut;
@@ -77,7 +81,13 @@ public partial class CutTimeline
 
     private CutTimelineLayout Layout => CutTimelineLayout.Build(Clips, _pxPerSec);
     private IReadOnlyList<CutTextBlock> TextBlocks => CutTextTrack.Build(Clips, TextClips, _pxPerSec);
-    private bool HasText => TextBlocks.Count > 0;
+    private IReadOnlyList<CutTextBlock> TextRow =>
+        _drag is DragKind.TextMove or DragKind.TextIn or DragKind.TextOut
+        && _dragRow is { } row
+        && _trimText is { } moving
+            ? LiveTextRow(row, moving)
+            : TextBlocks;
+    private bool HasText => TextRow.Count > 0;
     private bool HasRange => _rangeA >= 0 && _rangeB >= 0 && Math.Abs(_rangeB - _rangeA) >= CutRangeDelete.MinSpanSeconds;
     private double RangeLo => Math.Min(_rangeA, _rangeB);
     private double RangeHi => Math.Max(_rangeA, _rangeB);
@@ -113,6 +123,14 @@ public partial class CutTimeline
         }
     }
     private string MusicLabel => CutMusicEdit.Label(Music, AudioName);
+    private double MovieEndSec
+    {
+        get
+        {
+            var total = Math.Max(Layout.TotalSec, Layout.PlayableSec);
+            return total > CutCard.MinHoldSeconds ? total : double.PositiveInfinity;
+        }
+    }
 
     internal CutTextBlock? SelectedTextBlock
     {
@@ -120,7 +138,7 @@ public partial class CutTimeline
         {
             if (string.IsNullOrEmpty(_selectedTextId))
                 return null;
-            foreach (var block in TextBlocks)
+            foreach (var block in TextRow)
             {
                 if (block.Id == _selectedTextId)
                     return block;
@@ -153,6 +171,8 @@ public partial class CutTimeline
 
     protected override bool ShouldRender()
     {
+        if (_drag != DragKind.None)
+            return true;
         if (!IsPlaying)
             return true;
         return CaptureRenderSnap() != _renderSnap;
@@ -266,9 +286,6 @@ public partial class CutTimeline
         if (block.FirstIndex >= 0 && block.FirstIndex < Clips.Count)
             await SelectClip(Clips[block.FirstIndex]);
     }
-
-    private void SelectText(CutTextBlock block) =>
-        _ = SelectTitleAsync(block.Id);
 
     internal void SelectTitle(string id) => _ = SelectTitleAsync(id);
 
@@ -426,7 +443,7 @@ public partial class CutTimeline
     {
         if (Busy)
             return;
-        var title = CutTextTrack.Add(TextClips, startSec);
+        var title = CutTextTrack.Add(TextClips, startSec, null, OccupiedExcept(null), MovieEndSec);
         await SetSelectedTextIdAsync(title.Id);
         _textFieldFocused = true;
         _focusTextInput = true;
@@ -460,7 +477,8 @@ public partial class CutTimeline
     {
         if (SelectedTextBlock is not { } block)
             return;
-        CutTextTrack.SetHold(block, seconds, TextHoldMax(block.StartSec));
+        var max = CutTextPlace.HoldMax(block.StartSec, OccupiedExcept(block.Id), MovieEndSec);
+        CutTextTrack.SetHold(block, seconds, max);
         await OnEdited.InvokeAsync();
     }
 
@@ -468,7 +486,8 @@ public partial class CutTimeline
 
     private async Task DuplicateSelectedTitleAsync()
     {
-        if (!CutTextMenu.TryDuplicate(Busy, TextClips, MenuTitle, out var copy) || copy is null)
+        if (!CutTextMenu.TryDuplicate(Busy, TextClips, MenuTitle, out var copy, OccupiedExcept(null), MovieEndSec)
+            || copy is null)
             return;
         CloseTitleMenu();
         await SetSelectedTextIdAsync(copy.Id);
@@ -489,7 +508,7 @@ public partial class CutTimeline
             return;
         var start = CutTextEdit.PasteStart(PlayheadSec, MenuTitle);
         CloseTitleMenu();
-        var pasted = CutTextEdit.Paste(TextClips, _clipboard, start);
+        var pasted = CutTextEdit.Paste(TextClips, _clipboard, start, OccupiedExcept(null), MovieEndSec);
         await SetSelectedTextIdAsync(pasted.Id);
         await OnEdited.InvokeAsync();
     }
@@ -530,6 +549,22 @@ public partial class CutTimeline
     internal static Task EditDurationAsync(CutTimeline_TextInspector? inspector) =>
         inspector is null ? Task.CompletedTask : inspector.FocusDurationAsync();
 
+    private async Task BeginTextMoveAsync(PointerEventArgs e, CutTextBlock block)
+    {
+        if (Busy)
+            return;
+        await SetSelectedTextIdAsync(block.Id);
+        if (block.Kind != CutTextKind.Title || block.Title is null)
+            return;
+        _drag = DragKind.TextMove;
+        _trimText = block;
+        _dragOriginX = e.ClientX;
+        _dragTextStart = block.StartSec;
+        _dragTextHold = block.Seconds;
+        BeginTextDragBounds(block);
+        await CapturePointerAsync(e.PointerId);
+    }
+
     private async Task BeginTextTrimAsync(PointerEventArgs e, CutTextBlock block, bool fromStart)
     {
         if (Busy)
@@ -539,6 +574,7 @@ public partial class CutTimeline
         _dragOriginX = e.ClientX;
         _dragTextStart = block.StartSec;
         _dragTextHold = block.Seconds;
+        BeginTextDragBounds(block);
         await SetSelectedTextIdAsync(block.Id);
         await CapturePointerAsync(e.PointerId);
     }
@@ -605,38 +641,99 @@ public partial class CutTimeline
 
     private bool TryApplyTextTrim(double clientX)
     {
-        if (_drag is not (DragKind.TextIn or DragKind.TextOut) || _trimText is not { } text)
+        if (_drag is not (DragKind.TextMove or DragKind.TextIn or DragKind.TextOut) || _trimText is not { } text)
             return false;
         var dt = (clientX - _dragOriginX) / _pxPerSec;
+        if (_drag == DragKind.TextMove)
+        {
+            if (text.Title is { } title)
+                title.Move(CutTextPlace.Move(_dragTextStart, _dragTextHold, dt, _dragTextPrev, _dragTextNext, MovieEndSec));
+            return true;
+        }
+
+        var others = _dragOccupied ?? OccupiedExcept(text.Id);
         if (_drag == DragKind.TextIn)
-            ApplyTextInTrim(text, dt);
+            ApplyTextInTrim(text, dt, others);
         else
-            CutTextTrack.SetHold(text, _dragTextHold + dt, TextHoldMax(_dragTextStart));
+            ApplyTextOutTrim(text, dt, others);
         return true;
     }
 
-    private void ApplyTextInTrim(CutTextBlock text, double dt)
+    private void ApplyTextInTrim(CutTextBlock text, double dt, IReadOnlyList<CutTextPlace.Span> others)
     {
         if (text.Kind != CutTextKind.Title)
         {
-            CutTextTrack.SetHold(text, _dragTextHold - dt, TextHoldMax(text.StartSec));
+            CutTextTrack.SetHold(text, _dragTextHold - dt, CutTextPlace.HoldMax(text.StartSec, others, MovieEndSec));
             return;
         }
 
-        var end = _dragTextStart + _dragTextHold;
-        var start = Math.Max(0, _dragTextStart + dt);
-        start = Math.Min(start, end - CutCard.MinHoldSeconds);
+        var (start, hold) = CutTextPlace.TrimIn(_dragTextStart, _dragTextHold, dt, others, MovieEndSec);
         CutTextTrack.SetStart(text, start);
-        CutTextTrack.SetHold(text, end - start, TextHoldMax(start));
+        CutTextTrack.SetHold(text, hold, hold);
     }
 
-    private double TextHoldMax(double startSec)
+    private void ApplyTextOutTrim(CutTextBlock text, double dt, IReadOnlyList<CutTextPlace.Span> others)
     {
-        var total = Math.Max(Layout.TotalSec, Layout.PlayableSec);
-        if (total <= CutCard.MinHoldSeconds)
-            return double.PositiveInfinity;
-        return Math.Max(CutCard.MinHoldSeconds, total - Math.Max(0, startSec));
+        var (_, hold) = CutTextPlace.TrimOut(_dragTextStart, _dragTextHold, dt, others, MovieEndSec);
+        CutTextTrack.SetHold(text, hold, hold);
     }
+
+    private void CommitTextMove(double clientX)
+    {
+        if (_trimText?.Title is not { } title)
+            return;
+        var dt = (clientX - _dragOriginX) / _pxPerSec;
+        title.Move(CutTextPlace.ResolveDrop(
+            _dragTextStart + dt,
+            _dragTextHold,
+            _dragOccupied ?? OccupiedExcept(title.Id),
+            MovieEndSec));
+    }
+
+    private void BeginTextDragBounds(CutTextBlock block)
+    {
+        _dragRow = TextBlocks;
+        _dragOccupied = CutTextPlace.FromBlocks(_dragRow, block.Id);
+        CutTextPlace.Neighbors(
+            _dragTextStart,
+            _dragTextHold,
+            _dragOccupied,
+            MovieEndSec,
+            out _dragTextPrev,
+            out _dragTextNext);
+    }
+
+    private IReadOnlyList<CutTextBlock> LiveTextRow(IReadOnlyList<CutTextBlock> row, CutTextBlock moving)
+    {
+        if (moving.Title is not { } title)
+            return row;
+        var start = title.StartSec;
+        var hold = title.HoldSeconds;
+        var copy = new CutTextBlock[row.Count];
+        for (var i = 0; i < row.Count; i++)
+        {
+            var block = row[i];
+            if (block.Id != moving.Id)
+            {
+                copy[i] = block;
+                continue;
+            }
+
+            copy[i] = block with
+            {
+                StartSec = start,
+                Seconds = hold,
+                StartPx = start * _pxPerSec,
+                WidthPx = hold * _pxPerSec,
+                Title = title,
+            };
+        }
+
+        return copy;
+    }
+
+    private List<CutTextPlace.Span> OccupiedExcept(string? id) =>
+        CutTextPlace.FromBlocks(TextBlocks, id);
 
     private async Task BeginMusicMoveAsync(PointerEventArgs e)
     {
@@ -683,10 +780,14 @@ public partial class CutTimeline
         var kind = _drag;
         _drag = DragKind.None;
         if (kind is DragKind.TrimIn or DragKind.TrimOut or DragKind.TextIn or DragKind.TextOut
-            or DragKind.MusicMove or DragKind.MusicIn or DragKind.MusicOut)
+            or DragKind.TextMove or DragKind.MusicMove or DragKind.MusicIn or DragKind.MusicOut)
         {
+            if (kind == DragKind.TextMove)
+                CommitTextMove(e.ClientX);
             _trimClip = null;
             _trimText = null;
+            _dragRow = null;
+            _dragOccupied = null;
             await OnEdited.InvokeAsync();
             return;
         }
@@ -911,6 +1012,7 @@ public partial class CutTimeline
         TrimOut,
         TextIn,
         TextOut,
+        TextMove,
         MusicMove,
         MusicIn,
         MusicOut,

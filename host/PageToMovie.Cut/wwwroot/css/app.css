@@ -579,7 +579,9 @@ html, body {
     background: #3d2f5c;
     color: #f7f4ff;
     overflow: hidden;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
 }
 
 .cut-tl-text-clip.is-card { background: #2a2436; }
@@ -604,6 +606,9 @@ html, body {
 .cut-tl-text-clip input.cut-tl-text-label {
     outline: none;
     padding-right: 0.75rem;
+    cursor: text;
+    touch-action: auto;
+    user-select: text;
 }
 
 .cut-tl-clip {

@@ -34,7 +34,7 @@ public class CutTextMenuTests
         Assert.NotNull(copy);
         Assert.NotEqual(source.Id, copy.Id);
         Assert.Equal("Smoke", copy.Text);
-        Assert.Equal(3, copy.StartSec);
+        Assert.Equal(6, copy.StartSec);
     }
 
     [Fact]
