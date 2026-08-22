@@ -83,7 +83,6 @@ public static class CutProjectFile
     private static void ApplyClipRows(IReadOnlyList<CutClip> clips, List<ClipDto> rows)
     {
         var mutable = clips as IList<CutClip>;
-        var canInsert = mutable is { IsReadOnly: false };
         var applied = new Dictionary<(int Scene, int Clip), int>();
         foreach (var row in rows)
         {
@@ -92,30 +91,50 @@ public static class CutProjectFile
             applied[key] = n + 1;
             if (n == 0)
             {
-                var clip = clips.FirstOrDefault(c => c.Scene == row.Scene && c.Clip == row.Clip);
-                if (clip is null)
-                    continue;
-                ApplyRow(clip, row);
+                ApplyFirstRow(clips, row);
                 continue;
             }
 
-            if (!canInsert || mutable is null)
+            if (mutable is not { IsReadOnly: false })
                 continue;
-            var source = clips.FirstOrDefault(c => c.Scene == row.Scene && c.Clip == row.Clip);
-            if (source is null)
-                continue;
-            var clone = CutSplit.CloneWindow(source, row.MarkIn, row.MarkOut);
-            ApplyRow(clone, row);
-            var last = 0;
-            for (var i = 0; i < mutable.Count; i++)
-            {
-                if (mutable[i].Scene == row.Scene && mutable[i].Clip == row.Clip)
-                    last = i;
-            }
-
-            mutable.Insert(last + 1, clone);
+            InsertScissorsWindow(mutable, clips, row);
         }
     }
+
+    private static void ApplyFirstRow(IReadOnlyList<CutClip> clips, ClipDto row)
+    {
+        var clip = FindClip(clips, row);
+        if (clip is null)
+            return;
+        ApplyRow(clip, row);
+    }
+
+    private static void InsertScissorsWindow(IList<CutClip> mutable, IReadOnlyList<CutClip> clips, ClipDto row)
+    {
+        var source = FindClip(clips, row);
+        if (source is null)
+            return;
+        var clone = CutSplit.CloneWindow(source, row.MarkIn, row.MarkOut);
+        ApplyRow(clone, row);
+        mutable.Insert(LastSlotIndex(mutable, row) + 1, clone);
+    }
+
+    private static CutClip? FindClip(IReadOnlyList<CutClip> clips, ClipDto row) =>
+        clips.FirstOrDefault(c => SameSlot(c, row));
+
+    private static int LastSlotIndex(IList<CutClip> clips, ClipDto row)
+    {
+        for (var i = clips.Count - 1; i >= 0; i--)
+        {
+            if (SameSlot(clips[i], row))
+                return i;
+        }
+
+        return 0;
+    }
+
+    private static bool SameSlot(CutClip clip, ClipDto row) =>
+        clip.Scene == row.Scene && clip.Clip == row.Clip;
 
     private static void ApplyRow(CutClip clip, ClipDto row)
     {
