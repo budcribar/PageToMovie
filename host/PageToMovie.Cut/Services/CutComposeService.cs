@@ -11,6 +11,9 @@ namespace PageToMovie.Cut.Services;
 /// </summary>
 public sealed class CutComposeService : IAsyncDisposable
 {
+    /// <summary>S5693 cap — 8 MiB soundtrack is enough for V1 one-track mix.</summary>
+    internal const long MaxAudioUploadBytes = 8_388_608;
+
     private readonly IJSRuntime _js;
     private string? _audioUrl;
     public string? MoviePreviewUrl { get; private set; }
@@ -22,8 +25,10 @@ public sealed class CutComposeService : IAsyncDisposable
 
     public async Task SetAudioFromBrowserFileAsync(IBrowserFile file)
     {
+        if (file.Size > MaxAudioUploadBytes)
+            throw new InvalidOperationException("Audio file is too large (max 8 MB).");
         await ClearAudioAsync();
-        await using var stream = file.OpenReadStream(maxAllowedSize: 200_000_000);
+        await using var stream = file.OpenReadStream(maxAllowedSize: MaxAudioUploadBytes);
         using var jsStream = new DotNetStreamReference(stream);
         var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "audio/mpeg" : file.ContentType;
         var r = await _js.InvokeAsync<JsResult>("PageToMovieCut.createBlobUrlFromStream", jsStream, mime);
@@ -37,8 +42,14 @@ public sealed class CutComposeService : IAsyncDisposable
     {
         if (!string.IsNullOrWhiteSpace(_audioUrl))
         {
-            try { await _js.InvokeVoidAsync("PageToMovieCut.revokeBlobUrl", _audioUrl); }
-            catch { /* ignore */ }
+            try
+            {
+                await _js.InvokeVoidAsync("PageToMovieCut.revokeBlobUrl", _audioUrl);
+            }
+            catch (JSException)
+            {
+                // Blob may already be revoked on folder change or dispose.
+            }
         }
 
         _audioUrl = null;

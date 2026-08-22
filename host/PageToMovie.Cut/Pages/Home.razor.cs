@@ -9,15 +9,16 @@ namespace PageToMovie.Cut.Pages;
 
 public partial class Home
 {
-    [Inject] private IJSRuntime Js { get; set; } = default!;
+    [Inject] private IJSRuntime? Js { get; set; }
 
-    private ElementReference _player;
-    private ElementReference _moviePlayer;
+    internal ElementReference ClipPlayer { get; set; }
+    internal ElementReference MoviePlayer { get; set; }
     private CutClip? _selected;
     private bool _busy;
     private string? _error;
-    private int _progressPercent;
-    private string? _progressMessage;
+    internal int ProgressPercent { get; private set; }
+    internal string? ProgressMessage { get; private set; }
+    internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
 
     private double RangeMax => _selected is { HasDuration: true } ? _selected.DurationSec : 1;
     private bool ExportDisabled =>
@@ -91,7 +92,7 @@ public partial class Home
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_selected.PreviewUrl))
             return;
-        var seconds = await Compose.ReadMediaDurationAsync(_player);
+        var seconds = await Compose.ReadMediaDurationAsync(ClipPlayer);
         _selected.SetDuration(seconds);
     }
 
@@ -138,14 +139,15 @@ public partial class Home
     {
         _error = null;
         _busy = true;
-        _progressPercent = 0;
-        _progressMessage = "Starting…";
+        ProgressPercent = 0;
+        ProgressMessage = "Starting…";
         try
         {
             await Compose.PreviewMovieAsync(Folder.Clips, ReportProgress);
-            _progressMessage = "Playing";
+            ProgressMessage = "Playing";
             await InvokeAsync(StateHasChanged);
-            await Js.InvokeVoidAsync("PageToMovieCut.playVideo", _moviePlayer);
+            if (Js is not null)
+                await Js.InvokeVoidAsync("PageToMovieCut.playVideo", MoviePlayer);
         }
         catch (Exception ex)
         {
@@ -161,12 +163,12 @@ public partial class Home
     {
         _error = null;
         _busy = true;
-        _progressPercent = 0;
-        _progressMessage = "Starting…";
+        ProgressPercent = 0;
+        ProgressMessage = "Starting…";
         try
         {
             await Compose.ExportMovieAsync(Folder.Clips, ReportProgress);
-            _progressMessage = "Downloaded movie.mp4";
+            ProgressMessage = "Downloaded movie.mp4";
         }
         catch (Exception ex)
         {
@@ -180,8 +182,8 @@ public partial class Home
 
     private void ReportProgress(int pct, string msg)
     {
-        _progressPercent = Math.Clamp(pct, 0, 100);
-        _progressMessage = msg;
+        ProgressPercent = Math.Clamp(pct, 0, 100);
+        ProgressMessage = msg;
         _ = InvokeAsync(StateHasChanged);
     }
 

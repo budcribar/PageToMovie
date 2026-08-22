@@ -118,20 +118,18 @@ public sealed class CutFolderService : IAsyncDisposable
 
     private async Task RevokePreviewUrlsAsync()
     {
-        foreach (var clip in Clips)
+        var urls = Clips.SelectMany(c => c.Takes)
+            .Select(t => t.PreviewUrl)
+            .Where(u => !string.IsNullOrWhiteSpace(u));
+        foreach (var url in urls)
         {
-            foreach (var take in clip.Takes)
+            try
             {
-                if (string.IsNullOrWhiteSpace(take.PreviewUrl))
-                    continue;
-                try
-                {
-                    await _js.InvokeVoidAsync("PageToMovieCut.revokeBlobUrl", take.PreviewUrl);
-                }
-                catch
-                {
-                    // Best-effort revoke on folder change / dispose.
-                }
+                await _js.InvokeVoidAsync("PageToMovieCut.revokeBlobUrl", url);
+            }
+            catch (JSException)
+            {
+                // Best-effort revoke on folder change / dispose.
             }
         }
     }

@@ -84,7 +84,8 @@ The CPD sensor and the properties above work the same way.
 1. Prefer **extract shared helper** into Core / Adaptation / Engine shared static class (pattern already used by `ClassifierJsonParser`, `ClassifierSharedHelpers`, `GutenbergCleaner`).
 2. For intentional thin façades (e.g. Engine `BookToFountainConverter` mapping only), leave them; they are not true clones.
 3. For test-only or tool-only copies, keep them under the existing `sonar.cpd.exclusions` paths.
-4. After a cleanup PR, re-run analysis and confirm the duplicated-lines measure dropped.
+4. Standalone Cut ships a same-origin copy of the browser ffmpeg helper (`PageToMovie.Cut/wwwroot/js/pagetomovie-ffmpeg.js` + `wwwroot/js/ffmpeg/**`). That copy is excluded from analysis and CPD — do not invent a second loader.
+5. After a cleanup PR, re-run analysis and confirm the duplicated-lines measure dropped.
 
 ## Files added for this automation
 

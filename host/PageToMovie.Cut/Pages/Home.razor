@@ -82,7 +82,7 @@
                 }
                 else
                 {
-                <video @ref="_player"
+                <video @ref="ClipPlayer"
                        src="@_selected.PreviewUrl"
                        controls
                        playsinline
@@ -144,16 +144,16 @@
                 <button type="button" class="cut-btn" @onclick="PlayAsync" disabled="@ExportDisabled">Play</button>
                 <button type="button" class="cut-btn cut-btn-ghost" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
             </div>
-            @if (_busy && !string.IsNullOrWhiteSpace(_progressMessage))
-            {
-                <p class="cut-muted">@_progressPercent% · @_progressMessage</p>
-                <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_progressPercent">
-                    <span style="width:@(_progressPercent)%"></span>
-                </div>
-            }
+                @if (_busy && !string.IsNullOrWhiteSpace(ProgressMessage))
+                {
+                    <p class="cut-muted">@ProgressText</p>
+                    <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">
+                        <span style="width:@(ProgressPercent)%"></span>
+                    </div>
+                }
             @if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
             {
-                <video @ref="_moviePlayer"
+                <video @ref="MoviePlayer"
                        class="cut-movie"
                        src="@Compose.MoviePreviewUrl"
                        controls
