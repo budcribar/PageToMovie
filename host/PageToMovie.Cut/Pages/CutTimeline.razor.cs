@@ -19,6 +19,7 @@ public partial class CutTimeline
     [Parameter] public List<CutTextClip> TextClips { get; set; } = [];
     [Parameter] public bool HasAudio { get; set; }
     [Parameter] public string? AudioName { get; set; }
+    [Parameter] public CutMusic? Music { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public bool PlayDisabled { get; set; }
     [Parameter] public bool IsPlaying { get; set; }
@@ -42,6 +43,9 @@ public partial class CutTimeline
     private double _dragMarkOut;
     private double _dragTextStart;
     private double _dragTextHold;
+    private double _dragMusicStart;
+    private double _dragMusicIn;
+    private double _dragMusicOut;
     private double _rangeA = -1;
     private double _rangeB = -1;
     private int? _joinMenu;
@@ -62,6 +66,20 @@ public partial class CutTimeline
     private string TotalClock => CutTimelineLayout.Clock(Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec);
     private bool PlayOrStopDisabled => IsPlaying ? Busy : PlayDisabled;
     private bool SplitDisabled => Busy || !CutSplit.CanAt(Clips, PlayheadSec);
+    private bool ShowMusic => Music is { HasFile: true };
+    private double MusicLeftPx => (Music?.StartSec ?? 0) * _pxPerSec;
+    private double MusicWidthPx
+    {
+        get
+        {
+            var hold = Music?.SlicedDurationSec ?? 0;
+            if (hold < CutMusic.MinSpanSeconds)
+                hold = Math.Max(Layout.TotalSec, 8);
+            return Math.Max(hold * _pxPerSec, 36);
+        }
+    }
+    private string MusicLabel =>
+        string.IsNullOrWhiteSpace(AudioName) ? (Music?.FileName ?? "Music") : AudioName;
 
     internal CutTextBlock? SelectedTextBlock
     {
@@ -222,6 +240,13 @@ public partial class CutTimeline
         await OnEdited.InvokeAsync();
     }
 
+    private async Task DeleteSelectedTextAsync()
+    {
+        if (SelectedTextBlock is not { } block)
+            return;
+        await DeleteTextAsync(block);
+    }
+
     private async Task DeleteTextAsync(CutTextBlock block)
     {
         CutTextTrack.Delete(block, TextClips);
@@ -282,7 +307,7 @@ public partial class CutTimeline
     {
         if (_drag == DragKind.None)
             return;
-        if (TryApplyClipTrim(e.ClientX) || TryApplyTextTrim(e.ClientX))
+        if (TryApplyClipTrim(e.ClientX) || TryApplyTextTrim(e.ClientX) || TryApplyMusicTrim(e.ClientX))
             return;
 
         var t = await TimeAtAsync(e.ClientX);
@@ -312,7 +337,7 @@ public partial class CutTimeline
         if (_drag == DragKind.TextIn)
             ApplyTextInTrim(text, dt);
         else
-            CutTextTrack.SetHold(text, _dragTextHold + dt);
+            CutTextTrack.SetHold(text, _dragTextHold + dt, TextHoldMax(_dragTextStart));
         return true;
     }
 
@@ -320,7 +345,7 @@ public partial class CutTimeline
     {
         if (text.Kind != CutTextKind.Title)
         {
-            CutTextTrack.SetHold(text, _dragTextHold - dt);
+            CutTextTrack.SetHold(text, _dragTextHold - dt, TextHoldMax(text.StartSec));
             return;
         }
 
@@ -328,7 +353,51 @@ public partial class CutTimeline
         var start = Math.Max(0, _dragTextStart + dt);
         start = Math.Min(start, end - CutCard.MinHoldSeconds);
         CutTextTrack.SetStart(text, start);
-        CutTextTrack.SetHold(text, end - start);
+        CutTextTrack.SetHold(text, end - start, TextHoldMax(start));
+    }
+
+    private double TextHoldMax(double startSec)
+    {
+        var total = Math.Max(Layout.TotalSec, Layout.PlayableSec);
+        if (total <= CutCard.MinHoldSeconds)
+            return double.PositiveInfinity;
+        return Math.Max(CutCard.MinHoldSeconds, total - Math.Max(0, startSec));
+    }
+
+    private async Task BeginMusicMoveAsync(PointerEventArgs e)
+    {
+        if (Busy || Music is null || !Music.HasFile)
+            return;
+        _drag = DragKind.MusicMove;
+        _dragOriginX = e.ClientX;
+        _dragMusicStart = Music.StartSec;
+        await CapturePointerAsync(e.PointerId);
+    }
+
+    private async Task BeginMusicTrimAsync(PointerEventArgs e, bool fromStart)
+    {
+        if (Busy || Music is null || !Music.HasFile)
+            return;
+        _drag = fromStart ? DragKind.MusicIn : DragKind.MusicOut;
+        _dragOriginX = e.ClientX;
+        _dragMusicStart = Music.StartSec;
+        _dragMusicIn = Music.MarkIn;
+        _dragMusicOut = Music.MarkOut > Music.MarkIn ? Music.MarkOut : Music.DurationSec;
+        await CapturePointerAsync(e.PointerId);
+    }
+
+    private bool TryApplyMusicTrim(double clientX)
+    {
+        if (Music is null || _drag is not (DragKind.MusicMove or DragKind.MusicIn or DragKind.MusicOut))
+            return false;
+        var dt = (clientX - _dragOriginX) / _pxPerSec;
+        if (_drag == DragKind.MusicMove)
+            Music.Move(_dragMusicStart + dt);
+        else if (_drag == DragKind.MusicIn)
+            Music.TrimIn(_dragMusicIn + dt);
+        else
+            Music.TrimOut(_dragMusicOut + dt);
+        return true;
     }
 
     private async Task OnPointerUp(PointerEventArgs e)
@@ -337,7 +406,8 @@ public partial class CutTimeline
             return;
         var kind = _drag;
         _drag = DragKind.None;
-        if (kind is DragKind.TrimIn or DragKind.TrimOut or DragKind.TextIn or DragKind.TextOut)
+        if (kind is DragKind.TrimIn or DragKind.TrimOut or DragKind.TextIn or DragKind.TextOut
+            or DragKind.MusicMove or DragKind.MusicIn or DragKind.MusicOut)
         {
             _trimClip = null;
             _trimText = null;
@@ -466,7 +536,10 @@ public partial class CutTimeline
             PlayDisabled,
             HasRange,
             _joinMenu,
-            _selectedTextId);
+            _selectedTextId,
+            Music?.StartSec,
+            Music?.MarkIn,
+            Music?.MarkOut);
 
     private enum DragKind
     {
@@ -477,6 +550,9 @@ public partial class CutTimeline
         TrimOut,
         TextIn,
         TextOut,
+        MusicMove,
+        MusicIn,
+        MusicOut,
     }
 
     private readonly record struct TimelineRenderSnap(
@@ -490,5 +566,8 @@ public partial class CutTimeline
         bool PlayDisabled,
         bool HasRange,
         int? Join,
-        string? TextId);
+        string? TextId,
+        double? MusicStart,
+        double? MusicIn,
+        double? MusicOut);
 }

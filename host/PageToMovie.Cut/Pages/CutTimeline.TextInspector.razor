@@ -53,6 +53,12 @@
                         @onclick="() => SetAsync(s => s.Fade = choice.Value)">@choice.Label</button>
             }
         </div>
+        <button type="button"
+                class="cut-tl-inspector-del"
+                title="Delete text"
+                data-testid="cut-tl-text-del"
+                disabled="@Busy"
+                @onclick="OnDelete">Delete</button>
     </div>
 }
 
@@ -60,6 +66,7 @@
     [Parameter] public CutTextBlock? Block { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback StyleChanged { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
 
     private async Task SetAsync(Action<CutTextStyle> edit)
     {

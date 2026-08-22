@@ -59,6 +59,9 @@ public class CutTextTrackTests
         Assert.Equal("Opening", added.Text);
         Assert.Equal(4, added.Seconds);
         Assert.Equal(1, added.StartSec);
+
+        CutTextTrack.SetHold(block, 45);
+        Assert.Equal(45, added.HoldSeconds);
     }
 
     [Fact]
@@ -107,7 +110,9 @@ public class CutTextTrackTests
         Assert.Equal(2, CutCard.ResolveHold(0));
         Assert.Equal(2, CutCard.ResolveHold(0.1));
         Assert.Equal(0.3, CutCard.ResolveHold(0.3));
-        Assert.Equal(30, CutCard.ResolveHold(99));
+        Assert.Equal(99, CutCard.ResolveHold(99));
+        Assert.Equal(45, CutCard.ResolveHold(45, maxSeconds: 90));
+        Assert.Equal(12, CutCard.ResolveHold(45, maxSeconds: 12));
         Assert.Equal(2, CutCard.ResolveHold(double.NaN));
     }
 

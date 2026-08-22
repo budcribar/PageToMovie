@@ -40,6 +40,21 @@ public sealed class JsFileEntry
     public string? Text { get; set; }
 }
 
+public sealed class JsMusicMix
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    [JsonPropertyName("start")]
+    public double Start { get; set; }
+
+    [JsonPropertyName("markIn")]
+    public double MarkIn { get; set; }
+
+    [JsonPropertyName("markOut")]
+    public double MarkOut { get; set; }
+}
+
 public sealed class JsExportClip
 {
     [JsonPropertyName("url")]
