@@ -141,7 +141,7 @@ public sealed class CutTimelineLayout
             var clipStart = cursor;
             var clipEnd = cursor + visual;
             cursor += visual;
-            if (clip.Missing || sliced <= 0.05)
+            if (clip.SelectedTake is null || sliced <= 0.05)
                 continue;
             if (hi <= clipStart + 0.0001 || lo >= clipEnd - 0.0001)
                 continue;
