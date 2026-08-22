@@ -33,7 +33,6 @@ public partial class CutTimeline
     [Parameter] public string? SelectedTextId { get; set; }
     [Parameter] public EventCallback<string?> SelectedTextIdChanged { get; set; }
 
-    private ElementReference _root = default;
     private ElementReference _scroll = default;
     private ElementReference _inner = default;
     private double _pxPerSec = CutTimelineLayout.DefaultPxPerSec;
@@ -133,7 +132,6 @@ public partial class CutTimeline
 
     protected override void OnInitialized()
     {
-        _root = default;
         _scroll = default;
         _inner = default;
         _textLabelInput = default;
