@@ -367,6 +367,11 @@ html, body {
     outline: none;
 }
 
+/* Menu host is position:fixed over the preview; do not clip it. */
+.cut-tl.is-menu-open {
+    overflow: visible;
+}
+
 .cut-tl-transport {
     display: flex;
     flex-wrap: wrap;
@@ -855,15 +860,17 @@ html, body {
     font-size: 0.72rem;
 }
 
+.cut-text-menu-host,
 .cut-text-menu-back {
     position: fixed;
     inset: 0;
-    z-index: 30;
+    z-index: 4000;
+    isolation: isolate;
 }
 
 .cut-text-menu {
-    position: fixed;
-    z-index: 31;
+    position: absolute;
+    z-index: 1;
     min-width: 13.75rem;
     padding: 0.3rem 0;
     background: #fff;

@@ -12,7 +12,7 @@ public static class CutTransport
     public const string ScissorsClass = "cut-tl-scissors";
     public const string TextAddClass = "cut-tl-text-add";
     public const string TextClipClass = "cut-tl-text-clip";
-    public const string TextMenuClass = "cut-text-menu";
+    public const string TextMenuClass = CutTextMenu.PanelClass;
 
     /// <summary>
     /// Add text stays above title/card tiles (handles are 3).

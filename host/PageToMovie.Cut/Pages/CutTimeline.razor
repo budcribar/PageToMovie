@@ -1,5 +1,5 @@
 <div @ref="_root"
-     class="cut-tl"
+     class="@CutTextMenu.TimelineClass(_menuOpen)"
      data-testid="cut-timeline"
      tabindex="0"
      @onkeydown="OnKey"
@@ -264,7 +264,8 @@
                                OnDelete="DeleteSelectedTextAsync"
                                FieldFocusChanged="OnInspectorFieldFocus" />
 
-    <CutTimeline_TextMenu Open="_menuOpen"
+    <CutTimeline_TextMenu @ref="_textMenu"
+                          Open="_menuOpen"
                           X="_menuX"
                           Y="_menuY"
                           Busy="Busy"

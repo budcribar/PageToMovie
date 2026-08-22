@@ -43,6 +43,7 @@ public class CutTransportTests
         Assert.Equal("cut-tl-text-add", CutTransport.TextAddClass);
         Assert.Equal("cut-tl-text-clip", CutTransport.TextClipClass);
         Assert.Equal("cut-text-menu", CutTransport.TextMenuClass);
+        Assert.Equal(CutTextMenu.PanelClass, CutTransport.TextMenuClass);
         Assert.True(CutTransport.TextAddZIndex > CutTransport.TextClipZIndex);
         Assert.True(CutTransport.TextAddZIndex > 4);
     }
