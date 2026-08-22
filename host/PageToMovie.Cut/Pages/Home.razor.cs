@@ -13,7 +13,7 @@ public partial class Home : IAsyncDisposable
     [Inject] private IJSRuntime? Js { get; set; }
 
     private CutPreviewVideos? _preview = null;
-    private CutTimeline? Timeline { get; set; }
+    private CutTimeline? Timeline { get; set; } = null;
     private string? _selectedTextId;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
