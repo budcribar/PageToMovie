@@ -22,7 +22,7 @@ public partial class Home
 
     private double _spanFrom;
     private double _spanTo;
-    private string? _savedNote;
+    internal string? SavedNote { get; private set; }
 
     private double RangeMax => _selected is { HasDuration: true } ? _selected.DurationSec : 1;
     private bool ExportDisabled =>
@@ -46,7 +46,6 @@ public partial class Home
         }
     }
 
-    private bool ShowJoin => NextAfterSelected is not null;
     private bool ShowCard => _selected is not null && _selected.IsFirstOfScene(Folder.Clips);
     private CutJoinKind ResolvedJoin =>
         _selected is null ? CutJoinKind.Cut : _selected.JoinToNext(NextAfterSelected);
@@ -54,7 +53,7 @@ public partial class Home
     private void Select(CutClip clip)
     {
         _selected = clip;
-        _savedNote = null;
+        SavedNote = null;
         SeedSpanDefaults();
         _error = clip.Missing ? (clip.MissingReason ?? $"Selected take file is missing: {clip.Label}.") : null;
     }
@@ -109,7 +108,7 @@ public partial class Home
     private async Task AfterFolderLoadAsync()
     {
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
         _error = Folder.FolderError;
         _selected = Folder.Clips.FirstOrDefault();
         SeedSpanDefaults();
@@ -148,7 +147,7 @@ public partial class Home
             return;
         _selected.ApplyInOut(seconds, _selected.MarkOut);
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private void SetOut(object? value)
@@ -157,7 +156,7 @@ public partial class Home
             return;
         _selected.ApplyInOut(_selected.MarkIn, seconds);
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private async Task OnAudioAsync(InputFileChangeEventArgs e)
@@ -170,7 +169,7 @@ public partial class Home
                 return;
             await Compose.SetAudioFromBrowserFileAsync(file);
             Compose.ClearMoviePreview();
-            _savedNote = null;
+            SavedNote = null;
         }
         catch (Exception ex)
         {
@@ -182,6 +181,7 @@ public partial class Home
     {
         await Compose.ClearAudioAsync();
         Compose.ClearMoviePreview();
+        SavedNote = null;
     }
 
     private async Task PlayAsync()
@@ -272,14 +272,14 @@ public partial class Home
         }
 
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private void RemoveRangeDelete(CutRangeSpan span)
     {
         _selected?.RangeDeletes.Remove(span);
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private void SetJoin(CutJoinKind kind)
@@ -288,7 +288,12 @@ public partial class Home
             return;
         _selected.JoinOverride = kind;
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
+    }
+
+    private void OnCardCheck(ChangeEventArgs e)
+    {
+        ToggleCard(e.Value is bool flag && flag);
     }
 
     private void ToggleCard(bool enabled)
@@ -299,7 +304,7 @@ public partial class Home
         if (enabled && string.IsNullOrWhiteSpace(_selected.Card.Text))
             _selected.Card.Text = $"Scene {_selected.Scene}";
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private void SetCardText(ChangeEventArgs e)
@@ -308,19 +313,19 @@ public partial class Home
             return;
         _selected.Card.Text = Convert.ToString(e.Value, CultureInfo.InvariantCulture) ?? "";
         Compose.ClearMoviePreview();
-        _savedNote = null;
+        SavedNote = null;
     }
 
     private async Task SaveFinishAsync()
     {
         _error = null;
-        _savedNote = null;
+        SavedNote = null;
         if (!await Folder.SaveFinishAsync(Compose.AudioFileName))
         {
             _error = Folder.FolderError ?? "Could not save the cut.";
             return;
         }
 
-        _savedNote = "Saved cut.project.json";
+        SavedNote = "Saved cut.project.json";
     }
 }

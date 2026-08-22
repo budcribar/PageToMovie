@@ -19,7 +19,7 @@ public static class CutProjectFile
     {
         var dto = new ProjectDto
         {
-            Version = Version,
+            SchemaVersion = Version,
             MusicFileName = string.IsNullOrWhiteSpace(musicFileName) ? null : musicFileName,
             Clips = clips.Select(ToDto).ToList(),
         };
@@ -101,7 +101,8 @@ public static class CutProjectFile
 
     private sealed class ProjectDto
     {
-        public int Version { get; set; }
+        [JsonPropertyName("version")]
+        public int SchemaVersion { get; set; }
         public string? MusicFileName { get; set; }
         public List<ClipDto> Clips { get; set; } = [];
     }

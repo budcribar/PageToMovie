@@ -57,12 +57,15 @@ public static class CutRangeDelete
         if (window.MarkOut - window.MarkIn < MinSpanSeconds)
             return [];
 
-        var merged = Merge(deletes
-            .Select(d => Clamp(d.Start, d.End, window.MarkIn, window.MarkOut))
-            .Where(d => d is not null)
-            .Select(d => d!.Value)
-            .OrderBy(d => d.Start)
-            .ToList());
+        var clamped = new List<(double Start, double End)>();
+        foreach (var delete in deletes)
+        {
+            var span = Clamp(delete.Start, delete.End, window.MarkIn, window.MarkOut);
+            if (span is { } one)
+                clamped.Add(one);
+        }
+
+        var merged = Merge(clamped.OrderBy(d => d.Start).ToList());
 
         var keep = new List<(double Start, double End)>();
         var cursor = window.MarkIn;

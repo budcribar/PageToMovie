@@ -80,33 +80,36 @@ public sealed class CutFolderService : IAsyncDisposable
             f.SizeBytes,
             f.Text));
         var clips = CutClipList.FromFiles(found).ToList();
-
-        foreach (var clip in clips)
-        {
-            foreach (var take in clip.Takes)
-            {
-                if (take.Missing)
-                    continue;
-                var blob = await _js.InvokeAsync<JsResult>("PageToMovieCut.getFileBlobUrlAsync", take.RelativePath);
-                if (!blob.Success || string.IsNullOrWhiteSpace(blob.Url))
-                {
-                    take.Missing = true;
-                    take.MissingReason = blob.Error ?? "Clip is missing.";
-                    continue;
-                }
-
-                take.PreviewUrl = blob.Url;
-            }
-        }
-
+        await AttachTakeUrlsAsync(clips);
         Clips = clips;
+        ApplySavedFinish(files, clips);
+        if (clips.Count == 0)
+            FolderError = "No takes named scene_SS_clip_CC_take_NN.mp4 in that folder.";
+    }
+
+    private async Task AttachTakeUrlsAsync(List<CutClip> clips)
+    {
+        foreach (var take in clips.SelectMany(c => c.Takes).Where(t => !t.Missing))
+        {
+            var blob = await _js.InvokeAsync<JsResult>("PageToMovieCut.getFileBlobUrlAsync", take.RelativePath);
+            if (blob.Success && !string.IsNullOrWhiteSpace(blob.Url))
+            {
+                take.PreviewUrl = blob.Url;
+                continue;
+            }
+
+            take.Missing = true;
+            take.MissingReason = blob.Error ?? "Clip is missing.";
+        }
+    }
+
+    private void ApplySavedFinish(IEnumerable<JsFileEntry> files, List<CutClip> clips)
+    {
         PendingMusicFileName = null;
         var project = files.FirstOrDefault(f =>
             CutClipNaming.IsProjectFileName(f.FileName) || CutClipNaming.IsProjectFileName(f.RelativePath));
         if (project is not null && CutProjectFile.TryApply(clips, project.Text, out var music))
             PendingMusicFileName = music;
-        if (clips.Count == 0)
-            FolderError = "No takes named scene_SS_clip_CC_take_NN.mp4 in that folder.";
     }
 
     public async Task<bool> SaveFinishAsync(string? musicFileName)

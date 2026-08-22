@@ -22,9 +22,9 @@
 {
     <div class="cut-error" role="alert">@_error</div>
 }
-@if (!string.IsNullOrWhiteSpace(_savedNote))
+@if (!string.IsNullOrWhiteSpace(SavedNote))
 {
-    <p class="cut-ok">@_savedNote</p>
+    <p class="cut-ok">@SavedNote</p>
 }
 
 @if (Folder.Clips.Count > 0)
@@ -150,10 +150,10 @@
                             </button>
                         }
                     </div>
-                    @if (ShowJoin)
+                    @if (NextAfterSelected is { } next)
                     {
                         <div class="cut-joins">
-                            <p class="cut-kicker">Join to @NextAfterSelected!.Label · @ResolvedJoin</p>
+                            <p class="cut-kicker">Join to @next.Label · @ResolvedJoin</p>
                             @if (!string.IsNullOrWhiteSpace(_selected.FountainTransition))
                             {
                                 <p class="cut-muted">@_selected.FountainTransition</p>
@@ -167,7 +167,7 @@
                     {
                         <div class="cut-card-edit">
                             <label class="cut-check">
-                                <input type="checkbox" checked="@_selected.Card.Enabled" @onchange="e => ToggleCard(e.Value is true)" />
+                                <input type="checkbox" checked="@_selected.Card.Enabled" @onchange="OnCardCheck" />
                                 Scene card
                             </label>
                             <input type="text" value="@_selected.Card.Text" maxlength="80" @onchange="SetCardText" placeholder="Chapter 1" />
