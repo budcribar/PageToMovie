@@ -2424,7 +2424,7 @@ public sealed class FilmJobService
 
             _ = _projects.ArchiveActiveAndReplaceClipBytesAsync(projectId, req.Scene, req.Clip, bytes);
             var editTake = await PersistEditedTakeAsync(
-                    projectDir, videoDir, req, current, entry, url, bytes, ct)
+                    projectDir, req, current, entry, url, bytes, ct)
                 .ConfigureAwait(false);
             // Same client-folder contract as regen: take_NN.mp4 + current alias.
             await PublishClipClientMediaAsync(req.Scene, req.Clip, url, editTake).ConfigureAwait(false);
@@ -2458,7 +2458,6 @@ public sealed class FilmJobService
     /// </summary>
     private async Task<int> PersistEditedTakeAsync(
         string projectDir,
-        string videoDir,
         StartVideoEditRequest req,
         ClipVersionItem? current,
         SupportedModelEntry entry,
@@ -2468,27 +2467,18 @@ public sealed class FilmJobService
     {
         if (_sidecars is null)
             return 0;
-        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, req.Scene, req.Clip);
-        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
-        var editTake = ClipSidecarService.NextTakeNumber(videoDir, req.Scene, req.Clip);
-        var takeMp4Name = ClipTakeNaming.TakeMp4FileName(req.Scene, req.Clip, editTake);
-        await File.WriteAllBytesAsync(Path.Combine(videoDir, takeMp4Name), bytes, ct).ConfigureAwait(false);
-        await _sidecars.WriteSidecarWithTakeAsync(
-            projectDir, req.Scene, req.Clip,
-            take: editTake,
+        return await _sidecars.PersistGeneratedTakeAsync(
+            projectDir, req.Scene, req.Clip, bytes,
             prompt: req.Prompt,
             scriptText: current?.ScriptText ?? "",
             model: entry.Id,
             resolution: current?.Resolution ?? "",
             durationSeconds: current?.DurationSeconds ?? 0,
-            sha256: sha256,
-            sizeBytes: bytes.LongLength,
-            mp4FileName: takeMp4Name,
             editedFromTake: current?.Take is > 0 ? current.Take : 1,
             sourceUrl: sourceUrl,
             sourceProvider: entry.ProviderId,
+            updateAlias: false,
             ct: ct).ConfigureAwait(false);
-        return editTake;
     }
 
     private async Task RunLocationVariantsAsync(StartLocationVariantsRequest req, string projectId, CancellationToken ct)

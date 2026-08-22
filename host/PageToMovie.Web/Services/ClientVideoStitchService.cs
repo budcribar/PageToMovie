@@ -731,10 +731,8 @@ public sealed class ClientVideoStitchService
     }
 
     /// <summary>
-    /// Render the deterministic end-credits card client-side and store it as the scene's clip: draw the
-    /// exact strings on a canvas, roll them into a format-matched mp4 via ffmpeg.wasm, then save to the
-    /// media folder (if connected) and upload to the server clip slot. The credits scene thereby becomes
-    /// a normal on-disk clip the stitch concatenates — no video-gen call, no hallucinated text.
+    /// ffmpeg credits generator: canvas → ffmpeg.wasm, then the same take pipeline as any
+    /// other clip (take_NN + current alias). No catalog video client.
     /// </summary>
     public async Task<(bool Ok, string? Error)> RenderAndStoreCreditsClipAsync(
         ProjectClipRef clipRef, double durationSeconds,
@@ -774,51 +772,56 @@ public sealed class ClientVideoStitchService
                 return (false, res?.Error ?? "Credits card render failed");
 
             var bytes = Convert.FromBase64String(res.Mp4Base64);
-            var relPath = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
 
-            // Client storage is primary, same as every other clip type: save locally and register the
-            // hash with the server (writes a .client.json sidecar — see POST .../media/register) rather
-            // than treating the server upload as the main copy. Best-effort — the register call can
-            // fail (offline, no folder), so this alone is never sufficient; see the upload fallback below.
-            if (_media is not null)
-            {
-                var (savedOk, _, sha256, sizeBytes, _) =
-                    await _media.SaveBytesAsync(projectId, relPath, bytes).ConfigureAwait(false);
-                if (savedOk && !string.IsNullOrWhiteSpace(sha256))
-                {
-                    try
-                    {
-                        await _engine.RegisterMediaAsync(projectId, new MediaRegisterRequest
-                        {
-                            RelativePath = relPath,
-                            Sha256 = sha256,
-                            SizeBytes = sizeBytes,
-                            Kind = "credits",
-                            Scene = scene,
-                            Clip = clip,
-                        }, ct).ConfigureAwait(false);
-                    }
-                    catch { /* best effort — the upload below is the real safety net */ }
-                }
-            }
-
-            // Always also ensure the server has the real bytes. The credits card is a few seconds of
-            // simple canvas-rendered text — trivially small next to a real AI-generated clip — so
-            // uploading it unconditionally is cheap, and it's the only way to guarantee correctness for
-            // keep-media-on-server projects (whose forks depend on this clip being server-resolvable)
-            // without the client needing to know that flag. A failed upload must NOT be reported as
-            // success (it silently was, before: this card would never show up on-disk or play in the
-            // assembled movie, with no visible error at all).
-            var (uploaded, uploadError) = await _engine.UploadClipWithResultAsync(projectId, scene, clip, bytes, ct)
+            // ffmpeg generator → same take persist as any other clip (take_NN + current alias).
+            var uploaded = await _engine.UploadClipWithResultAsync(
+                    projectId, scene, clip, bytes, kind: "credits", seconds: durationSeconds, ct)
                 .ConfigureAwait(false);
-            if (!uploaded)
-                return (false, $"Rendered the credits card but could not save it: {uploadError}");
+            if (!uploaded.Ok)
+                return (false, $"Rendered the credits card but could not save it: {uploaded.Error}");
+
+            var take = uploaded.Take > 0 ? uploaded.Take : ClipTakeNaming.ParseTakeNumber(uploaded.RelativePath);
+            if (take <= 0) take = 1;
+            await SaveCreditsTakeLocallyAsync(projectId, scene, clip, take, bytes, ct).ConfigureAwait(false);
             return (true, null);
         }
         catch (Exception ex)
         {
             return (false, ex.Message);
         }
+    }
+
+    private async Task SaveCreditsTakeLocallyAsync(
+        string projectId, int scene, int clip, int take, byte[] bytes, CancellationToken ct)
+    {
+        if (_media is null)
+            return;
+        var takeRel = ClipTakeNaming.TakeRelativePath(scene, clip, take);
+        var aliasRel = ClipTakeNaming.CanonicalRelativePath(scene, clip);
+        await SaveAndRegisterCreditsFileAsync(projectId, scene, clip, takeRel, bytes, ct).ConfigureAwait(false);
+        await SaveAndRegisterCreditsFileAsync(projectId, scene, clip, aliasRel, bytes, ct).ConfigureAwait(false);
+    }
+
+    private async Task SaveAndRegisterCreditsFileAsync(
+        string projectId, int scene, int clip, string relPath, byte[] bytes, CancellationToken ct)
+    {
+        var (savedOk, _, sha256, sizeBytes, _) =
+            await _media!.SaveBytesAsync(projectId, relPath, bytes).ConfigureAwait(false);
+        if (!savedOk || string.IsNullOrWhiteSpace(sha256))
+            return;
+        try
+        {
+            await _engine.RegisterMediaAsync(projectId, new MediaRegisterRequest
+            {
+                RelativePath = relPath,
+                Sha256 = sha256,
+                SizeBytes = sizeBytes,
+                Kind = "credits",
+                Scene = scene,
+                Clip = clip,
+            }, ct).ConfigureAwait(false);
+        }
+        catch { /* local save is enough; register is best-effort */ }
     }
 
     private sealed class JsCreditsResult

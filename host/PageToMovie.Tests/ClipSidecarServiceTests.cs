@@ -172,4 +172,55 @@ public class ClipSidecarServiceTests : IDisposable
         Assert.Equal(2, neu.RootElement.GetProperty("take").GetInt32());
         Assert.Equal("new prompt", neu.RootElement.GetProperty("visual_prompt").GetString());
     }
+
+    [Fact]
+    public async Task NextTakeNumber_ignores_timestamped_leftover_stub_sidecars()
+    {
+        var videoDir = Path.Combine(_tempWorkspace, "stub-takes");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllText(
+            Path.Combine(videoDir, "scene_02_clip_01_take_01_20260821_120000.clip.json"),
+            """{"take":1,"visual_prompt":"stub"}""");
+
+        Assert.Equal(1, ClipSidecarService.NextTakeNumber(videoDir, 2, 1));
+
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "StubThenRender");
+        Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
+        File.Copy(
+            Path.Combine(videoDir, "scene_02_clip_01_take_01_20260821_120000.clip.json"),
+            Path.Combine(projectDir, "assets", "video", "scene_02_clip_01_take_01_20260821_120000.clip.json"));
+        var take = await service.PersistGeneratedTakeAsync(projectDir, 2, 1, "real-card-bytes------------"u8.ToArray());
+        Assert.Equal(1, take);
+        Assert.True(File.Exists(Path.Combine(projectDir, "assets", "video", "scene_02_clip_01_take_01.mp4")));
+    }
+
+    [Fact]
+    public async Task Two_generated_takes_then_promote_first_makes_it_current_and_alias()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "CreditsTakes");
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+
+        var take1Bytes = "credits-take-one-bytes---------------"u8.ToArray();
+        var take2Bytes = "credits-take-two-bytes---------------"u8.ToArray();
+        Assert.Equal(1, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take1Bytes, prompt: "card 1"));
+        Assert.Equal(2, await service.PersistGeneratedTakeAsync(projectDir, 2, 1, take2Bytes, prompt: "card 2"));
+
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
+        Assert.Equal(take1Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
+        Assert.Equal(take2Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.Equal(3, ClipSidecarService.NextTakeNumber(videoDir, 2, 1));
+        Assert.Equal(2, ClipSidecarService.ReadCurrentTake(videoDir, 2, 1));
+
+        var promoted = await projects.PromoteClipVersionAsync("CreditsTakes", 2, 1, "scene_02_clip_01_take_01.mp4");
+        Assert.True(promoted);
+        Assert.Equal(1, ClipSidecarService.ReadCurrentTake(videoDir, 2, 1));
+        Assert.Equal(take1Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.Equal(take2Bytes, File.ReadAllBytes(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
+    }
 }

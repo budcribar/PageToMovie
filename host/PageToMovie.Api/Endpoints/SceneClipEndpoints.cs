@@ -477,6 +477,10 @@ public static partial class SceneClipEndpoints
         && await TryUploadExtendSourceAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false) is { } uploaded)
         return uploaded;
 
+    // ffmpeg credits generator (and any other client-rendered clip) — same take persist as regen.
+    if (string.Equals(kind, "credits", StringComparison.OrdinalIgnoreCase))
+        return await PersistUploadedGeneratedTakeAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false);
+
     var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
     Directory.CreateDirectory(destDir);
     var fileName = ChooseUploadDestFileName(kind, file.FileName, scene, clip);
@@ -558,6 +562,33 @@ public static partial class SceneClipEndpoints
     // "extend-source": the client's tail-trimmed continuation input for video-extend (see
     // FilmJobService.GenerateOneClipAsync) — fixed name, ignores any client-supplied filename so
     // the server always finds it at the exact path it expects.
+    private static async Task<IResult> PersistUploadedGeneratedTakeAsync(
+        string id, int scene, int clip, double? seconds,
+        IFormFile file, ClipUploadServices svc, CancellationToken ct)
+    {
+        await using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct).ConfigureAwait(false);
+        var bytes = ms.ToArray();
+        var projectDir = await svc.Store.GetProjectDirAsync(id, ct).ConfigureAwait(false);
+        var take = await svc.Sidecars.PersistGeneratedTakeAsync(
+            projectDir, scene, clip, bytes,
+            prompt: "",
+            durationSeconds: seconds is > 0 ? seconds.Value : 0,
+            updateAlias: true,
+            ct: ct).ConfigureAwait(false);
+        svc.Store.InvalidateSceneListCache(id);
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            scene,
+            clip,
+            take,
+            clientRelativePath = ClipTakeNaming.TakeRelativePath(scene, clip, take),
+            aliasRelativePath = ClipTakeNaming.CanonicalRelativePath(scene, clip),
+        });
+    }
+
     private static string ChooseUploadDestFileName(string? kind, string? uploadedFileName, int scene, int clip)
     {
         if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))

@@ -280,13 +280,13 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
     }
 
     [Fact]
-    public async Task Edit_of_a_credits_clip_still_writes_a_numbered_take()
+    public async Task Edit_of_an_is_credits_clip_still_writes_a_numbered_take()
     {
-        SeedActiveClip(scene: 4, clip: 1, durationSeconds: 4.0);
+        SeedActiveClip(scene: 2, clip: 1, durationSeconds: 4.0);
         var (status, error, job) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
         {
             projectId = _projectId,
-            scene = 4,
+            scene = 2,
             clip = 1,
             prompt = "brighten the card",
         });
@@ -295,9 +295,9 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         Assert.Null(error);
         var store = _factory.Services.GetRequiredService<ProjectStore>();
         var videoDir = Path.Combine(store.GetProjectDir(_projectId), "assets", "video");
-        Assert.True(File.Exists(Path.Combine(videoDir, "scene_04_clip_01_take_02.mp4")));
-        Assert.True(File.Exists(Path.Combine(videoDir, "scene_04_clip_01_take_02.clip.json")));
-        AssertPublishedClientTake(job, scene: 4, clip: 1, take: 2);
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.clip.json")));
+        AssertPublishedClientTake(job, scene: 2, clip: 1, take: 2);
     }
 
     private static void AssertPublishedClientTake(JsonElement job, int scene, int clip, int take)

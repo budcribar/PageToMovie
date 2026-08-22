@@ -190,7 +190,7 @@ public class ClientMediaFolderServiceTests
     }
 
     [Fact]
-    public async Task Video_edit_of_a_credits_scene_still_saves_the_take_and_alias()
+    public async Task Credits_kind_take_still_saves_the_take_and_alias()
     {
         var (svc, js) = CreateService();
         js.Responses["PageToMovieMedia.connectFolderAsync"] = """{"success":true,"folderName":"Test"}""";
@@ -199,14 +199,14 @@ public class ClientMediaFolderServiceTests
 
         FireOnJobUpdated(svc, new JobSnapshot
         {
-            JobId = "edit-credits",
-            Kind = "video_edit",
+            JobId = "credits-gen",
+            Kind = "credits",
             Status = "done",
             ProjectId = "proj1",
             ClientMediaUrl = "/api/media/proxy/tok-credits",
-            ClientRelativePath = "assets/video/scene_18_clip_01_take_02.mp4",
+            ClientRelativePath = "assets/video/scene_02_clip_01_take_02.mp4",
             ClientTakeNumber = 2,
-            Scene = 18,
+            Scene = 2,
             Clip = 1,
         });
         await WaitForIdleAsync(svc);
