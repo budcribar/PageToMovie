@@ -143,8 +143,8 @@ public class ClientMediaFolderServiceTests
         FireOnJobUpdated(svc, second);
         await WaitForIdleAsync(svc);
 
-        // Take file + current alias per regen.
-        Assert.True(js.CallCount("PageToMovieMedia.saveFromUrlAsync") >= 2);
+        // One take file per regen — not a leftover bare alias.
+        Assert.Equal(2, js.CallCount("PageToMovieMedia.saveFromUrlAsync"));
     }
 
     [Fact]
@@ -185,8 +185,8 @@ public class ClientMediaFolderServiceTests
         FireOnJobUpdated(svc, second);
         await WaitForIdleAsync(svc);
 
-        // Each edit saves take_NN plus the current alias.
-        Assert.True(js.CallCount("PageToMovieMedia.saveFromUrlAsync") >= 4);
+        // Each edit saves take_NN only (current take is .current.json).
+        Assert.Equal(2, js.CallCount("PageToMovieMedia.saveFromUrlAsync"));
     }
 
     [Fact]
@@ -211,7 +211,7 @@ public class ClientMediaFolderServiceTests
         });
         await WaitForIdleAsync(svc);
 
-        Assert.Equal(2, js.CallCount("PageToMovieMedia.saveFromUrlAsync"));
+        Assert.Equal(1, js.CallCount("PageToMovieMedia.saveFromUrlAsync"));
     }
 
     [Fact]

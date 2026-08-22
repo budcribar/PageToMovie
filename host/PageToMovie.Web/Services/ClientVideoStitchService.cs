@@ -298,10 +298,20 @@ public sealed class ClientVideoStitchService
         if (_media is null)
             return null;
 
-        var fileName = string.IsNullOrWhiteSpace(clipRow.FileName)
-            ? $"scene_{sceneNumber:D2}_clip_{clipRow.ClipNumber:D2}.mp4"
-            : clipRow.FileName;
-        return await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}").ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(clipRow.FileName)
+            && !ClipTakeNaming.IsCanonicalClipName(clipRow.FileName))
+        {
+            var fromRow = await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{clipRow.FileName}")
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(fromRow))
+                return fromRow;
+        }
+
+        var currentRel = await _media.ResolveCurrentTakeRelativePathAsync(projectId, sceneNumber, clipRow.ClipNumber)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(currentRel))
+            return null;
+        return await _media.GetLocalBlobUrlAsync(projectId, currentRel).ConfigureAwait(false);
     }
 
     /// <summary>Operator-facing copy when a clip has no local blob and no server mp4.</summary>
@@ -700,8 +710,10 @@ public sealed class ClientVideoStitchService
     public async Task<string?> ResolveClipUrlAsync(
         string projectId, int scene, int clip, CancellationToken ct)
     {
-        var rel = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
-        if (_media is not null)
+        var rel = _media is not null
+            ? await _media.ResolveCurrentTakeRelativePathAsync(projectId, scene, clip)
+            : null;
+        if (_media is not null && !string.IsNullOrWhiteSpace(rel))
         {
             var local = await _media.GetLocalBlobUrlAsync(projectId, rel);
             if (!string.IsNullOrWhiteSpace(local))
@@ -732,7 +744,7 @@ public sealed class ClientVideoStitchService
 
     /// <summary>
     /// ffmpeg credits generator: canvas → ffmpeg.wasm, then the same take pipeline as any
-    /// other clip (take_NN + current alias). No catalog video client.
+    /// other clip (take_NN; current take is .current.json). No catalog video client.
     /// </summary>
     public async Task<(bool Ok, string? Error)> RenderAndStoreCreditsClipAsync(
         ProjectClipRef clipRef, double durationSeconds,
@@ -773,7 +785,7 @@ public sealed class ClientVideoStitchService
 
             var bytes = Convert.FromBase64String(res.Mp4Base64);
 
-            // ffmpeg generator → same take persist as any other clip (take_NN + current alias).
+            // ffmpeg generator → same take persist as any other clip (take_NN + .current.json).
             var uploaded = await _engine.UploadClipWithResultAsync(
                     projectId, scene, clip, bytes, kind: "credits", seconds: durationSeconds, ct)
                 .ConfigureAwait(false);
@@ -797,9 +809,7 @@ public sealed class ClientVideoStitchService
         if (_media is null)
             return;
         var takeRel = ClipTakeNaming.TakeRelativePath(scene, clip, take);
-        var aliasRel = ClipTakeNaming.CanonicalRelativePath(scene, clip);
         await SaveAndRegisterCreditsFileAsync(projectId, scene, clip, takeRel, bytes, ct).ConfigureAwait(false);
-        await SaveAndRegisterCreditsFileAsync(projectId, scene, clip, aliasRel, bytes, ct).ConfigureAwait(false);
     }
 
     private async Task SaveAndRegisterCreditsFileAsync(

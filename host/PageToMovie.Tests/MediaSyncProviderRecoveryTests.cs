@@ -53,8 +53,8 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         var entries = MediaEndpoints.CollectProviderRecoveryEntries(_videoDir, (url, _) => "tok-" + (url?.Length ?? 0));
 
         var e = Assert.Single(entries);
-        Assert.Equal("assets/video/scene_01_clip_02.mp4", e.RelativePath);
-        Assert.Equal("scene_01_clip_02.mp4", e.FileName);
+        Assert.Equal("assets/video/scene_01_clip_02_take_01.mp4", e.RelativePath);
+        Assert.Equal("scene_01_clip_02_take_01.mp4", e.FileName);
         Assert.True(e.ProviderRecovery);
         Assert.True(e.IsMp4);
         Assert.Equal(0, e.SizeBytes);
@@ -74,6 +74,20 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         var entries = Collect(_videoDir);
 
         Assert.Empty(entries);
+    }
+
+    [Fact]
+    public void Leftover_alias_on_disk_does_not_block_take_recovery()
+    {
+        WriteSidecar(1, 1, 1, "https://vidgen.example/clip1.mp4");
+        File.WriteAllBytes(Path.Combine(_videoDir, "scene_01_clip_01.mp4"), new byte[2048]);
+        File.WriteAllText(Path.Combine(_videoDir, "scene_01_clip_01.current.json"), """{"take":1}""");
+
+        var entries = Collect(_videoDir);
+
+        var e = Assert.Single(entries);
+        Assert.Equal("assets/video/scene_01_clip_01_take_01.mp4", e.RelativePath);
+        Assert.True(e.ProviderRecovery);
     }
 
     [Fact]
@@ -101,7 +115,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         var entries = Collect(_videoDir);
 
         var e = Assert.Single(entries);
-        Assert.Equal("assets/video/scene_02_clip_03.mp4", e.RelativePath);
+        Assert.Equal("assets/video/scene_02_clip_03_take_01.mp4", e.RelativePath);
         Assert.Equal(0, e.ProviderLeadInSeconds, 3);
     }
 
@@ -133,7 +147,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
 
         var entries = Collect(_videoDir);
 
-        var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+        var c3 = Assert.Single(entries, e => e.RelativePath.Contains("clip_03", StringComparison.Ordinal));
         Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
         // Nearest previous first: C2's hop (C1). Client hop-walk peels C1 from the C1+C2 head.
         Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
@@ -152,7 +166,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
         });
 
         var e = Assert.Single(entries);
-        Assert.Equal("assets/video/scene_01_clip_02.mp4", e.RelativePath);
+        Assert.Equal("assets/video/scene_01_clip_02_take_01.mp4", e.RelativePath);
         Assert.True(e.ProviderRecovery);
         Assert.Equal("/api/media/proxy/tok-fid", e.StreamUrl);
         var issued = Assert.Single(seen);
@@ -186,7 +200,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
 
         var entries = Collect(_videoDir);
 
-        var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+        var c3 = Assert.Single(entries, e => e.RelativePath.Contains("clip_03", StringComparison.Ordinal));
         Assert.Equal(9.8, c3.ProviderLeadInSeconds, 3);
         Assert.Equal(new[] { 4.9 }, c3.PredecessorLeadInSeconds);
         Assert.StartsWith("/api/media/proxy/", c3.StreamUrl);

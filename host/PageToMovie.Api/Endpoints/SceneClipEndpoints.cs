@@ -586,7 +586,7 @@ public static partial class SceneClipEndpoints
             clip,
             take,
             clientRelativePath = ClipTakeNaming.TakeRelativePath(scene, clip, take),
-            aliasRelativePath = ClipTakeNaming.CanonicalRelativePath(scene, clip),
+            currentTake = take,
         });
     }
 

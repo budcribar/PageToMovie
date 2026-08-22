@@ -21,9 +21,9 @@ namespace PageToMovie.Tests;
 public class CombinedExtendRecoveryTests
 {
     private const string ProjectId = "Mary19";
-    private const string C1 = "assets/video/scene_01_clip_01.mp4";
-    private const string C2 = "assets/video/scene_01_clip_02.mp4";
-    private const string C3 = "assets/video/scene_01_clip_03.mp4";
+    private const string C1 = "assets/video/scene_01_clip_01_take_01.mp4";
+    private const string C2 = "assets/video/scene_01_clip_02_take_01.mp4";
+    private const string C3 = "assets/video/scene_01_clip_03_take_01.mp4";
     private const string ProviderUrl = "/api/media/proxy/tok-combined";
 
     [Fact]
@@ -234,7 +234,7 @@ public class CombinedExtendRecoveryTests
                 """{"scene":1,"clip":3,"source_file_id":"file_c3","provider_lead_in_seconds":11.0}""");
 
             var entries = MediaEndpoints.CollectProviderRecoveryEntries(videoDir, (_, fileId) => "tok-" + fileId);
-            var c3 = Assert.Single(entries, e => e.RelativePath.EndsWith("clip_03.mp4", StringComparison.Ordinal));
+            var c3 = Assert.Single(entries, e => e.RelativePath.Contains("clip_03", StringComparison.Ordinal));
             Assert.Equal(11.0, c3.ProviderLeadInSeconds, 3);
             Assert.Equal(new[] { 6.0 }, c3.PredecessorLeadInSeconds);
             Assert.Equal("/api/media/proxy/tok-file_c3", c3.StreamUrl);

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
+using PageToMovie.Core.Utils;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -60,14 +61,14 @@ public partial class Scenes
                         {
                             new ClipVersionItem
                             {
-                                VersionId = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
+                                VersionId = ClipTakeNaming.TakeMp4FileName(sceneNumber, clipNumber, 1),
                                 Scene = sceneNumber,
                                 Clip = clipNumber,
                                 Take = 1,
                                 IsCurrent = true,
                                 CreatedAtUtc = DateTime.UtcNow,
-                                Mp4FileName = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
-                                RelativePath = $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4",
+                                Mp4FileName = ClipTakeNaming.TakeMp4FileName(sceneNumber, clipNumber, 1),
+                                RelativePath = ClipTakeNaming.TakeRelativePath(sceneNumber, clipNumber, 1),
                                 DurationSeconds = clip.ActualDurationSeconds ?? clip.DurationSeconds,
                                 VisualPrompt = clip.VisualPrompt
                             }

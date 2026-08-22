@@ -451,8 +451,8 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// One card per take sidecar (provider-hosted or local). The canonical
-    /// <c>scene_SS_clip_CC.mp4</c> is the player alias, not a separate take.
+    /// One card per take sidecar (provider-hosted or local). A leftover
+    /// <c>scene_SS_clip_CC.mp4</c> is not a take and not the player file.
     /// </summary>
     private static void AddTakeSidecarVersions(List<ClipVersionItem> result, string videoDir, int scene, int clip)
     {
@@ -497,8 +497,8 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Legacy trees with only the player alias (no <c>_take_NN</c> sidecars) still
-    /// need one current card so compare/promote keep working.
+    /// Legacy trees with only a leftover alias (no <c>_take_NN</c> sidecars) still
+    /// need one card so compare/promote can surface the leftover.
     /// </summary>
     private static void AddCanonicalAliasIfNoTakes(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
     {
@@ -540,8 +540,10 @@ public sealed partial class ProjectStore
         ClipVersionItem? current = pointer > 0
             ? result.FirstOrDefault(v => v.Take == pointer)
             : null;
-        current ??= result.FirstOrDefault(v =>
-            ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName));
+        current ??= result
+            .Where(v => !ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName))
+            .OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefault();
         current ??= result.OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc).First();
         current.IsCurrent = true;
     }
@@ -676,9 +678,6 @@ public sealed partial class ProjectStore
         if (!hasLocalTakeMp4 && !HasProviderCopy(target))
             return false;
 
-        if (hasLocalTakeMp4)
-            CopyLocalTakeOverActive(videoDir, scene, clip, targetMp4Path);
-
         ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, Math.Max(1, target.Take));
         TryRestorePromotedVisualPrompt(projectId, scene, clip, target.VisualPrompt);
         return true;
@@ -696,24 +695,6 @@ public sealed partial class ProjectStore
         => !string.IsNullOrWhiteSpace(target.SourceUrl)
             || !string.IsNullOrWhiteSpace(target.SourceFileId);
 
-    private static void CopyLocalTakeOverActive(string videoDir, int scene, int clip, string targetMp4Path)
-    {
-        var activeMp4Path = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
-        TryArchiveActiveMp4(activeMp4Path, videoDir, scene, clip);
-        File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
-    }
-
-    private static void TryArchiveActiveMp4(string activeMp4Path, string videoDir, int scene, int clip)
-    {
-        if (!File.Exists(activeMp4Path))
-            return;
-        var historyDir = Path.Combine(videoDir, StoreLit.History);
-        Directory.CreateDirectory(historyDir);
-        var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-        try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
-    }
-
     private void TryRestorePromotedVisualPrompt(string projectId, int scene, int clip, string visualPrompt)
     {
         if (string.IsNullOrWhiteSpace(visualPrompt))
@@ -722,37 +703,35 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Archives the current active clip into assets/video/history/ (same convention
-    /// <see cref="PromoteClipVersionAsync"/> uses) then writes <paramref name="newBytes"/> as the
-    /// new active clip — for a video-edit result, which is fresh bytes rather than an existing take
-    /// to restore. Returns the active file name (always the un-suffixed
-    /// <c>scene_XX_clip_XX.mp4</c> — the archived copy gets the timestamp suffix, not the new one).
+    /// Archives a leftover bare alias (<c>scene_SS_clip_CC.mp4</c>) into history/ if one
+    /// still exists. Does not write or refresh that alias as the player file — the new
+    /// take is <c>take_NN</c> via <see cref="ClipSidecarService.PersistGeneratedTakeAsync"/>.
     /// </summary>
     public string ArchiveActiveAndReplaceClipBytesAsync(string projectId, int scene, int clip, byte[] newBytes)
     {
         var dir = GetProjectDir(projectId);
         var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         Directory.CreateDirectory(videoDir);
-        var activeMp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        var leftoverAlias = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
 
-        if (File.Exists(activeMp4Path))
+        if (File.Exists(leftoverAlias))
         {
             var historyDir = Path.Combine(videoDir, StoreLit.History);
             Directory.CreateDirectory(historyDir);
             var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-            try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* best effort, matches PromoteClipVersionAsync */ }
-            var activeSidecar = Path.ChangeExtension(activeMp4Path, StoreLit.ClipJsonSuffix);
-            if (File.Exists(activeSidecar))
+            try { File.Copy(leftoverAlias, archiveMp4, overwrite: true); } catch { /* leftover archive is best-effort */ }
+            var leftoverSidecar = Path.ChangeExtension(leftoverAlias, StoreLit.ClipJsonSuffix);
+            if (File.Exists(leftoverSidecar))
             {
                 var archiveSidecar = Path.ChangeExtension(archiveMp4, StoreLit.ClipJsonSuffix);
-                try { File.Copy(activeSidecar, archiveSidecar, overwrite: true); } catch { /* best effort */ }
+                try { File.Copy(leftoverSidecar, archiveSidecar, overwrite: true); } catch { /* best effort */ }
             }
         }
 
-        File.WriteAllBytes(activeMp4Path, newBytes);
+        _ = newBytes;
         InvalidateSceneListCache(projectId);
-        return Path.GetFileName(activeMp4Path);
+        return ClipTakeNaming.TakeMp4FileName(scene, clip, Math.Max(1, ClipSidecarService.ReadCurrentTake(videoDir, scene, clip) + 1));
     }
 
     private static ClipVersionItem ParseClipSidecarOrMeta(string sidecarPath, string mp4Path, int scene, int clip, int take, bool isCurrent, DateTime lastWriteUtc)
@@ -6352,10 +6331,15 @@ public sealed partial class ProjectStore
 
         if (!Directory.Exists(videoDir)) return null;
 
-        // Match any take file starting with scene_XX_clip_YY (newest valid take file)
-        var pattern = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}*.mp4";
+        var current = ClipSidecarService.CurrentTakePath(videoDir, sceneNumber, clipNumber);
+        if (current is not null && File.Exists(current) && new FileInfo(current).Length >= 1024)
+            return current;
+
+        // No pointer (or take bytes not on this machine): newest take_NN file.
+        // Leftover bare aliases are ignored when a take file exists.
+        var takePrefix = ClipTakeNaming.SceneClipPrefix(sceneNumber, clipNumber) + "_take_";
         var latestTake = new DirectoryInfo(videoDir)
-            .EnumerateFiles(pattern)
+            .EnumerateFiles($"{takePrefix}*.mp4")
             .Where(fi => fi.Length >= 1024 && !fi.Name.StartsWith('_'))
             .OrderByDescending(fi => fi.LastWriteTimeUtc)
             .FirstOrDefault();

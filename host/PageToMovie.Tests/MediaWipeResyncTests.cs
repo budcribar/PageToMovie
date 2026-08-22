@@ -36,15 +36,18 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         var charRel = ProjectAssetNaming.CharactersRelativePrefix + "hero_ref.png";
         var locRel = ProjectAssetNaming.LocationsRelativePrefix + "kitchen_ref.png";
         var locVariantRel = ProjectAssetNaming.LocationsRelativePrefix + "kitchen_variant_01.png";
-        var mp4Rel = "assets/video/scene_01_clip_01.mp4";
+        var mp4Rel = "assets/video/scene_01_clip_01_take_01.mp4";
         var sidecarRel = "assets/video/scene_01_clip_01_take_01.clip.json";
+        var leftoverAliasRel = "assets/video/scene_01_clip_01.mp4";
 
         var charPath = WriteBytes(projectDir, charRel, "char-plate");
         var locPath = WriteBytes(projectDir, locRel, "loc-plate");
         var locVariantPath = WriteBytes(projectDir, locVariantRel, "loc-variant");
         var mp4Path = WriteBytes(projectDir, mp4Rel, "clip-bytes");
+        WriteBytes(projectDir, leftoverAliasRel, "stale-leftover-alias");
+        WriteText(projectDir, "assets/video/scene_01_clip_01.current.json", """{"take":1}""");
         var sidecarPath = WriteText(projectDir, sidecarRel,
-            $$"""{"scene":1,"clip":1,"source_url":"{{sourceUrl}}","source_file_id":"{{sourceFileId}}"}""");
+            $$"""{"scene":1,"clip":1,"take":1,"source_url":"{{sourceUrl}}","source_file_id":"{{sourceFileId}}"}""");
 
         await RegisterAsync(client, projectId, charRel, charPath, "image");
         await RegisterAsync(client, projectId, locRel, locPath, "image");
@@ -56,8 +59,10 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         Assert.True(File.Exists(locVariantPath), "Location variant must survive register/offload");
         Assert.True(File.Exists(sidecarPath), "Sidecar must stay on the server");
         Assert.False(File.Exists(mp4Path), "Railway must not keep clip bytes as a recovery source");
+        Assert.True(File.Exists(Path.Combine(projectDir, leftoverAliasRel.Replace('/', Path.DirectorySeparatorChar))),
+            "Leftover alias may remain on disk; it is not the player file.");
         Assert.Empty(Directory.EnumerateFiles(
-            Path.Combine(projectDir, "assets", "video"), "*.mp4", SearchOption.AllDirectories));
+            Path.Combine(projectDir, "assets", "video"), "*_take_*.mp4", SearchOption.AllDirectories));
 
         var sync = await client.GetAsync($"{ProjectIdRouting.ProjectApi(projectId)}/media/sync");
         Assert.True(sync.IsSuccessStatusCode, await sync.Content.ReadAsStringAsync());
@@ -70,6 +75,10 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         AssertListed(files, locRel);
         AssertListed(files, locVariantRel);
         AssertListed(files, sidecarRel);
+
+        var leftoverDisk = FindFile(files, e =>
+            RelOf(e).Equals(leftoverAliasRel, StringComparison.OrdinalIgnoreCase));
+        Assert.False(leftoverDisk.HasValue, "media-sync must not offer the leftover player alias");
 
         var diskMp4 = FindFile(files, e =>
             RelOf(e).Equals(mp4Rel, StringComparison.OrdinalIgnoreCase) && !IsProviderRecovery(e));

@@ -30,19 +30,16 @@ public class ClipVersionAndUncommittedTests
         {
             var projectDir = Path.Combine(root, "projects", "TestProj");
             var videoDir = Path.Combine(projectDir, "assets", "video");
-            var historyDir = Path.Combine(videoDir, "history");
-            Directory.CreateDirectory(historyDir);
+            Directory.CreateDirectory(videoDir);
 
             var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = root });
             var store = new ProjectStore(opts);
 
-            // Active clip file
-            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01.mp4"), "active_video");
-            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01.clip.json"), """{"visual_prompt":"Active Prompt"}""");
-
-            // History take 1
-            File.WriteAllText(Path.Combine(historyDir, "scene_01_clip_01_100.mp4"), "history_take_1");
-            File.WriteAllText(Path.Combine(historyDir, "scene_01_clip_01_100.clip.json"), """{"visual_prompt":"Take 1 Prompt"}""");
+            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4"), "take_1");
+            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01_take_01.clip.json"), """{"take":1,"visual_prompt":"Take 1 Prompt"}""");
+            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4"), "take_2");
+            File.WriteAllText(Path.Combine(videoDir, "scene_01_clip_01_take_02.clip.json"), """{"take":2,"visual_prompt":"Active Prompt"}""");
+            ClipSidecarService.WriteCurrentTake(videoDir, 1, 1, 2);
 
             var versions = await store.GetClipVersionsAsync("TestProj", 1, 1);
             Assert.NotNull(versions);
@@ -50,12 +47,13 @@ public class ClipVersionAndUncommittedTests
             Assert.Contains(versions, v => v.IsCurrent && v.VisualPrompt == "Active Prompt");
             Assert.Contains(versions, v => !v.IsCurrent && v.VisualPrompt == "Take 1 Prompt");
 
-            // Promote take 1
-            var promoted = await store.PromoteClipVersionAsync("TestProj", 1, 1, "scene_01_clip_01_100.mp4");
+            var promoted = await store.PromoteClipVersionAsync("TestProj", 1, 1, "scene_01_clip_01_take_01.mp4");
             Assert.True(promoted);
-
-            var newActiveText = File.ReadAllText(Path.Combine(videoDir, "scene_01_clip_01.mp4"));
-            Assert.Equal("history_take_1", newActiveText);
+            Assert.Equal(1, ClipSidecarService.ReadCurrentTake(videoDir, 1, 1));
+            Assert.Equal(
+                Path.Combine(videoDir, "scene_01_clip_01_take_01.mp4"),
+                ClipSidecarService.CurrentTakePath(videoDir, 1, 1));
+            Assert.Equal("take_2", File.ReadAllText(Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4")));
         }
         finally
         {

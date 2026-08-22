@@ -595,9 +595,6 @@ public sealed class ClientMediaFolderService
             Clip = snap.Clip,
         });
 
-        if (!isMusic && !isSpeakBatch)
-            await SaveCanonicalAliasIfTakeAsync(snap, pid, rel, urlToSave, saved.SizeBytes, MediaKind(isCredits, isMusic, isSpeakBatch));
-
         var sil = string.IsNullOrWhiteSpace(silenceMessage)
             ? ""
             : $" · silence: {silenceMessage}";
@@ -610,42 +607,40 @@ public sealed class ClientMediaFolderService
     }
 
     /// <summary>
-    /// Current player alias is <c>scene_SS_clip_CC.mp4</c>. After a take save, replace
-    /// that alias with the same bytes so playback shows the new take. Does not delete
-    /// the take file.
+    /// Player file from local <c>scene_SS_clip_CC.current.json</c>. Never the leftover
+    /// bare <c>scene_SS_clip_CC.mp4</c> alias.
     /// </summary>
-    private async Task SaveCanonicalAliasIfTakeAsync(
-        JobSnapshot snap,
-        string pid,
-        string takeRel,
-        string urlToSave,
-        long sizeBytes,
-        string kind)
+    public async Task<string?> ResolveCurrentTakeRelativePathAsync(
+        string projectId, int scene, int clip, int? knownTake = null)
     {
-        if (snap.Scene is not int scene || snap.Clip is not int clip)
-            return;
-        if (!ClipTakeNaming.IsStableTakeName(Path.GetFileName(takeRel)))
-            return;
-
-        var canonical = ClipTakeNaming.CanonicalRelativePath(scene, clip);
-        if (string.Equals(takeRel, canonical, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var clientPath = $"{pid}/{canonical}";
-        var alias = await _js.InvokeAsync<JsSaveResult>(
-            "PageToMovieMedia.saveFromUrlAsync", urlToSave, clientPath, null, snap.MusicTakeId);
-        if (alias is not { Success: true, Sha256: { Length: > 0 } aliasSha })
-            return;
-
-        await _api.RegisterMediaAsync(pid, new MediaRegisterRequest
+        if (scene <= 0 || clip <= 0)
+            return null;
+        if (knownTake is > 0)
+            return ClipTakeNaming.CurrentTakePath(scene, clip, knownTake.Value);
+        var pointerRel = ClipTakeNaming.CurrentTakePointerRelativePath(scene, clip);
+        var bytes = await ReadLocalBytesAsync($"{projectId}/{pointerRel}", minBytes: 2);
+        if (bytes is null || bytes.Length == 0)
+            return null;
+        try
         {
-            RelativePath = canonical,
-            Sha256 = aliasSha,
-            SizeBytes = alias.SizeBytes > 0 ? alias.SizeBytes : sizeBytes,
-            Kind = kind,
-            Scene = scene,
-            Clip = clip,
-        });
+            var json = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF');
+            var take = ClipTakeNaming.ParseCurrentTakePointer(json);
+            return ClipTakeNaming.CurrentTakePath(scene, clip, take);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<string?> GetCurrentTakeBlobUrlAsync(string projectId, int scene, int clip, long? expectedSizeBytes = null)
+    {
+        var rel = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip);
+        if (string.IsNullOrWhiteSpace(rel))
+            return null;
+        return expectedSizeBytes is long exp
+            ? await GetCurrentBlobUrlAsync(projectId, rel, exp)
+            : await GetLocalBlobUrlAsync(projectId, rel);
     }
 
     private static string MediaKind(bool isCredits, bool isMusic, bool isSpeakBatch)
@@ -1506,7 +1501,8 @@ public sealed class ClientMediaFolderService
         string? trimUrl = null;
         try
         {
-            var prevRelPath = $"assets/video/scene_{scene:D2}_clip_{clip - 1:D2}.mp4";
+            var prevRelPath = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip - 1)
+                ?? ClipTakeNaming.TakeRelativePath(scene, clip - 1, 1);
             var sourceUrl = await GetLocalBlobUrlAsync(projectId, prevRelPath);
             if (string.IsNullOrWhiteSpace(sourceUrl))
             {
@@ -1556,7 +1552,8 @@ public sealed class ClientMediaFolderService
         if (!IsConnected) return null;
         try
         {
-            var relPath = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var relPath = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip)
+                ?? ClipTakeNaming.TakeRelativePath(scene, clip, 1);
             if (!await IsLocalCopyCurrentAsync(projectId, relPath, expectedSizeBytes)) return null;
             var clientPath = $"{projectId}/{relPath}";
             var res = await _js.InvokeAsync<JsBytesResult>("PageToMovieMedia.getBytesAsync", clientPath);

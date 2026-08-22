@@ -69,8 +69,11 @@ public class CreditsTakeUploadApiTests : IClassFixture<PageToMovieApiFactory>
 
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_01.mp4")));
         Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4")));
-        Assert.True(File.Exists(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
+        Assert.False(File.Exists(Path.Combine(videoDir, "scene_02_clip_01.mp4")));
         Assert.Equal(2, ClipSidecarService.ReadCurrentTake(videoDir, 2, 1));
+        Assert.Equal(
+            Path.Combine(videoDir, "scene_02_clip_01_take_02.mp4"),
+            ClipSidecarService.CurrentTakePath(videoDir, 2, 1));
 
         var promoted = await store.PromoteClipVersionAsync(projectId, 2, 1, "scene_02_clip_01_take_01.mp4");
         Assert.True(promoted);

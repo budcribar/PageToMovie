@@ -1,3 +1,5 @@
+using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -68,5 +70,10 @@ public sealed class MediaSyncLocator
 
     public Task<MediaSyncStatus> GetClipStatusAsync(
         string projectId, string projectDir, int scene, int clip, CancellationToken ct = default)
-        => GetStatusAsync(projectId, projectDir, MediaRegistryService.ClipRelativePath(scene, clip), ct);
+    {
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var rel = ClipSidecarService.CurrentTakeRelativePath(videoDir, scene, clip)
+            ?? ClipTakeNaming.TakeRelativePath(scene, clip, 1);
+        return GetStatusAsync(projectId, projectDir, rel, ct);
+    }
 }

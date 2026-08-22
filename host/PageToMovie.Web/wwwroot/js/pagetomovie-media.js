@@ -422,6 +422,9 @@ window.PageToMovieMedia = {
             const nameLower = entry.name.toLowerCase();
             if (entry.kind !== "file" || !nameLower.startsWith(prefix) || !nameLower.endsWith(ext))
                 continue;
+            // Leftover bare alias (scene_SS_clip_CC.mp4) is not the player file.
+            if (/^scene_\d+_clip_\d+\.mp4$/i.test(entry.name))
+                continue;
             try {
                 const f = await entry.getFile();
                 if (f && f.size >= 1024 && f.lastModified > bestMtime) {
