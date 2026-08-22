@@ -26,6 +26,12 @@ public static class CutPlayClock
 
     public static bool BlazorOwnsVideoSrc(bool isPlaying) => !isPlaying;
 
+    /// <summary>
+    /// Freeze preview markup while playing so a wait-overlay render
+    /// cannot reset <c>video.src</c> and blank the picture.
+    /// </summary>
+    public static bool FreezePreviewMarkup(bool isPlaying) => isPlaying;
+
     public static bool ShouldAdvanceNative(double localSec, double localEnd) =>
         localSec >= localEnd - AdvanceEpsilonSec;
 

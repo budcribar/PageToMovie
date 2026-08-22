@@ -14,6 +14,8 @@ public class CutPlayClockTests
         Assert.True(CutPlayClock.ShouldRebindPlayback(samePlayer: false));
         Assert.False(CutPlayClock.BlazorOwnsVideoSrc(isPlaying: true));
         Assert.True(CutPlayClock.BlazorOwnsVideoSrc(isPlaying: false));
+        Assert.True(CutPlayClock.FreezePreviewMarkup(isPlaying: true));
+        Assert.False(CutPlayClock.FreezePreviewMarkup(isPlaying: false));
     }
 
     [Fact]

@@ -25,6 +25,8 @@
             totalSec: 0,
             liveText: true,
         },
+        _playSurfaces: { clipA: null, clipB: null, movie: null, front: null },
+        _playSwapSeq: 0,
         _textOverlayEl: null,
         _textCues: [],
     };
@@ -731,7 +733,12 @@
         return cut.bindPlayback(el, dotNetRef);
     };
 
-    cut.unbindPlayback = function (el) {
+    function playSurfaceList() {
+        const s = cut._playSurfaces || {};
+        return [s.clipA, s.clipB, s.movie].filter(Boolean);
+    }
+
+    function unbindOne(el) {
         if (!el) return;
         if (el._cutTimeHandler)
             el.removeEventListener("timeupdate", el._cutTimeHandler);
@@ -739,6 +746,14 @@
             el.removeEventListener("ended", el._cutEndedHandler);
         el._cutTimeHandler = null;
         el._cutEndedHandler = null;
+    }
+
+    cut.unbindPlayback = function (el) {
+        const list = playSurfaceList();
+        if (el && list.indexOf(el) < 0)
+            list.push(el);
+        for (let i = 0; i < list.length; i++)
+            unbindOne(list[i]);
     };
 
     function formatPlayClock(seconds) {
@@ -791,12 +806,42 @@
         cut.paintTextOverlay(t);
     };
 
+    function showOnlyPlaySurface(el) {
+        const s = cut._playSurfaces || {};
+        const all = [s.clipA, s.clipB, s.movie];
+        for (let i = 0; i < all.length; i++) {
+            const v = all[i];
+            if (!v || !v.classList) continue;
+            v.classList.toggle("is-off", v !== el);
+        }
+        s.front = el || null;
+        cut.setLiveTextOverlay(!!el && el !== s.movie);
+    }
+
     cut.setPreviewSurface = function (movieEl, clipEl, showMovie) {
-        if (movieEl && movieEl.classList)
-            movieEl.classList.toggle("is-off", !showMovie);
-        if (clipEl && clipEl.classList)
-            clipEl.classList.toggle("is-off", !!showMovie);
-        cut.setLiveTextOverlay(!showMovie);
+        if (movieEl)
+            cut._playSurfaces.movie = movieEl;
+        if (clipEl)
+            cut._playSurfaces.clipA = clipEl;
+        showOnlyPlaySurface(showMovie ? (movieEl || cut._playSurfaces.movie) : (clipEl || cut._playSurfaces.clipA));
+    };
+
+    cut.bindPlaySurfaces = function (clipA, clipB, movie) {
+        const s = cut._playSurfaces;
+        if (clipA) s.clipA = clipA;
+        if (clipB) s.clipB = clipB;
+        if (movie) s.movie = movie;
+    };
+
+    cut.resetPlaySurfaces = function () {
+        cut._playSwapSeq++;
+        cut._playSurfaces.front = null;
+    };
+
+    cut.pausePlaySurfaces = function () {
+        const list = playSurfaceList();
+        for (let i = 0; i < list.length; i++)
+            cut.pauseVideo(list[i]);
     };
 
     cut.setLiveTextOverlay = function (on) {
@@ -861,15 +906,19 @@
     };
 
     cut.readCurrentTime = function (el) {
-        const t = el && typeof el.currentTime === "number" ? el.currentTime : 0;
+        const front = cut._playSurfaces && cut._playSurfaces.front;
+        const v = front || el;
+        const t = v && typeof v.currentTime === "number" ? v.currentTime : 0;
         return Number.isFinite(t) && t > 0 ? t : 0;
     };
 
-    cut.bindPlayback = function (el, dotNetRef) {
-        if (!el || !dotNetRef) return { success: false };
-        cut.unbindPlayback(el);
+    function bindOnePlayback(el, dotNetRef) {
+        if (!el || !dotNetRef) return;
+        unbindOne(el);
         el._cutAdvanceSent = false;
         el._cutTimeHandler = function () {
+            if (cut._playSurfaces.front && el !== cut._playSurfaces.front)
+                return;
             const local = el.currentTime || 0;
             cut.paintPlayhead(cut.timelineFromMedia(local));
             if (cut._playClock.mode === "native"
@@ -882,10 +931,24 @@
             }
         };
         el._cutEndedHandler = function () {
+            if (cut._playSurfaces.front && el !== cut._playSurfaces.front)
+                return;
             invokeQuiet(dotNetRef, "OnEnded");
         };
         el.addEventListener("timeupdate", el._cutTimeHandler);
         el.addEventListener("ended", el._cutEndedHandler);
+    }
+
+    cut.bindPlayback = function (el, dotNetRef) {
+        if (!dotNetRef) return { success: false };
+        cut.unbindPlayback(el);
+        const list = playSurfaceList();
+        if (el && list.indexOf(el) < 0)
+            list.push(el);
+        for (let i = 0; i < list.length; i++)
+            bindOnePlayback(list[i], dotNetRef);
+        if (!cut._playSurfaces.front && el)
+            cut._playSurfaces.front = el;
         return { success: true };
     };
 
@@ -1006,33 +1069,116 @@
         }
     };
 
-    cut.playUrlAt = function (el, url, seconds) {
-        if (!el || !url) return;
-        el._cutAdvanceSent = false;
-        const t = Number(seconds);
-        const seek = Number.isFinite(t) && t >= 0 ? t : 0;
-        const start = function () {
-            try {
-                el.currentTime = seek;
-            } catch (err) {
-                console.debug("Cut: playUrlAt seek", err);
+    function playUrlOf(video) {
+        if (!video) return "";
+        return video.currentSrc || video.src || video.getAttribute("src") || "";
+    }
+
+    function incomingPlayEl(surface) {
+        const s = cut._playSurfaces || {};
+        if (surface === "movie")
+            return s.movie;
+        if (s.front === s.clipA)
+            return s.clipB || s.clipA;
+        if (s.front === s.clipB)
+            return s.clipA || s.clipB;
+        return s.clipA;
+    }
+
+    function preparePlayAt(video, url, seconds) {
+        return new Promise(function (resolve) {
+            if (!video || !url) {
+                resolve(false);
+                return;
             }
-            cut.playVideo(el);
-        };
-        const same = el.currentSrc === url || el.src === url;
-        if (same && el.readyState >= 1) {
-            start();
+            const t = Number(seconds);
+            const seek = Number.isFinite(t) && t >= 0 ? t : 0;
+            let settled = false;
+            let timer = 0;
+            const finish = function (ok) {
+                if (settled) return;
+                settled = true;
+                video.removeEventListener("seeked", onSeeked);
+                video.removeEventListener("loadedmetadata", onMeta);
+                video.removeEventListener("loadeddata", onMeta);
+                video.removeEventListener("error", onErr);
+                clearTimeout(timer);
+                resolve(!!ok);
+            };
+            const onErr = function () { finish(false); };
+            const onSeeked = function () {
+                if (typeof video.requestVideoFrameCallback === "function") {
+                    video.requestVideoFrameCallback(function () { finish(true); });
+                    return;
+                }
+                finish(video.readyState >= 2);
+            };
+            const onMeta = function () {
+                try {
+                    if (Math.abs((video.currentTime || 0) - seek) < 0.02 && video.readyState >= 2) {
+                        finish(true);
+                        return;
+                    }
+                    video.currentTime = seek;
+                } catch (err) {
+                    finish(false);
+                }
+            };
+            timer = setTimeout(function () { finish(video.readyState >= 2); }, 1500);
+            video.addEventListener("seeked", onSeeked);
+            video.addEventListener("error", onErr);
+            video.muted = true;
+            video.preload = "auto";
+            const same = playUrlOf(video) === url;
+            if (same && video.readyState >= 1) {
+                onMeta();
+                return;
+            }
+            video.addEventListener("loadedmetadata", onMeta);
+            video.addEventListener("loadeddata", onMeta);
+            video.src = url;
+        });
+    }
+
+    function swapPlayTo(incoming, url, seconds, play) {
+        if (!incoming || !url)
+            return Promise.resolve();
+        const seq = play ? ++cut._playSwapSeq : cut._playSwapSeq;
+        incoming._cutAdvanceSent = false;
+        return preparePlayAt(incoming, url, seconds).then(function (ok) {
+            if (play && seq !== cut._playSwapSeq)
+                return;
+            if (!play) {
+                if (incoming !== cut._playSurfaces.front)
+                    cut.pauseVideo(incoming);
+                return;
+            }
+            const hasFrame = ok || incoming.readyState >= 2;
+            if (!hasFrame && cut._playSurfaces.front)
+                return;
+            const outgoing = cut._playSurfaces.front;
+            if (outgoing && outgoing !== incoming)
+                cut.pauseVideo(outgoing);
+            incoming.muted = false;
+            cut.playVideo(incoming);
+            showOnlyPlaySurface(incoming);
+        });
+    }
+
+    cut.primeUrlAt = function (url, seconds, surface) {
+        const incoming = incomingPlayEl(surface || "native");
+        if (!incoming || incoming === cut._playSurfaces.front)
             return;
-        }
-        const onReady = function () {
-            el.removeEventListener("loadedmetadata", onReady);
-            start();
-        };
-        el.addEventListener("loadedmetadata", onReady);
-        if (!same)
-            el.src = url;
-        else if (el.readyState < 1)
-            el.load();
+        swapPlayTo(incoming, url, seconds, false);
+    };
+
+    cut.playUrlAt = function (el, url, seconds) {
+        if (!url) return Promise.resolve();
+        const s = cut._playSurfaces || {};
+        const surface = (el && el === s.movie) ? "movie" : "native";
+        const incoming = incomingPlayEl(surface) || el;
+        if (!incoming) return Promise.resolve();
+        return swapPlayTo(incoming, url, seconds, true);
     };
 
     cut.downloadUrlAs = function (url, fileName) {

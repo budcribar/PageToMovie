@@ -11,8 +11,10 @@ public partial class Home : IAsyncDisposable
 {
     [Inject] private IJSRuntime? Js { get; set; }
 
-    internal ElementReference ClipPlayer { get; set; }
-    internal ElementReference MoviePlayer { get; set; }
+    private CutPreviewVideos? _preview;
+    internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
+    internal ElementReference ClipStandby => _preview?.ClipStandby ?? default;
+    internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
     internal ElementReference TextOverlay { get; set; }
     private CutClip? _selected;
     private bool _folderBusy;
@@ -449,11 +451,12 @@ public partial class Home : IAsyncDisposable
         {
             try
             {
+                await BindPlaySurfacesAsync();
+                await Js.InvokeVoidAsync(PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local);
                 await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow",
                     "native", window.Value.TimelineStart, window.Value.LocalStart, window.Value.LocalEnd);
-                await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
-                await Js.InvokeVoidAsync(PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local);
-                await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, false);
+                await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", timelineSec);
+                await PrimeAheadAsync(window.Value);
             }
             catch (JSException)
             {
@@ -480,10 +483,10 @@ public partial class Home : IAsyncDisposable
         {
             try
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
-                await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
+                await BindPlaySurfacesAsync();
                 await Js.InvokeVoidAsync(PlayUrlAtJs, MoviePlayer, url, _playhead);
-                await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, true);
+                await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow", "movie", 0, 0, 0);
+                await Js.InvokeVoidAsync("PageToMovieCut.paintPlayhead", _playhead);
             }
             catch (JSException)
             {
@@ -501,8 +504,7 @@ public partial class Home : IAsyncDisposable
         {
             try
             {
-                await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
-                await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
+                await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces");
             }
             catch (JSException)
             {
@@ -596,6 +598,8 @@ public partial class Home : IAsyncDisposable
         _playGen++;
         CancelCompose();
         DisposeTimeSink();
+        if (Js is not null)
+            _ = Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces");
         _ = PausePlayersAsync();
     }
 
@@ -605,6 +609,7 @@ public partial class Home : IAsyncDisposable
             return;
         try
         {
+            await Js.InvokeVoidAsync("PageToMovieCut.pausePlaySurfaces");
             await Js.InvokeVoidAsync(PauseVideoJs, MoviePlayer);
             await Js.InvokeVoidAsync(PauseVideoJs, ClipPlayer);
         }
@@ -612,6 +617,29 @@ public partial class Home : IAsyncDisposable
         {
             // pause is best-effort while the player remounts
         }
+    }
+
+    private async Task BindPlaySurfacesAsync()
+    {
+        if (Js is null || _preview is null)
+            return;
+        await Js.InvokeVoidAsync("PageToMovieCut.bindPlaySurfaces", ClipPlayer, ClipStandby, MoviePlayer);
+    }
+
+    private async Task PrimeAheadAsync(CutJitPlay.Window current)
+    {
+        if (Js is null || !CutPlaySwap.ShouldPrimeNextHop)
+            return;
+        var next = CutPlaySwap.NextHardHop(Folder.Clips, current);
+        if (next is { } hop && !string.IsNullOrWhiteSpace(hop.Clip.PreviewUrl))
+        {
+            await Js.InvokeVoidAsync("PageToMovieCut.primeUrlAt", hop.Clip.PreviewUrl, hop.LocalStart, "native");
+            return;
+        }
+
+        var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
+        if (CutPlaySwap.ShouldPrimeMovie(Folder.Clips, current) && !string.IsNullOrWhiteSpace(playUrl))
+            await Js.InvokeVoidAsync("PageToMovieCut.primeUrlAt", playUrl, current.TimelineEnd, "movie");
     }
 
     private void CancelCompose()
@@ -761,6 +789,20 @@ public partial class Home : IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        try
+        {
+            await BindPlaySurfacesAsync();
+            if (!IsPlaying && Js is not null)
+            {
+                await Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces");
+                await Js.InvokeVoidAsync("PageToMovieCut.setPreviewSurface", MoviePlayer, ClipPlayer, ShowMovie);
+            }
+        }
+        catch (JSException)
+        {
+            // surfaces mount with the preview stage
+        }
+
         if (!_needTextCues)
             return;
         _needTextCues = false;
