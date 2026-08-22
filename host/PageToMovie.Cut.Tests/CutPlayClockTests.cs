@@ -24,6 +24,10 @@ public class CutPlayClockTests
         Assert.True(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: true));
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: true, waiting: false));
         Assert.False(CutPlayClock.ShouldResumeOnPrefix(wantPlay: false, waiting: true));
+        Assert.False(CutPlayClock.ShouldContinuePlayOnPrefixEnded);
+        Assert.False(CutPlayClock.ShouldResetPlayheadOnStop);
+        Assert.False(CutPlayClock.ShouldSnapPlayheadOnScrubEnd);
+        Assert.False(CutPlayClock.ShouldPaintPlayheadWhilePaused);
         Assert.False(CutPlayClock.ShouldRestartNativeOnPrefixGrow);
         Assert.False(CutPlayClock.ShouldReplaceMergeSrcWhilePlaying);
         Assert.True(CutPlayClock.ShouldSwitchToMergeOnPrefix(true, false, true));

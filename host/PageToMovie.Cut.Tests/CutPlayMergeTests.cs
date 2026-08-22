@@ -76,6 +76,87 @@ public class CutPlayMergeTests
     }
 
     [Fact]
+    public void Prefix_ended_waits_at_the_ready_edge_and_does_not_rewind()
+    {
+        var a = NewClip(1, 1, 4);
+        var b = NewClip(1, 2, 4);
+        var c = NewClip(2, 1, 5);
+        var clips = new[] { a, b, c };
+        var s01End = CutPlayMerge.MergeReadyThroughSec(clips, 2);
+
+        Assert.Equal(8, s01End, 5);
+        Assert.False(CutPlayMerge.ShouldContinueAfterPrefixEnded);
+        Assert.False(CutPlayClock.ShouldContinuePlayOnPrefixEnded);
+        Assert.False(CutPlayMerge.PrefixEndedIsStop(s01End, CutJitPlay.TotalSec(clips), 2, clips.Length));
+        Assert.True(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 2, out var edge));
+        Assert.Equal(8, edge, 5);
+        Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 2, edge, CutJitPlay.At(clips, 0)));
+        Assert.True(CutPlayMerge.WouldRewindMerge(currentPlayhead: 8, targetPlayhead: 4));
+        Assert.False(CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek: false));
+        Assert.True(CutPlayMerge.ShouldSeekMergeWhilePlaying(userSeek: true));
+
+        Assert.True(CutPlayMerge.PrefixEndedIsStop(13, 13, 3, clips.Length));
+        Assert.False(CutPlayMerge.TryWaitEdgeAfterPrefixEnded(clips, 3, out _));
+        Assert.Equal(3, CutPlayMerge.CoveredClipCount("blob:full", "blob:full", prefixClipCount: 1, clipCount: 3));
+        Assert.Equal(2, CutPlayMerge.CoveredClipCount("blob:s01", "blob:full", prefixClipCount: 2, clipCount: 3));
+    }
+
+    [Fact]
+    public void Last_scene_playhead_stays_at_the_marker_not_scene_start()
+    {
+        var s01a = NewClip(1, 1, 10);
+        var s01b = NewClip(1, 2, 10);
+        var s02a = NewClip(2, 1, 10);
+        var s02b = NewClip(2, 2, 10);
+        var s02c = NewClip(2, 3, 10);
+        var clips = new[] { s01a, s01b, s02a, s02b, s02c };
+        const double midLastScene = 35;
+        var first = CutJitPlay.At(clips, midLastScene);
+        Assert.NotNull(first);
+        Assert.Equal(s02b, first.Value.Clip);
+        Assert.Equal(20, CutJitPlay.SceneStartSec(clips, midLastScene), 5);
+        Assert.Equal(35, CutPlayMerge.PlaySeekSec(clips, midLastScene), 5);
+        Assert.NotEqual(CutJitPlay.SceneStartSec(clips, midLastScene), CutPlayMerge.PlaySeekSec(clips, midLastScene));
+        Assert.True(CutPlayMerge.ShouldPlayFirstStart(first, midLastScene, playMerge: false));
+        Assert.True(CutPlayMerge.ShouldPlayMerge("blob:full", clips, 5, midLastScene, first));
+        Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 2, midLastScene, first));
+    }
+
+    [Fact]
+    public void Stop_and_scrub_keep_the_playhead_where_it_is()
+    {
+        var a = NewClip(1, 1, 10);
+        var b = NewClip(2, 1, 10);
+        var c = NewClip(2, 2, 10);
+        var clips = new[] { a, b, c };
+        const double midLast = 15;
+
+        Assert.False(CutPlayMerge.ShouldResetPlayheadOnStop);
+        Assert.False(CutPlayClock.ShouldResetPlayheadOnStop);
+        Assert.Equal(12.5, CutPlayMerge.PlayheadAfterStop(12.5), 5);
+        Assert.Equal(0, CutPlayMerge.PlayheadAfterStop(0), 5);
+        Assert.False(CutPlayMerge.ShouldSnapPlayheadOnScrubEnd);
+        Assert.False(CutPlayClock.ShouldSnapPlayheadOnScrubEnd);
+        Assert.False(CutPlayClock.ShouldPaintPlayheadWhilePaused);
+        Assert.Equal(midLast, CutPlayMerge.ScrubCommitSec(clips, midLast), 5);
+        Assert.NotEqual(CutJitPlay.SceneStartSec(clips, midLast), CutPlayMerge.ScrubCommitSec(clips, midLast));
+        Assert.Equal(0, CutPlayMerge.ScrubCommitSec(clips, 0), 5);
+    }
+
+    [Fact]
+    public void Scene_join_resume_plays_forward_once_the_prefix_covers_s02()
+    {
+        var a = NewClip(1, 1, 4);
+        var b = NewClip(1, 2, 4);
+        var c = NewClip(2, 1, 5);
+        var clips = new[] { a, b, c };
+        var first = CutJitPlay.At(clips, 0);
+        Assert.False(CutPlayMerge.ShouldPlayMerge("blob:s01", clips, 2, 8, first));
+        Assert.True(CutPlayMerge.ShouldPlayMerge("blob:s01s02", clips, 3, 8, first));
+        Assert.Equal(8, CutPlayMerge.PlaySeekSec(clips, 8), 5);
+    }
+
+    [Fact]
     public void Preview_markup_freezes_while_playing_so_src_cannot_reset()
     {
         Assert.True(CutPlayClock.FreezePreviewMarkup(isPlaying: true));

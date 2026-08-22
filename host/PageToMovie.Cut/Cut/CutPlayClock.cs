@@ -17,6 +17,22 @@ public static class CutPlayClock
     public static bool ShouldResumeOnPrefix(bool wantPlay, bool waiting) =>
         wantPlay && waiting;
 
+    /// <summary>
+    /// Prefix EOF is wait-at-edge, not ContinuePlay. Seeking the same
+    /// file back to a stale playhead loops the last hops of the scene.
+    /// </summary>
+    public static bool ShouldContinuePlayOnPrefixEnded => CutPlayMerge.ShouldContinueAfterPrefixEnded;
+
+    public static bool ShouldResetPlayheadOnStop => CutPlayMerge.ShouldResetPlayheadOnStop;
+
+    public static bool ShouldSnapPlayheadOnScrubEnd => CutPlayMerge.ShouldSnapPlayheadOnScrubEnd;
+
+    /// <summary>
+    /// A paused player must not paint the needle. After Stop or a scrub
+    /// release, timeupdate/seeked on a remounted video is often t=0.
+    /// </summary>
+    public static bool ShouldPaintPlayheadWhilePaused => false;
+
     public static bool ShouldSwitchToMergeOnPrefix(bool wantPlay, bool waiting, bool playingFirstStart) =>
         CutPlayMerge.ShouldSwitchToMergeOnPrefix(wantPlay, waiting, playingFirstStart);
 

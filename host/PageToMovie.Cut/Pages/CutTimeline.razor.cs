@@ -415,13 +415,21 @@ public partial class CutTimeline
             return;
         }
 
+        if (kind == DragKind.Playhead)
+        {
+            var drop = CutPlayMerge.ScrubCommitSec(Clips, await TimeAtAsync(e.ClientX));
+            if (!CutPlayClock.ShouldSnapPlayheadOnScrubEnd)
+                await SeekToAsync(drop);
+            return;
+        }
+
         if (kind == DragKind.Range)
         {
             var t = await TimeAtAsync(e.ClientX);
             _rangeB = t;
             if (Math.Abs(_rangeB - _rangeA) < 0.08)
             {
-                await SeekToAsync(_rangeA);
+                await SeekToAsync(CutPlayMerge.ScrubCommitSec(Clips, _rangeA));
                 _rangeA = -1;
                 _rangeB = -1;
             }
@@ -539,7 +547,8 @@ public partial class CutTimeline
             _selectedTextId,
             Music?.StartSec,
             Music?.MarkIn,
-            Music?.MarkOut);
+            Music?.MarkOut,
+            PlayheadSec);
 
     private enum DragKind
     {
@@ -569,5 +578,6 @@ public partial class CutTimeline
         string? TextId,
         double? MusicStart,
         double? MusicIn,
-        double? MusicOut);
+        double? MusicOut,
+        double Playhead);
 }

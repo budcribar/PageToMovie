@@ -88,6 +88,17 @@ public static class CutJitPlay
     public static double TotalSec(IReadOnlyList<CutClip> clips) =>
         clips.Count == 0 ? 0 : TimelineEndOf(clips, clips.Count - 1);
 
+    /// <summary>Timeline start of the scene that contains <paramref name="playhead"/>.</summary>
+    public static double SceneStartSec(IReadOnlyList<CutClip> clips, double playhead)
+    {
+        if (At(clips, playhead) is not { } window)
+            return 0;
+        var i = window.Index;
+        while (i > 0 && clips[i].Scene == clips[i - 1].Scene)
+            i--;
+        return TimelineStartOf(clips, i);
+    }
+
     public static bool NeedsWait(double playhead, double readyThroughSec) =>
         NeedsWait(playhead, readyThroughSec, readyThroughSec);
 
