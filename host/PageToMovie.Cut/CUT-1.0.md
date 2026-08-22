@@ -76,9 +76,9 @@ Scene-change fades first (consecutive strip items whose **scene number differs**
 
 Short text cards at boundaries (e.g. “Chapter 1” / “Scene 1”). Not a title designer: no fonts/themes/motion library. Generate in the compose path; persist card text via slice 5.
 
-### Slice 8 — Film (not this PR)
+### Slice 8 — Film (merged)
 
-Already launched: drop leftover current-clip alias; current take is `.current.json` only.
+[PR 194](https://github.com/budcribar/PageToMovie/pull/194) merged. Film no longer writes a leftover alias MP4; current take is `.current.json` only. Do not reopen that work here.
 
 ### Slice 9 — Mount (last)
 
