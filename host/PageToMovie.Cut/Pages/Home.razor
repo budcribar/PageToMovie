@@ -66,9 +66,9 @@
             @if (_selected is not null)
             {
                 <p class="cut-muted">
-                    @if (_selected.HasDuration)
+                    @if (ShowPreviewLength)
                     {
-                        <text>@FormatSec(_selected.SlicedDurationSec)s on the track · file @FormatSec(_selected.DurationSec)s</text>
+                        <text>@PreviewLengthText</text>
                     }
                     else
                     {

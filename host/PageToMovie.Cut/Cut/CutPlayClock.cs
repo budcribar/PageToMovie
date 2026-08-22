@@ -38,6 +38,13 @@ public static class CutPlayClock
     public static bool ShouldSwitchToMergeOnPrefix(bool wantPlay, bool waiting, bool playingFirstStart) =>
         CutPlayMerge.ShouldSwitchToMergeOnPrefix(wantPlay, waiting, playingFirstStart);
 
+    public static bool ShouldSwitchToMergeOnPrefix(
+        bool wantPlay, bool waiting, bool playingFirstStart, bool atPlayingFileEnd) =>
+        CutPlayMerge.ShouldSwitchToMergeOnPrefix(wantPlay, waiting, playingFirstStart, atPlayingFileEnd);
+
+    /// <summary>One render after hop→merge or later-join swap so the caption leaves the hop file length.</summary>
+    public static bool ShouldRenderAfterMergeSwap => true;
+
     public static bool ShouldRestartNativeOnPrefixGrow => false;
 
     public static bool ShouldReplaceMergeSrcWhilePlaying => CutPlayMerge.ShouldReplaceMergeSrcWhilePlaying;

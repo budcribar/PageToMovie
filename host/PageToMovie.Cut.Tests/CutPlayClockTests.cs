@@ -41,6 +41,8 @@ public class CutPlayClockTests
         Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: false));
         Assert.False(CutPlayClock.ShouldShowPlayComposeOverlay(waiting: true, composing: true, showingMerge: true));
         Assert.True(CutPlayClock.ShouldRenderAfterComposeSettles);
+        Assert.True(CutPlayClock.ShouldRenderAfterMergeSwap);
+        Assert.True(CutPlayClock.ShouldSwitchToMergeOnPrefix(true, false, false, atPlayingFileEnd: true));
     }
 
     [Fact]
