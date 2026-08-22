@@ -129,22 +129,18 @@ public static class CutTextEdit
         return null;
     }
 
-    public static CutTextClip? TitleAt(IEnumerable<CutTextClip> titles, double timelineSec)
-    {
-        CutTextClip? hit = null;
-        foreach (var title in titles)
-        {
-            if (Contains(title, timelineSec))
-                hit = title;
-        }
-
-        return hit;
-    }
+    public static CutTextClip? TitleAt(IEnumerable<CutTextClip> titles, double timelineSec) =>
+        titles.LastOrDefault(title => Contains(title, timelineSec));
 
     public static CutTextShortcut ShortcutOf(string? key, bool ctrlOrMeta, bool textFieldFocused)
     {
         if (textFieldFocused || string.IsNullOrEmpty(key))
             return CutTextShortcut.None;
+        return ShortcutFromKey(key, ctrlOrMeta);
+    }
+
+    private static CutTextShortcut ShortcutFromKey(string key, bool ctrlOrMeta)
+    {
         if (ctrlOrMeta && key is "d" or "D")
             return CutTextShortcut.Duplicate;
         if (ctrlOrMeta && key is "c" or "C")
