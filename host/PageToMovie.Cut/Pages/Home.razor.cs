@@ -13,7 +13,7 @@ public partial class Home : IAsyncDisposable
     [Inject] private IJSRuntime? Js { get; set; }
 
     private CutPreviewVideos? _preview = null;
-    private CutTimeline? _timeline = null;
+    private CutTimeline? Timeline { get; set; }
     private string? _selectedTextId;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
@@ -94,7 +94,7 @@ public partial class Home : IAsyncDisposable
         var title = CutTextEdit.TitleAt(Folder.TextClips, _playhead) ?? SelectedTitle;
         if (title is null)
             return;
-        _timeline?.SelectTitle(title.Id);
+        Timeline?.SelectTitle(title.Id);
     }
 
     private Task OnLiveOverlayContextMenuAsync(MouseEventArgs e) =>
@@ -106,9 +106,9 @@ public partial class Home : IAsyncDisposable
     private async Task OpenOverlayTitleMenuAsync(MouseEventArgs e, string? titleId)
     {
         var id = titleId ?? SelectedTitle?.Id;
-        if (id is null || _timeline is null)
+        if (id is null || Timeline is null)
             return;
-        await _timeline.OpenTitleMenuAsync(e.ClientX, e.ClientY, id);
+        await Timeline.OpenTitleMenuAsync(e.ClientX, e.ClientY, id);
     }
 
     private void Select(CutClip clip)

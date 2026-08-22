@@ -62,7 +62,7 @@
                         var look = picked.Style;
                         <div class="cut-text-overlay is-picked"
                              data-testid="cut-text-overlay-picked"
-                             @onclick="() => _timeline?.SelectTitle(picked.Id)"
+                             @onclick="() => Timeline?.SelectTitle(picked.Id)"
                              @oncontextmenu="e => OnPickedOverlayContextMenuAsync(e, picked.Id)"
                              @oncontextmenu:preventDefault="true">
                             <p class="cut-text-overlay-line @(look.HasBar ? "has-bar" : "")"
@@ -104,7 +104,7 @@
             }
         </section>
 
-        <CutTimeline @ref="_timeline"
+        <CutTimeline @ref="Timeline"
                      Clips="Folder.Clips"
                      Selected="_selected"
                      SelectedChanged="Select"
