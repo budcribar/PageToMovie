@@ -16,7 +16,8 @@ public static class CutSplit
     public static bool TryAt(IList<CutClip> clips, double playheadSec, out CutClip? right)
     {
         right = null;
-        if (!TryLocate(clips, playheadSec, out var index, out var left, out var local))
+        IReadOnlyList<CutClip> read = clips as IReadOnlyList<CutClip> ?? [..clips];
+        if (!TryLocate(read, playheadSec, out var index, out var left, out var local))
             return false;
 
         var oldOut = left.MarkOut;
