@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using PageToMovie.Fountain;
@@ -83,6 +84,49 @@ public class ScreenplayServiceTests : IDisposable
         var sign2 = ScreenplayService.SignOff(_store, projectId);
         Assert.True(sign2.Ok);
         Assert.False(sign2.HashChanged);
+    }
+
+    [Fact]
+    public void SetSceneJoin_writes_dissolve_then_cut_removes_it()
+    {
+        const string projectId = "Demo";
+        var fountain = """
+            Title: Join Round Trip
+
+            EXT. YARD - DAY
+
+            A dog runs.
+
+            INT. KITCHEN - NIGHT
+
+            The kettle sings.
+            """;
+        Assert.True(ScreenplayService.SaveDraft(_store, projectId, fountain).Ok);
+
+        var joinSave = ScreenplayService.SetSceneJoin(_store, projectId, 2, "dissolve", "Chapter 1");
+        Assert.True(joinSave.Ok, joinSave.Error);
+        var afterJoin = ScreenplayService.Get(_store, projectId).Text;
+        Assert.Contains("DISSOLVE TO:", afterJoin, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[[CARD: Chapter 1]]", afterJoin, StringComparison.Ordinal);
+
+        var rows = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 2, ClipsOnDisk = 2, ClipsComplete = true },
+            new() { SceneNumber = 2, ClipCount = 1, ClipsOnDisk = 1, ClipsComplete = true },
+        };
+        ScreenplayService.ApplyIncomingJoins(rows, afterJoin);
+        Assert.Equal("dissolve", rows[1].IncomingJoinKind);
+        Assert.Equal("Chapter 1", rows[1].IncomingJoinCard);
+        Assert.Equal(3, rows.Sum(s => s.ClipCount));
+
+        var cutSave = ScreenplayService.SetSceneJoin(_store, projectId, 2, "cut", null);
+        Assert.True(cutSave.Ok, cutSave.Error);
+        var afterCut = ScreenplayService.Get(_store, projectId).Text;
+        Assert.DoesNotContain("DISSOLVE TO:", afterCut, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[[CARD:", afterCut, StringComparison.Ordinal);
+        ScreenplayService.ApplyIncomingJoins(rows, afterCut);
+        Assert.Equal("cut", rows[1].IncomingJoinKind);
+        Assert.Equal(3, rows.Sum(s => s.ClipCount));
     }
 
     [Fact]

@@ -44,4 +44,16 @@ public sealed class AdaptationPromptTokenTests
         Assert.DoesNotContain("{{", text);
         Assert.Contains("unlimited", text, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Production_prompt_has_mid_script_join_policy()
+    {
+        var text = await AdaptationPromptPack.LoadBookToFountainSystemPromptAsync(null);
+        Assert.Contains("BETWEEN-SCENE JOINS", text, StringComparison.Ordinal);
+        Assert.Contains("DISSOLVE TO:", text, StringComparison.Ordinal);
+        Assert.Contains("> FADE OUT.", text, StringComparison.Ordinal);
+        Assert.Contains("do NOT stamp DISSOLVE TO:", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[[CARD:", text, StringComparison.Ordinal);
+        Assert.Contains("Bare FADE TO WHITE", text, StringComparison.Ordinal);
+    }
 }

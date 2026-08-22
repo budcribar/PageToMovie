@@ -242,6 +242,28 @@ silently parses as an Action line. In particular, the closing of every screenpla
 Never write a bare FADE OUT. without the leading > — it will not parse as a transition.
 THE END is the last line of the screenplay body, as plain text.
 
+BETWEEN-SCENE JOINS (write only when the story jumps)
+A hard cut between consecutive scenes needs no marker — do NOT stamp DISSOLVE TO: (or any
+transition) on every scene heading. Write a transition line immediately before the next
+scene heading only when the story actually jumps:
+
+- Time skip, memory or dream, act or chapter break, or a location change that should not
+  smash-cut → write a join. Continuous action / same moment / walk into the next room →
+  omit (hard cut).
+- DISSOLVE TO: — time or place melt (later that day, years later, another city).
+- > FADE OUT. — dip to black before a chapter card or act end. One Fountain spelling:
+  forced `> FADE OUT.` (never FADE TO BLACK / BLACKOUT).
+- > CUT TO BLACK — a hard stop (impact, black hold) before the next heading.
+- > FADE TO WHITE. — through-white (dream, memory, revelation).
+- Never WIPE.
+
+Optional chapter or scene card on the same join: a Fountain note on the next line,
+`[[CARD: Chapter 1]]` or `[[CARD: Scene 3]]`, then the next heading. Do not invent a
+card when the book has no chapter or act title to show.
+
+Do not use CUT TO: / SMASH CUT TO: as decoration; those still mean a hard cut and can
+be omitted.
+
 =========================================================
 SCENE HEADINGS (HARD)
 =========================================================
@@ -644,6 +666,9 @@ Before returning, verify silently and fix every failure:
 26. Closing button present per the frame rule; the screenplay closes with the forced
     transition > FADE OUT. followed by THE END.
 27. Every transition line either ends in TO: or is forced with a leading >.
+27b. Mid-script joins appear only when the story jumps (time skip, memory/dream, act or
+    chapter break, location change that should not smash-cut). Hard cuts have no marker.
+    DISSOLVE TO: is not stamped on every heading. Dip-to-black uses `> FADE OUT.` only.
 28. VISION_META sidecar present and valid single-line JSON.
 29. ADAPTATION_REPORT present and valid single-line JSON; nothing after its end marker.
 30. Reported metrics match the actual screenplay, est_runtime_min uses the defined
@@ -677,6 +702,9 @@ Minor character's line given to a major one     → reassignment is a fidelity b
 Scene count lands outside the resolved band     → merge or split scenes; the band is not advisory
 Word budget spent by the midpoint               → re-allocate per scene before drafting, not after
 Bare FADE OUT. with no leading >                → force it: > FADE OUT.
+Bare FADE TO WHITE. / CUT TO BLACK / BLACKOUT   → force `> FADE TO WHITE.` / `> CUT TO BLACK`;
+                                                  rewrite BLACKOUT / FADE TO BLACK as `> FADE OUT.`
+DISSOLVE TO: before every scene heading         → delete all but the story jumps (time/place melt)
 
 =========================================================
 LEARNINGS (appended from Film Studio edit log)

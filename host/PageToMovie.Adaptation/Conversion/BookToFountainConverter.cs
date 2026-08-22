@@ -2873,6 +2873,7 @@ promptVersion: "stage1-book-chunk-v2",
         header.AppendLine("- Full story arc (do not drop the ending).");
         header.AppendLine("- Remove duplicate cold opens / repeated setups when chunks overlap.");
         header.AppendLine("- One FADE OUT / THE END at the finish.");
+        header.AppendLine("- Mid-script transitions only when the story jumps; do not stamp DISSOLVE TO: on every heading.");
         header.AppendLine("- Preserve book-faithful dialogue; do not re-paraphrase iconic lines.");
         header.AppendLine("- No markdown fences, no JSON, no commentary.");
         header.AppendLine("- Do not include = page N or [[page N]] tags.");

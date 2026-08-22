@@ -1,0 +1,29 @@
+@* Between-scene join on the Film list. The dropdown IS the Fountain transition
+   before the next heading. Card is the [[CARD: …]] note on the same join. *@
+<div class="list-group-item py-1 px-2 scene-join-row d-flex align-items-center gap-2"
+     data-testid="scene-join-row"
+     data-before-scene="@BeforeScene"
+     @onclick:stopPropagation="true">
+    <span class="flex-shrink-0 small text-muted" style="font-size:0.7rem; min-width:2.2rem;">Join</span>
+    <select class="form-select form-select-sm py-0 px-1 bg-dark text-light border-secondary"
+            style="font-size:0.75rem; height:24px; max-width:9.5rem;"
+            data-testid="scene-join-kind"
+            disabled="@Disabled"
+            value="@Kind"
+            @onchange="OnKindChanged">
+        <option value="cut">Cut</option>
+        <option value="dissolve">Dissolve</option>
+        <option value="dip">Dip to black</option>
+        <option value="fadewhite">Fade to white</option>
+        <option value="cuttoblack">Cut to black</option>
+    </select>
+    <input type="text"
+           class="form-control form-control-sm py-0 px-1 bg-dark text-light border-secondary"
+           style="font-size:0.75rem; height:24px;"
+           data-testid="scene-join-card"
+           placeholder="Card (optional)"
+           disabled="@Disabled"
+           value="@Card"
+           @onchange="OnCardChanged"
+           title="Optional chapter or scene card on this join" />
+</div>

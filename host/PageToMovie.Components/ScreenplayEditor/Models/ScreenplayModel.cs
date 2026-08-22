@@ -67,7 +67,11 @@ public enum TransitionPreset
     [Description("SMASH CUT TO:")]
     SmashCutTo,
     [Description("BLACKOUT")]
-    Blackout
+    Blackout,
+    [Description("> FADE TO WHITE.")]
+    FadeToWhite,
+    [Description("> CUT TO BLACK")]
+    CutToBlack
 }
 
 public enum ComponentVariant
@@ -133,6 +137,8 @@ public static class EnumExtensions
         TransitionPreset.DissolveTo => "DISSOLVE TO:",
         TransitionPreset.SmashCutTo => "SMASH CUT TO:",
         TransitionPreset.Blackout => "BLACKOUT",
+        TransitionPreset.FadeToWhite => "> FADE TO WHITE.",
+        TransitionPreset.CutToBlack => "> CUT TO BLACK",
         _ => "CUT TO:"
     };
 
@@ -171,6 +177,8 @@ public static class EnumExtensions
         TransitionPreset.DissolveTo => "DISSOLVE TO: — One image melts into the next (soft time/place change).",
         TransitionPreset.SmashCutTo => "SMASH CUT TO: — Abrupt, jarring cut for emphasis or shock.",
         TransitionPreset.Blackout => "BLACKOUT — Screen goes black; a hard stop or blackout beat.",
+        TransitionPreset.FadeToWhite => "FADE TO WHITE. — Image fades through white (dream, memory, or revelation).",
+        TransitionPreset.CutToBlack => "CUT TO BLACK — Instant black; a hard stop before the next scene.",
         _ => "Transition — how we leave this moment and enter the next."
     };
 
@@ -213,7 +221,11 @@ public static class EnumExtensions
         if (string.IsNullOrWhiteSpace(text)) return TransitionPreset.CutTo;
         var upper = text.Trim().ToUpperInvariant();
         if (upper.Contains("FADE IN")) return TransitionPreset.FadeIn;
-        if (upper.Contains("FADE OUT")) return TransitionPreset.FadeOut;
+        if (upper.Contains("FADE TO WHITE") || (upper.Contains("FADE") && upper.Contains("WHITE")))
+            return TransitionPreset.FadeToWhite;
+        if (upper.Contains("CUT TO BLACK") || (upper.Contains("CUT") && upper.Contains("BLACK") && !upper.Contains("FADE")))
+            return TransitionPreset.CutToBlack;
+        if (upper.Contains("FADE OUT") || upper.Contains("FADE TO BLACK")) return TransitionPreset.FadeOut;
         if (upper.Contains("DISSOLVE")) return TransitionPreset.DissolveTo;
         if (upper.Contains("SMASH")) return TransitionPreset.SmashCutTo;
         if (upper.Contains("BLACK")) return TransitionPreset.Blackout;

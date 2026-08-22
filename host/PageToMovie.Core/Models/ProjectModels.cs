@@ -986,6 +986,14 @@ public sealed class SceneSummary
     /// "Audio Takes" affordance on the all-scenes overview).</summary>
     public bool HasBackgroundMusic { get; set; }
 
+    /// <summary>
+    /// Fountain join immediately before this scene heading (Film between-scene row).
+    /// Wire: cut | dissolve | dip | fadewhite | cuttoblack. Omitted / cut = hard cut.
+    /// </summary>
+    public string IncomingJoinKind { get; set; } = "cut";
+    /// <summary>Optional chapter/scene card text from the Fountain <c>[[CARD: …]]</c> note on the same join.</summary>
+    public string? IncomingJoinCard { get; set; }
+
     /// <summary>User holding scene lock (Phase D), if any.</summary>
     public string? LockOwnerUserId { get; set; }
     /// <summary>True when locked by a different user than the caller.</summary>

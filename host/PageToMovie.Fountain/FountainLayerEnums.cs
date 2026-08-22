@@ -85,7 +85,11 @@ public enum FountainTransitionPreset
     [Description("SMASH CUT TO:")]
     SmashCutTo = 4,
     [Description("BLACKOUT")]
-    Blackout = 5
+    Blackout = 5,
+    [Description("> FADE TO WHITE.")]
+    FadeToWhite = 6,
+    [Description("> CUT TO BLACK")]
+    CutToBlack = 7
 }
 
 /// <summary>
@@ -149,6 +153,8 @@ public static class FountainLayerEnumExtensions
         FountainTransitionPreset.DissolveTo => "DISSOLVE TO:",
         FountainTransitionPreset.SmashCutTo => "SMASH CUT TO:",
         FountainTransitionPreset.Blackout => "BLACKOUT",
+        FountainTransitionPreset.FadeToWhite => "> FADE TO WHITE.",
+        FountainTransitionPreset.CutToBlack => "> CUT TO BLACK",
         _ => "CUT TO:"
     };
 
