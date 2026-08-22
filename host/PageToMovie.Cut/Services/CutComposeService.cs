@@ -17,6 +17,7 @@ public sealed class CutComposeService : IAsyncDisposable
     private readonly IJSRuntime _js;
     private string? _audioUrl;
     public string? MoviePreviewUrl { get; private set; }
+    public bool HasCachedMoviePreview => CutComposeContract.CanReusePreview(MoviePreviewUrl);
 
     public CutComposeService(IJSRuntime js) => _js = js;
 
@@ -73,8 +74,16 @@ public sealed class CutComposeService : IAsyncDisposable
     public async Task<string?> PreviewMovieAsync(
         IReadOnlyList<CutClip> clips,
         Action<int, string> progress,
-        CancellationToken cancellationToken = default) =>
-        await ComposeAsync(clips, download: false, progress, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (HasCachedMoviePreview)
+        {
+            progress(100, "Ready");
+            return MoviePreviewUrl;
+        }
+
+        return await ComposeAsync(clips, download: false, progress, cancellationToken);
+    }
 
     public async Task<string?> ExportMovieAsync(
         IReadOnlyList<CutClip> clips,

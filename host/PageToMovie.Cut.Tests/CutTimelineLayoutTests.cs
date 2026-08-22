@@ -95,7 +95,7 @@ public class CutTimelineLayoutTests
     }
 
     [Fact]
-    public void Join_ticks_sit_between_clips_and_honor_scene_and_fountain()
+    public void Marks_scenes_not_same_scene_hard_cuts()
     {
         var a = NewClip(1, 1, duration: 4);
         var b = NewClip(1, 2, duration: 4);
@@ -104,20 +104,58 @@ public class CutTimelineLayoutTests
         b.FountainTransition = "DISSOLVE TO:";
 
         var layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
-        Assert.Equal(2, layout.Joins.Count);
-        Assert.Equal(CutJoinKind.Cut, layout.Joins[0].Kind);
-        Assert.False(layout.Joins[0].SceneChange);
-        Assert.Equal(4, layout.Joins[0].AtSec);
-        Assert.Equal(40, layout.Joins[0].AtPx);
-        Assert.Equal(CutJoinKind.Dissolve, layout.Joins[1].Kind);
-        Assert.True(layout.Joins[1].SceneChange);
-        Assert.Equal(8, layout.Joins[1].AtSec);
+        Assert.Equal(3, layout.Lanes.Count);
+        Assert.Equal(2, layout.Scenes.Count);
+        Assert.Equal("S01", layout.Scenes[0].Label);
+        Assert.Equal(2, layout.Scenes[0].ClipCount);
+        Assert.Equal(0, layout.Scenes[0].StartSec);
+        Assert.Equal(8, layout.Scenes[0].WidthSec);
+        Assert.Equal("S02", layout.Scenes[1].Label);
+        Assert.Equal(1, layout.Scenes[1].ClipCount);
+        Assert.Equal(8, layout.Scenes[1].StartSec);
+
+        var tick = Assert.Single(layout.Joins);
+        Assert.Equal(CutJoinKind.Dissolve, tick.Kind);
+        Assert.True(tick.SceneChange);
+        Assert.Equal(8, tick.AtSec);
+        Assert.Equal(80, tick.AtPx);
+
+        b.FountainTransition = "CUT TO:";
+        layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
+        Assert.Empty(layout.Joins);
+        Assert.Equal(2, layout.Scenes.Count);
 
         b.JoinOverride = CutJoinKind.FadeWhite;
         layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
-        Assert.Equal(CutJoinKind.FadeWhite, layout.Joins[1].Kind);
-        Assert.Equal("Fade to white", CutTransitionMap.TickLabel(layout.Joins[1].Kind));
+        Assert.Equal(CutJoinKind.FadeWhite, Assert.Single(layout.Joins).Kind);
+        Assert.Equal("Fade to white", CutTransitionMap.TickLabel(layout.Joins[0].Kind));
     }
+
+    [Fact]
+    public void Zoom_and_fit_stay_inside_px_per_sec_bounds()
+    {
+        Assert.Equal(36, CutTimelineLayout.FitPxPerSec(0, 800));
+        Assert.Equal(40, CutTimelineLayout.FitPxPerSec(20, 800), 5);
+        Assert.Equal(CutTimelineLayout.MinPxPerSec, CutTimelineLayout.FitPxPerSec(400, 80));
+        Assert.Equal(CutTimelineLayout.MaxPxPerSec, CutTimelineLayout.FitPxPerSec(2, 2000));
+
+        var inOnce = CutTimelineLayout.ZoomInPxPerSec(CutTimelineLayout.DefaultPxPerSec);
+        Assert.Equal(CutTimelineLayout.DefaultPxPerSec * CutTimelineLayout.ZoomFactor, inOnce, 5);
+        Assert.Equal(CutTimelineLayout.MaxPxPerSec, CutTimelineLayout.ZoomInPxPerSec(CutTimelineLayout.MaxPxPerSec));
+        Assert.Equal(CutTimelineLayout.MinPxPerSec, CutTimelineLayout.ZoomOutPxPerSec(CutTimelineLayout.MinPxPerSec));
+        Assert.Equal(CutTimelineLayout.DefaultPxPerSec, CutTimelineLayout.ZoomOutPxPerSec(inOnce), 5);
+        Assert.Equal(CutTimelineLayout.MaxPxPerSec, CutTimelineLayout.ClampPxPerSec(999));
+    }
+
+    [Theory]
+    [InlineData(CutJoinKind.Cut, false)]
+    [InlineData(CutJoinKind.Unset, false)]
+    [InlineData(CutJoinKind.Dissolve, true)]
+    [InlineData(CutJoinKind.Dip, true)]
+    [InlineData(CutJoinKind.FadeWhite, true)]
+    [InlineData(CutJoinKind.CutToBlack, true)]
+    public void Join_tick_only_for_visible_scene_look(CutJoinKind kind, bool show) =>
+        Assert.Equal(show, CutTimelineLayout.ShowsJoinTick(kind));
 
     [Fact]
     public void HitTest_maps_stitched_time_through_keep_windows()

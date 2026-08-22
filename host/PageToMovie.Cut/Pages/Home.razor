@@ -60,22 +60,34 @@
                 {
                     <p class="cut-error">@(_selected.MissingReason ?? "This clip is missing.")</p>
                 }
-                else if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
-                {
-                    <video @ref="MoviePlayer"
-                           class="cut-preview-video"
-                           src="@Compose.MoviePreviewUrl"
-                           playsinline
-                           preload="auto"></video>
-                }
                 else
                 {
-                    <video @ref="ClipPlayer"
-                           class="cut-preview-video"
-                           src="@_selected.PreviewUrl"
-                           playsinline
-                           preload="metadata"
-                           @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                    <div class="cut-preview-stage">
+                        @if (!string.IsNullOrWhiteSpace(Compose.MoviePreviewUrl))
+                        {
+                            <video @ref="MoviePlayer"
+                                   class="cut-preview-video"
+                                   src="@Compose.MoviePreviewUrl"
+                                   playsinline
+                                   preload="auto"></video>
+                        }
+                        else
+                        {
+                            <video @ref="ClipPlayer"
+                                   class="cut-preview-video"
+                                   src="@_selected.PreviewUrl"
+                                   playsinline
+                                   preload="metadata"
+                                   @onloadedmetadata="OnPreviewMetadataAsync"></video>
+                        }
+                        @if (ShowComposeOverlay)
+                        {
+                            <div class="cut-compose-overlay" data-testid="cut-compose-overlay" role="status" aria-live="polite">
+                                <div class="cut-compose-spinner" aria-hidden="true"></div>
+                                <p class="cut-compose-copy">@ProgressMessage @ProgressPercent%</p>
+                            </div>
+                        }
+                    </div>
                 }
                 <p class="cut-muted">
                     @if (_selected.HasDuration)

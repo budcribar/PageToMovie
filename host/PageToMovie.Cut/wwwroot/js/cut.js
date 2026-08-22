@@ -88,15 +88,19 @@
         return { start: start, keep: Math.max(0.1, end - start) };
     }
 
-    function buildTrimArgs(inName, outName, start, keep) {
+    function buildTrimArgs(inName, outName, start, keep, silentAudio) {
         const args = ["-hide_banner", "-y"];
         if (start > 0.001) args.push("-ss", String(start));
-        args.push("-i", inName, "-t", String(keep),
+        args.push("-i", inName);
+        if (silentAudio)
+            args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
+        args.push("-t", String(keep),
             "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            outName);
+            "-c:a", "aac", "-b:a", "128k");
+        if (silentAudio)
+            args.push("-map", "0:v", "-map", "1:a", "-shortest");
+        args.push("-movflags", "+faststart", outName);
         return args;
     }
 
@@ -138,10 +142,15 @@
                 const data = await api._safeFetchFile(pngUrl);
                 await ffmpeg.writeFile(inName, data);
                 await ffmpeg.exec([
-                    "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
+                    "-hide_banner", "-y",
+                    "-loop", "1", "-i", inName,
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+                    "-t", String(hold),
                     "-vf", "scale=1280:720,setsar=1",
                     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-                    "-an", "-movflags", "+faststart",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-shortest",
+                    "-movflags", "+faststart",
                     outName,
                 ]);
                 const out = await ffmpeg.readFile(outName);
@@ -174,15 +183,11 @@
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
                 const fade = Math.min(0.5, Math.max(0.2, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
-                const graph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
+                const vgraph = "[0:v]scale=1280:720,setsar=1[v0];[1:v]scale=1280:720,setsar=1[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + "[v]";
-                await ffmpeg.exec([
-                    "-hide_banner", "-y", "-i", aName, "-i", bName,
-                    "-filter_complex", graph, "-map", "[v]", "-an",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-movflags", "+faststart",
-                    outName,
-                ]);
+                const kept = await xfadeKeepAudioAsync(ffmpeg, aName, bName, outName, vgraph, fade);
+                if (!kept.success)
+                    return kept;
                 const out = await ffmpeg.readFile(outName);
                 return { success: true, url: URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" })) };
             } catch (err) {
@@ -193,6 +198,37 @@
                 await deleteMemfs(ffmpeg, outName);
             }
         });
+    }
+
+    /**
+     * Visual xfade keeps native clip audio. Prefer acrossfade; if a dissolve
+     * cannot mix audio, hard-cut the two audio streams through the join.
+     * Failure here lets joinPairAsync fall back to concat (hard-cut video+audio).
+     */
+    async function xfadeKeepAudioAsync(ffmpeg, aName, bName, outName, vgraph, fade) {
+        const graphs = [
+            vgraph + ";[0:a][1:a]acrossfade=d=" + fade + "[a]",
+            vgraph + ";[0:a][1:a]concat=n=2:v=0:a=1[a]",
+        ];
+        for (const graph of graphs) {
+            try {
+                await ffmpeg.exec([
+                    "-hide_banner", "-y", "-i", aName, "-i", bName,
+                    "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    outName,
+                ]);
+                return { success: true };
+            } catch (err) {
+                console.debug("Cut: xfade audio pass failed", err);
+                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                    console.debug("Cut: xfade out cleanup", delErr);
+                }
+            }
+        }
+        return { success: false, error: "xfade audio failed" };
     }
 
     async function joinPairAsync(api, leftUrl, rightUrl, kind, onProgress) {
@@ -584,7 +620,12 @@
                 const total = probe.success && probe.seconds > 0 ? probe.seconds : 0;
                 const window = clampTrimWindow(startSec, endSec, total);
                 onProgress?.(55, "Trimming…");
-                await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep));
+                try {
+                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, false));
+                } catch (audioErr) {
+                    console.debug("Cut: trim native audio missing, pad silence", audioErr);
+                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, true));
+                }
                 const out = await ffmpeg.readFile(outName);
                 const blob = new Blob([out.buffer], { type: "video/mp4" });
                 return { success: true, url: URL.createObjectURL(blob) };
@@ -624,6 +665,7 @@
         onProgress?.(55, "Combining clips…");
         let acc = items[0].url;
         for (let i = 1; i < items.length; i++) {
+            // Hard cut ("cut") is concat with no xfade — keeps native audio.
             const joined = await joinPairAsync(api, acc, items[i].url, items[i - 1].joinOut, onProgress);
             if (!joined.success) return joined;
             acc = joined.url;

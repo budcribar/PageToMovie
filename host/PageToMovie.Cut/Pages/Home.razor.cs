@@ -24,6 +24,9 @@ public partial class Home : IAsyncDisposable
     internal string? SavedNote { get; private set; }
     private const string SeekMediaJs = "PageToMovieCut.seekMedia";
 
+    internal bool ShowComposeOverlay =>
+        _busy && !string.IsNullOrWhiteSpace(ProgressMessage);
+
     private bool ExportDisabled =>
         _busy
         || Folder.Clips.Count == 0
@@ -238,13 +241,20 @@ public partial class Home : IAsyncDisposable
     private async Task PlayAsync()
     {
         _error = null;
-        _busy = true;
-        ProgressPercent = 0;
-        ProgressMessage = "Starting…";
+        var reuse = Compose.HasCachedMoviePreview;
+        if (!reuse)
+        {
+            _busy = true;
+            ProgressPercent = 0;
+            ProgressMessage = "Preparing movie…";
+            await InvokeAsync(StateHasChanged);
+        }
+
         try
         {
-            await Compose.PreviewMovieAsync(Folder.Clips, ReportProgress);
-            ProgressMessage = "Playing";
+            if (!reuse)
+                await Compose.PreviewMovieAsync(Folder.Clips, ReportProgress);
+            ProgressMessage = reuse ? null : "Playing";
             await InvokeAsync(StateHasChanged);
             if (Js is not null)
             {
@@ -279,7 +289,8 @@ public partial class Home : IAsyncDisposable
         _error = null;
         _busy = true;
         ProgressPercent = 0;
-        ProgressMessage = "Starting…";
+        ProgressMessage = "Preparing movie…";
+        await InvokeAsync(StateHasChanged);
         try
         {
             await Compose.ExportMovieAsync(Folder.Clips, ReportProgress);
