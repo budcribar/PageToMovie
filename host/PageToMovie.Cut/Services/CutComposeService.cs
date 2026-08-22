@@ -95,11 +95,12 @@ public sealed class CutComposeService : IAsyncDisposable
     {
         if (HasCachedMoviePreview)
         {
-            PrefixPreviewUrl = MoviePreviewUrl;
+            var cached = MoviePreviewUrl ?? "";
+            PrefixPreviewUrl = cached;
             PrefixClipCount = clips.Count;
             progress(100, "Ready");
-            onPrefix(MoviePreviewUrl!, clips.Count);
-            return MoviePreviewUrl;
+            onPrefix(cached, clips.Count);
+            return cached;
         }
 
         return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix);
@@ -134,11 +135,13 @@ public sealed class CutComposeService : IAsyncDisposable
             throw new InvalidOperationException("No clips to export.");
 
         var payload = BuildExportPayload(clips);
-        var method = download
-            ? "PageToMovieCut.exportMovieAsync"
-            : onPrefix is null
-                ? "PageToMovieCut.previewMovieAsync"
-                : "PageToMovieCut.previewMovieJitAsync";
+        string method;
+        if (download)
+            method = "PageToMovieCut.exportMovieAsync";
+        else if (onPrefix is null)
+            method = "PageToMovieCut.previewMovieAsync";
+        else
+            method = "PageToMovieCut.previewMovieJitAsync";
         var r = onPrefix is null
             ? await InvokeComposeAsync(method, payload, new ExportProgressSink(progress), cancellationToken)
             : await InvokeComposeAsync(

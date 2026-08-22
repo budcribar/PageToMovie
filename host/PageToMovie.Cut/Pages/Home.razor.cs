@@ -284,7 +284,7 @@ public partial class Home : IAsyncDisposable
         _wantPlay = true;
         if (CutJitPlay.CanReuseFullPreview(Compose.MoviePreviewUrl))
         {
-            await PlayMovieAsync(_playhead, Compose.MoviePreviewUrl!);
+            await PlayMovieAsync(_playhead, Compose.MoviePreviewUrl);
             return;
         }
 
@@ -368,7 +368,7 @@ public partial class Home : IAsyncDisposable
 
         if (CutJitPlay.CanReuseFullPreview(Compose.MoviePreviewUrl))
         {
-            await PlayMovieAsync(_playhead, Compose.MoviePreviewUrl!);
+            await PlayMovieAsync(_playhead, Compose.MoviePreviewUrl);
             return;
         }
 
@@ -413,8 +413,10 @@ public partial class Home : IAsyncDisposable
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task PlayMovieAsync(double timelineSec, string url)
+    private async Task PlayMovieAsync(double timelineSec, string? url)
     {
+        if (string.IsNullOrWhiteSpace(url))
+            return;
         _playMode = PlayMode.Movie;
         _nativeWindow = null;
         _playhead = Math.Max(0, timelineSec);
