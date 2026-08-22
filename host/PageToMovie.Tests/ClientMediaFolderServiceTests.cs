@@ -108,6 +108,46 @@ public class ClientMediaFolderServiceTests
     }
 
     [Fact]
+    public async Task A_second_regen_of_the_same_clip_saves_again_when_job_and_take_differ()
+    {
+        var (svc, js) = CreateService();
+        js.Responses["PageToMovieMedia.connectFolderAsync"] = """{"success":true,"folderName":"Test"}""";
+        js.Responses["PageToMovieFfmpeg.analyzeSilenceAsync"] = """{"success":false,"error":"no ffmpeg in test"}""";
+        js.Responses["PageToMovieMedia.saveFromUrlAsync"] = """{"success":true,"sha256":"abc","sizeBytes":100,"relativePath":"x"}""";
+
+        var first = new JobSnapshot
+        {
+            JobId = "job-a",
+            Status = "running",
+            ProjectId = "proj1",
+            ClientMediaUrl = "/api/media/proxy/tok1",
+            ClientRelativePath = "assets/video/scene_01_clip_01_take_01.mp4",
+            ClientTakeNumber = 1,
+            Scene = 1,
+            Clip = 1,
+        };
+        var second = new JobSnapshot
+        {
+            JobId = "job-b",
+            Status = "running",
+            ProjectId = "proj1",
+            ClientMediaUrl = "/api/media/proxy/tok2",
+            ClientRelativePath = "assets/video/scene_01_clip_01_take_02.mp4",
+            ClientTakeNumber = 2,
+            Scene = 1,
+            Clip = 1,
+        };
+
+        FireOnJobUpdated(svc, first);
+        await WaitForIdleAsync(svc);
+        FireOnJobUpdated(svc, second);
+        await WaitForIdleAsync(svc);
+
+        // Take file + current alias per regen.
+        Assert.True(js.CallCount("PageToMovieMedia.saveFromUrlAsync") >= 2);
+    }
+
+    [Fact]
     public async Task SyncProjectMedia_sets_IsSyncing_during_listing_before_downloads()
     {
         var gate = new SyncListGateHandler();

@@ -118,5 +118,31 @@ public class ClipSidecarServiceTests : IDisposable
 
         Assert.Equal(12, root.GetProperty("scene").GetInt32());
         Assert.Equal(1, root.GetProperty("take").GetInt32());
+        Assert.Contains("scene_12_clip_01_take_01", files[0]);
+        Assert.DoesNotContain("2026", Path.GetFileName(files[0]));
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_12_clip_01_take_01.mp4")));
+    }
+
+    [Fact]
+    public async Task ConvertProjectClipsToNewFormatAsync_does_not_timestamp_already_converted_takes()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "StableTakes");
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+
+        var take01 = Path.Combine(videoDir, "scene_03_clip_07_take_01.clip.json");
+        await File.WriteAllTextAsync(take01, """{"scene":3,"clip":7,"take":1,"source_url":"https://vid.example/a"}""");
+        var leftover = Path.Combine(videoDir, "scene_03_clip_07_take_01_20260820_172934.clip.json");
+        await File.WriteAllTextAsync(leftover, """{"scene":3,"clip":7,"take":1}""");
+
+        var count = await service.ConvertProjectClipsToNewFormatAsync(projectDir);
+        Assert.True(count >= 1);
+
+        Assert.True(File.Exists(take01), "existing take_01 must not be clobbered");
+        Assert.False(File.Exists(leftover), "timestamped leftover must be migrated");
+        Assert.True(File.Exists(Path.Combine(videoDir, "scene_03_clip_07_take_02.clip.json")));
+        Assert.Empty(Directory.GetFiles(videoDir, "*_20260820_*"));
     }
 }

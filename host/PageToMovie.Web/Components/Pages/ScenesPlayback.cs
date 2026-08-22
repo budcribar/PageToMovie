@@ -701,10 +701,15 @@ public partial class Scenes
         return string.IsNullOrEmpty(url) ? await ResolveCompareFallbackUrlAsync(v) : url;
     }
 
-    private string CompareRelativePath(ClipVersionItem v) =>
-        !string.IsNullOrEmpty(v.RelativePath)
-            ? v.RelativePath
-            : $"assets/video/scene_{S.ClipVer._compareSceneNumber:D2}_clip_{S.ClipVer._compareClipNumber:D2}.mp4";
+    private string CompareRelativePath(ClipVersionItem v)
+    {
+        if (!string.IsNullOrEmpty(v.RelativePath))
+            return v.RelativePath;
+        if (!string.IsNullOrEmpty(v.Mp4FileName)
+            && !ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName))
+            return $"{ClipTakeNaming.AssetsVideoPrefix}/{v.Mp4FileName}";
+        return ClipTakeNaming.CanonicalRelativePath(S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber);
+    }
 
     private async Task<string?> TryGetLocalCompareBlobUrlAsync(string relPath)
     {
@@ -722,12 +727,12 @@ public partial class Scenes
 
     private async Task<string?> ResolveCompareFallbackUrlAsync(ClipVersionItem v)
     {
-        if (v.IsCurrent)
-            return await ResolveCurrentTakeCompareUrlAsync();
         if (!string.IsNullOrEmpty(v.ProviderPlaybackUrl))
             return await ResolveProviderTakeCompareUrlAsync(v);
+        if (v.IsCurrent)
+            return await ResolveCurrentTakeCompareUrlAsync();
         if (!string.IsNullOrEmpty(v.Mp4FileName))
-            return S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
+            return S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/{v.Mp4FileName}");
         return null;
     }
 

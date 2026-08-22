@@ -2,8 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using PageToMovie.Core.Models;
-
 using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -66,7 +66,7 @@ public sealed class ClipSidecarService
         var max = 0;
         if (Directory.Exists(videoDir))
         {
-            foreach (var f in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_*.clip.json"))
+            foreach (var f in Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)))
             {
                 var n = ParseTakeNumber(Path.GetFileName(f));
                 if (n > max) max = n;
@@ -75,12 +75,64 @@ public sealed class ClipSidecarService
         return max + 1;
     }
 
-    /// <summary>take number from "scene_01_clip_02_take_03[...].clip.json|.mp4", 0 when absent.</summary>
-    public static int ParseTakeNumber(string fileName)
+    /// <summary>Delegates to <see cref="ClipTakeNaming.ParseTakeNumber"/> (filename SSoT).</summary>
+    public static int ParseTakeNumber(string fileName) => ClipTakeNaming.ParseTakeNumber(fileName);
+
+    /// <summary>
+    /// Next unused <c>take_NN</c> among stable (non-timestamped) sidecars. A leftover
+    /// may keep its parsed number when that stable name is free.
+    /// </summary>
+    public static int NextFreeStableTake(string videoDir, int scene, int clip, string? leftoverName = null)
     {
-        var i = fileName.IndexOf("_take_", StringComparison.OrdinalIgnoreCase);
-        if (i < 0 || i + 8 > fileName.Length) return 0;
-        return int.TryParse(fileName.AsSpan(i + 6, 2), out var n) ? n : 0;
+        var occupied = new HashSet<int>();
+        if (Directory.Exists(videoDir))
+        {
+            foreach (var f in Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)))
+            {
+                var name = Path.GetFileName(f);
+                if (!ClipTakeNaming.IsStableTakeName(name))
+                    continue;
+                var n = ParseTakeNumber(name);
+                if (n > 0) occupied.Add(n);
+            }
+        }
+        var preferred = ClipTakeNaming.ParseTakeNumber(leftoverName);
+        if (preferred > 0 && occupied.Add(preferred))
+            return preferred;
+        return ClipTakeNaming.NextUnused(occupied);
+    }
+
+    public static string CurrentTakePointerPath(string videoDir, int scene, int clip) =>
+        Path.Combine(videoDir, ClipTakeNaming.CurrentTakePointerFileName(scene, clip));
+
+    /// <summary>Persisted current-take pointer; 0 when absent.</summary>
+    public static int ReadCurrentTake(string videoDir, int scene, int clip)
+    {
+        var path = CurrentTakePointerPath(videoDir, scene, clip);
+        if (!File.Exists(path))
+            return 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
+                return n;
+        }
+        catch { /* best-effort pointer */ }
+        return 0;
+    }
+
+    public static void WriteCurrentTake(string videoDir, int scene, int clip, int take)
+    {
+        if (take <= 0)
+            return;
+        Directory.CreateDirectory(videoDir);
+        var payload = new Dictionary<string, object?>
+        {
+            ["scene"] = scene,
+            ["clip"] = clip,
+            ["take"] = take,
+        };
+        File.WriteAllText(CurrentTakePointerPath(videoDir, scene, clip), JsonSerializer.Serialize(payload, JsonOpts));
     }
 
     public static string GetSidecarPathForMp4(string mp4Path) =>
@@ -118,7 +170,7 @@ public sealed class ClipSidecarService
         // _take_01 each time lost every prior take once the server stopped keeping MP4s.
         var take = NextTakeNumber(videoDir, scene, clip);
         var fileName = string.IsNullOrWhiteSpace(mp4FileName)
-            ? $"scene_{scene:D2}_clip_{clip:D2}_take_{take:D2}.mp4"
+            ? ClipTakeNaming.TakeMp4FileName(scene, clip, take)
             : mp4FileName.Trim();
 
         var mp4Path = Path.Combine(videoDir, fileName);
@@ -162,6 +214,7 @@ public sealed class ClipSidecarService
             sidecar[ClipProviderSource.ClipStopProperty] = Math.Round(stop, 3);
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
+        WriteCurrentTake(videoDir, scene, clip, take);
         _log.LogInformation("Written clip sidecar manifest → {Path}", sidecarPath);
         _autoGit?.QueueCommitAndPush(projectDir, projectId, $"Generate S{scene:D2}C{clip:D2} clip sidecar");
         return sidecarPath;
@@ -207,13 +260,17 @@ public sealed class ClipSidecarService
             sidecar["edited_from_take"] = fromTake;
 
         await WriteSidecarStreamAsync(sidecarPath, sidecar, ct).ConfigureAwait(false);
+        WriteCurrentTake(videoDir, scene, clip, take);
         _log.LogInformation("Written clip sidecar manifest → {Path}", sidecarPath);
         return sidecarPath;
     }
 
     /// <summary>
-    /// One-time conversion method to rename all video clips in assets/video/ to the long-term format:
-    /// scene_{S:D2}_clip_{C:D2}_take_{T:D2}_{timestamp}.mp4 (and write matching .clip.json sidecar).
+    /// Bring leftover clip files onto the stable take model: <c>scene_SS_clip_CC_take_NN</c>
+    /// with no timestamp. Already-converted take trees and the current player alias
+    /// (<c>scene_SS_clip_CC.mp4</c>) are left alone. Timestamped leftovers are
+    /// <b>renumbered</b> onto the next free take so they never clobber an existing
+    /// <c>take_01</c>.
     /// </summary>
     public async Task<int> ConvertProjectClipsToNewFormatAsync(string projectDir, CancellationToken ct = default)
     {
@@ -221,21 +278,21 @@ public sealed class ClipSidecarService
         if (!Directory.Exists(videoDir))
             return 0;
 
-        var videoFiles = Directory.EnumerateFiles(videoDir, "*", SearchOption.AllDirectories)
-            .Where(IsConvertibleVideoFile)
+        var converted = 0;
+        converted += MigrateTimestampedLeftovers(videoDir);
+
+        var videoFiles = Directory.EnumerateFiles(videoDir, "*", SearchOption.TopDirectoryOnly)
+            .Where(IsConvertibleLegacyVideoFile)
             .ToList();
+        if (videoFiles.Count > 0)
+        {
+            var parsedFiles = ParseVideoFiles(videoFiles);
+            foreach (var group in parsedFiles.GroupBy(ClipGroupKey))
+                converted += await ConvertLegacyClipGroupAsync(projectDir, videoDir, group, ct).ConfigureAwait(false);
+        }
 
-        if (videoFiles.Count == 0)
-            return 0;
-
-        var parsedFiles = ParseVideoFiles(videoFiles);
-        var groups = parsedFiles.GroupBy(ClipGroupKey);
-        var convertedCount = 0;
-
-        foreach (var group in groups)
-            convertedCount += await ConvertClipGroupAsync(projectDir, videoDir, group, ct).ConfigureAwait(false);
-
-        return convertedCount;
+        converted += await BackfillCanonicalTakeSidecarsAsync(projectDir, videoDir, ct).ConfigureAwait(false);
+        return converted;
     }
 
     private static bool IsConvertibleVideoFile(string f) =>
@@ -244,6 +301,151 @@ public sealed class ClipSidecarService
          f.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
          f.EndsWith(".mov", StringComparison.OrdinalIgnoreCase))
         && !f.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Legacy names only: not the current alias, not a stable take, not a leftover
+    /// timestamped take (those are migrated separately so they can be renumbered).
+    /// </summary>
+    private static bool IsConvertibleLegacyVideoFile(string f)
+    {
+        if (!IsConvertibleVideoFile(f))
+            return false;
+        var name = Path.GetFileName(f);
+        if (ClipTakeNaming.IsCanonicalClipName(name))
+            return false;
+        if (ClipTakeNaming.IsStableTakeName(name))
+            return false;
+        if (ClipTakeNaming.IsTimestampedTakeName(name))
+            return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Rename leftover <c>_take_NN_yyyyMMdd_HHmmss</c> sidecars (and matching videos)
+    /// onto the next free take number without a timestamp. Never overwrites an
+    /// existing stable <c>take_NN</c>.
+    /// </summary>
+    private int MigrateTimestampedLeftovers(string videoDir)
+    {
+        var moved = 0;
+        foreach (var sidecar in Directory.EnumerateFiles(videoDir, "*_take_*" + ClipTakeNaming.ClipJsonSuffix)
+                     .Where(p => ClipTakeNaming.IsTimestampedTakeName(Path.GetFileName(p)))
+                     .OrderBy(p => new FileInfo(p).LastWriteTimeUtc)
+                     .ToList())
+        {
+            if (!TryParseSceneClipFromName(Path.GetFileName(sidecar), out var scene, out var clip))
+                continue;
+            var destTake = NextFreeStableTake(videoDir, scene, clip, Path.GetFileName(sidecar));
+            if (RenameTakeArtifacts(videoDir, sidecar, scene, clip, destTake))
+                moved++;
+        }
+
+        foreach (var video in Directory.EnumerateFiles(videoDir, "*")
+                     .Where(IsConvertibleVideoFile)
+                     .Where(p => ClipTakeNaming.IsTimestampedTakeName(Path.GetFileName(p)))
+                     .OrderBy(p => new FileInfo(p).LastWriteTimeUtc)
+                     .ToList())
+        {
+            if (!TryParseSceneClipFromName(Path.GetFileName(video), out var scene, out var clip))
+                continue;
+            var destTake = NextFreeStableTake(videoDir, scene, clip, Path.GetFileName(video));
+            var leftoverSidecar = Path.Combine(videoDir, ClipTakeNaming.ClipStem(Path.GetFileName(video)) + ClipTakeNaming.ClipJsonSuffix);
+            if (RenameTakeArtifacts(videoDir, File.Exists(leftoverSidecar) ? leftoverSidecar : video, scene, clip, destTake))
+                moved++;
+        }
+
+        return moved;
+    }
+
+    private static bool TryParseSceneClipFromName(string fileName, out int scene, out int clip)
+    {
+        var (s, c) = ParseSceneClipNumbers(fileName);
+        scene = s;
+        clip = c;
+        return scene > 0 && clip > 0;
+    }
+
+    private bool RenameTakeArtifacts(string videoDir, string leftoverPath, int scene, int clip, int destTake)
+    {
+        var leftoverStem = ClipTakeNaming.ClipStem(Path.GetFileName(leftoverPath));
+        var destStem = ClipTakeNaming.TakeStem(scene, clip, destTake);
+        if (string.Equals(leftoverStem, destStem, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var destSidecar = Path.Combine(videoDir, ClipTakeNaming.TakeSidecarFileName(scene, clip, destTake));
+        if (File.Exists(destSidecar))
+            return false;
+
+        var leftoverSidecar = Path.Combine(videoDir, leftoverStem + ClipTakeNaming.ClipJsonSuffix);
+        var leftoverMp4 = Path.Combine(videoDir, leftoverStem + ".mp4");
+        var destMp4 = Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(scene, clip, destTake));
+
+        try
+        {
+            if (File.Exists(leftoverSidecar))
+            {
+                RewriteSidecarTakeNumber(leftoverSidecar, destSidecar, destTake);
+                if (!string.Equals(leftoverSidecar, destSidecar, StringComparison.OrdinalIgnoreCase))
+                    File.Delete(leftoverSidecar);
+            }
+            if (File.Exists(leftoverMp4) && !File.Exists(destMp4))
+                File.Move(leftoverMp4, destMp4);
+            _log.LogInformation("Migrated leftover take {Old} → take {Take}", leftoverStem, destTake);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed migrating leftover take {Old}", leftoverStem);
+            return false;
+        }
+    }
+
+    private static void RewriteSidecarTakeNumber(string sourceSidecar, string destSidecar, int take)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(sourceSidecar));
+            var obj = JsonNode.Parse(doc.RootElement.GetRawText()) as JsonObject ?? new JsonObject();
+            obj["take"] = take;
+            File.WriteAllText(destSidecar, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            File.Copy(sourceSidecar, destSidecar, overwrite: false);
+        }
+    }
+
+    /// <summary>
+    /// Canonical <c>scene_SS_clip_CC.mp4</c> is the player alias — do not rename it.
+    /// If the clip has no take sidecar yet, write <c>take_01.clip.json</c>.
+    /// </summary>
+    private async Task<int> BackfillCanonicalTakeSidecarsAsync(string projectDir, string videoDir, CancellationToken ct)
+    {
+        var count = 0;
+        foreach (var mp4 in Directory.EnumerateFiles(videoDir, "scene_*_clip_*.mp4"))
+        {
+            var name = Path.GetFileName(mp4);
+            if (!ClipTakeNaming.IsCanonicalClipName(name))
+                continue;
+            if (!TryParseSceneClipFromName(name, out var scene, out var clip))
+                continue;
+            if (Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)).Any())
+                continue;
+
+            var fi = new FileInfo(mp4);
+            var sha256 = fi.Exists ? await MediaRegistryService.HashFileAsync(mp4, ct).ConfigureAwait(false) : "";
+            var promptText = await LoadClipPromptTextAsync(videoDir, scene, clip, ct).ConfigureAwait(false);
+            await WriteSidecarWithTakeAsync(
+                projectDir, scene, clip, take: 1,
+                prompt: promptText, scriptText: "", model: "", resolution: "480p",
+                durationSeconds: 6.0, sha256: sha256, sizeBytes: fi.Exists ? fi.Length : 0,
+                mp4FileName: ClipTakeNaming.TakeMp4FileName(scene, clip, 1),
+                createdUtc: fi.LastWriteTimeUtc, ct: ct).ConfigureAwait(false);
+            WriteCurrentTake(videoDir, scene, clip, 1);
+            count++;
+        }
+        return count;
+    }
 
     private static (int Scene, int Clip) ClipGroupKey(
         (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite) x) =>
@@ -284,20 +486,19 @@ public sealed class ClipSidecarService
         return n;
     }
 
-    private async Task<int> ConvertClipGroupAsync(
+    private async Task<int> ConvertLegacyClipGroupAsync(
         string projectDir,
         string videoDir,
         IGrouping<(int Scene, int Clip), (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite)> group,
         CancellationToken ct)
     {
-        var take = 1;
         var convertedCount = 0;
         var sorted = group.OrderBy(GetLastWrite).ToList();
 
         foreach (var item in sorted)
         {
+            var take = NextTakeNumber(videoDir, item.Scene, item.Clip);
             await ConvertOneClipItemAsync(projectDir, videoDir, item, take, ct).ConfigureAwait(false);
-            take++;
             convertedCount++;
         }
         return convertedCount;
@@ -315,14 +516,13 @@ public sealed class ClipSidecarService
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var stamp = item.LastWrite.ToString("yyyyMMdd_HHmmss");
 
         var isClientMarker = item.OriginalName.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase);
         var baseClean = isClientMarker ? item.OriginalName[..^12] : item.OriginalName;
         var ext = Path.GetExtension(baseClean);
         if (string.IsNullOrEmpty(ext)) ext = ".mp4";
 
-        var newBaseName = $"scene_{item.Scene:D2}_clip_{item.Clip:D2}_take_{take:D2}_{stamp}";
+        var newBaseName = ClipTakeNaming.TakeStem(item.Scene, item.Clip, take);
         var newMp4Name = $"{newBaseName}{ext}";
         var dir = Path.GetDirectoryName(item.FullPath) ?? ".";
 

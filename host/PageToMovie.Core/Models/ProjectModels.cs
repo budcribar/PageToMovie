@@ -184,6 +184,12 @@ public class JobProgress
     public string? ClientMediaUrl { get; set; }
     /// <summary>Project-relative path under the client media folder, e.g. assets/video/scene_01_clip_01.mp4.</summary>
     public string? ClientRelativePath { get; set; }
+    /// <summary>
+    /// Clip take number for this job's output (<c>scene_SS_clip_CC_take_NN</c>).
+    /// Used with <see cref="JobSnapshot.JobId"/> to key a client save so a second
+    /// regen of the same clip in one circuit still writes.
+    /// </summary>
+    public int? ClientTakeNumber { get; set; }
     /// <summary>For video-extend jobs: duration of predecessor in seconds for client-side ffmpeg.wasm trimming.</summary>
     public double? PredecessorDurationSec { get; set; }
 }
@@ -263,6 +269,8 @@ public sealed class JobRecord : JobProgress
         FinishedAt = FinishedAt,
         ClientMediaUrl = ClientMediaUrl,
         ClientRelativePath = ClientRelativePath,
+        ClientTakeNumber = ClientTakeNumber,
+        PredecessorDurationSec = PredecessorDurationSec,
     };
 }
 

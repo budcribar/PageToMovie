@@ -439,64 +439,119 @@ public sealed partial class ProjectStore
         if (!Directory.Exists(videoDir)) return Array.Empty<ClipVersionItem>();
 
         var result = new List<ClipVersionItem>();
-        var prefix = $"scene_{scene:D2}_clip_{clip:D2}";
-        var activeMp4 = Path.Combine(videoDir, $"{prefix}.mp4");
-        AddActiveClipVersion(result, activeMp4, scene, clip);
+        var prefix = ClipTakeNaming.SceneClipPrefix(scene, clip);
+        var activeMp4 = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        AddTakeSidecarVersions(result, videoDir, scene, clip);
         AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
+        AddCanonicalAliasIfNoTakes(result, activeMp4, scene, clip);
         await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
-        AddProviderHostedTakes(result, videoDir, scene, clip);
+        AssignUniqueTakeNumbers(result);
+        MarkCurrentTake(result, videoDir, scene, clip);
         return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Takes recorded only by their sidecars (the server keeps no media; the browser may not have
-    /// saved them): one item per scene_XX_clip_YY_take_NN.clip.json not already represented by a
-    /// file or a registry row. The newest is the current take when nothing else claims it.
+    /// One card per take sidecar (provider-hosted or local). The canonical
+    /// <c>scene_SS_clip_CC.mp4</c> is the player alias, not a separate take.
     /// </summary>
-    private static void AddProviderHostedTakes(List<ClipVersionItem> result, string videoDir, int scene, int clip)
+    private static void AddTakeSidecarVersions(List<ClipVersionItem> result, string videoDir, int scene, int clip)
     {
         if (!Directory.Exists(videoDir)) return;
-        var known = new HashSet<string>(result.Select(r => Path.GetFileNameWithoutExtension(r.Mp4FileName)), StringComparer.OrdinalIgnoreCase);
-        var added = new List<ClipVersionItem>();
-        foreach (var sidecar in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}_clip_{clip:D2}_take_*.clip.json"))
+        var knownStems = new HashSet<string>(
+            result.Select(r => ClipTakeNaming.ClipStem(r.Mp4FileName)),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var sidecar in Directory.EnumerateFiles(videoDir, ClipTakeNaming.TakeSidecarSearchPattern(scene, clip)))
         {
-            var stem = Path.GetFileName(sidecar);
-            stem = stem[..^".clip.json".Length];
-            if (known.Contains(stem)) continue;
+            var stem = ClipTakeNaming.ClipStem(Path.GetFileName(sidecar));
+            if (string.IsNullOrEmpty(stem) || !knownStems.Add(stem))
+                continue;
+            var takeMp4 = Path.Combine(videoDir, stem + ".mp4");
+            var fi = File.Exists(takeMp4) ? new FileInfo(takeMp4) : new FileInfo(sidecar);
+            var sidecarTake = ReadSidecarTakeField(sidecar);
+            var take = ClipTakeNaming.ResolveTakeNumber(stem, sidecarTake);
+            var item = ParseClipSidecarOrMeta(sidecar, takeMp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
+            item.RelativePath = $"{ClipTakeNaming.AssetsVideoPrefix}/{stem}.mp4";
             var src = ClipProviderSource.Read(sidecar);
-            if (src is null || !src.HasProviderCopy) continue;
-            var fi = new FileInfo(sidecar);
-            var item = ParseClipSidecarOrMeta(sidecar, Path.Combine(videoDir, stem + ".mp4"), scene, clip,
-                take: ClipSidecarService.ParseTakeNumber(stem), isCurrent: false, fi.LastWriteTimeUtc);
-            item.SourceUrl = src.SourceUrl;
-            item.ProviderLeadInSeconds = src.LeadInSeconds;
-            added.Add(item);
+            if (src is not null)
+            {
+                item.SourceUrl = src.SourceUrl ?? item.SourceUrl;
+                item.SourceFileId = src.SourceFileId ?? item.SourceFileId;
+                item.ProviderLeadInSeconds = src.LeadInSeconds;
+            }
+            result.Add(item);
         }
-        if (added.Count == 0) return;
-        // Take numbers from the file names; fall back to write order when a legacy name has none.
-        var n = 0;
-        foreach (var it in added.OrderBy(x => x.Take).ThenBy(x => x.CreatedAtUtc))
-            if (it.Take <= 0) it.Take = ++n; else n = it.Take;
-        if (!result.Any(r => r.IsCurrent))
-            added.OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc).First().IsCurrent = true;
-        result.AddRange(added);
     }
 
-    private static void AddActiveClipVersion(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
+    private static int ReadSidecarTakeField(string sidecarPath)
     {
+        if (!File.Exists(sidecarPath))
+            return 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(sidecarPath));
+            if (doc.RootElement.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
+                return n;
+        }
+        catch { /* best effort */ }
+        return 0;
+    }
+
+    /// <summary>
+    /// Legacy trees with only the player alias (no <c>_take_NN</c> sidecars) still
+    /// need one current card so compare/promote keep working.
+    /// </summary>
+    private static void AddCanonicalAliasIfNoTakes(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
+    {
+        if (result.Any(v => ClipTakeNaming.ParseTakeNumber(v.Mp4FileName) > 0
+                            || ClipTakeNaming.IsStableTakeName(v.Mp4FileName)
+                            || ClipTakeNaming.IsTimestampedTakeName(v.Mp4FileName)))
+            return;
         if (!File.Exists(activeMp4))
             return;
         var fi = new FileInfo(activeMp4);
         var activeSidecar = Path.ChangeExtension(activeMp4, StoreLit.ClipJsonSuffix);
-        if (!File.Exists(activeSidecar))
-            activeSidecar = ClipProviderSource.FindLatestSidecarPath(Path.GetDirectoryName(activeMp4) ?? "", scene, clip) ?? activeSidecar;
-        var takeNo = Math.Max(1, ClipSidecarService.ParseTakeNumber(Path.GetFileName(activeSidecar)));
-        result.Add(ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take: takeNo, isCurrent: true, fi.LastWriteTimeUtc));
+        var take = ClipTakeNaming.ResolveTakeNumber(Path.GetFileName(activeSidecar), ReadSidecarTakeField(activeSidecar));
+        if (take <= 0) take = 1;
+        var item = ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take, isCurrent: true, fi.LastWriteTimeUtc);
+        item.RelativePath = ClipTakeNaming.CanonicalRelativePath(scene, clip);
+        result.Add(item);
+    }
+
+    private static void AssignUniqueTakeNumbers(List<ClipVersionItem> result)
+    {
+        if (result.Count == 0)
+            return;
+        var items = result
+            .OrderBy(x => x.Take > 0 ? 0 : 1)
+            .ThenBy(x => x.Take)
+            .ThenBy(x => x.CreatedAtUtc)
+            .Select(it => (it.Take, (Action<int>)(n => it.Take = n)))
+            .ToList();
+        ClipTakeNaming.AssignUniqueTakeNumbers(items);
+    }
+
+    private static void MarkCurrentTake(List<ClipVersionItem> result, string videoDir, int scene, int clip)
+    {
+        foreach (var v in result)
+            v.IsCurrent = false;
+        if (result.Count == 0)
+            return;
+        var pointer = ClipSidecarService.ReadCurrentTake(videoDir, scene, clip);
+        ClipVersionItem? current = pointer > 0
+            ? result.FirstOrDefault(v => v.Take == pointer)
+            : null;
+        current ??= result.FirstOrDefault(v =>
+            ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName));
+        current ??= result.OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc).First();
+        current.IsCurrent = true;
     }
 
     private static void AddHistoricalClipVersions(
         List<ClipVersionItem> result, string videoDir, string prefix, string activeMp4, int scene, int clip)
     {
+        var knownStems = new HashSet<string>(
+            result.Select(r => ClipTakeNaming.ClipStem(r.Mp4FileName)),
+            StringComparer.OrdinalIgnoreCase);
         var searchDirs = new[] { videoDir, Path.Combine(videoDir, StoreLit.History) };
         foreach (var sDir in searchDirs)
         {
@@ -504,10 +559,19 @@ public sealed partial class ProjectStore
             foreach (var mp4 in Directory.EnumerateFiles(sDir, $"{prefix}*.mp4"))
             {
                 if (string.Equals(mp4, activeMp4, StringComparison.OrdinalIgnoreCase)) continue;
+                var stem = ClipTakeNaming.ClipStem(Path.GetFileName(mp4));
+                if (string.IsNullOrEmpty(stem) || !knownStems.Add(stem))
+                    continue;
                 var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
                 if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
                 var fi = new FileInfo(mp4);
-                result.Add(ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: result.Count + 1, isCurrent: false, fi.LastWriteTimeUtc));
+                var take = ClipTakeNaming.ResolveTakeNumber(Path.GetFileName(mp4), ReadSidecarTakeField(sidecar));
+                var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
+                if (string.IsNullOrEmpty(item.RelativePath))
+                    item.RelativePath = Path.GetFileName(sDir).Equals(StoreLit.History, StringComparison.OrdinalIgnoreCase)
+                        ? $"{ClipTakeNaming.AssetsVideoPrefix}/{StoreLit.History}/{Path.GetFileName(mp4)}"
+                        : $"{ClipTakeNaming.AssetsVideoPrefix}/{Path.GetFileName(mp4)}";
+                result.Add(item);
             }
         }
     }
@@ -548,7 +612,7 @@ public sealed partial class ProjectStore
                 VersionId = fileName,
                 Scene = scene,
                 Clip = clip,
-                Take = isActive ? 1 : result.Count + 1,
+                Take = ClipTakeNaming.ResolveTakeNumber(fileName),
                 IsCurrent = isActive,
                 CreatedAtUtc = createdUtc,
                 Mp4FileName = fileName,
@@ -580,20 +644,29 @@ public sealed partial class ProjectStore
             targetMp4Path = Path.Combine(videoDir, StoreLit.History, target.Mp4FileName);
         }
 
-        if (!File.Exists(targetMp4Path)) return false;
+        var hasLocalTakeMp4 = File.Exists(targetMp4Path);
+        var hasProviderCopy = !string.IsNullOrWhiteSpace(target.SourceUrl)
+            || !string.IsNullOrWhiteSpace(target.SourceFileId);
+        if (!hasLocalTakeMp4 && !hasProviderCopy)
+            return false;
 
-        var activeMp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        var activeMp4Path = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
 
-        if (File.Exists(activeMp4Path))
+        if (hasLocalTakeMp4)
         {
-            var historyDir = Path.Combine(videoDir, StoreLit.History);
-            Directory.CreateDirectory(historyDir);
-            var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-            try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
+            if (File.Exists(activeMp4Path))
+            {
+                var historyDir = Path.Combine(videoDir, StoreLit.History);
+                Directory.CreateDirectory(historyDir);
+                var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
+                try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
+            }
+
+            File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
         }
 
-        File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
+        ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, Math.Max(1, target.Take));
 
         if (!string.IsNullOrWhiteSpace(target.VisualPrompt))
         {

@@ -88,7 +88,7 @@ internal static class CombinedExtendRecovery
     /// Web cannot reference Engine, so the format string lives here next to the only parser.
     /// </summary>
     internal static string ClipRelativePath(int scene, int clip) =>
-        $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
+        ClipTakeNaming.CanonicalRelativePath(scene, clip);
 
     internal static bool TryGetNthPreviousClipRelativePath(
         string? relativePath, int steps, out string previousRelativePath)

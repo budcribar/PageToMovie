@@ -319,6 +319,70 @@ public sealed class ClipTakesFromSidecarsTests : IDisposable
         Assert.Equal(2, current.Take);
         Assert.Equal("https://vidgen.example/b.mp4", current.SourceUrl);
         Assert.Contains(takes, t => t.Take == 1 && t.SourceUrl == "https://vidgen.example/a.mp4");
+        Assert.Equal(2, ClipSidecarService.ReadCurrentTake(Path.Combine(projectDir, "assets", "video"), 2, 5));
+    }
+
+    [Fact]
+    public async Task Two_take_01_leftovers_get_unique_badges()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
+        var projectDir = Path.Combine(_root, "projects", "Dup");
+        var videoDir = Path.Combine(projectDir, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
+        File.WriteAllText(Path.Combine(videoDir, "scene_03_clip_07_take_01.clip.json"),
+            """{"scene":3,"clip":7,"take":1,"source_url":"https://vidgen.example/a.mp4","created_at_utc":"2026-08-19T00:00:00Z"}""");
+        File.WriteAllText(Path.Combine(videoDir, "scene_03_clip_07_take_01_20260820_172934.clip.json"),
+            """{"scene":3,"clip":7,"take":1,"created_at_utc":"2026-08-20T17:29:34Z"}""");
+
+        var takes = await projects.GetClipVersionsAsync("Dup", 3, 7);
+        Assert.Equal(2, takes.Count);
+        Assert.Equal(2, takes.Select(t => t.Take).Distinct().Count());
+        Assert.Contains(takes, t => t.Take == 1);
+        Assert.Contains(takes, t => t.Take == 2);
+    }
+
+    [Fact]
+    public async Task Second_generation_lists_take_N_plus_1_as_current()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_root, "projects", "Regen");
+        Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
+        File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
+
+        await service.WriteSidecarAsync(projectDir, 1, 1, "p1", "", "test-model", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/a.mp4");
+        await service.WriteSidecarAsync(projectDir, 1, 1, "p2", "", "test-model", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/b.mp4");
+
+        var takes = await projects.GetClipVersionsAsync("Regen", 1, 1);
+        Assert.Equal(2, takes.Count);
+        var current = Assert.Single(takes, t => t.IsCurrent);
+        Assert.Equal(2, current.Take);
+        Assert.Equal("https://vidgen.example/b.mp4", current.SourceUrl);
+    }
+
+    [Fact]
+    public async Task Provider_only_take_can_be_promoted_without_an_mp4()
+    {
+        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
+        var service = new ClipSidecarService(projects);
+        var projectDir = Path.Combine(_root, "projects", "Prov");
+        Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
+        File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
+
+        await service.WriteSidecarAsync(projectDir, 1, 2, "p1", "", "test-model", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/a.mp4");
+        await service.WriteSidecarAsync(projectDir, 1, 2, "p2", "", "test-model", "480p", 4, "", 0, sourceUrl: "https://vidgen.example/b.mp4");
+
+        var takes = await projects.GetClipVersionsAsync("Prov", 1, 2);
+        var older = takes.Single(t => t.Take == 1);
+        Assert.False(File.Exists(Path.Combine(projectDir, "assets", "video", older.Mp4FileName)));
+
+        var ok = await projects.PromoteClipVersionAsync("Prov", 1, 2, older.VersionId);
+        Assert.True(ok);
+        Assert.Equal(1, ClipSidecarService.ReadCurrentTake(Path.Combine(projectDir, "assets", "video"), 1, 2));
+
+        var after = await projects.GetClipVersionsAsync("Prov", 1, 2);
+        Assert.Equal(1, after.Single(t => t.IsCurrent).Take);
     }
 
     public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
