@@ -383,7 +383,7 @@ public sealed class ClientMediaFolderService
         if (sliceFailed)
             return;
 
-        var prepared = await PrepareUrlToSaveAsync(snap, rel, url, extendSliceBlobUrl);
+        var prepared = await PrepareUrlToSaveAsync(snap, url, extendSliceBlobUrl);
         try
         {
             await SaveAndRegisterJobMediaAsync(
@@ -521,7 +521,7 @@ public sealed class ClientMediaFolderService
         string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
 
     private async Task<PreparedSaveUrl> PrepareUrlToSaveAsync(
-        JobSnapshot snap, string rel, string url, string? extendSliceBlobUrl)
+        JobSnapshot snap, string url, string? extendSliceBlobUrl)
     {
         // Silence-trim in browser (ffmpeg.wasm) before write. Decision logic
         // (where to cut) lives once in ClipSilenceTrimmer (Core) — JS only does
