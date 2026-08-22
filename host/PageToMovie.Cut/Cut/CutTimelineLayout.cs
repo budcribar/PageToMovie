@@ -4,8 +4,9 @@ namespace PageToMovie.Cut.Cut;
 
 /// <summary>
 /// One video track, Film order. Width is the hop-aware sliced duration
-/// (keep windows after range-delete). Scene bands mark S01 / S02. Join
-/// ticks only on a visible scene-change look.
+/// (keep windows after range-delete). The video track is one contiguous
+/// block per scene (S01 / S02) — no clip tiles or gaps inside a scene.
+/// Join ticks only on a visible scene-change look.
 /// </summary>
 public sealed class CutTimelineLayout
 {
@@ -16,8 +17,12 @@ public sealed class CutTimelineLayout
     public const double PlaceholderSec = 2;
     public const double MinHandleSpanSeconds = ClipInOut.MinSpanSeconds;
 
+    /// <summary>Same-scene clips abut. Play/JIT still hop-slice each take.</summary>
+    public const double SameSceneGapSec = 0;
+
     public required IReadOnlyList<CutTimelineLane> Lanes { get; init; }
     public required IReadOnlyList<CutTimelineSceneBand> Scenes { get; init; }
+    public required IReadOnlyList<CutTimelineVideoBlock> VideoBlocks { get; init; }
     public required IReadOnlyList<CutTimelineJoinTick> Joins { get; init; }
     public required IReadOnlyList<CutTimelineRulerMark> Ruler { get; init; }
     public double TotalSec { get; init; }
@@ -59,10 +64,12 @@ public sealed class CutTimelineLayout
             joins.Add(new CutTimelineJoinTick(i, kind, SceneChange: true, at, at * px));
         }
 
+        var scenes = BuildSceneBands(lanes, px);
         return new CutTimelineLayout
         {
             Lanes = lanes,
-            Scenes = BuildSceneBands(lanes, px),
+            Scenes = scenes,
+            VideoBlocks = BuildVideoBlocks(lanes, scenes),
             Joins = joins,
             Ruler = BuildRuler(cursor, px),
             TotalSec = cursor,
@@ -104,6 +111,63 @@ public sealed class CutTimelineLayout
         }
 
         return bands;
+    }
+
+    /// <summary>
+    /// One video-track tile per scene. Width is the sum of hop-sliced
+    /// clips with no mid-scene gap. Label is S01 / S02 only.
+    /// </summary>
+    public static IReadOnlyList<CutTimelineVideoBlock> BuildVideoBlocks(
+        IReadOnlyList<CutTimelineLane> lanes,
+        IReadOnlyList<CutTimelineSceneBand> scenes)
+    {
+        var blocks = new List<CutTimelineVideoBlock>(scenes.Count);
+        foreach (var band in scenes)
+        {
+            if (band.ClipCount <= 0 || band.FirstIndex < 0 || band.FirstIndex >= lanes.Count)
+                continue;
+            var lastIndex = Math.Min(band.FirstIndex + band.ClipCount - 1, lanes.Count - 1);
+            var first = lanes[band.FirstIndex];
+            var last = lanes[lastIndex];
+            var frames = new List<string>();
+            var missing = false;
+            for (var i = band.FirstIndex; i <= lastIndex; i++)
+            {
+                frames.AddRange(lanes[i].Clip.Filmstrip);
+                missing |= lanes[i].Clip.Missing;
+            }
+
+            blocks.Add(new CutTimelineVideoBlock(
+                band.Scene,
+                band.Label,
+                band.FirstIndex,
+                lastIndex,
+                lastIndex - band.FirstIndex + 1,
+                band.StartSec,
+                band.WidthSec,
+                band.StartPx,
+                band.WidthPx,
+                first.TrimIn,
+                last.TrimOut,
+                missing,
+                frames));
+        }
+
+        return blocks;
+    }
+
+    public static bool BlockContains(CutTimelineVideoBlock block, CutClip? clip, IReadOnlyList<CutClip> clips)
+    {
+        if (clip is null || clips.Count == 0)
+            return false;
+        var last = Math.Min(block.LastIndex, clips.Count - 1);
+        for (var i = Math.Max(0, block.FirstIndex); i <= last; i++)
+        {
+            if (ReferenceEquals(clips[i], clip))
+                return true;
+        }
+
+        return false;
     }
 
     public static double SlicedSeconds(CutClip clip)
@@ -337,6 +401,21 @@ public readonly record struct CutTimelineSceneBand(
     double WidthSec,
     double StartPx,
     double WidthPx);
+
+public readonly record struct CutTimelineVideoBlock(
+    int Scene,
+    string Label,
+    int FirstIndex,
+    int LastIndex,
+    int ClipCount,
+    double StartSec,
+    double WidthSec,
+    double StartPx,
+    double WidthPx,
+    bool TrimIn,
+    bool TrimOut,
+    bool Missing,
+    IReadOnlyList<string> Filmstrip);
 
 public readonly record struct CutTimelineJoinTick(
     int AfterIndex,

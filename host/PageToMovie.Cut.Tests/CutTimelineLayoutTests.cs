@@ -83,6 +83,8 @@ public class CutTimelineLayoutTests
         var layout = CutTimelineLayout.Build([c1, c2], pxPerSec: 10);
         Assert.Equal(4, layout.Lanes[0].WidthSec);
         Assert.Equal(3.5, layout.Lanes[1].WidthSec, 5);
+        Assert.Equal(7.5, Assert.Single(layout.VideoBlocks).WidthSec, 5);
+        Assert.Equal("S01", layout.VideoBlocks[0].Label);
     }
 
     [Fact]
@@ -92,6 +94,89 @@ public class CutTimelineLayoutTests
         Assert.False(CutTimelineLayout.TryDeleteTimelineRange([c1], 0, 5, out var applied));
         Assert.Equal(0, applied);
         Assert.Empty(c1.RangeDeletes);
+    }
+
+    [Fact]
+    public void Video_track_is_one_contiguous_scene_block()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(1, 2, duration: 6);
+        var c = NewClip(2, 1, duration: 3);
+        a.SelectedTake!.Filmstrip.Add("a1");
+        a.SelectedTake.Filmstrip.Add("a2");
+        b.SelectedTake!.Filmstrip.Add("b1");
+        c.SelectedTake!.Filmstrip.Add("c1");
+
+        var layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
+        Assert.Equal(3, layout.Lanes.Count);
+        Assert.Equal(2, layout.Scenes.Count);
+        Assert.Equal(2, layout.VideoBlocks.Count);
+
+        Assert.Equal(layout.Lanes[0].StartSec + layout.Lanes[0].WidthSec + CutTimelineLayout.SameSceneGapSec,
+            layout.Lanes[1].StartSec);
+        Assert.Equal(0, CutTimelineLayout.SameSceneGapSec);
+
+        var s01 = layout.VideoBlocks[0];
+        Assert.Equal("S01", s01.Label);
+        Assert.Equal(CutTimelineLayout.SceneLabel(1), s01.Label);
+        Assert.DoesNotContain("C01", s01.Label, StringComparison.Ordinal);
+        Assert.DoesNotContain("C02", s01.Label, StringComparison.Ordinal);
+        Assert.Equal(2, s01.ClipCount);
+        Assert.Equal(0, s01.FirstIndex);
+        Assert.Equal(1, s01.LastIndex);
+        Assert.Equal(0, s01.StartSec);
+        Assert.Equal(10, s01.WidthSec);
+        Assert.Equal(100, s01.WidthPx);
+        Assert.True(s01.TrimIn);
+        Assert.True(s01.TrimOut);
+        Assert.Equal(new[] { "a1", "a2", "b1" }, s01.Filmstrip);
+        Assert.True(CutTimelineLayout.BlockContains(s01, a, [a, b, c]));
+        Assert.True(CutTimelineLayout.BlockContains(s01, b, [a, b, c]));
+        Assert.False(CutTimelineLayout.BlockContains(s01, c, [a, b, c]));
+
+        var s02 = layout.VideoBlocks[1];
+        Assert.Equal("S02", s02.Label);
+        Assert.Equal(1, s02.ClipCount);
+        Assert.Equal(10, s02.StartSec);
+        Assert.Equal(3, s02.WidthSec);
+        Assert.Equal(new[] { "c1" }, s02.Filmstrip);
+        Assert.True(s02.TrimIn);
+        Assert.True(s02.TrimOut);
+    }
+
+    [Fact]
+    public void Scene_block_width_follows_hop_slice()
+    {
+        var c1 = NewClip(1, 1, duration: 5);
+        var c2 = NewClip(1, 2, duration: 10);
+        c2.SelectedTake!.SetHop(new CutHop(5, 5, 10, 5));
+        c2.SetDuration(10);
+
+        var layout = CutTimelineLayout.Build([c1, c2], pxPerSec: 10);
+        var block = Assert.Single(layout.VideoBlocks);
+        Assert.Equal("S01", block.Label);
+        Assert.Equal(10, block.WidthSec);
+        Assert.Equal(0, block.StartSec);
+
+        CutTimelineLayout.TrimOut(c1, 3);
+        layout = CutTimelineLayout.Build([c1, c2], pxPerSec: 10);
+        Assert.Equal(8, Assert.Single(layout.VideoBlocks).WidthSec);
+        Assert.Equal(3, layout.Lanes[1].StartSec);
+    }
+
+    [Fact]
+    public void HitTest_walks_stitched_scene_into_hop_window()
+    {
+        var a = NewClip(1, 1, duration: 4);
+        var b = NewClip(1, 2, duration: 10);
+        b.SelectedTake!.SetHop(new CutHop(5, 5, 10, 5));
+        b.SetDuration(10);
+
+        var hit = CutTimelineLayout.HitTest([a, b], 5.5);
+        Assert.NotNull(hit);
+        Assert.Equal(b, hit.Value.Clip);
+        Assert.Equal(1, hit.Value.Index);
+        Assert.Equal(6.5, hit.Value.LocalSec, 5);
     }
 
     [Fact]
@@ -106,7 +191,10 @@ public class CutTimelineLayoutTests
         var layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
         Assert.Equal(3, layout.Lanes.Count);
         Assert.Equal(2, layout.Scenes.Count);
+        Assert.Equal(2, layout.VideoBlocks.Count);
         Assert.Equal("S01", layout.Scenes[0].Label);
+        Assert.Equal("S01", layout.VideoBlocks[0].Label);
+        Assert.Equal(layout.Scenes[0].WidthSec, layout.VideoBlocks[0].WidthSec);
         Assert.Equal(2, layout.Scenes[0].ClipCount);
         Assert.Equal(0, layout.Scenes[0].StartSec);
         Assert.Equal(8, layout.Scenes[0].WidthSec);
@@ -174,6 +262,14 @@ public class CutTimelineLayoutTests
         Assert.True(layout.Lanes[2].TrimOut);
         Assert.True(layout.Lanes[3].TrimIn);
         Assert.True(layout.Lanes[3].TrimOut);
+
+        Assert.Equal(2, layout.VideoBlocks.Count);
+        Assert.True(layout.VideoBlocks[0].TrimIn);
+        Assert.True(layout.VideoBlocks[0].TrimOut);
+        Assert.Equal(0, layout.VideoBlocks[0].FirstIndex);
+        Assert.Equal(2, layout.VideoBlocks[0].LastIndex);
+        Assert.True(layout.VideoBlocks[1].TrimIn);
+        Assert.True(layout.VideoBlocks[1].TrimOut);
 
         Assert.True(a.IsFirstOfScene(clips));
         Assert.False(a.IsLastOfScene(clips));

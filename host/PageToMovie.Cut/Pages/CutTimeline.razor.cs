@@ -117,6 +117,19 @@ public partial class CutTimeline
         await SelectedChanged.InvokeAsync(clip);
     }
 
+    private async Task SelectSceneBlockAsync(MouseEventArgs e, CutTimelineVideoBlock block)
+    {
+        var t = await TimeAtAsync(e.ClientX);
+        if (CutTimelineLayout.HitTest(Clips, t) is { } hit)
+        {
+            await SelectClip(hit.Clip);
+            return;
+        }
+
+        if (block.FirstIndex >= 0 && block.FirstIndex < Clips.Count)
+            await SelectClip(Clips[block.FirstIndex]);
+    }
+
     private void SelectText(CutTextBlock block)
     {
         _joinMenu = null;

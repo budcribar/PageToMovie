@@ -56,42 +56,41 @@
             </div>
 
             <div class="cut-tl-video" data-testid="cut-tl-video">
-                @foreach (var lane in Layout.Lanes)
+                @foreach (var block in Layout.VideoBlocks)
                 {
-                    var clip = lane.Clip;
-                    <div class="cut-tl-clip @(clip == Selected ? "is-selected" : "") @(clip.Missing ? "is-missing" : "")"
-                         style="left: @(lane.StartPx)px; width: @(Math.Max(lane.WidthPx, 28))px"
+                    var first = Clips[block.FirstIndex];
+                    var last = Clips[block.LastIndex];
+                    <div class="cut-tl-clip is-scene @(CutTimelineLayout.BlockContains(block, Selected, Clips) ? "is-selected" : "") @(block.Missing ? "is-missing" : "")"
+                         style="left: @(block.StartPx)px; width: @(Math.Max(block.WidthPx, 28))px"
                          data-testid="cut-tl-clip"
-                         title="@clip.Label"
-                         @onclick="() => SelectClip(clip)">
+                         data-scene="@block.Label"
+                         title="@block.Label"
+                         @onclick="e => SelectSceneBlockAsync(e, block)">
                         <div class="cut-tl-film">
-                            @if (clip.Filmstrip.Count > 0)
+                            @foreach (var frame in block.Filmstrip)
                             {
-                                @foreach (var frame in clip.Filmstrip)
-                                {
-                                    <img src="@frame" alt="" />
-                                }
+                                <img src="@frame" alt="" />
                             }
                         </div>
-                        <span class="cut-tl-clip-name">@clip.Label</span>
+                        <span class="cut-tl-clip-name">@block.Label</span>
                         <span class="cut-tl-speaker" aria-hidden="true">🔊</span>
-                        @if (lane.TrimIn)
+                        @if (block.TrimIn)
                         {
                             <button type="button"
                                     class="cut-tl-handle is-in"
                                     data-testid="cut-tl-handle-in"
                                     title="Trim in"
                                     @onpointerdown:stopPropagation="true"
-                                    @onpointerdown="e => BeginTrimAsync(e, clip, true)"></button>
+                                    @onpointerdown="e => BeginTrimAsync(e, first, true)"></button>
                         }
-                        @if (lane.TrimOut)
+                        @if (block.TrimOut)
                         {
                             <button type="button"
                                     class="cut-tl-handle is-out"
                                     data-testid="cut-tl-handle-out"
                                     title="Trim out"
                                     @onpointerdown:stopPropagation="true"
-                                    @onpointerdown="e => BeginTrimAsync(e, clip, false)"></button>
+                                    @onpointerdown="e => BeginTrimAsync(e, last, false)"></button>
                         }
                     </div>
                 }
