@@ -448,17 +448,7 @@ public partial class Home : IAsyncDisposable
             await Compose.PreviewMovieJitAsync(
                 Folder.Clips,
                 ReportProgress,
-                (url, count) =>
-                {
-                    if (cts.IsCancellationRequested || !CutPlayMerge.AcceptPrefix(gen, _playGen))
-                        return;
-                    _prefixUrl = url;
-                    _prefixClipCount = count;
-                    if (ShouldHandOffToMerge())
-                        _ = InvokeAsync(() => ContinuePlayAsync(_playhead));
-                    else if (CutPlayClock.ShouldRenderOnPrefix(_playMode == PlayMode.Waiting, _wantPlay))
-                        _ = InvokeAsync(StateHasChanged);
-                },
+                (url, count) => ApplyJitPrefix(cts, gen, url, count),
                 cts.Token,
                 Folder.TextClips);
             if (cts.IsCancellationRequested || !CutPlayMerge.ComposeRunOwnsFlag(gen, _playGen))
@@ -488,6 +478,18 @@ public partial class Home : IAsyncDisposable
                 _playMode = PlayMode.Idle;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void ApplyJitPrefix(CancellationTokenSource cts, int gen, string url, int count)
+    {
+        if (cts.IsCancellationRequested || !CutPlayMerge.AcceptPrefix(gen, _playGen))
+            return;
+        _prefixUrl = url;
+        _prefixClipCount = count;
+        if (ShouldHandOffToMerge())
+            _ = InvokeAsync(() => ContinuePlayAsync(_playhead));
+        else if (CutPlayClock.ShouldRenderOnPrefix(_playMode == PlayMode.Waiting, _wantPlay))
+            _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task ContinuePlayAsync(double timelineSec, bool userSeek = false)
