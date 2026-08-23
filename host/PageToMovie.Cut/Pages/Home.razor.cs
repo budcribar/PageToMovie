@@ -15,7 +15,7 @@ public partial class Home : IAsyncDisposable
     private CutPreviewVideos? _preview = null;
     private CutTimeline? Timeline { get; set; } = null;
     private string? _selectedTextId;
-    private ElementReference _audioPickerHost;
+    private ElementReference _audioPickerHost = default;
     private int _audioInputKey;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
