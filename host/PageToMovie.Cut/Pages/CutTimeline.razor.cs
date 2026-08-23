@@ -461,16 +461,16 @@ public partial class CutTimeline
         await SetTextLabelAsync(block, Convert.ToString(e.Value, CultureInfo.InvariantCulture));
     }
 
-    private async Task SetSelectedTextLabelAsync(string? text)
-    {
-        if (SelectedTextBlock is { } block)
-            await SetTextLabelAsync(block, text);
-    }
-
     private async Task SetTextLabelAsync(CutTextBlock block, string? text)
     {
         CutTextTrack.SetLabel(block, text);
         await OnEdited.InvokeAsync();
+    }
+
+    private async Task SetSelectedTextLabelAsync(string? text)
+    {
+        if (SelectedTextBlock is { } block)
+            await SetTextLabelAsync(block, text);
     }
 
     private async Task DeleteSelectedTextAsync()
