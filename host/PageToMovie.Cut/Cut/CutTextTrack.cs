@@ -182,30 +182,36 @@ public static class CutTextTrack
         {
             if (string.IsNullOrWhiteSpace(title.Text) && string.IsNullOrWhiteSpace(title.DisplayText))
                 continue;
-            var idx = 0;
-            var last = layout.Lanes[^1];
-            // Titles parked at the cut end (Mary19 ~101.9s) belong on the
-            // last scene, not the last 0.1s of the previous picture.
-            if (title.StartSec + 0.25 >= last.StartSec)
-                idx = layout.Lanes.Count - 1;
-            else
-            {
-                for (var i = 0; i < layout.Lanes.Count; i++)
-                {
-                    var lane = layout.Lanes[i];
-                    if (title.StartSec < lane.StartSec + lane.WidthSec - 0.0001 || i == layout.Lanes.Count - 1)
-                    {
-                        idx = i;
-                        break;
-                    }
-                }
-            }
-
+            var idx = LaneIndexForCompose(layout.Lanes, title.StartSec);
             var local = Math.Max(0, title.StartSec - layout.Lanes[idx].StartSec);
             result.Add(new CutTextOverlay(idx, local, title.DisplayText, title.HoldSeconds, title.Style));
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Titles parked at the cut end belong on the last scene,
+    /// not the last 0.1s of the previous picture.
+    /// </summary>
+    private static int LaneIndexForCompose(IReadOnlyList<CutTimelineLane> lanes, double startSec)
+    {
+        var last = lanes[^1];
+        if (startSec + 0.25 >= last.StartSec)
+            return lanes.Count - 1;
+
+        var idx = 0;
+        for (var i = 0; i < lanes.Count; i++)
+        {
+            var lane = lanes[i];
+            if (startSec < lane.StartSec + lane.WidthSec - 0.0001 || i == lanes.Count - 1)
+            {
+                idx = i;
+                break;
+            }
+        }
+
+        return idx;
     }
 }
 
