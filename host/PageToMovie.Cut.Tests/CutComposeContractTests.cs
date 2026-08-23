@@ -63,6 +63,22 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Cut_js_releases_transient_compose_blobs()
+    {
+        var cutJs = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var src = File.ReadAllText(cutJs);
+        Assert.Contains("function releaseTempUrl(url)", src, StringComparison.Ordinal);
+        Assert.Contains("releaseTempUrl(beforeOverlay)", src, StringComparison.Ordinal);
+        Assert.Contains("releaseTempUrl(previous)", src, StringComparison.Ordinal);
+        Assert.Contains("releaseTempUrl(placed.url)", src, StringComparison.Ordinal);
+        Assert.Contains("transientBodies.forEach", src, StringComparison.Ordinal);
+        Assert.Contains("const hasInlineCards = slice.some", src, StringComparison.Ordinal);
+        Assert.Contains("combined = await concatPinned(api, pieces, onProgress)", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Home_binds_selected_title_id_to_the_timeline()
     {
         var home = Path.GetFullPath(Path.Combine(

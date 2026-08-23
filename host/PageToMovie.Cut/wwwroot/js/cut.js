@@ -240,6 +240,18 @@
             cut._ownedMovieUrl = null;
     }
 
+    function releaseTempUrl(url) {
+        if (typeof url !== "string" || !url.startsWith("blob:") || !cut._ownedTemps.has(url))
+            return;
+        if (isPinnedPrefix(url))
+            return;
+        if (cut._activeInputs.has(url)) {
+            cut._pendingRevoke.add(url);
+            return;
+        }
+        actuallyRevoke(url);
+    }
+
     function flushPendingRevokes() {
         Array.from(cut._pendingRevoke).forEach(function (url) {
             if (!cut._activeInputs.has(url))
@@ -718,9 +730,16 @@
             const hold = Math.max(0.3, Number(holdSec) || CUT_TO_BLACK_HOLD_SEC);
             const black = await stillVideoAsync(blackPngUrl(), hold, onProgress);
             if (!black.success) return concatPinned(api, [leftUrl, rightUrl], onProgress);
-            const mid = await concatPinned(api, [leftUrl, black.url], onProgress);
-            if (!mid.success) return mid;
-            return concatPinned(api, [mid.url, rightUrl], onProgress);
+            let mid = null;
+            try {
+                mid = await concatPinned(api, [leftUrl, black.url], onProgress);
+                if (!mid.success) return mid;
+                return await concatPinned(api, [mid.url, rightUrl], onProgress);
+            } finally {
+                releaseTempUrl(black.url);
+                if (mid && mid.success)
+                    releaseTempUrl(mid.url);
+            }
         }
         if (xfadeName(k)) {
             const faded = await xfadeAsync(leftUrl, rightUrl, k, onProgress);
@@ -774,10 +793,18 @@
         }
         if (urls.length === 1)
             return { url: urls[0], source: c.url };
-        const cat = await concatPinned(window.PageToMovieFfmpeg, urls, onProgress);
-        if (!cat.success)
-            return { error: label + ": " + (cat.error || "range join failed") };
-        return { url: cat.url, source: c.url };
+        let cat = null;
+        try {
+            cat = await concatPinned(window.PageToMovieFfmpeg, urls, onProgress);
+            if (!cat.success)
+                return { error: label + ": " + (cat.error || "range join failed") };
+            return { url: cat.url, source: c.url };
+        } finally {
+            urls.forEach(function (url) {
+                if (!cat || !cat.success || url !== cat.url)
+                    releaseTempUrl(url);
+            });
+        }
     }
 
     async function deleteMemfs(ffmpeg, name) {
@@ -960,10 +987,15 @@
         const placed = await placeMusicAsync(api, spec, onProgress);
         if (!placed.success)
             return placed;
-        return withPinnedUrls([videoUrl, placed.url], async function () {
-            onProgress?.(80, "Mixing audio…");
-            return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress, spec);
-        });
+        try {
+            return await withPinnedUrls([videoUrl, placed.url], async function () {
+                onProgress?.(80, "Mixing audio…");
+                return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress, spec);
+            });
+        } finally {
+            if (placed.url !== spec.url)
+                releaseTempUrl(placed.url);
+        }
     }
 
     cut.supportsDirectoryPicker = function () {
@@ -1768,6 +1800,27 @@
         };
     }
 
+    async function prepareSceneClipAsync(c, index, total, onProgress) {
+        const isHold = !!(c.hold || !c.url);
+        const one = isHold
+            ? await holdClipStillAsync(c, onProgress)
+            : await prepareWindowsAsync(c, index, total, onProgress);
+        if (one.error)
+            return one;
+        if (c.texts && c.texts.length > 0) {
+            const beforeOverlay = one.url;
+            const over = await overlayTextsAsync(one.url, c.texts, onProgress);
+            if (!over.success) {
+                releaseTempUrl(beforeOverlay);
+                return { error: over.error || "Text overlay failed." };
+            }
+            one.url = over.url;
+            if (beforeOverlay !== one.url)
+                releaseTempUrl(beforeOverlay);
+        }
+        return one;
+    }
+
     async function composeSceneClipsAsync(clips, scene, onProgress) {
         const api = window.PageToMovieFfmpeg;
         const first = Math.max(0, Number(scene.first) || 0);
@@ -1775,6 +1828,30 @@
         const slice = clips.slice(first, first + count);
         if (slice.length === 0)
             return { success: false, error: "Empty scene." };
+        const hasInlineCards = slice.some(function (c) {
+            return c.card && c.card.text && !(c.hold || !c.url);
+        });
+        if (!hasInlineCards) {
+            const pieces = [];
+            let combined = null;
+            try {
+                for (let i = 0; i < slice.length; i++) {
+                    if (composeStopped())
+                        return { success: false, error: "Stopped." };
+                    const one = await prepareSceneClipAsync(slice[i], first + i, clips.length, onProgress);
+                    if (one.error)
+                        return { success: false, error: one.error };
+                    pieces.push(one.url);
+                }
+                combined = await concatPinned(api, pieces, onProgress);
+                return combined;
+            } finally {
+                pieces.forEach(function (url) {
+                    if (!combined || !combined.success || url !== combined.url)
+                        releaseTempUrl(url);
+                });
+            }
+        }
         let acc = null;
         let pendingJoin = "cut";
         let pendingHold = 0;
@@ -1792,30 +1869,32 @@
                 if (!acc)
                     acc = card.url;
                 else {
+                    const previous = acc;
                     const joined = await joinPairAsync(api, acc, card.url, pendingJoin, onProgress, pendingHold);
                     if (!joined.success) return joined;
                     acc = joined.url;
+                    if (previous !== acc)
+                        releaseTempUrl(previous);
+                    if (card.url !== acc)
+                        releaseTempUrl(card.url);
                 }
                 pendingJoin = "dip";
                 pendingHold = 0;
             }
-            const one = isHold
-                ? await holdClipStillAsync(c, onProgress)
-                : await prepareWindowsAsync(c, first + i, clips.length, onProgress);
+            const one = await prepareSceneClipAsync(c, first + i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
-            if (c.texts && c.texts.length > 0) {
-                const over = await overlayTextsAsync(one.url, c.texts, onProgress);
-                if (!over.success)
-                    return { success: false, error: over.error || "Text overlay failed." };
-                one.url = over.url;
-            }
             if (!acc)
                 acc = one.url;
             else {
+                const previous = acc;
                 const joined = await joinPairAsync(api, acc, one.url, pendingJoin, onProgress, pendingHold);
                 if (!joined.success) return joined;
                 acc = joined.url;
+                if (previous !== acc)
+                    releaseTempUrl(previous);
+                if (one.url !== acc)
+                    releaseTempUrl(one.url);
             }
             pendingJoin = "cut";
             pendingHold = 0;
@@ -1853,15 +1932,24 @@
         const leftTail = await cut.trimRangeAsync(left.url, tailStart, leftSec > 0 ? leftSec : tailStart + fade, onProgress);
         if (!leftTail.success) return leftTail;
         const rightHead = await cut.trimRangeAsync(right.url, 0, fade, onProgress);
-        if (!rightHead.success) return rightHead;
-        const faded = await xfadeAsync(leftTail.url, rightHead.url, kind, onProgress, fade);
-        if (!faded.success) return faded;
-        join.url = faded.url;
-        return faded;
+        if (!rightHead.success) {
+            releaseTempUrl(leftTail.url);
+            return rightHead;
+        }
+        try {
+            const faded = await xfadeAsync(leftTail.url, rightHead.url, kind, onProgress, fade);
+            if (!faded.success) return faded;
+            join.url = faded.url;
+            return faded;
+        } finally {
+            releaseTempUrl(leftTail.url);
+            releaseTempUrl(rightHead.url);
+        }
     }
 
     async function stitchScenesAsync(api, sceneUrls, joins, onProgress) {
         const pieces = [];
+        const transientBodies = [];
         for (let i = 0; i < sceneUrls.length; i++) {
             const join = i < joins.length ? joins[i] : null;
             const prev = i > 0 ? joins[i - 1] : null;
@@ -1870,6 +1958,8 @@
             const body = await trimBodyAsync(sceneUrls[i].url, sceneUrls[i].seconds, inFade, outFade, onProgress);
             if (!body.success) return body;
             pieces.push(body.url);
+            if (body.url !== sceneUrls[i].url)
+                transientBodies.push(body.url);
             if (!join || !join.encodes)
                 continue;
             const next = sceneUrls[i + 1];
@@ -1881,7 +1971,16 @@
                 pieces.push(made.url);
         }
         onProgress?.(55, "Combining clips…");
-        return concatPinned(api, pieces, onProgress);
+        let combined = null;
+        try {
+            combined = await concatPinned(api, pieces, onProgress);
+            return combined;
+        } finally {
+            transientBodies.forEach(function (url) {
+                if (!combined || !combined.success || url !== combined.url)
+                    releaseTempUrl(url);
+            });
+        }
     }
 
     async function composeWorkAsync(clipsOrPlan, audioUrl, dotNetRef, jit) {
