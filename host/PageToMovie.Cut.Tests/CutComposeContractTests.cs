@@ -23,6 +23,46 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Make_movie_waits_for_play_stitch_instead_of_aborting()
+    {
+        Assert.False(CutComposeContract.ExportAbortsInFlightPlay);
+        Assert.True(CutComposeContract.ExportWaitsForInFlightPlay);
+        Assert.False(CutComposeContract.ShouldCancelComposeOnExport);
+    }
+
+    [Fact]
+    public void Browser_fs_error_is_rewritten_for_the_operator()
+    {
+        Assert.True(CutComposeContract.IsBrowserFsError("ErrnoError: FS error"));
+        Assert.True(CutComposeContract.IsBrowserFsError("FS error"));
+        Assert.True(CutComposeContract.IsBrowserFsError("ErrnoError"));
+        Assert.False(CutComposeContract.IsBrowserFsError("Stopped."));
+        Assert.False(CutComposeContract.IsBrowserFsError(null));
+        Assert.Equal(
+            CutComposeContract.BrowserWorkingFileError,
+            CutComposeContract.OperatorComposeError("ErrnoError: FS error", download: true));
+        Assert.Equal(
+            CutComposeContract.BrowserWorkingFileError,
+            CutComposeContract.OperatorComposeError("FS error trying to export", download: true));
+        Assert.Equal("Stopped.", CutComposeContract.OperatorComposeError("Stopped.", download: true));
+        Assert.Equal("Export failed.", CutComposeContract.OperatorComposeError(null, download: true));
+        Assert.Equal("Play failed.", CutComposeContract.OperatorComposeError("  ", download: false));
+    }
+
+    [Fact]
+    public void Cut_js_keeps_the_operator_fs_message()
+    {
+        var cutJs = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var src = File.ReadAllText(cutJs);
+        Assert.Contains(CutComposeContract.BrowserWorkingFileError, src, StringComparison.Ordinal);
+        Assert.Contains("prepareExportAsync", src, StringComparison.Ordinal);
+        Assert.Contains("drainComposeAsync", src, StringComparison.Ordinal);
+        Assert.Contains("writeMemfs", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Native_clip_audio_stays_on_hard_cut_and_xfade()
     {
         Assert.True(CutComposeContract.KeepNativeClipAudio);

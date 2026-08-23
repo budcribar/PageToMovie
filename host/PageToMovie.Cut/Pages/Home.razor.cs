@@ -42,6 +42,7 @@ public partial class Home : IAsyncDisposable
     private CutJitPlay.Window? _nativeWindow;
     private CutJitPlay.Window? _firstStart;
     private CancellationTokenSource? _composeCts;
+    private Task? _composeRun;
     private DotNetObjectReference<MediaTimeSink>? _timeRef;
     private PlaySurface _boundSurface;
     private string? _clipSrcBound;
@@ -459,7 +460,7 @@ public partial class Home : IAsyncDisposable
         _composeCts?.Cancel();
         _composeCts = cts;
         var gen = _playGen;
-        _ = RunJitComposeAsync(cts, gen);
+        _composeRun = RunJitComposeAsync(cts, gen);
     }
 
     private async Task RunJitComposeAsync(CancellationTokenSource cts, int gen)
@@ -815,6 +816,23 @@ public partial class Home : IAsyncDisposable
 
     private void StopPlay()
     {
+        PausePlaybackSurfaces();
+        _playGen++;
+        CancelCompose();
+    }
+
+    /// <summary>
+    /// Stop the player without aborting an in-flight stitch. Make movie
+    /// waits for that compose and reuses it — abort-then-recompose races
+    /// MEMFS writeFile.
+    /// </summary>
+    private void PausePlayForExport()
+    {
+        PausePlaybackSurfaces();
+    }
+
+    private void PausePlaybackSurfaces()
+    {
         _wantPlay = false;
         _playMode = PlayMode.Idle;
         _nativeWindow = null;
@@ -824,8 +842,6 @@ public partial class Home : IAsyncDisposable
         _boundSurface = PlaySurface.None;
         if (!CutPlayClock.ShouldResetPlayheadOnStop)
             _playhead = CutPlayMerge.PlayheadAfterStop(_playhead);
-        _playGen++;
-        CancelCompose();
         DisposeTimeSink();
         if (Js is not null)
             _ = Js.InvokeVoidAsync("PageToMovieCut.resetPlaySurfaces", CancellationToken.None);
@@ -996,13 +1012,19 @@ public partial class Home : IAsyncDisposable
     private async Task ExportAsync()
     {
         _error = null;
-        StopPlay();
+        if (CutComposeContract.ShouldCancelComposeOnExport)
+            StopPlay();
+        else
+            PausePlayForExport();
         _exporting = true;
         ProgressPercent = 0;
         ProgressMessage = "Preparing movie…";
         await InvokeAsync(StateHasChanged);
         try
         {
+            if (CutComposeContract.ExportWaitsForInFlightPlay && _composeRun is not null)
+                await _composeRun;
+            _error = null;
             await Compose.ExportMovieAsync(Folder.Clips, ReportProgress, texts: Folder.TextClips);
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;

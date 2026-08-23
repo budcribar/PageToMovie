@@ -141,6 +141,7 @@ public sealed class CutComposeService : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyList<CutTextClip>? texts = null)
     {
+        await PrepareExportJsAsync();
         if (TryReuseMovie(clips, texts, progress, onPrefix: null)
             && !string.IsNullOrWhiteSpace(MoviePreviewUrl))
         {
@@ -178,6 +179,8 @@ public sealed class CutComposeService : IAsyncDisposable
     /// <summary>
     /// Stop in-flight preview/JIT so Stop / second Play does not call a
     /// disposed progress sink or revoke blobs ffmpeg still holds.
+    /// Waits for the compose gate and exclusive ffmpeg lock, then sweeps
+    /// leftover <c>cut_*</c> MEMFS names.
     /// </summary>
     public Task AbortAsync()
     {
@@ -219,7 +222,7 @@ public sealed class CutComposeService : IAsyncDisposable
                 }),
                 cancellationToken);
         if (!r.Success)
-            throw new InvalidOperationException(r.Error ?? (download ? "Export failed." : "Play failed."));
+            throw new InvalidOperationException(CutComposeContract.OperatorComposeError(r.Error, download));
         RememberComposeResult(r, ready.Count);
         return r.Url;
     }
@@ -413,6 +416,18 @@ public sealed class CutComposeService : IAsyncDisposable
         {
             sink.Dispose();
             sinkRef.Dispose();
+        }
+    }
+
+    private async Task PrepareExportJsAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("PageToMovieCut.prepareExportAsync");
+        }
+        catch (JSException)
+        {
+            // Helper may already be gone; compose will surface a readable error.
         }
     }
 
