@@ -49,6 +49,14 @@ public class CutTransportTests
         Assert.True(CutTransport.TextAddZIndex > 4);
     }
 
+    [Fact]
+    public void Add_audio_stays_above_the_music_block()
+    {
+        Assert.Equal("cut-tl-audio-add", CutTransport.AudioAddClass);
+        Assert.Equal(CutTransport.TextAddZIndex, CutTransport.AudioAddZIndex);
+        Assert.True(CutTransport.AudioAddZIndex > 4);
+    }
+
     private static CutClip NewClip(int scene, int clip, string? preview = null)
     {
         var c = new CutClip { Scene = scene, Clip = clip };

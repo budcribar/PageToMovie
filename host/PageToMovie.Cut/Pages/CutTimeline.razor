@@ -27,6 +27,12 @@
             </svg>
         </button>
         <span class="cut-tl-clock">@PlayheadClock / @TotalClock</span>
+        <button type="button"
+                class="cut-btn cut-btn-ghost"
+                data-testid="cut-make-movie"
+                title="Make movie"
+                disabled="@PlayDisabled"
+                @onclick="OnExport">Make movie</button>
         @if (HasRange)
         {
             <button type="button" class="cut-btn cut-btn-ghost cut-tl-del" disabled="@Busy" @onclick="DeleteRangeAsync">
@@ -203,7 +209,15 @@
                 }
             </div>
 
-            <div class="cut-tl-audio" data-testid="cut-tl-audio">
+            <div class="cut-tl-audio @(ShowMusic ? "" : "is-empty")" data-testid="cut-tl-audio">
+                <button type="button"
+                        class="@CutTransport.AudioAddClass"
+                        title="Add audio"
+                        data-testid="cut-tl-audio-add"
+                        style="z-index: @CutTransport.AudioAddZIndex"
+                        disabled="@Busy"
+                        @onpointerdown:stopPropagation="true"
+                        @onclick="OnAddAudio">+</button>
                 @if (ShowMusic)
                 {
                     <div class="cut-tl-music @(_musicSelected ? "is-selected" : "")"
@@ -249,7 +263,12 @@
                 }
                 else
                 {
-                    <span class="cut-tl-audio-empty">+ Add audio</span>
+                    <button type="button"
+                            class="cut-tl-audio-empty"
+                            title="Add audio"
+                            disabled="@Busy"
+                            @onpointerdown:stopPropagation="true"
+                            @onclick="OnAddAudio">+ Add audio</button>
                 }
             </div>
         </div>

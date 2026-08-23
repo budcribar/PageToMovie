@@ -15,6 +15,8 @@ public partial class Home : IAsyncDisposable
     private CutPreviewVideos? _preview = null;
     private CutTimeline? Timeline { get; set; } = null;
     private string? _selectedTextId;
+    private ElementReference _audioPickerHost;
+    private int _audioInputKey;
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
     internal ElementReference TextOverlay { get; set; }
@@ -77,8 +79,6 @@ public partial class Home : IAsyncDisposable
 
     private bool PlayDisabled =>
         TransportLocked || !CutTransport.CanPlay(Folder.Clips);
-
-    private bool ExportDisabled => PlayDisabled;
 
     internal bool IsPlaying => _wantPlay;
 
@@ -329,6 +329,20 @@ public partial class Home : IAsyncDisposable
             await InvokeAsync(StateHasChanged);
     }
 
+    private async Task OpenAudioPickerAsync()
+    {
+        if (Js is null || TransportLocked)
+            return;
+        try
+        {
+            await Js.InvokeVoidAsync("PageToMovieCut.clickFileInput", _audioPickerHost);
+        }
+        catch (JSException)
+        {
+            // picker is a user gesture; skip if the host is not mounted
+        }
+    }
+
     private async Task OnAudioAsync(InputFileChangeEventArgs e)
     {
         _error = null;
@@ -344,6 +358,7 @@ public partial class Home : IAsyncDisposable
             if (MusicQueue.IsQueued)
                 ProgressMessage = CutMusicQueue.QueuedMessage;
             await PersistAttachedMusicAsync();
+            _audioInputKey++;
         }
         catch (Exception ex)
         {
