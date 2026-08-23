@@ -88,7 +88,12 @@ public sealed class CutTextStyle
     public bool HasBar => Background == CutTextBackground.DarkBar;
     public string CssFont => CssFontOf(Font);
     public string CssAlign => WireAlign(Align);
-    public string OverlayLeft => Align == CutTextAlign.Left ? "7%" : Align == CutTextAlign.Right ? "auto" : "50%";
+    public string OverlayLeft => Align switch
+    {
+        CutTextAlign.Left => "7%",
+        CutTextAlign.Right => "auto",
+        _ => "50%",
+    };
     public string OverlayRight => Align == CutTextAlign.Right ? "7%" : "auto";
     public string OverlayTransform =>
         Align == CutTextAlign.Center ? "translate(-50%, -50%)" : "translate(0, -50%)";
