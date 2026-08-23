@@ -16,13 +16,7 @@ public partial class Home : IAsyncDisposable
     private CutTimeline? Timeline { get; set; } = null;
     private string? _selectedTextId;
     private ElementReference _audioPickerHost = default;
-    private int _audioInputKey;
-
-    private int AudioInputKey
-    {
-        get => _audioInputKey;
-        set => _audioInputKey = value;
-    }
+    private int AudioInputKey { get; set; }
     internal ElementReference ClipPlayer => _preview?.ClipPlayer ?? default;
     internal ElementReference MoviePlayer => _preview?.MoviePlayer ?? default;
     internal ElementReference TextOverlay { get; set; }
