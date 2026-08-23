@@ -446,30 +446,14 @@ public partial class Home : IAsyncDisposable
             await Compose.PreviewMovieJitAsync(
                 Folder.Clips,
                 ReportProgress,
-                (url, count) =>
-                {
-                    if (cts.IsCancellationRequested || !CutPlayMerge.AcceptPrefix(gen, _playGen))
-                        return;
-                    _prefixUrl = url;
-                    _prefixClipCount = count;
-                    if (ShouldHandOffToMerge())
-                        _ = InvokeAsync(() => ContinuePlayAsync(_playhead));
-                    else if (CutPlayClock.ShouldRenderOnPrefix(_playMode == PlayMode.Waiting, _wantPlay))
-                        _ = InvokeAsync(StateHasChanged);
-                },
+                (url, count) => OnJitPrefixReady(url, count, cts, gen),
                 cts.Token,
                 Folder.TextClips);
             if (cts.IsCancellationRequested || !CutPlayMerge.ComposeRunOwnsFlag(gen, _playGen))
                 return;
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;
-            await MixQueuedMusicAsync(cts.Token);
-            FinishComposeRun(gen);
-            await PersistPlayMergeAsync(Folder, Compose);
-            if (_wantPlay)
-                await ContinuePlayAsync(_playhead);
-            if (CutPlayClock.ShouldRenderAfterComposeSettles)
-                await InvokeAsync(StateHasChanged);
+            await FinishJitComposeAsync(cts.Token, gen);
         }
         catch (OperationCanceledException)
         {
@@ -478,14 +462,42 @@ public partial class Home : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            FinishComposeRun(gen);
-            _error = ex.Message;
-            if (MusicQueue.IsQueued)
-                ProgressMessage = CutMusicQueue.WaitingMessage;
-            if (_playMode == PlayMode.Waiting)
-                _playMode = PlayMode.Idle;
-            await InvokeAsync(StateHasChanged);
+            await FailJitComposeAsync(gen, ex);
         }
+    }
+
+    private void OnJitPrefixReady(string url, int count, CancellationTokenSource cts, int gen)
+    {
+        if (cts.IsCancellationRequested || !CutPlayMerge.AcceptPrefix(gen, _playGen))
+            return;
+        _prefixUrl = url;
+        _prefixClipCount = count;
+        if (ShouldHandOffToMerge())
+            _ = InvokeAsync(() => ContinuePlayAsync(_playhead));
+        else if (CutPlayClock.ShouldRenderOnPrefix(_playMode == PlayMode.Waiting, _wantPlay))
+            _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FinishJitComposeAsync(CancellationToken token, int gen)
+    {
+        await MixQueuedMusicAsync(token);
+        FinishComposeRun(gen);
+        await PersistPlayMergeAsync(Folder, Compose);
+        if (_wantPlay)
+            await ContinuePlayAsync(_playhead);
+        if (CutPlayClock.ShouldRenderAfterComposeSettles)
+            await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FailJitComposeAsync(int gen, Exception ex)
+    {
+        FinishComposeRun(gen);
+        _error = ex.Message;
+        if (MusicQueue.IsQueued)
+            ProgressMessage = CutMusicQueue.WaitingMessage;
+        if (_playMode == PlayMode.Waiting)
+            _playMode = PlayMode.Idle;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ContinuePlayAsync(double timelineSec, bool userSeek = false)
