@@ -249,19 +249,30 @@ public static class CutProjectFile
         Style = ToStyleDto(title.Style),
     };
 
-    private static StyleDto? ToStyleDto(CutTextStyle? style) =>
-        style is null || style.IsDefault
-            ? null
-            : new StyleDto
-            {
-                Position = CutTextStyle.WirePosition(style.Position),
-                Size = CutTextStyle.WireSize(style.Size),
-                Color = CutTextStyle.WireColor(style.Color),
-                Background = CutTextStyle.WireBackground(style.Background),
-                Fade = CutTextStyle.WireFade(style.Fade),
-                Font = style.Font == CutTextFont.Sans ? null : CutTextStyle.WireFont(style.Font),
-                Align = style.Align == CutTextAlign.Center ? null : CutTextStyle.WireAlign(style.Align),
-            };
+    private static StyleDto? ToStyleDto(CutTextStyle? style)
+    {
+        if (style is null || style.IsDefault)
+            return null;
+
+        string? font = null;
+        if (style.Font != CutTextFont.Sans)
+            font = CutTextStyle.WireFont(style.Font);
+
+        string? align = null;
+        if (style.Align != CutTextAlign.Center)
+            align = CutTextStyle.WireAlign(style.Align);
+
+        return new StyleDto
+        {
+            Position = CutTextStyle.WirePosition(style.Position),
+            Size = CutTextStyle.WireSize(style.Size),
+            Color = CutTextStyle.WireColor(style.Color),
+            Background = CutTextStyle.WireBackground(style.Background),
+            Fade = CutTextStyle.WireFade(style.Fade),
+            Font = font,
+            Align = align,
+        };
+    }
 
     private static void ApplyStyle(CutTextStyle target, StyleDto? dto)
     {
