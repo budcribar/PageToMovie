@@ -306,7 +306,7 @@ public sealed class CutComposeService : IAsyncDisposable
         LastRebuiltJoins = r.RebuiltJoins.Count > 0 ? r.RebuiltJoins.ToList() : [];
         if (!string.IsNullOrWhiteSpace(r.PictureUrl))
             Cache.PictureUrl = r.PictureUrl;
-        else if (string.IsNullOrWhiteSpace(AudioFileName))
+        else if (string.IsNullOrWhiteSpace(AudioFileName) || string.IsNullOrWhiteSpace(Cache.PictureUrl))
             Cache.PictureUrl = r.Url;
         foreach (var scene in r.Scenes)
         {

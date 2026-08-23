@@ -29,6 +29,7 @@ public partial class CutTimeline
     [Parameter] public EventCallback OnStepForward { get; set; }
     [Parameter] public EventCallback OnSplit { get; set; }
     [Parameter] public EventCallback OnEdited { get; set; }
+    [Parameter] public EventCallback OnMusicEdited { get; set; }
     [Parameter] public EventCallback OnMusicRemoved { get; set; }
     [Parameter] public string? SelectedTextId { get; set; }
     [Parameter] public EventCallback<string?> SelectedTextIdChanged { get; set; }
@@ -110,6 +111,10 @@ public partial class CutTimeline
         SelectedTextBlock is { Title: { } title } ? title : CutTextEdit.Find(TextClips, _selectedTextId);
     private CutTextClip? MenuTitle =>
         CutTextMenu.TargetOf(TextClips, _menuTitleId, _selectedTextId);
+
+    private Task NotifyMusicEditedAsync() =>
+        OnMusicEdited.HasDelegate ? OnMusicEdited.InvokeAsync() : OnEdited.InvokeAsync();
+
     private bool ShowMusic => Music is { HasFile: true };
     private double MusicLeftPx => (Music?.StartSec ?? 0) * _pxPerSec;
     private double MusicWidthPx
@@ -381,7 +386,7 @@ public partial class CutTimeline
             return;
         CloseTitleMenu();
         CutMusicEdit.Paste(Music, placed, PlayheadSec);
-        await OnEdited.InvokeAsync();
+        await NotifyMusicEditedAsync();
     }
 
     private async Task DeleteMusicAsync()
@@ -393,7 +398,6 @@ public partial class CutTimeline
         _musicSelected = false;
         _musicNameEditing = false;
         await OnMusicRemoved.InvokeAsync();
-        await OnEdited.InvokeAsync();
     }
 
     private async Task EditMusicDurationAsync()
@@ -420,7 +424,7 @@ public partial class CutTimeline
         CutMusicEdit.Rename(Music, Convert.ToString(e.Value, CultureInfo.InvariantCulture));
         _musicNameEditing = false;
         _textFieldFocused = false;
-        await OnEdited.InvokeAsync();
+        await NotifyMusicEditedAsync();
     }
 
     private async Task SetSelectedTextIdAsync(string? id)
@@ -788,7 +792,10 @@ public partial class CutTimeline
             _trimText = null;
             _dragRow = null;
             _dragOccupied = null;
-            await OnEdited.InvokeAsync();
+            if (kind is DragKind.MusicMove or DragKind.MusicIn or DragKind.MusicOut)
+                await NotifyMusicEditedAsync();
+            else
+                await OnEdited.InvokeAsync();
             return;
         }
 
