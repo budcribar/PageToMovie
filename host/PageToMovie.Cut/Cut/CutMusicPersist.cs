@@ -40,12 +40,13 @@ public static class CutMusicPersist
         out CutMusicWrite write)
     {
         write = default;
-        if (!ShouldWriteToFolder(canWrite, fileName, audioUrl))
+        if (string.IsNullOrWhiteSpace(audioUrl)
+            || !ShouldWriteToFolder(canWrite, fileName, audioUrl))
             return false;
         var name = FileNameOf(fileName);
         if (!force && !NeedsFlushOnSave(name, fileOnDisk, audioUrl))
             return false;
-        write = new CutMusicWrite(name, audioUrl!);
+        write = new CutMusicWrite(name, audioUrl);
         return true;
     }
 }
