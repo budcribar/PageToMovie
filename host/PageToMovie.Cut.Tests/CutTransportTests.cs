@@ -35,6 +35,7 @@ public class CutTransportTests
         Assert.True(CutTransport.CanPlay([ready]));
         Assert.True(CutTransport.CanPlay([missing, ready]));
         Assert.Single(CutTransport.PlayableClips([missing, ready]));
+        Assert.Equal(2, CutTransport.ComposeClips([missing, ready]).Count);
     }
 
     [Fact]

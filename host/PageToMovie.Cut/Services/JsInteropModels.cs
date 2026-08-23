@@ -177,6 +177,9 @@ public sealed class JsExportClip
     [JsonPropertyName("duration")]
     public double Duration { get; set; }
 
+    [JsonPropertyName("hold")]
+    public bool Hold { get; set; }
+
     [JsonPropertyName("windows")]
     public List<JsKeepWindow> Windows { get; set; } = [];
 

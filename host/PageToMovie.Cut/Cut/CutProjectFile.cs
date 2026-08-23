@@ -118,6 +118,8 @@ public static class CutProjectFile
         music.SetFadeIn(dto.MusicFadeIn ?? CutMusicMix.DefaultFadeSec);
         music.SetFadeOut(dto.MusicFadeOut ?? CutMusicMix.DefaultFadeSec);
         ApplyClipRows(clips, dto.Clips);
+        foreach (var clip in clips)
+            clip.EnsureInOutFromDuration();
 
         foreach (var row in dto.TextClips ?? [])
         {

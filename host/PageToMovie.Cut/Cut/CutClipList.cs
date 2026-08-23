@@ -154,7 +154,8 @@ public static class CutClipList
                 && !CutClipNaming.TryParseSceneClip(file.RelativePath, out scene, out clip))
                 continue;
             var hop = CutHop.Read(file.Text);
-            if (!hop.HasSlice)
+            var hopDuration = hop.DurationSeconds ?? 0;
+            if (!hop.HasSlice && hopDuration <= 0)
                 continue;
             var take = CutClipNaming.ParseTakeNumber(file.FileName);
             if (take <= 0)
@@ -171,9 +172,11 @@ public static class CutClipList
     private static CutHop HopFor(
         Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip, int take)
     {
-        if (hops.TryGetValue((scene, clip, take), out var exact) && exact.HasSlice)
+        if (hops.TryGetValue((scene, clip, take), out var exact)
+            && (exact.HasSlice || (exact.DurationSeconds ?? 0) > 0))
             return exact;
-        if (hops.TryGetValue((scene, clip, 0), out var fallback) && fallback.HasSlice)
+        if (hops.TryGetValue((scene, clip, 0), out var fallback)
+            && (fallback.HasSlice || (fallback.DurationSeconds ?? 0) > 0))
             return fallback;
         return CutHop.None;
     }
@@ -198,12 +201,22 @@ public static class CutClipList
             if (current is { } file)
                 clip.Takes.Add(ToTake(file.TakeHint, file, HopFor(hops, slot.Scene, slot.Clip, file.TakeHint)));
         }
+        else if (RecoverSameSlotTake(slot.Takes) is { } recovered)
+        {
+            // Same (scene, clip) only — never a previous scene's MP4.
+            clip.ActiveTakeNumber = recovered.TakeHint;
+            clip.Takes.Add(ToTake(recovered.TakeHint, recovered, HopFor(hops, slot.Scene, slot.Clip, recovered.TakeHint)));
+        }
 
         var pointerPath = PreferOne(slot.Takes) is { } sample
             ? CutClipNaming.PointerPathBeside(sample.RelativePath, slot.Scene, slot.Clip)
             : CutClipNaming.CurrentTakePointerFileName(slot.Scene, slot.Clip);
         clip.PointerRelativePath = pointerPath;
         clip.SeedSelection();
+        var sidecarDuration = SlotDuration(hops, slot.Scene, slot.Clip);
+        if (sidecarDuration > 0 && !clip.HasDuration)
+            clip.SetDuration(sidecarDuration);
+        clip.EnsureInOutFromDuration();
         return clip;
     }
 
@@ -215,12 +228,54 @@ public static class CutClipList
             FileName = CutClipNaming.FileNameOnly(file.FileName),
             RelativePath = file.RelativePath,
             SizeBytes = file.SizeBytes,
-            Missing = file.SizeBytes <= 0,
-            MissingReason = file.SizeBytes <= 0 ? "Clip file is empty." : null,
+            Missing = !CutTake.IsPlayableFile(file.SizeBytes),
+            MissingReason = file.SizeBytes <= 0
+                ? "Clip file is empty."
+                : CutTake.IsPlayableFile(file.SizeBytes)
+                    ? null
+                    : "Clip file is not a playable take.",
         };
         if (hop.HasSlice)
             row.SetHop(hop);
+        else if ((hop.DurationSeconds ?? 0) > 0)
+            row.SetDuration(hop.DurationSeconds!.Value);
         return row;
+    }
+
+    /// <summary>
+    /// When Film left no <c>.current.json</c>, bind this slot's own playable
+    /// take (highest number). Stubs stay unbound. Never another scene.
+    /// </summary>
+    internal static FoundMediaFile? RecoverSameSlotTake(IReadOnlyList<FoundMediaFile> takes)
+    {
+        FoundMediaFile? best = null;
+        foreach (var file in PreferUniqueTakes(takes.ToList()))
+        {
+            if (file.TakeHint <= 0 || !CutTake.IsPlayableFile(file.SizeBytes))
+                continue;
+            if (best is null || file.TakeHint > best.Value.TakeHint)
+                best = file;
+        }
+
+        return best;
+    }
+
+    internal static double SlotDuration(
+        Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip)
+    {
+        if (hops.TryGetValue((scene, clip, 0), out var clipHop) && (clipHop.DurationSeconds ?? 0) > 0)
+            return clipHop.DurationSeconds!.Value;
+        var best = 0.0;
+        foreach (var (key, hop) in hops)
+        {
+            if (key.Scene != scene || key.Clip != clip)
+                continue;
+            var sec = hop.DurationSeconds ?? 0;
+            if (sec > best)
+                best = sec;
+        }
+
+        return best;
     }
 
     private static List<FoundMediaFile> PreferUniqueTakes(List<FoundMediaFile> takes)

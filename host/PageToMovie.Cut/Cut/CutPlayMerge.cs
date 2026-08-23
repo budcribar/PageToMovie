@@ -388,6 +388,8 @@ public static class CutPlayMerge
     {
         sb.Append('|').Append(clip.Scene).Append(':').Append(clip.Clip);
         sb.Append('@').Append(Num(clip.MarkIn)).Append('-').Append(Num(clip.MarkOut));
+        if (clip.HoldsPicture)
+            sb.Append('H');
         foreach (var span in clip.RangeDeletes)
             sb.Append('~').Append(Num(span.Start)).Append('-').Append(Num(span.End));
         sb.Append('J').Append(clip.JoinOverride is { } join

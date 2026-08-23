@@ -608,10 +608,30 @@
         return concatPinned(api, [leftUrl, rightUrl], onProgress);
     }
 
+    function clipHoldSeconds(c) {
+        const inn = Number(c && c.markIn) || 0;
+        const outt = Number(c && c.markOut) || 0;
+        if (outt > inn)
+            return outt - inn;
+        const duration = Number(c && c.duration) || 0;
+        return Math.max(0.3, duration || 2);
+    }
+
+    async function holdClipStillAsync(c, onProgress) {
+        const look = c.card && c.card.text ? textStyle(c.card.style) : null;
+        const png = look ? cardPngUrl(c.card.text, look) : blackPngUrl();
+        const still = await stillVideoAsync(png, clipHoldSeconds(c), onProgress, look && look.fadeSec);
+        if (!still.success)
+            return { error: still.error || "Hold failed." };
+        return { url: still.url, source: "" };
+    }
+
     async function prepareWindowsAsync(c, index, total, onProgress) {
         const label = c.label || c.fileName || ("clip " + (index + 1));
-        if (!c.url)
-            return { error: "Selected take file is missing: " + label };
+        if (c.hold || !c.url) {
+            onProgress?.(Math.round((index / Math.max(total, 1)) * 40), "Preparing " + label + "…");
+            return holdClipStillAsync(c, onProgress);
+        }
         onProgress?.(Math.round((index / Math.max(total, 1)) * 40), "Preparing " + label + "…");
         const windows = Array.isArray(c.windows) && c.windows.length > 0
             ? c.windows
@@ -1604,7 +1624,8 @@
             if (composeStopped())
                 return { success: false, error: "Stopped." };
             const c = slice[i];
-            if (c.card && c.card.text) {
+            const isHold = !!(c.hold || !c.url);
+            if (c.card && c.card.text && !isHold) {
                 const look = textStyle(c.card.style);
                 const card = await stillVideoAsync(
                     cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
@@ -1620,7 +1641,9 @@
                 pendingJoin = "dip";
                 pendingHold = 0;
             }
-            const one = await prepareWindowsAsync(c, first + i, clips.length, onProgress);
+            const one = isHold
+                ? await holdClipStillAsync(c, onProgress)
+                : await prepareWindowsAsync(c, first + i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
             if (c.texts && c.texts.length > 0) {
