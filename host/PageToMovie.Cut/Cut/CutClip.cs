@@ -22,11 +22,21 @@ public sealed class CutClip
     public string FileName => SelectedTake?.FileName ?? "";
     public string RelativePath => SelectedTake?.RelativePath ?? "";
     public string? PreviewUrl => SelectedTake?.PreviewUrl;
+
+    /// <summary>
+    /// No playable current-take picture. Compose must hold this slot — never
+    /// reuse the previous scene's frames.
+    /// </summary>
     public bool Missing =>
         SelectedTakeNumber <= 0
         || SelectedTake is null
         || SelectedTake.Missing
         || string.IsNullOrWhiteSpace(SelectedTake.PreviewUrl);
+
+    public bool HoldsPicture =>
+        SelectedTakeNumber <= 0
+        || SelectedTake is null
+        || SelectedTake.Missing;
 
     public string? MissingReason
     {
@@ -40,10 +50,14 @@ public sealed class CutClip
         }
     }
 
-    public double DurationSec => SelectedTake?.DurationSec ?? 0;
-    public double MarkIn => SelectedTake?.MarkIn ?? 0;
-    public double MarkOut => SelectedTake?.MarkOut ?? 0;
-    public bool HasDuration => SelectedTake?.HasDuration ?? false;
+    private double _holdDurationSec;
+    private double _holdMarkIn;
+    private double _holdMarkOut;
+
+    public double DurationSec => SelectedTake?.DurationSec ?? _holdDurationSec;
+    public double MarkIn => SelectedTake?.MarkIn ?? _holdMarkIn;
+    public double MarkOut => SelectedTake?.MarkOut ?? _holdMarkOut;
+    public bool HasDuration => DurationSec > 0;
     public IReadOnlyList<string> Filmstrip => SelectedTake?.Filmstrip ?? [];
     public double SlicedDurationSec => CutTimelineLayout.SlicedSeconds(this);
 
@@ -88,11 +102,73 @@ public sealed class CutClip
 
     public void SeedSelection()
     {
-        // Current is .current.json only — do not fall back to another take.
+        // Current is .current.json, or a same-slot recover — never another scene.
         SelectedTakeNumber = ActiveTakeNumber > 0 ? ActiveTakeNumber : 0;
     }
 
-    public void SetDuration(double seconds) => SelectedTake?.SetDuration(seconds);
+    public void SetDuration(double seconds)
+    {
+        if (SelectedTake is { } take)
+        {
+            take.SetDuration(seconds);
+            return;
+        }
 
-    public void ApplyInOut(double markIn, double markOut) => SelectedTake?.ApplyInOut(markIn, markOut);
+        _holdDurationSec = seconds > 0 && !double.IsNaN(seconds) && !double.IsInfinity(seconds)
+            ? seconds
+            : 0;
+        if (_holdDurationSec <= 0)
+        {
+            _holdMarkIn = 0;
+            _holdMarkOut = 0;
+            return;
+        }
+
+        if (_holdMarkOut <= _holdMarkIn)
+            ApplyHoldInOut(0, _holdDurationSec);
+        else
+            ApplyHoldInOut(_holdMarkIn, _holdMarkOut);
+    }
+
+    public void ApplyInOut(double markIn, double markOut)
+    {
+        if (SelectedTake is { } take)
+        {
+            take.ApplyInOut(markIn, markOut);
+            return;
+        }
+
+        ApplyHoldInOut(markIn, markOut);
+    }
+
+    /// <summary>
+    /// <c>markOut &lt;= markIn</c> must not stay at 0 when the take or sidecar
+    /// has a duration. Persisted by the next <c>cut.project.json</c> save.
+    /// </summary>
+    public bool MarksRepaired { get; private set; }
+
+    public bool EnsureInOutFromDuration()
+    {
+        if (DurationSec <= 0 || MarkOut > MarkIn)
+            return false;
+        ApplyInOut(MarkIn > 0 ? MarkIn : 0, DurationSec);
+        if (MarkOut <= MarkIn)
+            return false;
+        MarksRepaired = true;
+        return true;
+    }
+
+    private void ApplyHoldInOut(double markIn, double markOut)
+    {
+        if (_holdDurationSec <= 0)
+        {
+            _holdMarkIn = markIn;
+            _holdMarkOut = markOut;
+            return;
+        }
+
+        var (a, b) = ClipInOut.Clamp(markIn, markOut, _holdDurationSec);
+        _holdMarkIn = a;
+        _holdMarkOut = b;
+    }
 }

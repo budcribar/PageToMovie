@@ -35,6 +35,13 @@ public static class CutTransport
     public static List<CutClip> PlayableClips(IEnumerable<CutClip> clips) =>
         clips.Where(IsPlayable).ToList();
 
+    /// <summary>
+    /// Play/export stitch every Film-order slot, including a missing last
+    /// scene. Dropping that slot maps credits onto the previous picture.
+    /// </summary>
+    public static List<CutClip> ComposeClips(IEnumerable<CutClip> clips) =>
+        clips.ToList();
+
     public static string PlayTitle(bool isPlaying) => isPlaying ? "Stop" : "Play";
 
     public static string PlayGlyph(bool isPlaying) => isPlaying ? "⏹" : "▶";

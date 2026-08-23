@@ -194,9 +194,9 @@ public sealed class CutComposeService : IAsyncDisposable
         IReadOnlyList<CutTextClip>? texts = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var ready = CutTransport.PlayableClips(clips);
-        if (ready.Count == 0)
+        if (!CutTransport.CanPlay(clips))
             throw new InvalidOperationException("No current takes to export.");
+        var ready = CutTransport.ComposeClips(clips);
 
         var payload = BuildComposePlan(ready, texts);
         string method;
@@ -338,14 +338,16 @@ public sealed class CutComposeService : IAsyncDisposable
             var next = i + 1 < clips.Count ? clips[i + 1] : null;
             var join = next is null ? CutJoinKind.Cut : c.JoinToNext(next);
             var windows = c.KeepWindows();
+            var hold = c.HoldsPicture;
             payload.Add(new JsExportClip
             {
-                Url = c.PreviewUrl,
+                Url = hold ? null : c.PreviewUrl,
                 Label = c.Label,
                 FileName = c.FileName,
                 MarkIn = c.MarkIn,
                 MarkOut = c.HasDuration ? c.MarkOut : 0,
                 Duration = c.DurationSec,
+                Hold = hold,
                 Windows = windows.Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
                 JoinOut = next is null ? "cut" : CutTransitionMap.WireName(join),
                 JoinHold = next is null ? 0 : CutComposeContract.HoldSeconds(join),

@@ -41,6 +41,15 @@ public class CutHopTests
     }
 
     [Fact]
+    public void Seed_sidecar_duration_when_file_duration_unknown()
+    {
+        var hop = new CutHop(0, null, null, DurationSeconds: 6);
+        var (inn, outt) = CutHop.SeedInOut(hop, fileDurationSec: 0);
+        Assert.Equal(0, inn);
+        Assert.Equal(6, outt);
+    }
+
+    [Fact]
     public void Read_sidecar_fields()
     {
         var hop = CutHop.Read(

@@ -59,4 +59,20 @@ public class ClipInOutTests
         Assert.Equal(6, clip.MarkOut);
         Assert.True(clip.NeedsTrim);
     }
+
+    [Fact]
+    public void SetDuration_fills_zero_markOut_from_take_length()
+    {
+        var take = new CutTake
+        {
+            Take = 1,
+            FileName = "scene_04_clip_01_take_01.mp4",
+            RelativePath = "assets/video/scene_04_clip_01_take_01.mp4",
+        };
+        take.ApplyInOut(0, 0);
+        Assert.Equal(0, take.MarkOut);
+        take.SetDuration(6);
+        Assert.Equal(0, take.MarkIn);
+        Assert.Equal(6, take.MarkOut);
+    }
 }

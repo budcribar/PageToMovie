@@ -172,8 +172,6 @@ public sealed class CutTimelineLayout
 
     public static double SlicedSeconds(CutClip clip)
     {
-        if (clip.SelectedTake is null)
-            return 0;
         if (clip.HasDuration)
         {
             var keep = clip.KeepWindows();

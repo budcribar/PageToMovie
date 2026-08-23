@@ -94,6 +94,11 @@ public sealed class CutFolderService : IAsyncDisposable
         await AttachTakeUrlsAsync(clips);
         Clips = clips;
         ApplySavedFinish(files, clips);
+        var repaired = false;
+        foreach (var clip in clips)
+            repaired |= clip.EnsureInOutFromDuration() || clip.MarksRepaired;
+        if (repaired && CanWrite)
+            await SaveFinishAsync(PendingMusicFileName, SavedMovieFingerprint, PendingMusic, SavedMergeCache);
         if (clips.Count == 0)
             FolderError = "No takes named scene_SS_clip_CC_take_NN.mp4 in that folder.";
     }

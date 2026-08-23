@@ -205,7 +205,8 @@ public partial class Home : IAsyncDisposable
         try
         {
             var seconds = await Js.InvokeAsync<double>("PageToMovieCut.probeUrlDuration", take.PreviewUrl);
-            take.SetDuration(seconds);
+            if (seconds > 0)
+                take.SetDuration(seconds);
         }
         catch (JSException)
         {
@@ -244,7 +245,8 @@ public partial class Home : IAsyncDisposable
         if (_selected is null || string.IsNullOrWhiteSpace(_selected.PreviewUrl))
             return;
         var seconds = await Compose.ReadMediaDurationAsync(ClipPlayer);
-        _selected.SetDuration(seconds);
+        if (seconds > 0)
+            _selected.SetDuration(seconds);
         if (_playMode == PlayMode.Native && _wantPlay)
             return;
         await SeekPreviewToInAsync();

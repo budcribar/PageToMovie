@@ -2,6 +2,14 @@ namespace PageToMovie.Cut.Cut;
 
 public sealed class CutTake
 {
+    /// <summary>
+    /// Film leftover stubs on Mary19 were ~45 KB. A real take (including a
+    /// credits card) is larger. Cut must not treat those bytes as a picture.
+    /// </summary>
+    public const long MinPlayableTakeBytes = 50_000;
+
+    public static bool IsPlayableFile(long sizeBytes) => sizeBytes >= MinPlayableTakeBytes;
+
     public required int Take { get; init; }
     public required string FileName { get; init; }
     public required string RelativePath { get; init; }
