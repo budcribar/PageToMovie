@@ -108,9 +108,12 @@ public sealed class CutClip
 
     public void SetDuration(double seconds)
     {
+        var before = MarkOut <= MarkIn;
         if (SelectedTake is { } take)
         {
             take.SetDuration(seconds);
+            if (before && MarkOut > MarkIn)
+                MarksRepaired = true;
             return;
         }
 
@@ -128,6 +131,8 @@ public sealed class CutClip
             ApplyHoldInOut(0, _holdDurationSec);
         else
             ApplyHoldInOut(_holdMarkIn, _holdMarkOut);
+        if (before && MarkOut > MarkIn)
+            MarksRepaired = true;
     }
 
     public void ApplyInOut(double markIn, double markOut)

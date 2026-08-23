@@ -48,7 +48,8 @@ public class CutLastSceneComposeTests
         var teacher = PlayableClip(3, 1, 40, "blob:teacher");
         var credits = new CutClip { Scene = 4, Clip = 1 };
         credits.SetDuration(6);
-        Assert.True(credits.EnsureInOutFromDuration());
+        Assert.Equal(6, credits.MarkOut);
+        Assert.True(credits.MarksRepaired);
         Assert.True(credits.HoldsPicture);
         Assert.True(credits.Missing);
 

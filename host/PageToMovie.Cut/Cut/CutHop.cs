@@ -59,8 +59,8 @@ public readonly record struct CutHop(
         {
             if (fileDurationSec > 0)
                 return ClipInOut.Clamp(0, fileDurationSec, fileDurationSec);
-            if (hop.DurationSeconds is > 0 sidecar)
-                return ClipInOut.Clamp(0, sidecar, sidecar);
+            if ((hop.DurationSeconds ?? 0) > 0)
+                return ClipInOut.Clamp(0, hop.DurationSeconds!.Value, hop.DurationSeconds.Value);
             return (0, 0);
         }
 

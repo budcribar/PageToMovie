@@ -183,13 +183,21 @@ public static class CutTextTrack
             if (string.IsNullOrWhiteSpace(title.Text) && string.IsNullOrWhiteSpace(title.DisplayText))
                 continue;
             var idx = 0;
-            for (var i = 0; i < layout.Lanes.Count; i++)
+            var last = layout.Lanes[^1];
+            // Titles parked at the cut end (Mary19 ~101.9s) belong on the
+            // last scene, not the last 0.1s of the previous picture.
+            if (title.StartSec + 0.25 >= last.StartSec)
+                idx = layout.Lanes.Count - 1;
+            else
             {
-                var lane = layout.Lanes[i];
-                if (title.StartSec < lane.StartSec + lane.WidthSec - 0.0001 || i == layout.Lanes.Count - 1)
+                for (var i = 0; i < layout.Lanes.Count; i++)
                 {
-                    idx = i;
-                    break;
+                    var lane = layout.Lanes[i];
+                    if (title.StartSec < lane.StartSec + lane.WidthSec - 0.0001 || i == layout.Lanes.Count - 1)
+                    {
+                        idx = i;
+                        break;
+                    }
                 }
             }
 

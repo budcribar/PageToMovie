@@ -154,7 +154,8 @@ public static class CutClipList
                 && !CutClipNaming.TryParseSceneClip(file.RelativePath, out scene, out clip))
                 continue;
             var hop = CutHop.Read(file.Text);
-            if (!hop.HasSlice && hop.DurationSeconds is not > 0)
+            var hopDuration = hop.DurationSeconds ?? 0;
+            if (!hop.HasSlice && hopDuration <= 0)
                 continue;
             var take = CutClipNaming.ParseTakeNumber(file.FileName);
             if (take <= 0)
@@ -171,9 +172,11 @@ public static class CutClipList
     private static CutHop HopFor(
         Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip, int take)
     {
-        if (hops.TryGetValue((scene, clip, take), out var exact) && (exact.HasSlice || exact.DurationSeconds is > 0))
+        if (hops.TryGetValue((scene, clip, take), out var exact)
+            && (exact.HasSlice || (exact.DurationSeconds ?? 0) > 0))
             return exact;
-        if (hops.TryGetValue((scene, clip, 0), out var fallback) && (fallback.HasSlice || fallback.DurationSeconds is > 0))
+        if (hops.TryGetValue((scene, clip, 0), out var fallback)
+            && (fallback.HasSlice || (fallback.DurationSeconds ?? 0) > 0))
             return fallback;
         return CutHop.None;
     }
@@ -234,8 +237,8 @@ public static class CutClipList
         };
         if (hop.HasSlice)
             row.SetHop(hop);
-        else if (hop.DurationSeconds is > 0 duration)
-            row.SetDuration(duration);
+        else if ((hop.DurationSeconds ?? 0) > 0)
+            row.SetDuration(hop.DurationSeconds!.Value);
         return row;
     }
 
@@ -260,14 +263,15 @@ public static class CutClipList
     internal static double SlotDuration(
         Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip)
     {
-        if (hops.TryGetValue((scene, clip, 0), out var clipHop) && clipHop.DurationSeconds is > 0 clipSec)
-            return clipSec;
+        if (hops.TryGetValue((scene, clip, 0), out var clipHop) && (clipHop.DurationSeconds ?? 0) > 0)
+            return clipHop.DurationSeconds!.Value;
         var best = 0.0;
         foreach (var (key, hop) in hops)
         {
             if (key.Scene != scene || key.Clip != clip)
                 continue;
-            if (hop.DurationSeconds is > 0 sec && sec > best)
+            var sec = hop.DurationSeconds ?? 0;
+            if (sec > best)
                 best = sec;
         }
 
