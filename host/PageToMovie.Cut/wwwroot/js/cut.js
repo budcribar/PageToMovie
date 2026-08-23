@@ -248,6 +248,7 @@
     async function collectMediaFile(handle, name, path, files) {
         if (handle.kind !== "file") return;
             const keep = /\.mp4$/i.test(name)
+                || /\.(mp3|wav|m4a|aac)$/i.test(name) // CutMusicPersist.IsAudioFileName
                 || /\.current\.json$/i.test(name)
                 || /\.clip\.json$/i.test(name)
                 || /^cut\.project\.json$/i.test(name);

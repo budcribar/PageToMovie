@@ -942,13 +942,16 @@ public partial class Home : IAsyncDisposable
             await folder.WriteMovieMp4Async(compose.MoviePreviewUrl);
         await folder.PersistMergeCacheAsync(compose);
         var fp = CurrentMergeFingerprint(folder.Clips, folder.TextClips, compose.AudioFileName, compose.Music);
-        await folder.SaveFinishAsync(compose.AudioFileName, fp, compose.Music, compose.Cache.Built);
+        await folder.SaveFinishAsync(compose.AudioFileName, fp, compose.Music, compose.Cache.Built, compose.AudioUrl);
     }
 
     private async Task PersistAttachedMusicAsync()
     {
         if (!Folder.CanWrite)
             return;
+        if (!string.IsNullOrWhiteSpace(Compose.AudioFileName)
+            && CutMusicPersist.NeedsFlushOnSave(Compose.AudioFileName, Folder.MusicFileOnDisk, Compose.AudioUrl))
+            await Folder.WriteMusicFileAsync(Compose.AudioFileName, Compose.AudioUrl);
         var fp = Folder.SavedMovieFingerprint;
         var cache = Folder.SavedMergeCache;
         if (!_composing && Compose.HasCachedMoviePreview)
@@ -957,7 +960,7 @@ public partial class Home : IAsyncDisposable
             cache = Compose.Cache.Built;
         }
 
-        await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache);
+        await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache, Compose.AudioUrl);
     }
 
     private async Task SkipStartAsync() => await OnPlayheadAsync(0);
@@ -1033,7 +1036,7 @@ public partial class Home : IAsyncDisposable
             ? CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName, Compose.Music)
             : null;
         var cache = Compose.HasCachedMoviePreview ? Compose.Cache.Built : null;
-        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache))
+        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache, Compose.AudioUrl))
         {
             _error = Folder.FolderError ?? "Could not save the cut.";
             return;
