@@ -63,6 +63,17 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Home_binds_selected_title_id_to_the_timeline()
+    {
+        var home = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "Pages", "Home.razor"));
+        var src = File.ReadAllText(home);
+        Assert.Contains("SelectedTextId=\"@_selectedTextId\"", src, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedTextId=\"_selectedTextId\"", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Native_clip_audio_stays_on_hard_cut_and_xfade()
     {
         Assert.True(CutComposeContract.KeepNativeClipAudio);
