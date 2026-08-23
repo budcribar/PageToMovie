@@ -233,8 +233,8 @@ public static class CutClipList
         };
         if (hop.HasSlice)
             row.SetHop(hop);
-        else if ((hop.DurationSeconds ?? 0) > 0)
-            row.SetDuration(hop.DurationSeconds!.Value);
+        else if (hop.DurationSeconds is { } duration && duration > 0)
+            row.SetDuration(duration);
         return row;
     }
 
@@ -268,8 +268,10 @@ public static class CutClipList
     internal static double SlotDuration(
         Dictionary<(int Scene, int Clip, int Take), CutHop> hops, int scene, int clip)
     {
-        if (hops.TryGetValue((scene, clip, 0), out var clipHop) && (clipHop.DurationSeconds ?? 0) > 0)
-            return clipHop.DurationSeconds!.Value;
+        if (hops.TryGetValue((scene, clip, 0), out var clipHop)
+            && clipHop.DurationSeconds is { } clipSec
+            && clipSec > 0)
+            return clipSec;
         var best = 0.0;
         foreach (var (key, hop) in hops)
         {
