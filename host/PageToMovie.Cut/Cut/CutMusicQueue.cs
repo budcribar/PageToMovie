@@ -14,8 +14,14 @@ public sealed class CutMusicQueue
 
     public string? Status => IsQueued && !IsMixing ? QueuedMessage : null;
 
-    public string? StatusAfterCompose(bool composeSucceeded) =>
-        !IsQueued ? null : composeSucceeded ? QueuedMessage : WaitingMessage;
+    public string? StatusAfterCompose(bool composeSucceeded)
+    {
+        if (!IsQueued)
+            return null;
+        if (composeSucceeded)
+            return QueuedMessage;
+        return WaitingMessage;
+    }
 
     public static bool ShouldForgetPreview(bool composing) => !composing;
 
@@ -25,11 +31,8 @@ public sealed class CutMusicQueue
         return false;
     }
 
-    public static bool ShouldClearMerge(bool composing)
-    {
-        _ = composing;
-        return false;
-    }
+    public static bool ShouldClearMerge(bool composing) =>
+        ShouldCancelCompose(composing);
 
     public static bool ShouldRebuildPictureOnMixEdit(bool composing) => !composing;
 
@@ -71,9 +74,5 @@ public sealed class CutMusicQueue
         IsMixing = false;
     }
 
-    public void OnComposeCancelled()
-    {
-        IsQueued = false;
-        IsMixing = false;
-    }
+    public void OnComposeCancelled() => MarkMixed();
 }
