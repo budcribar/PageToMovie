@@ -70,16 +70,6 @@ public static class CutMusicMix
         + VolumeChain(volumePercent, fadeInSec, fadeOutSec, startSec, holdSec)
         + ",apad[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]";
 
-    public static string MusicOnlyFilter(
-        int volumePercent,
-        double fadeInSec,
-        double fadeOutSec,
-        double startSec,
-        double holdSec) =>
-        "[1:a]"
-        + VolumeChain(volumePercent, fadeInSec, fadeOutSec, startSec, holdSec)
-        + ",apad[a]";
-
     public static string ComplexFilter(CutMusic music)
     {
         ArgumentNullException.ThrowIfNull(music);
@@ -90,6 +80,16 @@ public static class CutMusicMix
             music.StartSec,
             music.SlicedDurationSec);
     }
+
+    public static string MusicOnlyFilter(
+        int volumePercent,
+        double fadeInSec,
+        double fadeOutSec,
+        double startSec,
+        double holdSec) =>
+        "[1:a]"
+        + VolumeChain(volumePercent, fadeInSec, fadeOutSec, startSec, holdSec)
+        + ",apad[a]";
 
     public static string MusicOnlyFilter(CutMusic music)
     {
