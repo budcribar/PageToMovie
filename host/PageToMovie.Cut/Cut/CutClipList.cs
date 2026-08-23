@@ -229,17 +229,22 @@ public static class CutClipList
             RelativePath = file.RelativePath,
             SizeBytes = file.SizeBytes,
             Missing = !CutTake.IsPlayableFile(file.SizeBytes),
-            MissingReason = file.SizeBytes <= 0
-                ? "Clip file is empty."
-                : CutTake.IsPlayableFile(file.SizeBytes)
-                    ? null
-                    : "Clip file is not a playable take.",
+            MissingReason = MissingReasonFor(file.SizeBytes),
         };
         if (hop.HasSlice)
             row.SetHop(hop);
         else if ((hop.DurationSeconds ?? 0) > 0)
             row.SetDuration(hop.DurationSeconds!.Value);
         return row;
+    }
+
+    private static string? MissingReasonFor(long sizeBytes)
+    {
+        if (sizeBytes <= 0)
+            return "Clip file is empty.";
+        if (CutTake.IsPlayableFile(sizeBytes))
+            return null;
+        return "Clip file is not a playable take.";
     }
 
     /// <summary>
