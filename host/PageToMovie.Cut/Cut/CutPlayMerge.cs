@@ -359,6 +359,16 @@ public static class CutPlayMerge
         CutMusic? music = null)
     {
         var sb = new StringBuilder();
+        AppendMusicMix(sb, audioFileName, music);
+        foreach (var clip in clips)
+            AppendClip(sb, clip);
+        AppendTitles(sb, texts);
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        return Convert.ToHexString(SHA256.HashData(bytes));
+    }
+
+    private static void AppendMusicMix(StringBuilder sb, string? audioFileName, CutMusic? music)
+    {
         sb.Append(audioFileName ?? music?.FileName ?? "");
         if (music is not null)
         {
@@ -372,23 +382,27 @@ public static class CutPlayMerge
                     .Append('O').Append(Num(music.FadeOutSec));
             }
         }
-        foreach (var clip in clips)
-        {
-            sb.Append('|').Append(clip.Scene).Append(':').Append(clip.Clip);
-            sb.Append('@').Append(Num(clip.MarkIn)).Append('-').Append(Num(clip.MarkOut));
-            foreach (var span in clip.RangeDeletes)
-                sb.Append('~').Append(Num(span.Start)).Append('-').Append(Num(span.End));
-            sb.Append('J').Append(clip.JoinOverride is { } join
-                ? CutTransitionMap.WireName(join)
-                : clip.FountainTransition ?? "");
-            if (clip.Card.Enabled)
-            {
-                sb.Append("C").Append(clip.Card.Text).Append('/').Append(Num(clip.Card.HoldSeconds));
-                if (!clip.Card.Style.IsDefault)
-                    sb.Append('L').Append(CutTextStyle.WireLook(clip.Card.Style));
-            }
-        }
+    }
 
+    private static void AppendClip(StringBuilder sb, CutClip clip)
+    {
+        sb.Append('|').Append(clip.Scene).Append(':').Append(clip.Clip);
+        sb.Append('@').Append(Num(clip.MarkIn)).Append('-').Append(Num(clip.MarkOut));
+        foreach (var span in clip.RangeDeletes)
+            sb.Append('~').Append(Num(span.Start)).Append('-').Append(Num(span.End));
+        sb.Append('J').Append(clip.JoinOverride is { } join
+            ? CutTransitionMap.WireName(join)
+            : clip.FountainTransition ?? "");
+        if (clip.Card.Enabled)
+        {
+            sb.Append("C").Append(clip.Card.Text).Append('/').Append(Num(clip.Card.HoldSeconds));
+            if (!clip.Card.Style.IsDefault)
+                sb.Append('L').Append(CutTextStyle.WireLook(clip.Card.Style));
+        }
+    }
+
+    private static void AppendTitles(StringBuilder sb, IReadOnlyList<CutTextClip>? texts)
+    {
         foreach (var title in texts ?? [])
         {
             sb.Append("#").Append(title.Text)
@@ -397,9 +411,6 @@ public static class CutPlayMerge
             if (!title.Style.IsDefault)
                 sb.Append('L').Append(CutTextStyle.WireLook(title.Style));
         }
-
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-        return Convert.ToHexString(SHA256.HashData(bytes));
     }
 
     private static string Num(double value) => value.ToString("G6", CultureInfo.InvariantCulture);
