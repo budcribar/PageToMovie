@@ -80,6 +80,15 @@ public class CutComposeContractTests
         Assert.Contains("fps=30,settb=AVTB,setpts=PTS-STARTPTS", src, StringComparison.Ordinal);
         Assert.Contains("anullsrc=channel_layout=stereo:sample_rate=48000", src, StringComparison.Ordinal);
         Assert.Contains("\"-t\", String(outputSec)", src, StringComparison.Ordinal);
+        var trim = src[src.IndexOf("function buildTrimArgs", StringComparison.Ordinal)
+            ..src.IndexOf("function xfadeName", StringComparison.Ordinal)];
+        Assert.True(
+            trim.IndexOf("args.push(\"-i\", inName)", StringComparison.Ordinal)
+            < trim.IndexOf("args.push(\"-ss\", String(start))", StringComparison.Ordinal),
+            "Accurate trim seeking must put -ss after -i so short transition tails keep video.");
+        Assert.Contains("await measuredSceneSecondsAsync(api, scene.url, scene.seconds)", src, StringComparison.Ordinal);
+        Assert.Contains("await measuredSceneSecondsAsync(api, built.url, scene.seconds)", src, StringComparison.Ordinal);
+        Assert.Contains("api.probeDurationAsync(url)", src, StringComparison.Ordinal);
     }
 
     [Fact]

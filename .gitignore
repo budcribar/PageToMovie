@@ -395,3 +395,6 @@ data/pagetomovie.db*
 
 # throwaway debugging scripts — never commit
 host/scratch/
+
+# Developer-local media mount used by Cut's ?debugMaryTest=1 fixture.
+/host/PageToMovie.Cut/wwwroot/debug-media/

@@ -11,6 +11,7 @@ namespace PageToMovie.Cut.Pages;
 public partial class Home : IAsyncDisposable
 {
     [Inject] private IJSRuntime? Js { get; set; }
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
 
     private CutPreviewVideos? _preview = null;
     private CutTimeline? Timeline { get; set; } = null;
@@ -22,6 +23,7 @@ public partial class Home : IAsyncDisposable
     internal ElementReference TextOverlay { get; set; }
     private CutClip? _selected;
     private bool _folderBusy;
+    private bool _debugFolderLoadTried;
     private bool _exporting;
     private bool _composing;
     private bool _wantPlay;
@@ -151,6 +153,28 @@ public partial class Home : IAsyncDisposable
         try
         {
             await Folder.PickMp4FilesFallbackAsync();
+            await AfterFolderLoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _folderBusy = false;
+        }
+    }
+
+    private async Task TryLoadDebugFolderAsync()
+    {
+        if (_debugFolderLoadTried
+            || !CutDebugFolder.TryManifestUrl(Navigation.Uri, out var manifestUrl))
+            return;
+        _debugFolderLoadTried = true;
+        _folderBusy = true;
+        try
+        {
+            await Folder.LoadDebugFolderAsync(manifestUrl);
             await AfterFolderLoadAsync();
         }
         catch (Exception ex)
@@ -1155,6 +1179,11 @@ public partial class Home : IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await TryLoadDebugFolderAsync();
+            await InvokeAsync(StateHasChanged);
+        }
         try
         {
             await BindPlaySurfacesAsync();

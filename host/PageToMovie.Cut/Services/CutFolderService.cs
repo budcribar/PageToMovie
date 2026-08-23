@@ -68,6 +68,22 @@ public sealed class CutFolderService : IAsyncDisposable
         await ApplyListedFilesAsync(pick.Files);
     }
 
+    internal async Task LoadDebugFolderAsync(string manifestUrl)
+    {
+        FolderError = null;
+        var pick = await _js.InvokeAsync<JsResult>("PageToMovieCut.loadDebugFolderAsync", manifestUrl);
+        if (!pick.Success)
+        {
+            FolderError = pick.Error ?? "Debug folder failed to load.";
+            return;
+        }
+
+        FolderName = pick.FolderName ?? "Debug folder";
+        HasFolder = true;
+        CanWrite = false;
+        await ApplyListedFilesAsync(pick.Files);
+    }
+
     private async Task LoadClipsFromCurrentFolderAsync()
     {
         var listed = await _js.InvokeAsync<JsResult>("PageToMovieCut.listMediaFilesAsync");

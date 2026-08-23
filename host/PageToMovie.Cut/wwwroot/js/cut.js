@@ -7,12 +7,14 @@
     const cut = {
         _root: null,
         _fallbackFiles: null,
+        _debugFolder: null,
         _trimSeq: 0,
         _ownedMovieUrl: null,
         _ownedPrefixUrls: [],
         _ownedTemps: new Set(),
         _activeInputs: new Set(),
         _pendingRevoke: new Set(),
+        _lastDebugError: null,
         _progressRef: null,
         _aborted: false,
         _composeGate: Promise.resolve(),
@@ -446,8 +448,10 @@
 
     function buildTrimArgs(inName, outName, start, keep, silentAudio) {
         const args = ["-hide_banner", "-y"];
-        if (start > 0.001) args.push("-ss", String(start));
         args.push("-i", inName);
+        // Accurate output seek keeps a decoded video frame in short transition tails.
+        // Fast input seek can land after the final GOP and produce an audio-only MP4.
+        if (start > 0.001) args.push("-ss", String(start));
         if (silentAudio)
             args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
         args.push("-t", String(keep),
@@ -675,6 +679,15 @@
             const aName = "cut_xf_a_" + seq + ".mp4";
             const bName = "cut_xf_b_" + seq + ".mp4";
             const outName = "cut_xf_o_" + seq + ".mp4";
+            const logTail = [];
+            const logHandler = function (event) {
+                const message = event && event.message ? String(event.message) : "";
+                if (!message) return;
+                logTail.push(message);
+                if (logTail.length > 20) logTail.shift();
+            };
+            if (typeof ffmpeg.on === "function")
+                ffmpeg.on("log", logHandler);
             try {
                 const pair = await withPinnedUrls([leftUrl, rightUrl], async function () {
                     return [
@@ -733,8 +746,17 @@
                         console.debug("Cut: xfade silence pass failed", silentErr);
                     }
                 }
-                if (!encoded)
-                    return { success: false, error: "Transition could not be rendered." };
+                if (!encoded) {
+                    cut._lastDebugError = {
+                        kind: kind, leftSec: leftSec, rightSec: rightSec,
+                        fade: fade, offset: offset, logTail: logTail,
+                    };
+                    console.error("Cut: xfade failed", JSON.stringify(cut._lastDebugError));
+                    const detail = cut._debugFolder && logTail.length > 0
+                        ? " Debug: " + logTail.slice(-8).join(" | ")
+                        : "";
+                    return { success: false, error: "Transition could not be rendered." + detail };
+                }
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
                 noteTemp(url);
@@ -742,6 +764,8 @@
             } catch (err) {
                 return { success: false, error: messageOf(err, String(err)) };
             } finally {
+                if (typeof ffmpeg.off === "function")
+                    ffmpeg.off("log", logHandler);
                 await deleteMemfs(ffmpeg, aName);
                 await deleteMemfs(ffmpeg, bName);
                 await deleteMemfs(ffmpeg, outName);
@@ -1034,6 +1058,7 @@
         try {
             cut._root = await window.showDirectoryPicker({ mode: "readwrite" });
             cut._fallbackFiles = null;
+            cut._debugFolder = null;
             return { success: true, folderName: cut._root.name };
         } catch (err) {
             if (err?.name === "AbortError")
@@ -1062,6 +1087,7 @@
                 }
                 cut._root = null;
                 cut._fallbackFiles = files;
+                cut._debugFolder = null;
                 resolve({
                     success: true,
                     folderName: "Selected files",
@@ -1075,6 +1101,8 @@
     };
 
     cut.listMediaFilesAsync = async function () {
+        if (cut._debugFolder)
+            return { success: true, files: cut._debugFolder.files };
         if (cut._fallbackFiles) {
             return {
                 success: true,
@@ -1095,6 +1123,13 @@
     };
 
     cut._resolveFileAsync = async function (relativePath) {
+        if (cut._debugFolder) {
+            const hit = cut._debugFolder.files.find(function (f) { return f.relativePath === relativePath; });
+            if (!hit) throw new Error("Clip is missing: " + relativePath);
+            const response = await fetch(debugFileUrl(cut._debugFolder.baseUrl, relativePath));
+            if (!response.ok) throw new Error("Clip is missing: " + relativePath);
+            return await response.blob();
+        }
         if (cut._fallbackFiles) {
             const hit = cut._fallbackFiles.find(function (f) { return f.name === relativePath; });
             if (!hit) throw new Error("Clip is missing: " + relativePath);
@@ -1105,7 +1140,58 @@
         return await fh.getFile();
     };
 
+    function debugFileUrl(baseUrl, relativePath) {
+        const encoded = String(relativePath || "").split("/").map(encodeURIComponent).join("/");
+        return new URL(encoded, baseUrl).href;
+    }
+
+    cut.loadDebugFolderAsync = async function (manifestUrl) {
+        try {
+            const response = await fetch(manifestUrl, { cache: "no-store" });
+            if (!response.ok)
+                throw new Error("Debug folder manifest returned " + response.status + ".");
+            const manifest = await response.json();
+            const baseUrl = new URL(manifest.baseUrl || "./", window.location.href).href;
+            const rows = Array.isArray(manifest.files) ? manifest.files : [];
+            const files = await Promise.all(rows.map(async function (row) {
+                const relativePath = String(row.relativePath || "");
+                const url = debugFileUrl(baseUrl, relativePath);
+                if (row.missing === true) {
+                    return {
+                        fileName: relativePath.split("/").pop(),
+                        relativePath: relativePath,
+                        sizeBytes: Number(row.sizeBytes) || 1,
+                    };
+                }
+                if (row.text === true) {
+                    const textResponse = await fetch(url, { cache: "no-store" });
+                    if (!textResponse.ok)
+                        throw new Error("Debug file is missing: " + relativePath);
+                    const text = await textResponse.text();
+                    return { fileName: relativePath.split("/").pop(), relativePath: relativePath, sizeBytes: text.length, text: text };
+                }
+                const head = await fetch(url, { method: "HEAD", cache: "no-store" });
+                if (!head.ok)
+                    throw new Error("Debug file is missing: " + relativePath);
+                return {
+                    fileName: relativePath.split("/").pop(),
+                    relativePath: relativePath,
+                    sizeBytes: Number(head.headers.get("content-length")) || Number(row.sizeBytes) || 1,
+                };
+            }));
+            cut._root = null;
+            cut._fallbackFiles = null;
+            cut._debugFolder = { baseUrl: baseUrl, files: files };
+            return { success: true, folderName: manifest.folderName || "Debug folder", files: files };
+        } catch (err) {
+            cut._debugFolder = null;
+            return { success: false, error: messageOf(err, "Could not load debug folder."), files: [] };
+        }
+    };
+
     cut.writeTextFileAsync = async function (relativePath, text) {
+        if (cut._debugFolder)
+            return { success: false, error: "Debug folders are read-only." };
         if (cut._fallbackFiles)
             return { success: false, error: "Folder write needs Pick folder (not loose files)." };
         if (!cut._root)
@@ -1122,6 +1208,8 @@
     };
 
     cut.writeBlobUrlFileAsync = async function (relativePath, url) {
+        if (cut._debugFolder)
+            return { success: false, error: "Debug folders are read-only." };
         if (cut._fallbackFiles)
             return { success: false, error: "Folder write needs Pick folder (not loose files)." };
         if (!cut._root)
@@ -1936,6 +2024,16 @@
         return cut.trimRangeAsync(url, start, end, onProgress);
     }
 
+    async function measuredSceneSecondsAsync(api, url, plannedSeconds) {
+        const planned = Math.max(0, Number(plannedSeconds) || 0);
+        if (!api || typeof api.probeDurationAsync !== "function" || !url)
+            return planned;
+        const probe = await api.probeDurationAsync(url);
+        return probe && probe.success && Number(probe.seconds) > 0
+            ? Number(probe.seconds)
+            : planned;
+    }
+
     async function ensureJoinUrlAsync(join, left, right, onProgress) {
         if (!join || !join.encodes)
             return { success: true, url: "" };
@@ -2043,14 +2141,16 @@
                         return { success: false, error: "Stopped." };
                     const scene = scenes[i];
                     if (scene.url) {
-                        sceneUrls.push({ id: scene.scene, url: scene.url, seconds: scene.seconds });
+                        const seconds = await measuredSceneSecondsAsync(api, scene.url, scene.seconds);
+                        sceneUrls.push({ id: scene.scene, url: scene.url, seconds: seconds });
                         continue;
                     }
                     onProgress?.(Math.round((i / Math.max(scenes.length, 1)) * 40), "Preparing scene…");
                     const built = await composeSceneClipsAsync(clips, scene, onProgress);
                     if (!built.success)
                         return built;
-                    sceneUrls.push({ id: scene.scene, url: built.url, seconds: scene.seconds });
+                    const seconds = await measuredSceneSecondsAsync(api, built.url, scene.seconds);
+                    sceneUrls.push({ id: scene.scene, url: built.url, seconds: seconds });
                     rebuiltScenes.push(scene.scene);
                 }
 
