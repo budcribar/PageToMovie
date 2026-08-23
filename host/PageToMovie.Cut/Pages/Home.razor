@@ -17,7 +17,7 @@
         <span class="cut-muted">Finish Film’s current takes — trim, joins, cards, music</span>
     }
     <div @ref="_audioPickerHost" class="cut-file-sr" aria-hidden="true">
-        <InputFile @key="_audioInputKey"
+        <InputFile @key="AudioInputKey"
                    OnChange="OnAudioAsync"
                    accept="audio/*,.wav,.mp3,.m4a,.aac" />
     </div>
