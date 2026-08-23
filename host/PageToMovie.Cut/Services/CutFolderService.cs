@@ -203,6 +203,8 @@ public sealed class CutFolderService : IAsyncDisposable
         PendingMusic.SetVolumePercent(track.VolumePercent);
         PendingMusic.SetFadeIn(track.FadeInSec);
         PendingMusic.SetFadeOut(track.FadeOutSec);
+        PendingMusic.SetPlaybackRate(track.PlaybackRate);
+        PendingMusic.SetNoiseSuppression(track.NoiseSuppression);
         SavedMovieFingerprint = fp;
         SavedMergeCache = cache;
         TextClips.AddRange(texts);

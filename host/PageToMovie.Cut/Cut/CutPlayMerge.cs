@@ -368,21 +368,7 @@ public static class CutPlayMerge
     }
 
     private static void AppendMusicMix(StringBuilder sb, string? audioFileName, CutMusic? music)
-    {
-        sb.Append(audioFileName ?? music?.FileName ?? "");
-        if (music is not null)
-        {
-            sb.Append("M").Append(Num(music.StartSec))
-                .Append('/').Append(Num(music.MarkIn))
-                .Append('-').Append(Num(music.MarkOut));
-            if (music.HasMixEdits)
-            {
-                sb.Append('V').Append(music.VolumePercent)
-                    .Append('I').Append(Num(music.FadeInSec))
-                    .Append('O').Append(Num(music.FadeOutSec));
-            }
-        }
-    }
+        => sb.Append(CutMusicMix.FingerprintToken(audioFileName, music));
 
     private static void AppendClip(StringBuilder sb, CutClip clip)
     {

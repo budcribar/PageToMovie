@@ -44,6 +44,29 @@
                    @onchange="e => OnFadeChangeAsync(e, fadeOut: true)" />
             <em>@FadeWire(track.FadeOutSec)s</em>
         </label>
+        <label class="cut-tl-inspector-group cut-tl-inspector-slider">
+            <span>Speed</span>
+            <input type="range"
+                   min="@CutMusicMix.MinPlaybackRate"
+                   max="@CutMusicMix.MaxPlaybackRate"
+                   step="0.05"
+                   value="@SpeedWire(track.PlaybackRate)"
+                   aria-label="Speed"
+                   data-testid="cut-tl-music-speed"
+                   disabled="@Busy"
+                   @oninput="OnSpeedInput"
+                   @onchange="OnSpeedChangeAsync" />
+            <em>@SpeedWire(track.PlaybackRate)x</em>
+        </label>
+        <label class="cut-tl-inspector-group cut-tl-inspector-check">
+            <span>Noise suppression</span>
+            <input type="checkbox"
+                   checked="@track.NoiseSuppression"
+                   aria-label="Noise suppression"
+                   data-testid="cut-tl-music-noise-suppression"
+                   disabled="@Busy"
+                   @onchange="OnNoiseSuppressionAsync" />
+        </label>
         <button type="button"
                 class="cut-tl-inspector-del"
                 title="Delete music"
@@ -61,6 +84,9 @@
 
     private static string FadeWire(double seconds) =>
         CutMusicMix.ClampFade(seconds).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string SpeedWire(double rate) =>
+        CutMusicMix.ClampPlaybackRate(rate).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     private void OnVolumeInput(ChangeEventArgs e)
     {
@@ -88,6 +114,27 @@
     private async Task OnFadeChangeAsync(ChangeEventArgs e, bool fadeOut)
     {
         OnFadeInput(e, fadeOut);
+        await MixChanged.InvokeAsync();
+    }
+
+    private void OnSpeedInput(ChangeEventArgs e)
+    {
+        if (Music is null || !TryParseDouble(e.Value, out var rate))
+            return;
+        Music.SetPlaybackRate(rate);
+    }
+
+    private async Task OnSpeedChangeAsync(ChangeEventArgs e)
+    {
+        OnSpeedInput(e);
+        await MixChanged.InvokeAsync();
+    }
+
+    private async Task OnNoiseSuppressionAsync(ChangeEventArgs e)
+    {
+        if (Music is null)
+            return;
+        Music.SetNoiseSuppression(e.Value is true || bool.TryParse(Convert.ToString(e.Value), out var enabled) && enabled);
         await MixChanged.InvokeAsync();
     }
 

@@ -69,7 +69,7 @@ public static class CutFfmpegEncode
             0),
         "-map", "0:v", "-map", "[a]",
         "-t", "VIDEO_DURATION",
-        .. VideoArgs,
+        "-c:v", "copy",
         .. AudioArgs,
         .. MovArgs,
     ];

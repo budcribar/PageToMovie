@@ -64,7 +64,7 @@ public static class CutMusicEdit
         var hold = double.IsNaN(seconds) || double.IsInfinity(seconds)
             ? CutMusic.MinSpanSeconds
             : seconds;
-        music.TrimOut(inn + hold);
+        music.TrimOut(inn + hold * CutMusicMix.ClampPlaybackRate(music.PlaybackRate));
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public static class CutMusicEdit
     public static bool Contains(CutMusic music, double playheadSec)
     {
         var start = Math.Max(0, music.StartSec);
-        var end = start + music.SlicedDurationSec;
+        var end = start + music.OutputDurationSec;
         return playheadSec >= start && playheadSec < end;
     }
 

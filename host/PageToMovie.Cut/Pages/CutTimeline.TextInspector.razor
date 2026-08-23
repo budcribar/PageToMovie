@@ -3,6 +3,16 @@
     var look = CutTextTrack.StyleOf(block);
     <div class="cut-tl-inspector" data-testid="cut-tl-text-inspector">
         <span class="cut-tl-inspector-kicker">@(block.Kind == CutTextKind.SceneCard ? "Card" : "Title")</span>
+        <label class="cut-tl-inspector-group cut-tl-inspector-text">
+            <span>Text</span>
+            <textarea maxlength="80"
+                      aria-label="Text content"
+                      data-testid="cut-tl-text-content"
+                      disabled="@Busy"
+                      @onfocus="() => FieldFocusChanged.InvokeAsync(true)"
+                      @onblur="() => FieldFocusChanged.InvokeAsync(false)"
+                      @onchange="OnTextAsync">@block.Text</textarea>
+        </label>
         <div class="cut-tl-inspector-group" data-testid="cut-tl-text-position">
             <span>Place</span>
             @foreach (var choice in CutTextStyle.PositionChoices)
@@ -103,6 +113,7 @@
     [Parameter] public CutTextBlock? Block { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback StyleChanged { get; set; }
+    [Parameter] public EventCallback<string?> TextChanged { get; set; }
     [Parameter] public EventCallback<double> DurationChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
     [Parameter] public EventCallback<bool> FieldFocusChanged { get; set; }
@@ -132,6 +143,9 @@
 
     private Task OnFontAsync(ChangeEventArgs e) =>
         SetAsync(s => s.Font = CutTextStyle.ParseFont(Convert.ToString(e.Value, System.Globalization.CultureInfo.InvariantCulture)));
+
+    private Task OnTextAsync(ChangeEventArgs e) =>
+        TextChanged.InvokeAsync(Convert.ToString(e.Value, System.Globalization.CultureInfo.InvariantCulture));
 
     private async Task OnDurationAsync(ChangeEventArgs e)
     {

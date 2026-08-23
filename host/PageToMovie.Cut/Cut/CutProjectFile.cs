@@ -39,6 +39,10 @@ public static class CutProjectFile
                 : track.VolumePercent,
             MusicFadeIn = track.FadeInSec > 0.001 ? track.FadeInSec : null,
             MusicFadeOut = track.FadeOutSec > 0.001 ? track.FadeOutSec : null,
+            MusicSpeed = Math.Abs(track.PlaybackRate - CutMusicMix.DefaultPlaybackRate) > 0.001
+                ? track.PlaybackRate
+                : null,
+            MusicNoiseSuppression = track.NoiseSuppression ? true : null,
             MovieFingerprint = string.IsNullOrWhiteSpace(movieFingerprint) ? null : movieFingerprint,
             PictureFingerprint = string.IsNullOrWhiteSpace(mergeCache?.PictureFingerprint)
                 ? null
@@ -117,6 +121,8 @@ public static class CutProjectFile
         music.SetVolumePercent(dto.MusicVolume ?? CutMusicMix.DefaultVolumePercent);
         music.SetFadeIn(dto.MusicFadeIn ?? CutMusicMix.DefaultFadeSec);
         music.SetFadeOut(dto.MusicFadeOut ?? CutMusicMix.DefaultFadeSec);
+        music.SetPlaybackRate(dto.MusicSpeed ?? CutMusicMix.DefaultPlaybackRate);
+        music.SetNoiseSuppression(dto.MusicNoiseSuppression ?? false);
         ApplyClipRows(clips, dto.Clips);
         foreach (var clip in clips)
             clip.EnsureInOutFromDuration();
@@ -315,6 +321,8 @@ public static class CutProjectFile
         public int? MusicVolume { get; set; }
         public double? MusicFadeIn { get; set; }
         public double? MusicFadeOut { get; set; }
+        public double? MusicSpeed { get; set; }
+        public bool? MusicNoiseSuppression { get; set; }
         public string? MovieFingerprint { get; set; }
         public string? PictureFingerprint { get; set; }
         public string? MusicFingerprint { get; set; }

@@ -225,24 +225,7 @@ public static class CutMergeCache
     }
 
     public static string MusicFingerprint(string? audioFileName, CutMusic? music)
-    {
-        var sb = new StringBuilder();
-        sb.Append(audioFileName ?? music?.FileName ?? "");
-        if (music is not null)
-        {
-            sb.Append('M').Append(Num(music.StartSec))
-                .Append('/').Append(Num(music.MarkIn))
-                .Append('-').Append(Num(music.MarkOut));
-            if (music.HasMixEdits)
-            {
-                sb.Append('V').Append(music.VolumePercent)
-                    .Append('I').Append(Num(music.FadeInSec))
-                    .Append('O').Append(Num(music.FadeOutSec));
-            }
-        }
-
-        return Hash(sb);
-    }
+        => Hash(new StringBuilder(CutMusicMix.FingerprintToken(audioFileName, music)));
 
     public static string PictureFingerprint(
         IReadOnlyList<CutMergeScene> scenes,

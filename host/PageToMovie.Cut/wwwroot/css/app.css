@@ -886,6 +886,28 @@ html, body {
 
 .cut-tl-inspector-font select { width: 7.2rem; }
 
+.cut-tl-inspector-text textarea {
+    width: 11rem;
+    min-height: 2.7rem;
+    resize: vertical;
+    border: 1px solid var(--fs-border-color);
+    border-radius: 6px;
+    background: #181b22;
+    color: var(--fs-text-secondary);
+    padding: 0.3rem 0.4rem;
+    font: inherit;
+}
+
+.cut-tl-inspector-check {
+    flex-wrap: nowrap;
+}
+
+.cut-tl-inspector-check input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    accent-color: #6b4ea8;
+}
+
 .cut-tl-inspector-slider {
     gap: 0.35rem;
 }

@@ -277,6 +277,7 @@
     <CutTimeline_TextInspector @ref="_inspector"
                                Block="SelectedTextBlock"
                                Busy="Busy"
+                               TextChanged="SetSelectedTextLabelAsync"
                                StyleChanged="OnEdited"
                                DurationChanged="SetTextDurationAsync"
                                OnDelete="DeleteSelectedTextAsync"

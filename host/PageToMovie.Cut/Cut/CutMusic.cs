@@ -17,11 +17,15 @@ public sealed class CutMusic
     public int VolumePercent { get; set; } = CutMusicMix.DefaultVolumePercent;
     public double FadeInSec { get; set; } = CutMusicMix.DefaultFadeSec;
     public double FadeOutSec { get; set; } = CutMusicMix.DefaultFadeSec;
+    public double PlaybackRate { get; set; } = CutMusicMix.DefaultPlaybackRate;
+    public bool NoiseSuppression { get; set; }
 
     public bool HasMixEdits =>
         VolumePercent != CutMusicMix.DefaultVolumePercent
         || FadeInSec > 0.001
-        || FadeOutSec > 0.001;
+        || FadeOutSec > 0.001
+        || Math.Abs(PlaybackRate - CutMusicMix.DefaultPlaybackRate) > 0.001
+        || NoiseSuppression;
 
     public bool HasFile => !string.IsNullOrWhiteSpace(FileName);
     public string Label => CutMusicEdit.Label(this);
@@ -35,6 +39,9 @@ public sealed class CutMusic
         }
     }
 
+    public double OutputDurationSec =>
+        SlicedDurationSec / CutMusicMix.ClampPlaybackRate(PlaybackRate);
+
     public void Clear()
     {
         FileName = null;
@@ -46,6 +53,8 @@ public sealed class CutMusic
         VolumePercent = CutMusicMix.DefaultVolumePercent;
         FadeInSec = CutMusicMix.DefaultFadeSec;
         FadeOutSec = CutMusicMix.DefaultFadeSec;
+        PlaybackRate = CutMusicMix.DefaultPlaybackRate;
+        NoiseSuppression = false;
     }
 
     public void SetFile(string? fileName)
@@ -59,6 +68,8 @@ public sealed class CutMusic
         VolumePercent = CutMusicMix.DefaultVolumePercent;
         FadeInSec = CutMusicMix.DefaultFadeSec;
         FadeOutSec = CutMusicMix.DefaultFadeSec;
+        PlaybackRate = CutMusicMix.DefaultPlaybackRate;
+        NoiseSuppression = false;
     }
 
     public void SetVolumePercent(int percent) =>
@@ -69,6 +80,12 @@ public sealed class CutMusic
 
     public void SetFadeOut(double seconds) =>
         FadeOutSec = CutMusicMix.ClampFade(seconds);
+
+    public void SetPlaybackRate(double rate) =>
+        PlaybackRate = CutMusicMix.ClampPlaybackRate(rate);
+
+    public void SetNoiseSuppression(bool enabled) =>
+        NoiseSuppression = enabled;
 
     public void SetDuration(double seconds)
     {

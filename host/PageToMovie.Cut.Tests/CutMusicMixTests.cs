@@ -15,12 +15,33 @@ public class CutMusicMixTests
         Assert.Equal(100, music.VolumePercent);
         Assert.Equal(0, music.FadeInSec);
         Assert.Equal(0, music.FadeOutSec);
+        Assert.Equal(1, music.PlaybackRate);
+        Assert.False(music.NoiseSuppression);
         Assert.False(music.HasMixEdits);
 
         var filter = CutMusicMix.ComplexFilter(music);
         Assert.Contains("volume=1", filter, StringComparison.Ordinal);
         Assert.DoesNotContain("afade", filter, StringComparison.Ordinal);
         Assert.Contains("amix=inputs=2:duration=first", filter, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Speed_and_noise_suppression_prepare_the_audio_and_change_its_output_length()
+    {
+        var music = new CutMusic { FileName = "score.mp3" };
+        music.SetDuration(30);
+        music.ApplyInOut(2, 14);
+        music.SetPlaybackRate(1.5);
+        music.SetNoiseSuppression(true);
+
+        Assert.Equal(8, music.OutputDurationSec, 5);
+        Assert.Equal("atempo=1.5,afftdn=nf=-25", CutMusicMix.PrepareFilter(music));
+        Assert.True(music.HasMixEdits);
+
+        var mix = CutComposeService.ToJsMix("blob:score", music);
+        Assert.Equal(1.5, mix.PlaybackRate, 5);
+        Assert.True(mix.NoiseSuppression);
+        Assert.Equal("atempo=1.5,afftdn=nf=-25", mix.PrepareFilter);
     }
 
     [Fact]
@@ -99,6 +120,14 @@ public class CutMusicMixTests
         Assert.True(faded.PictureFresh);
         Assert.False(faded.MusicFresh);
         Assert.True(faded.RemixMusicOnly);
+
+        music.SetFadeIn(0);
+        music.SetPlaybackRate(0.8);
+        music.SetNoiseSuppression(true);
+        var processed = CutMergeCache.Diff(CutMergeCache.Build([clip], [], "score.mp3", music), saved);
+        Assert.True(processed.PictureFresh);
+        Assert.False(processed.MusicFresh);
+        Assert.True(processed.RemixMusicOnly);
     }
 
     private static CutClip NewClip(int scene, int clip, double duration)

@@ -78,10 +78,14 @@ public class CutPlayMergeTests
         music.SetFadeOut(1.2);
         var mixed = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
         Assert.NotEqual(placed, mixed);
+        music.SetPlaybackRate(1.2);
+        music.SetNoiseSuppression(true);
+        var processed = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
+        Assert.NotEqual(mixed, processed);
         titles[0].Style.Font = CutTextFont.Arial;
         titles[0].Style.Align = CutTextAlign.Right;
         var styled = CutPlayMerge.Fingerprint(clips, titles, "score.mp3", music);
-        Assert.NotEqual(mixed, styled);
+        Assert.NotEqual(processed, styled);
     }
 
     [Fact]

@@ -117,6 +117,13 @@ public class CutComposeContractTests
         foreach (var path in CutFfmpegEncode.ComposeExportPaths)
         {
             var argv = CutFfmpegEncode.Argv(path);
+            if (path == CutFfmpegEncodePath.Mix)
+            {
+                Assert.True(CutComposeContract.MixArgvIsSafe(argv));
+                Assert.Contains("copy", argv);
+                Assert.DoesNotContain("libx264", argv);
+                continue;
+            }
             var expectAudio = path is not CutFfmpegEncodePath.Still
                 and not CutFfmpegEncodePath.OverlaySilent
                 and not CutFfmpegEncodePath.ConcatSilent;
@@ -131,6 +138,8 @@ public class CutComposeContractTests
 
         var mix = CutFfmpegEncode.Argv(CutFfmpegEncodePath.Mix);
         Assert.True(CutComposeContract.MixKeepsVideoDuration(mix));
+        Assert.True(CutComposeContract.MixCopiesNormalizedPicture);
+        Assert.True(CutComposeContract.MixArgvIsSafe(mix));
         Assert.DoesNotContain("-shortest", mix);
         Assert.Contains("-t", mix);
         Assert.True(CutComposeContract.MixMustNotShortenToMusic);

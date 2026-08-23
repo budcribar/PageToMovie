@@ -65,6 +65,23 @@ public class CutMusicTests
         Assert.Equal(100, music.VolumePercent);
         Assert.Equal(0, music.FadeInSec);
         Assert.Equal(0, music.FadeOutSec);
+        Assert.Equal(1, music.PlaybackRate);
+        Assert.False(music.NoiseSuppression);
+    }
+
+    [Theory]
+    [InlineData(0.1, 0.5)]
+    [InlineData(1.25, 1.25)]
+    [InlineData(4, 2)]
+    public void Playback_rate_is_clamped_and_drives_timeline_length(double input, double expected)
+    {
+        var music = new CutMusic { FileName = "score.mp3" };
+        music.SetDuration(12);
+        music.ApplyInOut(0, 12);
+        music.SetPlaybackRate(input);
+
+        Assert.Equal(expected, music.PlaybackRate, 5);
+        Assert.Equal(12 / expected, music.OutputDurationSec, 5);
     }
 
     [Fact]
@@ -101,6 +118,22 @@ public class CutMusicTests
         Assert.Equal(13, music.MarkOut);
         Assert.Equal(9, music.SlicedDurationSec);
         Assert.Equal(0, music.StartSec);
+    }
+
+    [Fact]
+    public void Menu_edit_duration_is_timeline_time_when_speed_changes()
+    {
+        var music = new CutMusic();
+        music.SetFile("score.mp3");
+        music.SetDuration(40);
+        music.TrimIn(4);
+        music.SetPlaybackRate(2);
+
+        CutMusicEdit.SetHold(music, 6);
+
+        Assert.Equal(4, music.MarkIn);
+        Assert.Equal(16, music.MarkOut);
+        Assert.Equal(6, music.OutputDurationSec, 5);
     }
 
     [Fact]

@@ -12,6 +12,10 @@ public static class CutMusicMix
     public const int DefaultVolumePercent = 100;
     public const double DefaultFadeSec = 0;
     public const double MaxFadeSeconds = 12;
+    public const double DefaultPlaybackRate = 1;
+    public const double MinPlaybackRate = 0.5;
+    public const double MaxPlaybackRate = 2;
+    public const string NoiseSuppressionFilter = "afftdn=nf=-25";
 
     public static int ClampVolume(int percent) => Math.Clamp(percent, 0, 100);
 
@@ -20,6 +24,50 @@ public static class CutMusicMix
         if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0)
             return 0;
         return Math.Min(MaxFadeSeconds, seconds);
+    }
+
+    public static double ClampPlaybackRate(double rate)
+    {
+        if (double.IsNaN(rate) || double.IsInfinity(rate))
+            return DefaultPlaybackRate;
+        return Math.Clamp(rate, MinPlaybackRate, MaxPlaybackRate);
+    }
+
+    public static string PrepareFilter(double playbackRate, bool noiseSuppression)
+    {
+        var filters = new List<string>();
+        var rate = ClampPlaybackRate(playbackRate);
+        if (Math.Abs(rate - DefaultPlaybackRate) > 0.001)
+            filters.Add("atempo=" + Num(rate));
+        if (noiseSuppression)
+            filters.Add(NoiseSuppressionFilter);
+        return string.Join(',', filters);
+    }
+
+    public static string PrepareFilter(CutMusic music)
+    {
+        ArgumentNullException.ThrowIfNull(music);
+        return PrepareFilter(music.PlaybackRate, music.NoiseSuppression);
+    }
+
+    public static string FingerprintToken(string? audioFileName, CutMusic? music)
+    {
+        var sb = new StringBuilder(audioFileName ?? music?.FileName ?? "");
+        if (music is null)
+            return sb.ToString();
+        sb.Append('M').Append(Num(music.StartSec))
+            .Append('/').Append(Num(music.MarkIn))
+            .Append('-').Append(Num(music.MarkOut));
+        if (music.HasMixEdits)
+        {
+            sb.Append('V').Append(music.VolumePercent)
+                .Append('I').Append(Num(music.FadeInSec))
+                .Append('O').Append(Num(music.FadeOutSec))
+                .Append('S').Append(Num(music.PlaybackRate))
+                .Append('N').Append(music.NoiseSuppression ? '1' : '0');
+        }
+
+        return sb.ToString();
     }
 
     public static double GainOf(int volumePercent) =>
@@ -78,7 +126,7 @@ public static class CutMusicMix
             music.FadeInSec,
             music.FadeOutSec,
             music.StartSec,
-            music.SlicedDurationSec);
+            music.OutputDurationSec);
     }
 
     public static string MusicOnlyFilter(
@@ -99,7 +147,7 @@ public static class CutMusicMix
             music.FadeInSec,
             music.FadeOutSec,
             music.StartSec,
-            music.SlicedDurationSec);
+            music.OutputDurationSec);
     }
 
     private static string Num(double value) =>

@@ -73,6 +73,8 @@ public sealed class CutComposeService : IAsyncDisposable
         Music.SetVolumePercent(saved.VolumePercent);
         Music.SetFadeIn(saved.FadeInSec);
         Music.SetFadeOut(saved.FadeOutSec);
+        Music.SetPlaybackRate(saved.PlaybackRate);
+        Music.SetNoiseSuppression(saved.NoiseSuppression);
     }
 
     public async Task ProbeMusicDurationAsync()
@@ -459,6 +461,9 @@ public sealed class CutComposeService : IAsyncDisposable
             Volume = CutMusicMix.GainOf(music.VolumePercent),
             FadeIn = music.FadeInSec,
             FadeOut = music.FadeOutSec,
+            PlaybackRate = music.PlaybackRate,
+            NoiseSuppression = music.NoiseSuppression,
+            PrepareFilter = CutMusicMix.PrepareFilter(music),
             Filter = CutMusicMix.ComplexFilter(music),
             FallbackFilter = CutMusicMix.MusicOnlyFilter(music),
         };

@@ -119,6 +119,13 @@ public static class CutComposeContract
     /// </summary>
     public const bool MixMustNotShortenToMusic = true;
 
+    /// <summary>
+    /// The picture entering the music pass is already Cut's normalized
+    /// H.264 main/yuv420p output. Copying that stream avoids encoding the
+    /// whole film again when only the score changes.
+    /// </summary>
+    public const bool MixCopiesNormalizedPicture = true;
+
     public static bool ExportArgvIsWmpSafe(IReadOnlyList<string> argv, bool expectAudio)
     {
         if (argv is null || argv.Count == 0)
@@ -140,6 +147,13 @@ public static class CutComposeContract
 
     public static bool MixKeepsVideoDuration(IReadOnlyList<string> argv) =>
         MixMustNotShortenToMusic && !ContainsToken(argv, "-shortest");
+
+    public static bool MixArgvIsSafe(IReadOnlyList<string> argv) =>
+        MixCopiesNormalizedPicture
+        && ContainsPair(argv, "-c:v", "copy")
+        && ContainsPair(argv, "-c:a", ExportAudioCodec)
+        && ContainsToken(argv, ExportMovFlags)
+        && MixKeepsVideoDuration(argv);
 
     public static double ComposedDurationSec(IReadOnlyList<CutClip> clips)
     {

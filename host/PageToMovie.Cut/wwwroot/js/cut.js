@@ -405,6 +405,14 @@
         return args;
     }
 
+    function audioRemuxArgs() {
+        return [
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", CUT_AAC_RATE,
+            "-movflags", "+faststart",
+        ];
+    }
+
     function clampTrimWindow(startSec, endSec, total) {
         let start = Number(startSec) || 0;
         let end = Number(endSec);
@@ -797,6 +805,9 @@
             volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1,
             fadeIn: Math.max(0, Number(audio.fadeIn) || 0),
             fadeOut: Math.max(0, Number(audio.fadeOut) || 0),
+            playbackRate: Math.max(0.5, Math.min(2, Number(audio.playbackRate) || 1)),
+            noiseSuppression: audio.noiseSuppression === true,
+            prepareFilter: audio.prepareFilter || "",
             filter: audio.filter || "",
             fallbackFilter: audio.fallbackFilter || "",
         };
@@ -806,7 +817,7 @@
         const start = spec.start;
         const inn = spec.markIn;
         const outt = spec.markOut;
-        const needsPlace = start > 0.02 || inn > 0.02 || outt > inn + 0.02;
+        const needsPlace = start > 0.02 || inn > 0.02 || outt > inn + 0.02 || !!spec.prepareFilter;
         if (!needsPlace)
             return { success: true, url: spec.url };
         return api._runExclusiveAsync(async function () {
@@ -826,9 +837,14 @@
                 args.push("-i", inName);
                 if (outt > inn + 0.02)
                     args.push("-t", String(Math.max(0.3, outt - inn)));
+                const audioFilters = [];
+                if (spec.prepareFilter)
+                    audioFilters.push(spec.prepareFilter);
                 const delayMs = Math.round(start * 1000);
                 if (delayMs > 0)
-                    args.push("-af", "adelay=" + delayMs + ":all=1");
+                    audioFilters.push("adelay=" + delayMs + ":all=1");
+                if (audioFilters.length > 0)
+                    args.push("-af", audioFilters.join(","));
                 args.push("-c:a", "aac", "-b:a", "192k", outName);
                 await ffmpeg.exec(args);
                 const out = await ffmpeg.readFile(outName);
@@ -845,7 +861,9 @@
     }
 
     function mixFiltersOf(spec) {
-        const hold = spec && spec.markOut > spec.markIn ? spec.markOut - spec.markIn : 0;
+        const sourceHold = spec && spec.markOut > spec.markIn ? spec.markOut - spec.markIn : 0;
+        const rate = spec && spec.playbackRate > 0 ? spec.playbackRate : 1;
+        const hold = sourceHold / rate;
         const volume = spec && Number.isFinite(spec.volume) ? spec.volume : 1;
         const fadeIn = spec && spec.fadeIn > 0 ? spec.fadeIn : 0;
         const fadeOut = spec && spec.fadeOut > 0 ? spec.fadeOut : 0;
@@ -880,7 +898,7 @@
             ];
             if (durationSec > 0.05)
                 args.push("-t", String(durationSec));
-            args.push.apply(args, h264EncodeArgs("aac"));
+            args.push.apply(args, audioRemuxArgs());
             args.push(outName);
             try {
                 await ffmpeg.exec(args);
@@ -896,7 +914,7 @@
                 ];
                 if (durationSec > 0.05)
                     fallback.push("-t", String(durationSec));
-                fallback.push.apply(fallback, h264EncodeArgs("aac"));
+                fallback.push.apply(fallback, audioRemuxArgs());
                 fallback.push(outName);
                 await ffmpeg.exec(fallback);
             }

@@ -123,7 +123,7 @@ public partial class CutTimeline
     {
         get
         {
-            var hold = Music?.SlicedDurationSec ?? 0;
+            var hold = Music?.OutputDurationSec ?? 0;
             if (hold < CutMusic.MinSpanSeconds)
                 hold = Math.Max(Layout.TotalSec, 8);
             return Math.Max(hold * _pxPerSec, 36);
@@ -458,7 +458,18 @@ public partial class CutTimeline
 
     private async Task SetTextLabelAsync(CutTextBlock block, ChangeEventArgs e)
     {
-        CutTextTrack.SetLabel(block, Convert.ToString(e.Value, CultureInfo.InvariantCulture));
+        await SetTextLabelAsync(block, Convert.ToString(e.Value, CultureInfo.InvariantCulture));
+    }
+
+    private async Task SetSelectedTextLabelAsync(string? text)
+    {
+        if (SelectedTextBlock is { } block)
+            await SetTextLabelAsync(block, text);
+    }
+
+    private async Task SetTextLabelAsync(CutTextBlock block, string? text)
+    {
+        CutTextTrack.SetLabel(block, text);
         await OnEdited.InvokeAsync();
     }
 
@@ -773,9 +784,9 @@ public partial class CutTimeline
         if (_drag == DragKind.MusicMove)
             Music.Move(_dragMusicStart + dt);
         else if (_drag == DragKind.MusicIn)
-            Music.TrimIn(_dragMusicIn + dt);
+            Music.TrimIn(_dragMusicIn + dt * CutMusicMix.ClampPlaybackRate(Music.PlaybackRate));
         else
-            Music.TrimOut(_dragMusicOut + dt);
+            Music.TrimOut(_dragMusicOut + dt * CutMusicMix.ClampPlaybackRate(Music.PlaybackRate));
         return true;
     }
 

@@ -150,6 +150,15 @@ public sealed class JsMusicMix
     [JsonPropertyName("fadeOut")]
     public double FadeOut { get; set; }
 
+    [JsonPropertyName("playbackRate")]
+    public double PlaybackRate { get; set; } = 1;
+
+    [JsonPropertyName("noiseSuppression")]
+    public bool NoiseSuppression { get; set; }
+
+    [JsonPropertyName("prepareFilter")]
+    public string? PrepareFilter { get; set; }
+
     [JsonPropertyName("filter")]
     public string? Filter { get; set; }
 
