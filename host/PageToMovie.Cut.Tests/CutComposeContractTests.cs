@@ -76,6 +76,10 @@ public class CutComposeContractTests
         Assert.Contains("transientBodies.forEach", src, StringComparison.Ordinal);
         Assert.Contains("const hasInlineCards = slice.some", src, StringComparison.Ordinal);
         Assert.Contains("combined = await concatPinned(api, pieces, onProgress)", src, StringComparison.Ordinal);
+        Assert.Contains("function execChecked(ffmpeg, args, label)", src, StringComparison.Ordinal);
+        Assert.Contains("fps=30,settb=AVTB,setpts=PTS-STARTPTS", src, StringComparison.Ordinal);
+        Assert.Contains("anullsrc=channel_layout=stereo:sample_rate=48000", src, StringComparison.Ordinal);
+        Assert.Contains("\"-t\", String(outputSec)", src, StringComparison.Ordinal);
     }
 
     [Fact]

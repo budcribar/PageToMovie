@@ -118,6 +118,13 @@
         }
     }
 
+    async function execChecked(ffmpeg, args, label) {
+        const code = await ffmpeg.exec(args);
+        if (typeof code === "number" && code !== 0)
+            throw new Error((label || "ffmpeg command failed") + " (exit " + code + ")");
+        return code;
+    }
+
     async function resetFfmpegWorker(api) {
         if (!api)
             return;
@@ -321,14 +328,14 @@
             }
             await writeMemfs(ffmpeg, listName, names.map(function (n) { return "file '" + n + "'"; }).join("\n"));
             try {
-                await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                await execChecked(ffmpeg, ["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
                     .concat(h264EncodeArgs("aac"), [outName]));
             } catch (audioErr) {
                 console.debug("Cut: concat audio missing", audioErr);
                 try { await ffmpeg.deleteFile(outName); } catch (delErr) {
                     console.debug("Cut: concat out cleanup", delErr);
                 }
-                await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                await execChecked(ffmpeg, ["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
                     .concat(h264EncodeArgs("an"), [outName]));
             }
             const out = await ffmpeg.readFile(outName);
@@ -595,10 +602,10 @@
                 }
                 args.push("-filter_complex", graph, "-map", "[" + last + "]");
                 try {
-                    await ffmpeg.exec(args.concat(["-map", "0:a"], h264EncodeArgs("aac"), [outName]));
+                    await execChecked(ffmpeg, args.concat(["-map", "0:a"], h264EncodeArgs("aac"), [outName]));
                 } catch (audioErr) {
                     console.debug("Cut: overlay native audio missing", audioErr);
-                    await ffmpeg.exec(args.concat(h264EncodeArgs("an"), [outName]));
+                    await execChecked(ffmpeg, args.concat(h264EncodeArgs("an"), [outName]));
                 }
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
@@ -634,7 +641,7 @@
                 if (fade > 0.05)
                     vf += ",fade=t=in:st=0:d=" + fade + ",fade=t=out:st=" + (hold - fade) + ":d=" + fade;
                 vf += ",format=yuv420p";
-                await ffmpeg.exec([
+                await execChecked(ffmpeg, [
                     "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
                     "-vf", vf,
                 ].concat(h264EncodeArgs("an"), [outName]));
@@ -678,27 +685,32 @@
                 await writeMemfs(ffmpeg, aName, pair[0]);
                 await writeMemfs(ffmpeg, bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
+                const rightProbe = await api._probeDurationMemfsAsync(bName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
+                const rightSec = rightProbe.success && rightProbe.seconds > 0 ? rightProbe.seconds : 1;
                 const fade = Number(fadeSec) > 0.05
                     ? Number(fadeSec)
                     : Math.min(CUT_XFADE_SEC, Math.max(CUT_XFADE_MIN_SEC, leftSec / 4));
                 const offset = Math.max(0, leftSec - fade);
-                const vgraph = "[0:v]scale=1280:720,setsar=1,format=yuv420p[v0];[1:v]scale=1280:720,setsar=1,format=yuv420p[v1];"
+                const outputSec = Math.max(0.1, offset + rightSec);
+                const vgraph = "[0:v]scale=1280:720,setsar=1,fps=30,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v0];"
+                    + "[1:v]scale=1280:720,setsar=1,fps=30,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v1];"
                     + "[v0][v1]xfade=transition=" + trans + ":duration=" + fade + ":offset=" + offset + ",format=yuv420p[v]";
                 const aNorm = "[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a0];"
                     + "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a1];";
                 const graphs = [
                     vgraph + ";" + aNorm + "[a0][a1]acrossfade=d=" + fade + ":c1=tri:c2=tri[a]",
-                    vgraph + ";" + aNorm + "[a0][a1]concat=n=2:v=0:a=1[a]",
+                    vgraph + ";[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad[a]",
+                    vgraph + ";[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad[a]",
                 ];
                 let encoded = false;
                 for (const graph of graphs) {
                     try {
-                        await ffmpeg.exec([
+                        await execChecked(ffmpeg, [
                             "-hide_banner", "-y", "-i", aName, "-i", bName,
                             "-filter_complex", graph,
                             "-map", "[v]", "-map", "[a]",
-                        ].concat(h264EncodeArgs("aac"), [outName]));
+                        ].concat(h264EncodeArgs("aac"), ["-t", String(outputSec), outName]));
                         encoded = true;
                         break;
                     } catch (audioErr) {
@@ -708,8 +720,21 @@
                         }
                     }
                 }
+                if (!encoded) {
+                    try {
+                        await execChecked(ffmpeg, [
+                            "-hide_banner", "-y", "-i", aName, "-i", bName,
+                            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+                            "-filter_complex", vgraph,
+                            "-map", "[v]", "-map", "2:a",
+                        ].concat(h264EncodeArgs("aac"), ["-t", String(outputSec), outName]));
+                        encoded = true;
+                    } catch (silentErr) {
+                        console.debug("Cut: xfade silence pass failed", silentErr);
+                    }
+                }
                 if (!encoded)
-                    return { success: false, error: "xfade audio failed" };
+                    return { success: false, error: "Transition could not be rendered." };
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
                 noteTemp(url);
@@ -873,7 +898,7 @@
                 if (audioFilters.length > 0)
                     args.push("-af", audioFilters.join(","));
                 args.push("-c:a", "aac", "-b:a", "192k", outName);
-                await ffmpeg.exec(args);
+                await execChecked(ffmpeg, args);
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "audio/mp4" }));
                 noteTemp(url);
@@ -928,7 +953,7 @@
             args.push.apply(args, audioRemuxArgs());
             args.push(outName);
             try {
-                await ffmpeg.exec(args);
+                await execChecked(ffmpeg, args);
             } catch (noVidAudio) {
                 console.debug("Cut: mix video has no audio", noVidAudio);
                 try { await ffmpeg.deleteFile(outName); } catch (delErr) {
@@ -943,7 +968,7 @@
                     fallback.push("-t", String(durationSec));
                 fallback.push.apply(fallback, audioRemuxArgs());
                 fallback.push(outName);
-                await ffmpeg.exec(fallback);
+                await execChecked(ffmpeg, fallback);
             }
             const out = await ffmpeg.readFile(outName);
             const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
@@ -1753,10 +1778,10 @@
                 const window = clampTrimWindow(startSec, endSec, total);
                 onProgress?.(55, "Trimming…");
                 try {
-                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, false));
+                    await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, false));
                 } catch (audioErr) {
                     console.debug("Cut: trim native audio missing, pad silence", audioErr);
-                    await ffmpeg.exec(buildTrimArgs(inName, outName, window.start, window.keep, true));
+                    await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, true));
                 }
                 const out = await ffmpeg.readFile(outName);
                 const blob = new Blob([out.buffer], { type: "video/mp4" });
