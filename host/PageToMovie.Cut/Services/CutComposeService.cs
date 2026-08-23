@@ -333,43 +333,62 @@ public sealed class CutComposeService : IAsyncDisposable
     {
         var payload = new List<JsExportClip>(clips.Count);
         for (var i = 0; i < clips.Count; i++)
+            payload.Add(ToExportClip(clips, i));
+        AttachOverlays(payload, clips, texts);
+        return payload;
+    }
+
+    private static JsExportClip ToExportClip(IReadOnlyList<CutClip> clips, int index)
+    {
+        var c = clips[index];
+        var hold = c.HoldsPicture;
+        var next = index + 1 < clips.Count ? clips[index + 1] : null;
+        var joinOut = "cut";
+        var joinHold = 0d;
+        if (next is not null)
         {
-            var c = clips[i];
-            var next = i + 1 < clips.Count ? clips[i + 1] : null;
-            var join = next is null ? CutJoinKind.Cut : c.JoinToNext(next);
-            var windows = c.KeepWindows();
-            var hold = c.HoldsPicture;
-            payload.Add(new JsExportClip
-            {
-                Url = hold ? null : c.PreviewUrl,
-                Label = c.Label,
-                FileName = c.FileName,
-                MarkIn = c.MarkIn,
-                MarkOut = c.HasDuration ? c.MarkOut : 0,
-                Duration = c.DurationSec,
-                Hold = hold,
-                Windows = windows.Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
-                JoinOut = next is null ? "cut" : CutTransitionMap.WireName(join),
-                JoinHold = next is null ? 0 : CutComposeContract.HoldSeconds(join),
-                Card = CardPayload(c, clips),
-            });
+            var join = c.JoinToNext(next);
+            joinOut = CutTransitionMap.WireName(join);
+            joinHold = CutComposeContract.HoldSeconds(join);
         }
 
+        return new JsExportClip
+        {
+            Url = hold ? null : c.PreviewUrl,
+            Label = c.Label,
+            FileName = c.FileName,
+            MarkIn = c.MarkIn,
+            MarkOut = c.HasDuration ? c.MarkOut : 0,
+            Duration = c.DurationSec,
+            Hold = hold,
+            Windows = c.KeepWindows().Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
+            JoinOut = joinOut,
+            JoinHold = joinHold,
+            Card = CardPayload(c, clips),
+        };
+    }
+
+    private static void AttachOverlays(
+        List<JsExportClip> payload,
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts)
+    {
         foreach (var overlay in CutTextTrack.OverlaysForCompose(clips, texts ?? []))
         {
             if (overlay.ClipIndex < 0 || overlay.ClipIndex >= payload.Count)
                 continue;
-            payload[overlay.ClipIndex].Texts.Add(new JsTextOverlay
-            {
-                Text = overlay.Text,
-                Start = overlay.LocalStart,
-                Seconds = overlay.Seconds,
-                Style = ToJsStyle(overlay.Style, overlay.Seconds),
-            });
+            payload[overlay.ClipIndex].Texts.Add(ToJsOverlay(overlay));
         }
-
-        return payload;
     }
+
+    private static JsTextOverlay ToJsOverlay(CutTextOverlay overlay) =>
+        new()
+        {
+            Text = overlay.Text,
+            Start = overlay.LocalStart,
+            Seconds = overlay.Seconds,
+            Style = ToJsStyle(overlay.Style, overlay.Seconds),
+        };
 
     private async Task<JsResult> InvokeComposeAsync<T>(
         string method,
