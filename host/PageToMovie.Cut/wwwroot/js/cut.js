@@ -839,6 +839,12 @@
         }
     };
 
+    cut.clickFileInput = function (host) {
+        const input = host && host.querySelector ? host.querySelector("input[type=\"file\"]") : null;
+        if (input)
+            input.click();
+    };
+
     cut.pickMp4FilesAsync = function () {
         return new Promise(function (resolve) {
             const input = document.createElement("input");

@@ -16,6 +16,11 @@
     {
         <span class="cut-muted">Finish Film’s current takes — trim, joins, cards, music</span>
     }
+    <div @ref="_audioPickerHost" class="cut-file-sr" aria-hidden="true">
+        <InputFile @key="_audioInputKey"
+                   OnChange="OnAudioAsync"
+                   accept="audio/*,.wav,.mp3,.m4a,.aac" />
+    </div>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(_error))
@@ -126,31 +131,8 @@
                      OnStepForward="() => StepAsync(5)"
                      OnEdited="OnTimelineEdited"
                      OnMusicEdited="OnMusicEditedAsync"
-                     OnMusicRemoved="ClearAudioAsync" />
-
-        <section class="cut-card cut-mix">
-            <div class="cut-drop">
-                <InputFile OnChange="OnAudioAsync" accept="audio/*,.wav,.mp3,.m4a,.aac" />
-                @if (Compose.HasAudio)
-                {
-                    <p class="cut-ok">@Compose.Music.Label</p>
-                    <button type="button" class="cut-btn cut-btn-ghost" @onclick="ClearAudioAsync" disabled="@_busy">Remove</button>
-                }
-                else
-                {
-                    <p class="cut-muted">Drop music or a wav. Mixed under the whole movie.</p>
-                }
-            </div>
-            <div class="cut-actions">
-                <button type="button" class="cut-btn cut-btn-ghost" data-testid="cut-make-movie" @onclick="ExportAsync" disabled="@ExportDisabled">Make movie</button>
-            </div>
-            @if (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage))
-            {
-                <p class="cut-muted">@ProgressText</p>
-                <div class="cut-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressPercent">
-                    <span style="width:@(ProgressPercent)%"></span>
-                </div>
-            }
-        </section>
+                     OnMusicRemoved="ClearAudioAsync"
+                     OnAddAudio="OpenAudioPickerAsync"
+                     OnExport="ExportAsync" />
     </div>
 }

@@ -31,6 +31,8 @@ public partial class CutTimeline
     [Parameter] public EventCallback OnEdited { get; set; }
     [Parameter] public EventCallback OnMusicEdited { get; set; }
     [Parameter] public EventCallback OnMusicRemoved { get; set; }
+    [Parameter] public EventCallback OnAddAudio { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
     [Parameter] public string? SelectedTextId { get; set; }
     [Parameter] public EventCallback<string?> SelectedTextIdChanged { get; set; }
 

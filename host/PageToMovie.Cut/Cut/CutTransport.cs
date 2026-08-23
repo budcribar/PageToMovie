@@ -13,6 +13,7 @@ public static class CutTransport
     public const string TextAddClass = "cut-tl-text-add";
     public const string TextClipClass = "cut-tl-text-clip";
     public const string TextMenuClass = CutTextMenu.PanelClass;
+    public const string AudioAddClass = "cut-tl-audio-add";
 
     /// <summary>
     /// Add text stays above title/card tiles (handles are 3).
@@ -21,6 +22,7 @@ public static class CutTransport
     /// </summary>
     public const int TextAddZIndex = 6;
     public const int TextClipZIndex = 1;
+    public const int AudioAddZIndex = TextAddZIndex;
 
     /// <summary>
     /// Play is enabled once any current-take clip is loaded. Do not wait
