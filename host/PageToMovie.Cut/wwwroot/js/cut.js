@@ -45,8 +45,103 @@
     const CUT_H264_PROFILE = "main";
     const CUT_AAC_RATE = "128k";
 
+    function isFsError(err) {
+        if (!err)
+            return false;
+        const name = String(err.name || "");
+        const msg = String(err.message || err);
+        return name === "ErrnoError" || /FS error/i.test(msg) || /ErrnoError/i.test(msg);
+    }
+
+    /** Keep in sync with CutComposeContract.BrowserWorkingFileError. */
+    function fsUserMessage() {
+        return "Could not finish the movie file. Stop playback, then try Make movie again.";
+    }
+
     function messageOf(err, fallback) {
+        if (isFsError(err))
+            return fsUserMessage();
         return err?.message || fallback;
+    }
+
+    async function fetchInputBytes(api, url, label) {
+        if (!url)
+            throw new Error(label + " is missing.");
+        try {
+            const data = await api._safeFetchFile(url);
+            if (!data || !data.length)
+                throw new Error(label + " could not be read. Try Make movie again.");
+            return data;
+        } catch (err) {
+            if (isFsError(err))
+                throw new Error(fsUserMessage());
+            const msg = String(err && err.message ? err.message : err || "");
+            if (/failed to fetch|NetworkError|ERR_FILE_NOT_FOUND/i.test(msg))
+                throw new Error(label + " is no longer available. Try Make movie again.");
+            throw err;
+        }
+    }
+
+    async function sweepCutMemfs(ffmpeg) {
+        if (!ffmpeg || typeof ffmpeg.listDir !== "function")
+            return;
+        let entries = [];
+        try {
+            entries = await ffmpeg.listDir("/");
+        } catch (err) {
+            console.debug("Cut: memfs list", err);
+            return;
+        }
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const name = entry && typeof entry === "object" ? entry.name : entry;
+            if (typeof name !== "string" || name === "." || name === "..")
+                continue;
+            if (name.indexOf("cut_") !== 0)
+                continue;
+            await deleteMemfs(ffmpeg, name);
+        }
+    }
+
+    async function writeMemfs(ffmpeg, name, data) {
+        if (!data || data.length === 0)
+            throw new Error("A clip or soundtrack could not be read. Try Make movie again.");
+        await deleteMemfs(ffmpeg, name);
+        try {
+            await ffmpeg.writeFile(name, data);
+        } catch (err) {
+            if (!isFsError(err))
+                throw err;
+            await sweepCutMemfs(ffmpeg);
+            await deleteMemfs(ffmpeg, name);
+            await ffmpeg.writeFile(name, data);
+        }
+    }
+
+    async function resetFfmpegWorker(api) {
+        if (!api)
+            return;
+        try {
+            if (api._ffmpeg && typeof api._ffmpeg.terminate === "function")
+                api._ffmpeg.terminate();
+        } catch (err) {
+            console.debug("Cut: ffmpeg reset", err);
+        }
+        api._ffmpeg = null;
+        api._loaded = false;
+        api._loading = null;
+    }
+
+    async function drainComposeAsync() {
+        try {
+            await cut._composeGate;
+        } catch (_) { /* previous compose already surfaced */ }
+        const api = window.PageToMovieFfmpeg;
+        if (api && api._lock) {
+            try { await api._lock; } catch (_) { /* exclusive queue drained */ }
+        }
+        if (api && api._ffmpeg)
+            await sweepCutMemfs(api._ffmpeg);
     }
 
     function splitRelPath(relativePath) {
@@ -202,45 +297,60 @@
         });
     }
 
+    async function concatEncodeOnce(api, ffmpeg, urls, seq) {
+        const names = [];
+        const outName = "cut_cat_" + seq + ".mp4";
+        const listName = "cut_cat_" + seq + ".txt";
+        try {
+            for (let i = 0; i < urls.length; i++) {
+                const n = "cut_cat_" + seq + "_" + i + ".mp4";
+                names.push(n);
+                await writeMemfs(ffmpeg, n, await fetchInputBytes(api, urls[i], "Clip"));
+            }
+            await writeMemfs(ffmpeg, listName, names.map(function (n) { return "file '" + n + "'"; }).join("\n"));
+            try {
+                await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                    .concat(h264EncodeArgs("aac"), [outName]));
+            } catch (audioErr) {
+                console.debug("Cut: concat audio missing", audioErr);
+                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                    console.debug("Cut: concat out cleanup", delErr);
+                }
+                await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
+                    .concat(h264EncodeArgs("an"), [outName]));
+            }
+            const out = await ffmpeg.readFile(outName);
+            const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+            noteTemp(url);
+            return { success: true, url: url };
+        } finally {
+            for (let i = 0; i < names.length; i++)
+                await deleteMemfs(ffmpeg, names[i]);
+            await deleteMemfs(ffmpeg, listName);
+            await deleteMemfs(ffmpeg, outName);
+        }
+    }
+
     async function concatEncodeAsync(api, urls, onProgress) {
         return api._runExclusiveAsync(async function () {
-            const load = await api.ensureLoadedAsync(onProgress);
+            let load = await api.ensureLoadedAsync(onProgress);
             if (!load.success)
                 return { success: false, error: load.error };
-            const ffmpeg = api._ffmpeg;
             const seq = ++cut._trimSeq;
-            const names = [];
-            const outName = "cut_cat_" + seq + ".mp4";
-            const listName = "cut_cat_" + seq + ".txt";
             try {
-                for (let i = 0; i < urls.length; i++) {
-                    const n = "cut_cat_" + seq + "_" + i + ".mp4";
-                    names.push(n);
-                    await ffmpeg.writeFile(n, await api._safeFetchFile(urls[i]));
-                }
-                await ffmpeg.writeFile(listName, names.map(function (n) { return "file '" + n + "'"; }).join("\n"));
-                try {
-                    await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
-                        .concat(h264EncodeArgs("aac"), [outName]));
-                } catch (audioErr) {
-                    console.debug("Cut: concat audio missing", audioErr);
-                    try { await ffmpeg.deleteFile(outName); } catch (delErr) {
-                        console.debug("Cut: concat out cleanup", delErr);
-                    }
-                    await ffmpeg.exec(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
-                        .concat(h264EncodeArgs("an"), [outName]));
-                }
-                const out = await ffmpeg.readFile(outName);
-                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
-                noteTemp(url);
-                return { success: true, url: url };
+                return await concatEncodeOnce(api, api._ffmpeg, urls, seq);
             } catch (err) {
-                return { success: false, error: messageOf(err, "Combine failed.") };
-            } finally {
-                for (let i = 0; i < names.length; i++)
-                    await deleteMemfs(ffmpeg, names[i]);
-                await deleteMemfs(ffmpeg, listName);
-                await deleteMemfs(ffmpeg, outName);
+                if (!isFsError(err))
+                    return { success: false, error: messageOf(err, "Combine failed.") };
+                await resetFfmpegWorker(api);
+                load = await api.ensureLoadedAsync(onProgress);
+                if (!load.success)
+                    return { success: false, error: load.error || fsUserMessage() };
+                try {
+                    return await concatEncodeOnce(api, api._ffmpeg, urls, seq);
+                } catch (retry) {
+                    return { success: false, error: messageOf(retry, fsUserMessage()) };
+                }
             }
         });
     }
@@ -436,8 +546,8 @@
             const outName = "cut_ov_out_" + seq + ".mp4";
             const pngs = [];
             try {
-                const data = await withPinnedUrls([videoUrl], function () { return api._safeFetchFile(videoUrl); });
-                await ffmpeg.writeFile(inName, data);
+                const data = await withPinnedUrls([videoUrl], function () { return fetchInputBytes(api, videoUrl, "Picture"); });
+                await writeMemfs(ffmpeg, inName, data);
                 let graph = "[0:v]scale=1280:720,setsar=1[v0]";
                 let last = "v0";
                 const args = ["-hide_banner", "-y", "-i", inName];
@@ -445,7 +555,7 @@
                     const pngName = "cut_ov_" + seq + "_" + i + ".png";
                     const look = textStyle(list[i].style);
                     pngs.push(pngName);
-                    await ffmpeg.writeFile(pngName, await api._safeFetchFile(overlayPngUrl(list[i].text, look)));
+                    await writeMemfs(ffmpeg, pngName, await fetchInputBytes(api, overlayPngUrl(list[i].text, look), "Title"));
                     const start = Math.max(0, Number(list[i].start) || 0);
                     const hold = Math.max(0.3, Number(list[i].seconds) || 2);
                     const end = start + hold;
@@ -497,8 +607,8 @@
             const inName = "cut_card_" + seq + ".png";
             const outName = "cut_card_" + seq + ".mp4";
             try {
-                const data = await api._safeFetchFile(pngUrl);
-                await ffmpeg.writeFile(inName, data);
+                const data = await fetchInputBytes(api, pngUrl, "Card");
+                await writeMemfs(ffmpeg, inName, data);
                 const fade = Math.min(Math.max(0, Number(fadeSec) || 0), hold / 3);
                 let vf = "scale=1280:720,setsar=1";
                 if (fade > 0.05)
@@ -540,10 +650,13 @@
             const outName = "cut_xf_o_" + seq + ".mp4";
             try {
                 const pair = await withPinnedUrls([leftUrl, rightUrl], async function () {
-                    return [await api._safeFetchFile(leftUrl), await api._safeFetchFile(rightUrl)];
+                    return [
+                        await fetchInputBytes(api, leftUrl, "Clip"),
+                        await fetchInputBytes(api, rightUrl, "Clip"),
+                    ];
                 });
-                await ffmpeg.writeFile(aName, pair[0]);
-                await ffmpeg.writeFile(bName, pair[1]);
+                await writeMemfs(ffmpeg, aName, pair[0]);
+                await writeMemfs(ffmpeg, bName, pair[1]);
                 const probe = await api._probeDurationMemfsAsync(aName);
                 const leftSec = probe.success && probe.seconds > 0 ? probe.seconds : 1;
                 const fade = Number(fadeSec) > 0.05
@@ -705,8 +818,8 @@
             const inName = "cut_mus_in_" + seq + ".bin";
             const outName = "cut_mus_out_" + seq + ".m4a";
             try {
-                const data = await withPinnedUrls([spec.url], function () { return api._safeFetchFile(spec.url); });
-                await ffmpeg.writeFile(inName, data);
+                const data = await withPinnedUrls([spec.url], function () { return fetchInputBytes(api, spec.url, "Soundtrack"); });
+                await writeMemfs(ffmpeg, inName, data);
                 const args = ["-hide_banner", "-y"];
                 if (inn > 0.02)
                     args.push("-ss", String(inn));
@@ -750,59 +863,74 @@
         };
     }
 
-    async function mixMovieAudioAsync(api, videoUrl, musicUrl, onProgress, spec) {
-        return api._runExclusiveAsync(async function () {
-            const load = await api.ensureLoadedAsync(onProgress);
-            if (!load.success)
-                return { success: false, error: load.error };
-            const ffmpeg = api._ffmpeg;
-            const seq = ++cut._trimSeq;
-            const inVideo = "cut_mix_v_" + seq + ".mp4";
-            const inMusic = "cut_mix_m_" + seq + ".m4a";
-            const outName = "cut_mix_o_" + seq + ".mp4";
-            const filters = mixFiltersOf(spec);
+    async function mixMovieAudioOnce(api, ffmpeg, videoUrl, musicUrl, spec, seq) {
+        const inVideo = "cut_mix_v_" + seq + ".mp4";
+        const inMusic = "cut_mix_m_" + seq + ".m4a";
+        const outName = "cut_mix_o_" + seq + ".mp4";
+        const filters = mixFiltersOf(spec);
+        try {
+            await writeMemfs(ffmpeg, inVideo, await fetchInputBytes(api, videoUrl, "Picture"));
+            await writeMemfs(ffmpeg, inMusic, await fetchInputBytes(api, musicUrl, "Soundtrack"));
+            const probe = await api._probeDurationMemfsAsync(inVideo);
+            const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
+            const args = [
+                "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
+                "-filter_complex", filters.withVo,
+                "-map", "0:v", "-map", "[a]",
+            ];
+            if (durationSec > 0.05)
+                args.push("-t", String(durationSec));
+            args.push.apply(args, h264EncodeArgs("aac"));
+            args.push(outName);
             try {
-                await ffmpeg.writeFile(inVideo, await api._safeFetchFile(videoUrl));
-                await ffmpeg.writeFile(inMusic, await api._safeFetchFile(musicUrl));
-                const probe = await api._probeDurationMemfsAsync(inVideo);
-                const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
-                const args = [
+                await ffmpeg.exec(args);
+            } catch (noVidAudio) {
+                console.debug("Cut: mix video has no audio", noVidAudio);
+                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                    console.debug("Cut: mix out cleanup", delErr);
+                }
+                const fallback = [
                     "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                    "-filter_complex", filters.withVo,
+                    "-filter_complex", filters.musicOnly,
                     "-map", "0:v", "-map", "[a]",
                 ];
                 if (durationSec > 0.05)
-                    args.push("-t", String(durationSec));
-                args.push.apply(args, h264EncodeArgs("aac"));
-                args.push(outName);
-                try {
-                    await ffmpeg.exec(args);
-                } catch (noVidAudio) {
-                    console.debug("Cut: mix video has no audio", noVidAudio);
-                    try { await ffmpeg.deleteFile(outName); } catch (delErr) {
-                        console.debug("Cut: mix out cleanup", delErr);
-                    }
-                    const fallback = [
-                        "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                        "-filter_complex", filters.musicOnly,
-                        "-map", "0:v", "-map", "[a]",
-                    ];
-                    if (durationSec > 0.05)
-                        fallback.push("-t", String(durationSec));
-                    fallback.push.apply(fallback, h264EncodeArgs("aac"));
-                    fallback.push(outName);
-                    await ffmpeg.exec(fallback);
-                }
-                const out = await ffmpeg.readFile(outName);
-                const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
-                noteTemp(url);
-                return { success: true, url: url };
+                    fallback.push("-t", String(durationSec));
+                fallback.push.apply(fallback, h264EncodeArgs("aac"));
+                fallback.push(outName);
+                await ffmpeg.exec(fallback);
+            }
+            const out = await ffmpeg.readFile(outName);
+            const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+            noteTemp(url);
+            return { success: true, url: url };
+        } finally {
+            await deleteMemfs(ffmpeg, inVideo);
+            await deleteMemfs(ffmpeg, inMusic);
+            await deleteMemfs(ffmpeg, outName);
+        }
+    }
+
+    async function mixMovieAudioAsync(api, videoUrl, musicUrl, onProgress, spec) {
+        return api._runExclusiveAsync(async function () {
+            let load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const seq = ++cut._trimSeq;
+            try {
+                return await mixMovieAudioOnce(api, api._ffmpeg, videoUrl, musicUrl, spec, seq);
             } catch (err) {
-                return { success: false, error: messageOf(err, "Could not mix audio.") };
-            } finally {
-                await deleteMemfs(ffmpeg, inVideo);
-                await deleteMemfs(ffmpeg, inMusic);
-                await deleteMemfs(ffmpeg, outName);
+                if (!isFsError(err))
+                    return { success: false, error: messageOf(err, "Could not mix audio.") };
+                await resetFfmpegWorker(api);
+                load = await api.ensureLoadedAsync(onProgress);
+                if (!load.success)
+                    return { success: false, error: load.error || fsUserMessage() };
+                try {
+                    return await mixMovieAudioOnce(api, api._ffmpeg, videoUrl, musicUrl, spec, seq);
+                } catch (retry) {
+                    return { success: false, error: messageOf(retry, fsUserMessage()) };
+                }
             }
         });
     }
@@ -968,11 +1096,17 @@
         actuallyRevoke(url);
     };
 
-    cut.abortCompose = function () {
+    cut.abortCompose = async function () {
         cut._aborted = true;
         cut._progressRef = null;
         if (window.PageToMovieFfmpeg)
             window.PageToMovieFfmpeg._onProgress = null;
+        await drainComposeAsync();
+    };
+
+    cut.prepareExportAsync = async function () {
+        await drainComposeAsync();
+        return { success: true };
     };
 
     cut.readMediaDuration = function (el) {
@@ -1561,8 +1695,8 @@
             const outName = "cut_out_" + seq + ".mp4";
             try {
                 onProgress?.(12, "Loading clip…");
-                const data = await withPinnedUrls([url], function () { return api._safeFetchFile(url); });
-                await ffmpeg.writeFile(inName, data);
+                const data = await withPinnedUrls([url], function () { return fetchInputBytes(api, url, "Clip"); });
+                await writeMemfs(ffmpeg, inName, data);
                 onProgress?.(30, "Probing duration…");
                 const probe = await api._probeDurationMemfsAsync(inName);
                 const total = probe.success && probe.seconds > 0 ? probe.seconds : 0;
@@ -1852,6 +1986,7 @@
     };
 
     cut.exportMovieAsync = async function (clips, audioUrl, dotNetRef) {
+        await drainComposeAsync();
         const r = await cut.composeMovieAsync(clips, audioUrl, dotNetRef);
         if (!r.success) return r;
         cut.downloadUrlAs(r.url, "movie.mp4");

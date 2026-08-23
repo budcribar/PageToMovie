@@ -38,6 +38,40 @@ public static class CutComposeContract
     public static bool MustStitch(CutMergeDiff diff, string? moviePreviewUrl) =>
         !CanReuseExport(moviePreviewUrl, diff);
 
+    /// <summary>
+    /// Make movie must not abort an in-flight Play stitch. Abort-then-recompose
+    /// races ffmpeg.wasm MEMFS writeFile (ErrnoError: FS error).
+    /// </summary>
+    public const bool ExportAbortsInFlightPlay = false;
+
+    public const bool ExportWaitsForInFlightPlay = true;
+
+    public static bool ShouldCancelComposeOnExport => ExportAbortsInFlightPlay;
+
+    /// <summary>
+    /// Operator text when Emscripten MEMFS write/read fails. Keep the
+    /// string in <c>cut.js</c> <c>fsUserMessage</c> in sync.
+    /// </summary>
+    public const string BrowserWorkingFileError =
+        "Could not finish the movie file. Stop playback, then try Make movie again.";
+
+    public static bool IsBrowserFsError(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+        return raw.Contains("ErrnoError", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("FS error", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string OperatorComposeError(string? raw, bool download)
+    {
+        if (IsBrowserFsError(raw))
+            return BrowserWorkingFileError;
+        if (!string.IsNullOrWhiteSpace(raw))
+            return raw.Trim();
+        return download ? "Export failed." : "Play failed.";
+    }
+
     public static bool JoinInsertsBlackHold(CutJoinKind kind) =>
         kind == CutJoinKind.CutToBlack;
 
