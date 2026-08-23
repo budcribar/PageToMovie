@@ -815,8 +815,10 @@ public sealed class ClientVideoStitchService
     private async Task SaveAndRegisterCreditsFileAsync(
         string projectId, int scene, int clip, string relPath, byte[] bytes, CancellationToken ct)
     {
+        if (_media is null)
+            return;
         var (savedOk, _, sha256, sizeBytes, _) =
-            await _media!.SaveBytesAsync(projectId, relPath, bytes).ConfigureAwait(false);
+            await _media.SaveBytesAsync(projectId, relPath, bytes).ConfigureAwait(false);
         if (!savedOk || string.IsNullOrWhiteSpace(sha256))
             return;
         try
