@@ -44,6 +44,7 @@ public partial class Home : IAsyncDisposable
     internal string? ProgressMessage { get; private set; }
     internal string ProgressText => $"{ProgressPercent}% · {ProgressMessage}";
     internal string? SavedNote { get; private set; }
+    internal CutMusicQueue MusicQueue { get; } = new();
     private const string SeekMediaJs = "PageToMovieCut.seekMedia";
     private const string PlayUrlAtJs = "PageToMovieCut.playUrlAt";
     private const string PauseVideoJs = "PageToMovieCut.pauseVideo";
@@ -58,7 +59,8 @@ public partial class Home : IAsyncDisposable
     internal bool ShowComposeOverlay =>
         CutPlayClock.ShouldShowPlayComposeOverlay(
             _playMode == PlayMode.Waiting, _composing, _mergeHasFrame && _playMode == PlayMode.Movie)
-        || (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage));
+        || (_exporting && !string.IsNullOrWhiteSpace(ProgressMessage))
+        || (MusicQueue.IsQueued && !string.IsNullOrWhiteSpace(ProgressMessage));
 
     internal bool ShowMovie =>
         _playMode is PlayMode.Movie
@@ -333,9 +335,13 @@ public partial class Home : IAsyncDisposable
             var file = e.File;
             if (file is null)
                 return;
+            var composing = _composing;
             await Compose.SetAudioFromBrowserFileAsync(file);
-            ForgetPreview();
+            MusicQueue.AttachFile(composing, ForgetPreview);
             SavedNote = null;
+            if (MusicQueue.IsQueued)
+                ProgressMessage = CutMusicQueue.QueuedMessage;
+            await PersistAttachedMusicAsync();
         }
         catch (Exception ex)
         {
@@ -345,9 +351,26 @@ public partial class Home : IAsyncDisposable
 
     private async Task ClearAudioAsync()
     {
+        var composing = _composing;
         await Compose.ClearAudioAsync();
-        ForgetPreview();
+        MusicQueue.Remove(composing, ForgetPreview);
         SavedNote = null;
+        await PersistAttachedMusicAsync();
+    }
+
+    private async Task OnMusicEditedAsync()
+    {
+        if (_composing)
+        {
+            MusicQueue.ChangeMix(composing: true);
+            ProgressMessage = CutMusicQueue.QueuedMessage;
+            SavedNote = null;
+            await PersistAttachedMusicAsync();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await OnTimelineEdited();
     }
 
     private async Task TogglePlayAsync()
@@ -440,6 +463,7 @@ public partial class Home : IAsyncDisposable
                 return;
             _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
             _prefixClipCount = Folder.Clips.Count;
+            await MixQueuedMusicAsync(cts.Token);
             FinishComposeRun(gen);
             await PersistPlayMergeAsync(Folder, Compose);
             if (_wantPlay)
@@ -449,12 +473,15 @@ public partial class Home : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            MusicQueue.OnComposeCancelled();
             FinishComposeRun(gen);
         }
         catch (Exception ex)
         {
             FinishComposeRun(gen);
             _error = ex.Message;
+            if (MusicQueue.IsQueued)
+                ProgressMessage = CutMusicQueue.WaitingMessage;
             if (_playMode == PlayMode.Waiting)
                 _playMode = PlayMode.Idle;
             await InvokeAsync(StateHasChanged);
@@ -838,11 +865,38 @@ public partial class Home : IAsyncDisposable
         CutMusic? music) =>
         CutPlayMerge.Fingerprint(clips, texts, audioFileName, music);
 
+    private async Task MixQueuedMusicAsync(CancellationToken cancellationToken)
+    {
+        if (!MusicQueue.ShouldMixAfterCompose(composeSucceeded: true, Compose.HasAudio))
+            return;
+        MusicQueue.BeginMix();
+        try
+        {
+            ProgressMessage = "Mixing audio…";
+            await Compose.PreviewMovieAsync(Folder.Clips, ReportProgress, cancellationToken, Folder.TextClips);
+            _prefixUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
+            _prefixClipCount = Folder.Clips.Count;
+            if (Compose.HasCachedMoviePreview)
+                MusicQueue.MarkMixed();
+        }
+        finally
+        {
+            if (MusicQueue.IsQueued)
+                MusicQueue.EndMixUnfinished();
+        }
+    }
+
     private void FinishComposeRun(int gen)
     {
         if (!CutPlayMerge.ComposeRunOwnsFlag(gen, _playGen))
             return;
         _composing = false;
+        if (MusicQueue.IsQueued)
+        {
+            ProgressMessage = CutMusicQueue.WaitingMessage;
+            return;
+        }
+
         if (!CutPlayMerge.ShouldClearProgressWhenComposeEnds || _exporting)
             return;
         ProgressPercent = 0;
@@ -856,6 +910,7 @@ public partial class Home : IAsyncDisposable
         _composeCts?.Dispose();
         _composeCts = null;
         _composing = false;
+        MusicQueue.OnComposeCancelled();
         if (!_exporting && CutPlayMerge.ShouldClearProgressWhenComposeEnds)
         {
             ProgressPercent = 0;
@@ -887,7 +942,25 @@ public partial class Home : IAsyncDisposable
             await folder.WriteMovieMp4Async(compose.MoviePreviewUrl);
         await folder.PersistMergeCacheAsync(compose);
         var fp = CurrentMergeFingerprint(folder.Clips, folder.TextClips, compose.AudioFileName, compose.Music);
-        await folder.SaveFinishAsync(compose.AudioFileName, fp, compose.Music, compose.Cache.Built);
+        await folder.SaveFinishAsync(compose.AudioFileName, fp, compose.Music, compose.Cache.Built, compose.AudioUrl);
+    }
+
+    private async Task PersistAttachedMusicAsync()
+    {
+        if (!Folder.CanWrite)
+            return;
+        if (!string.IsNullOrWhiteSpace(Compose.AudioFileName)
+            && CutMusicPersist.NeedsFlushOnSave(Compose.AudioFileName, Folder.MusicFileOnDisk, Compose.AudioUrl))
+            await Folder.WriteMusicFileAsync(Compose.AudioFileName, Compose.AudioUrl);
+        var fp = Folder.SavedMovieFingerprint;
+        var cache = Folder.SavedMergeCache;
+        if (!_composing && Compose.HasCachedMoviePreview)
+        {
+            fp = CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName, Compose.Music);
+            cache = Compose.Cache.Built;
+        }
+
+        await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache, Compose.AudioUrl);
     }
 
     private async Task SkipStartAsync() => await OnPlayheadAsync(0);
@@ -924,7 +997,7 @@ public partial class Home : IAsyncDisposable
     private void ReportProgress(int pct, string msg)
     {
         ProgressPercent = Math.Clamp(pct, 0, 100);
-        ProgressMessage = msg;
+        ProgressMessage = MusicQueue.Status ?? msg;
         if (CutPlayClock.ShouldRenderOnProgress(ShowComposeOverlay))
             _ = InvokeAsync(StateHasChanged);
     }
@@ -963,7 +1036,7 @@ public partial class Home : IAsyncDisposable
             ? CurrentMergeFingerprint(Folder.Clips, Folder.TextClips, Compose.AudioFileName, Compose.Music)
             : null;
         var cache = Compose.HasCachedMoviePreview ? Compose.Cache.Built : null;
-        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache))
+        if (!await Folder.SaveFinishAsync(Compose.AudioFileName, fp, Compose.Music, cache, Compose.AudioUrl))
         {
             _error = Folder.FolderError ?? "Could not save the cut.";
             return;

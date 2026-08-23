@@ -19,6 +19,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderName { get; private set; }
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
+    public string? MusicFileOnDisk { get; private set; }
     public CutMusic PendingMusic { get; } = new();
     public string? SavedMovieFingerprint { get; private set; }
     public CutMergeManifest SavedMergeCache { get; private set; } = new();
@@ -125,6 +126,7 @@ public sealed class CutFolderService : IAsyncDisposable
     private void ResetSavedFinish()
     {
         PendingMusicFileName = null;
+        MusicFileOnDisk = null;
         PendingMusic.Clear();
         SavedMovieFingerprint = null;
         SavedMergeCache = new CutMergeManifest();
@@ -166,6 +168,17 @@ public sealed class CutFolderService : IAsyncDisposable
     private static string RelativeOrFileName(JsFileEntry file) =>
         string.IsNullOrWhiteSpace(file.RelativePath) ? file.FileName : file.RelativePath;
 
+    private static bool ListedAudioMatches(IReadOnlyList<JsFileEntry> list, string? musicFileName)
+    {
+        var name = CutMusicPersist.FileNameOf(musicFileName);
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        return list.Any(file =>
+            file.SizeBytes > 0
+            && (string.Equals(CutClipNaming.FileNameOnly(file.FileName), name, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(CutClipNaming.FileNameOnly(file.RelativePath), name, StringComparison.OrdinalIgnoreCase)));
+    }
+
     private void ApplySavedProject(IReadOnlyList<JsFileEntry> list, List<CutClip> clips)
     {
         var project = list.FirstOrDefault(f =>
@@ -176,21 +189,47 @@ public sealed class CutFolderService : IAsyncDisposable
             return;
 
         PendingMusicFileName = music;
+        if (ListedAudioMatches(list, music))
+            MusicFileOnDisk = CutMusicPersist.FileNameOf(music);
         PendingMusic.FileName = track.FileName;
         PendingMusic.DisplayName = track.DisplayName;
         PendingMusic.SetStart(track.StartSec);
         PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
+        PendingMusic.SetVolumePercent(track.VolumePercent);
+        PendingMusic.SetFadeIn(track.FadeInSec);
+        PendingMusic.SetFadeOut(track.FadeOutSec);
         SavedMovieFingerprint = fp;
         SavedMergeCache = cache;
         TextClips.AddRange(texts);
+    }
+
+    public async Task<bool> WriteMusicFileAsync(string? fileName, string? url)
+    {
+        if (!CutMusicPersist.TryPlanWrite(CanWrite, fileName, url, fileOnDisk: null, force: true, out var write))
+            return false;
+        if (!await TryWriteBlobUrlFileAsync(write.FileName, write.Url))
+            return false;
+        MusicFileOnDisk = write.FileName;
+        PendingMusicFileName = write.FileName;
+        return true;
     }
 
     public async Task<bool> SaveFinishAsync(
         string? musicFileName,
         string? movieFingerprint = null,
         CutMusic? music = null,
-        CutMergeManifest? mergeCache = null)
+        CutMergeManifest? mergeCache = null,
+        string? musicUrl = null)
     {
+        if (string.IsNullOrWhiteSpace(musicFileName))
+            MusicFileOnDisk = null;
+        else if (CutMusicPersist.NeedsFlushOnSave(musicFileName, MusicFileOnDisk, musicUrl)
+            && !await WriteMusicFileAsync(musicFileName, musicUrl))
+        {
+            FolderError = "Could not save the music file.";
+            return false;
+        }
+
         var json = CutProjectFile.Serialize(Clips, musicFileName, TextClips, movieFingerprint, music, mergeCache);
         var wrote = await _js.InvokeAsync<JsResult>(
             "PageToMovieCut.writeTextFileAsync", CutClipNaming.ProjectFileName, json);

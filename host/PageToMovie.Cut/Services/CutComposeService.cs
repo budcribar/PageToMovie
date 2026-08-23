@@ -32,6 +32,7 @@ public sealed class CutComposeService : IAsyncDisposable
     public CutComposeService(IJSRuntime js) => _js = js;
 
     public string? AudioFileName { get; private set; }
+    public string? AudioUrl => _audioUrl;
     public bool HasAudio => !string.IsNullOrWhiteSpace(_audioUrl);
 
     public async Task SetAudioFromBrowserFileAsync(IBrowserFile file)
@@ -46,8 +47,8 @@ public sealed class CutComposeService : IAsyncDisposable
         if (!r.Success || string.IsNullOrWhiteSpace(r.Url))
             throw new InvalidOperationException(r.Error ?? "Could not read the audio file.");
         _audioUrl = r.Url;
-        AudioFileName = file.Name;
-        Music.SetFile(file.Name);
+        AudioFileName = CutClipNaming.FileNameOnly(file.Name);
+        Music.SetFile(AudioFileName);
         await ProbeMusicDurationAsync();
     }
 
@@ -306,7 +307,7 @@ public sealed class CutComposeService : IAsyncDisposable
         LastRebuiltJoins = r.RebuiltJoins.Count > 0 ? r.RebuiltJoins.ToList() : [];
         if (!string.IsNullOrWhiteSpace(r.PictureUrl))
             Cache.PictureUrl = r.PictureUrl;
-        else if (string.IsNullOrWhiteSpace(AudioFileName))
+        else if (string.IsNullOrWhiteSpace(AudioFileName) || string.IsNullOrWhiteSpace(Cache.PictureUrl))
             Cache.PictureUrl = r.Url;
         foreach (var scene in r.Scenes)
         {
