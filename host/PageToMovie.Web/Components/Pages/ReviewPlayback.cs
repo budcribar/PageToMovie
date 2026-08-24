@@ -4,10 +4,12 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using System.Text;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 using PageToMovie.Core.Utils;
+using PageToMovie.Cut.Cut;
 
 namespace PageToMovie.Web.Components.Pages;
 
@@ -80,6 +82,9 @@ public partial class Review
             // a new src each time, which makes the browser reload the resource and restart playback —
             // looks like looping. Memoized per key below instead of recomputed per call.
             internal string? _wipServerSrcForProject;
+
+        /// <summary>WIP player is showing a saved Finish <c>movie.mp4</c>, not a take stitch.</summary>
+        internal bool _playingFinishedCut;
 
         internal bool _wipStale;
 
@@ -314,7 +319,8 @@ public partial class Review
 
 
         /// <summary>
-        /// Play full cut: stream on-disk WIP when current; otherwise stitch composites/clips in the browser.
+        /// Play full movie: a fresh Finish <c>movie.mp4</c> when present, else
+        /// stream on-disk WIP when current, else stitch composites/clips in the browser.
         /// </summary>
         internal async Task PlayWipAsync()
         {
@@ -329,6 +335,9 @@ public partial class Review
                 S.List._activeTab = ReviewTab.Play;
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
+
+                if (await TryPlayFinishedCutAsync())
+                    return;
 
                 if (HasFreshClientWip())
                 {
@@ -359,7 +368,59 @@ public partial class Review
         }
 
         private bool HasFreshClientWip() =>
-            !string.IsNullOrEmpty(_clientWipUrl) && !_wipStale;
+            !string.IsNullOrEmpty(_clientWipUrl) && !_wipStale && !_playingFinishedCut;
+
+        /// <summary>
+        /// Full-movie Play: use a saved Finish <c>movie.mp4</c> when
+        /// <c>cut.project.json</c> still matches that merge. Clip/scene Play
+        /// does not call this.
+        /// </summary>
+        private async Task<bool> TryPlayFinishedCutAsync()
+        {
+            var url = await TryResolveFinishedCutUrlAsync();
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                if (_playingFinishedCut)
+                {
+                    _clientWipUrl = null;
+                    _playingFinishedCut = false;
+                }
+
+                return false;
+            }
+
+            _showClipPlayer = false;
+            _showScenePlayer = false;
+            _clientSceneUrl = null;
+            _showWipPlayer = true;
+            _clientWipUrl = url;
+            _playingFinishedCut = true;
+            _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            S._message = "Playing finished movie";
+            return true;
+        }
+
+        private async Task<string?> TryResolveFinishedCutUrlAsync()
+        {
+            if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
+                return null;
+            try
+            {
+                var (found, size) = await S.MediaFolder.StatLocalFileAsync(
+                    S._projectId, CutPlayMerge.MovieFileName);
+                var jsonBytes = await S.MediaFolder.ReadLocalBytesAsync(
+                    $"{S._projectId}/{CutClipNaming.ProjectFileName}", minBytes: 2);
+                var json = jsonBytes is { Length: > 0 } ? Encoding.UTF8.GetString(jsonBytes) : null;
+                if (!CutFinishedMovie.ShouldPlay(json, found && size > 0))
+                    return null;
+                return await S.MediaFolder.GetLocalBlobUrlAsync(
+                    S._projectId, CutPlayMerge.MovieFileName, forceRefresh: true);
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         private bool HasFreshServerWip() =>
             _wipExists && !_wipStale;
@@ -367,6 +428,7 @@ public partial class Review
         private void ShowServerWip()
         {
             _clientWipUrl = null;
+            _playingFinishedCut = false;
             _showWipPlayer = true;
             _showScenePlayer = false;
             _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -395,6 +457,7 @@ public partial class Review
             _clientSceneUrl = null;
             _showWipPlayer = true;
             _clientWipUrl = null;
+            _playingFinishedCut = false;
             try
             {
                 // Revoke the OLD preview before collecting new segments — see the comment in
@@ -520,6 +583,7 @@ public partial class Review
                 _clientStitchStatus = "Collecting clips…";
                 _showWipPlayer = false;
                 _clientWipUrl = null;
+                _playingFinishedCut = false;
                 _playingScene = scene;
                 _showScenePlayer = true;
                 _clientSceneUrl = null;
@@ -640,6 +704,7 @@ public partial class Review
         internal async Task HideWipPlayerAsync()
         {
             _showWipPlayer = false;
+            _playingFinishedCut = false;
             if (!string.IsNullOrEmpty(_clientWipUrl))
             {
                 _clientWipUrl = null;

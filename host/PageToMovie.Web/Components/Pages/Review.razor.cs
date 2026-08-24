@@ -166,6 +166,7 @@ public partial class Review : IAsyncDisposable, IPageSliceHost
         Hub.JobLog -= Jobs.OnJobLog;
         MediaFolder.Changed -= OnMediaFolderChanged;
         Playback._clientWipUrl = null;
+        Playback._playingFinishedCut = false;
         Playback._clientSceneUrl = null;
         await Stitch.RevokePreviewUrlAsync();
         Share._dotNetRef?.Dispose();

@@ -754,13 +754,13 @@ public sealed class ClientMediaFolderService
         catch { /* best effort */ }
     }
 
-    public async Task<string?> GetLocalBlobUrlAsync(string projectId, string relativePath)
+    public async Task<string?> GetLocalBlobUrlAsync(string projectId, string relativePath, bool forceRefresh = false)
     {
         if (!IsConnected) return null;
         try
         {
             var clientPath = $"{projectId}/{relativePath}";
-            var r = await _js.InvokeAsync<JsBlobResult>("PageToMovieMedia.getBlobUrlAsync", clientPath, false);
+            var r = await _js.InvokeAsync<JsBlobResult>("PageToMovieMedia.getBlobUrlAsync", clientPath, forceRefresh);
             return r is { Success: true } ? r.Url : null;
         }
         catch
