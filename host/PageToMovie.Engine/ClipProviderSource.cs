@@ -140,19 +140,8 @@ public sealed record ClipProviderSource(
         CancellationToken ct,
         TimeSpan? publicUrlTimeoutWhenFileIdPresent = null) where T : class
     {
-        Exception? fileIdError = null;
-        if (!string.IsNullOrWhiteSpace(sourceFileId))
-        {
-            try
-            {
-                var fromFile = await openFileId(sourceFileId, ct).ConfigureAwait(false);
-                if (fromFile is not null) return fromFile;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                fileIdError = ex;
-            }
-        }
+        var (fromFile, fileIdError) = await TryOpenFileIdAsync(sourceFileId, openFileId, ct).ConfigureAwait(false);
+        if (fromFile is not null) return fromFile;
 
         if (string.IsNullOrWhiteSpace(sourceUrl))
         {
@@ -160,36 +149,71 @@ public sealed record ClipProviderSource(
             return null;
         }
 
-        using var urlCts = !string.IsNullOrWhiteSpace(sourceFileId)
-            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
-            : null;
-        if (urlCts is not null)
-            urlCts.CancelAfter(publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent);
-        var urlCt = urlCts?.Token ?? ct;
-
-        Exception? urlError = null;
-        T? fromUrl = null;
-        try
-        {
-            fromUrl = await openUrl(sourceUrl, urlCt).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (urlCts is not null && !ct.IsCancellationRequested)
-        {
-            if (fileIdError is null) return null;
-            urlError = new TimeoutException("source_url timed out");
-            fromUrl = null;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (fileIdError is null) throw;
-            urlError = ex;
-            fromUrl = null;
-        }
-
+        var (fromUrl, urlError) = await TryOpenUrlAsync(
+            sourceUrl,
+            !string.IsNullOrWhiteSpace(sourceFileId),
+            publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent,
+            openUrl,
+            fileIdError,
+            ct).ConfigureAwait(false);
         if (fromUrl is not null) return fromUrl;
         if (fileIdError is not null)
             throw CombineFileIdAndUrlErrors(fileIdError, urlError);
         return null;
+    }
+
+    /// <summary>Files <c>file_id</c> hop. A throw (except caller cancel) is captured
+    /// so <c>source_url</c> can still run.</summary>
+    private static async Task<(T? Value, Exception? Error)> TryOpenFileIdAsync<T>(
+        string? sourceFileId,
+        Func<string, CancellationToken, Task<T?>> openFileId,
+        CancellationToken ct) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(sourceFileId))
+            return (null, null);
+        try
+        {
+            return (await openFileId(sourceFileId, ct).ConfigureAwait(false), null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            return (null, ex);
+        }
+    }
+
+    /// <summary>Public URL hop. When <paramref name="capTimeout"/> is set (a
+    /// <c>file_id</c> was present), a dead vidgen link is cancelled after
+    /// <paramref name="timeout"/>. URL exceptions rethrow unless Files already
+    /// failed, in which case they are captured for
+    /// <see cref="CombineFileIdAndUrlErrors"/>.</summary>
+    private static async Task<(T? Value, Exception? Error)> TryOpenUrlAsync<T>(
+        string sourceUrl,
+        bool capTimeout,
+        TimeSpan timeout,
+        Func<string, CancellationToken, Task<T?>> openUrl,
+        Exception? fileIdError,
+        CancellationToken ct) where T : class
+    {
+        using var urlCts = capTimeout
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+        if (urlCts is not null)
+            urlCts.CancelAfter(timeout);
+        var urlCt = urlCts?.Token ?? ct;
+        try
+        {
+            return (await openUrl(sourceUrl, urlCt).ConfigureAwait(false), null);
+        }
+        catch (OperationCanceledException) when (urlCts is not null && !ct.IsCancellationRequested)
+        {
+            if (fileIdError is null) return (null, null);
+            return (null, new TimeoutException("source_url timed out"));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (fileIdError is null) throw;
+            return (null, ex);
+        }
     }
 
     internal static Exception CombineFileIdAndUrlErrors(Exception fileIdError, Exception? urlError)
