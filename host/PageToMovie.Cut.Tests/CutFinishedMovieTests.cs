@@ -82,7 +82,7 @@ public class CutFinishedMovieTests
 
         var open = playback.IndexOf("internal async Task OpenInExternalEditorAsync()", StringComparison.Ordinal);
         var openResolve = playback.IndexOf("TryResolveFinishedCutUrlAsync()", open, StringComparison.Ordinal);
-        var serverOpen = playback.IndexOf("OpenInExternalEditorAsync(", open + 1, StringComparison.Ordinal);
+        var serverOpen = playback.IndexOf("Engine.OpenInExternalEditorAsync(", open, StringComparison.Ordinal);
         Assert.True(open >= 0 && openResolve > open && serverOpen > openResolve);
 
         var dub = playback.IndexOf("internal async Task DubInMyVoiceAsync()", StringComparison.Ordinal);
