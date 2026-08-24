@@ -180,15 +180,15 @@
       ],
       "enabled": true,
       "maxInputTokens": 1050000,
-      "inputCostPerMillionTokens": 5.0,
-      "outputCostPerMillionTokens": 30.0,
-      "notes": "Replaces gpt-4o. Official alias gpt-5.6 resolves to Sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $10 input / $45 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
+      "inputCostPerMillionTokens": 4.0,
+      "outputCostPerMillionTokens": 20.0,
+      "notes": "Replaces gpt-4o. Official alias gpt-5.6 resolves to Sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $8 input / $30 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "OpenAI list price 2026-08-15: $5.00 / $30.00 per 1M tokens (<272K). Long-context >272K: $10 / $45 per 1M.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "OpenAI list price 2026-08-21: $4.00 / $20.00 per 1M tokens short-context (promo at least through 2026-11-21). Long-context >272K: $8 / $30 per 1M. developers.openai.com/api/docs/pricing and developers.openai.com/api/docs/models/gpt-5.6-sol.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
     },
     {
       "id": "gpt-5.6-terra",
