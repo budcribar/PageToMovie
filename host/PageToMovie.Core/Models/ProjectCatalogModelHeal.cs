@@ -99,14 +99,8 @@ public static class ProjectCatalogModelHeal
         throw new InvalidOperationException(ProjectModelSelection.FormatUnknownModel(capabilityId, stored));
     }
 
-    private static bool SlotPresent(Dictionary<string, JsonElement> cfg, string[] keys)
-    {
-        foreach (var key in keys)
-        {
-            if (cfg.ContainsKey(key)) return true;
-        }
-        return false;
-    }
+    private static bool SlotPresent(Dictionary<string, JsonElement> cfg, string[] keys) =>
+        keys.Any(cfg.ContainsKey);
 
     private static bool IsEnabledForCapability(string id, ModelCapability capability)
     {
