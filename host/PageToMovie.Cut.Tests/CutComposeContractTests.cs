@@ -196,6 +196,24 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Cut_js_has_flat_clip_pipeline_with_global_pool_and_scene_fallback()
+    {
+        var cutJs = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var src = File.ReadAllText(cutJs);
+
+        Assert.Contains("ffmpegFlat", src, StringComparison.Ordinal);
+        Assert.Contains("ffmpegClipWorkers", src, StringComparison.Ordinal);
+        Assert.Contains("prepareFlatClipsWithPoolAsync", src, StringComparison.Ordinal);
+        Assert.Contains("flatJoinsOf", src, StringComparison.Ordinal);
+        Assert.Contains("composeFlatClipsAndMixAsync", src, StringComparison.Ordinal);
+        Assert.Contains("flatFellBack", src, StringComparison.Ordinal);
+        Assert.Contains("retrying proven scene pipeline", src, StringComparison.Ordinal);
+        Assert.Contains("pictureReusable: false", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Home_binds_selected_title_id_to_the_timeline()
     {
         var home = Path.GetFullPath(Path.Combine(

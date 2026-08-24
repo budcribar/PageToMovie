@@ -113,4 +113,18 @@ Mary19Test was benchmarked with scene pool 3, stitch pool 4, and forced-fresh in
 
 The combined pass saved 3:09.1. Its explicit benchmark URL is `?ffmpegWorkers=3&ffmpegStitchWorkers=4&ffmpegFresh=1&ffmpegCombined=1`. Browser stream validation added 0.109 seconds. The result supports continued use of the combined path for full renders, while the dry-picture cache tradeoff should be evaluated separately for workflows that repeatedly adjust only music settings.
 
+#### Flattened clip pipeline
+
+`ffmpegFlat=1` with the combined pass removes intermediate scene concat encodes. Dirty clips are prepared through one global configurable pool (`ffmpegClipWorkers=1` through `4`), scene-boundary transitions are rendered against the corresponding last and first prepared clips, and the resulting ordered pieces go directly into the combined concat-and-mix command. This preserves per-clip trims, text overlays, holds/credits, native audio, music, fades, scene transitions, intro black, and the frozen final frame. Layouts containing an inline card before a non-hold clip stay on the scene pipeline. Any clip-pool, transition, combined-command, duration, or browser stream-validation failure retries through the proven scene pipeline.
+
+Mary19Test forced-fresh measurements used four transition workers:
+
+| Clip workers | Clip preparation | Transition preparation | Combined pass | Total compose | Improvement vs. combined scene path | Fallback |
+| ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| Scene path (3 scene workers) | 1:15.9 | 0:34.1 | 0:59.1 | 2:50.6 | baseline | No |
+| 3 | 0:37.6 | 0:06.8 | 0:57.5 | 1:43.3 | 39.4% | No |
+| 4 | 0:31.8 | 0:07.0 | 0:58.7 | **1:38.8** | **42.1%** | No |
+
+The maximum-speed Mary19Test URL is `?ffmpegClipWorkers=4&ffmpegStitchWorkers=4&ffmpegFresh=1&ffmpegCombined=1&ffmpegFlat=1`. Three clip workers are recommended when saving memory is more important than 4.5 seconds. Both flattened results had browser-decodable video and audio, completed without fallback, and produced 121.879-second output versus 121.888 seconds from the scene path.
+
 For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).

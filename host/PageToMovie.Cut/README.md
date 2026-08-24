@@ -35,6 +35,8 @@ FFmpeg scene and transition preparation default to one worker. Mary19Test's fast
 
 Add `&ffmpegCombined=1` to use one final concat-and-soundtrack encode instead of the normal reusable-picture concat followed by a mix. Mary19Test measured 2:50.6 versus 5:59.7 for the two-pass path. The combined result is duration-checked, browser-decodes both streams, and automatically retries the proven two-pass path on failure. A successful combined render intentionally has no reusable dry-picture cache, so later music-only edits must compose again.
 
+For the fastest full Mary19Test render, add `&ffmpegFlat=1&ffmpegClipWorkers=4` alongside the combined flag. This prepares clips globally, renders only scene-boundary transitions, and removes intermediate scene concat encodes. The measured forced-fresh result was 1:38.8; three clip workers took 1:43.3 with lower peak memory. Unsupported inline-card layouts or any fast-path failure use the proven scene pipeline.
+
 ## Take SSoT
 
 - Each take is `scene_SS_clip_CC_take_NN.mp4` (optional `.clip.json` sidecar).

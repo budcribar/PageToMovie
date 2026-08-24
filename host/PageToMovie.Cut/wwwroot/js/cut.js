@@ -51,6 +51,7 @@
     const FFMPEG_WORKER_MAX = 4;
     const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
     const FFMPEG_STITCH_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegStitchWorkers";
+    const FFMPEG_CLIP_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegClipWorkers";
 
     function clampWorkerCount(value) {
         const parsed = Math.trunc(Number(value));
@@ -89,6 +90,17 @@
         }
     }
 
+    function requestedClipWorkerCount() {
+        try {
+            const query = new URLSearchParams(window.location.search).get("ffmpegClipWorkers");
+            if (query !== null)
+                return clampWorkerCount(query);
+            return clampWorkerCount(window.localStorage.getItem(FFMPEG_CLIP_WORKER_STORAGE_KEY) || 1);
+        } catch (_) {
+            return FFMPEG_WORKER_MIN;
+        }
+    }
+
     cut.setFfmpegWorkerCount = function (value) {
         const count = clampWorkerCount(value);
         try { window.localStorage.setItem(FFMPEG_WORKER_STORAGE_KEY, String(count)); } catch (_) { }
@@ -101,14 +113,22 @@
         return count;
     };
 
+    cut.setFfmpegClipWorkerCount = function (value) {
+        const count = clampWorkerCount(value);
+        try { window.localStorage.setItem(FFMPEG_CLIP_WORKER_STORAGE_KEY, String(count)); } catch (_) { }
+        return count;
+    };
+
     cut.getFfmpegWorkerConfig = function () {
         return {
             requested: requestedWorkerCount(),
             stitchRequested: requestedStitchWorkerCount(),
+            clipRequested: requestedClipWorkerCount(),
             min: FFMPEG_WORKER_MIN,
             max: FFMPEG_WORKER_MAX,
             forceFresh: queryFlag("ffmpegFresh"),
             combinedConcatMix: queryFlag("ffmpegCombined"),
+            flatClipPipeline: queryFlag("ffmpegFlat"),
         };
     };
 
@@ -2436,6 +2456,82 @@
         return Object.assign(serial, { sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes });
     }
 
+    async function prepareFlatClipsSerialAsync(api, clips, clipUrls, onProgress) {
+        for (let i = 0; i < clips.length; i++) {
+            if (composeStopped()) return { success: false, error: "Stopped." };
+            const one = await prepareSceneClipAsync(api, clips[i], i, clips.length, onProgress);
+            if (one.error) return { success: false, error: one.error };
+            const seconds = await measuredSceneSecondsAsync(api, one.url, Number(clips[i].duration) || 0);
+            clipUrls[i] = { id: i + 1, url: one.url, seconds: seconds };
+            onProgress?.(Math.round(((i + 1) / clips.length) * 40), "Preparing clips…");
+        }
+        return { success: true };
+    }
+
+    async function prepareFlatClipsWithPoolAsync(base, clips, onProgress, metrics) {
+        const clipUrls = new Array(clips.length);
+        const requested = requestedClipWorkerCount();
+        const effective = Math.min(requested, Math.max(1, clips.length));
+        metrics.clipRequestedWorkers = requested;
+        metrics.clipEffectiveWorkers = effective;
+        const started = performance.now();
+        if (effective === 1) {
+            const serial = await prepareFlatClipsSerialAsync(base, clips, clipUrls, onProgress);
+            metrics.clipPrepareMs = Math.round(performance.now() - started);
+            return Object.assign(serial, { clipUrls: clipUrls });
+        }
+
+        const apis = [base];
+        for (let i = 1; i < effective; i++)
+            apis.push(isolatedFfmpegApi(base, 200 + i + 1));
+        let cursor = 0;
+        let completed = 0;
+        const runs = apis.map(async function (api) {
+            while (true) {
+                const index = cursor++;
+                if (index >= clips.length) return;
+                if (composeStopped()) throw new Error("Stopped.");
+                const one = await prepareSceneClipAsync(api, clips[index], index, clips.length, onProgress);
+                if (one.error) throw new Error(one.error);
+                const seconds = await measuredSceneSecondsAsync(api, one.url, Number(clips[index].duration) || 0);
+                clipUrls[index] = { id: index + 1, url: one.url, seconds: seconds };
+                completed++;
+                onProgress?.(Math.round((completed / clips.length) * 40),
+                    "Preparing clips with " + effective + " workers…");
+            }
+        });
+        const settled = await Promise.allSettled(runs);
+        metrics.clipPrepareMs = Math.round(performance.now() - started);
+        const rejected = settled.find(function (result) { return result.status === "rejected"; });
+        for (let i = 1; i < apis.length; i++)
+            terminateIsolatedApi(apis[i], base);
+        if (!rejected)
+            return { success: true, clipUrls: clipUrls };
+        for (const item of clipUrls) {
+            if (item && item.url) releaseTempUrl(item.url);
+        }
+        if (composeStopped()) return { success: false, error: "Stopped.", clipUrls: clipUrls };
+        metrics.clipFellBackToOne = true;
+        metrics.clipFallbackReason = String(
+            rejected.reason && rejected.reason.message || rejected.reason || "Worker failed");
+        await resetFfmpegWorker(base);
+        onProgress?.(0, "Parallel clip render failed — retrying safely with 1 worker…");
+        clipUrls.fill(null);
+        const serial = await prepareFlatClipsSerialAsync(base, clips, clipUrls, onProgress);
+        return Object.assign(serial, { clipUrls: clipUrls });
+    }
+
+    function flatJoinsOf(scenes, joins, clipCount) {
+        const flat = new Array(Math.max(0, clipCount - 1)).fill(null);
+        for (let i = 0; i < scenes.length; i++) {
+            const scene = scenes[i];
+            const boundary = (Number(scene.first) || 0) + (Number(scene.count) || 0) - 1;
+            if (boundary >= 0 && boundary < flat.length && i < joins.length)
+                flat[boundary] = joins[i];
+        }
+        return flat;
+    }
+
     async function trimBodyAsync(api, url, seconds, inFade, outFade, onProgress) {
         const start = Math.max(0, Number(inFade) || 0);
         const total = Number(seconds) || 0;
@@ -2802,6 +2898,26 @@
         }
     }
 
+    async function validateCombinedResultAsync(combined, metrics) {
+        if (!combined || !combined.success) return combined;
+        const validationStarted = performance.now();
+        const checks = await Promise.all([
+            cut.validateVideoUrl(combined.url),
+            cut.validateAudioUrl(combined.url),
+        ]);
+        if (metrics)
+            metrics.combinedValidationMs = Math.round(performance.now() - validationStarted);
+        if (checks[0].success && checks[1].success) {
+            if (metrics) metrics.combinedValidated = true;
+            return combined;
+        }
+        const validationError = !checks[0].success
+            ? checks[0].error || "Combined video stream could not be decoded."
+            : checks[1].error || "Combined audio stream could not be decoded.";
+        releaseTempUrl(combined.url);
+        return { success: false, error: validationError };
+    }
+
     async function stitchAndMixScenesAsync(api, sceneUrls, joins, audio, onProgress, metrics) {
         const spec = musicSpec(audio);
         if (!spec)
@@ -2822,24 +2938,7 @@
             combined = await withPinnedUrls(prepared.pieces.concat([placed.url]), function () {
                 return concatAndMixAsync(api, prepared.pieces, placed.url, spec, onProgress);
             });
-            if (combined.success) {
-                const validationStarted = performance.now();
-                const checks = await Promise.all([
-                    cut.validateVideoUrl(combined.url),
-                    cut.validateAudioUrl(combined.url),
-                ]);
-                if (metrics)
-                    metrics.combinedValidationMs = Math.round(performance.now() - validationStarted);
-                if (!checks[0].success || !checks[1].success) {
-                    const validationError = !checks[0].success
-                        ? checks[0].error || "Combined video stream could not be decoded."
-                        : checks[1].error || "Combined audio stream could not be decoded.";
-                    releaseTempUrl(combined.url);
-                    combined = { success: false, error: validationError };
-                } else if (metrics) {
-                    metrics.combinedValidated = true;
-                }
-            }
+            combined = await validateCombinedResultAsync(combined, metrics);
             if (metrics) {
                 metrics.combinedMs = Math.round(performance.now() - combinedStarted);
                 metrics.combinedUsed = !!combined.success;
@@ -2849,6 +2948,59 @@
             prepared.transientBodies.forEach(function (url) {
                 if (!combined || !combined.success || url !== combined.url)
                     releaseTempUrl(url);
+            });
+            if (placed.url !== spec.url)
+                releaseTempUrl(placed.url);
+        }
+    }
+
+    function flatPipelineEligible(clips, scenes, audio, metrics) {
+        return !!metrics.flatRequested && !!metrics.combinedRequested && !!musicSpec(audio)
+            && scenes.length > 0
+            && !clips.some(function (clip) {
+                return clip && clip.card && clip.card.text && !(clip.hold || !clip.url);
+            });
+    }
+
+    async function composeFlatClipsAndMixAsync(api, clips, scenes, joins, audio, onProgress, metrics) {
+        const spec = musicSpec(audio);
+        const preparedClips = await prepareFlatClipsWithPoolAsync(api, clips, onProgress, metrics);
+        if (!preparedClips.success) return preparedClips;
+        const clipUrls = preparedClips.clipUrls;
+        const flatJoins = flatJoinsOf(scenes, joins, clips.length);
+        const prepared = await prepareStitchPiecesWithPoolAsync(api, clipUrls, flatJoins, onProgress, metrics);
+        if (!prepared.success) {
+            clipUrls.forEach(function (item) { if (item && item.url) releaseTempUrl(item.url); });
+            return prepared;
+        }
+        const prepareStarted = performance.now();
+        const placed = await placeMusicAsync(api, spec, onProgress);
+        metrics.musicPrepareMs = Math.round(performance.now() - prepareStarted);
+        if (!placed.success) {
+            prepared.transientBodies.forEach(releaseTempUrl);
+            clipUrls.forEach(function (item) { if (item && item.url) releaseTempUrl(item.url); });
+            return placed;
+        }
+        let combined = null;
+        const combinedStarted = performance.now();
+        try {
+            onProgress?.(55, "Combining prepared clips and mixing audio…");
+            combined = await withPinnedUrls(prepared.pieces.concat([placed.url]), function () {
+                return concatAndMixAsync(api, prepared.pieces, placed.url, spec, onProgress);
+            });
+            combined = await validateCombinedResultAsync(combined, metrics);
+            metrics.combinedMs = Math.round(performance.now() - combinedStarted);
+            metrics.combinedUsed = !!combined.success;
+            metrics.flatUsed = !!combined.success;
+            return combined;
+        } finally {
+            prepared.transientBodies.forEach(function (url) {
+                if (!combined || !combined.success || url !== combined.url)
+                    releaseTempUrl(url);
+            });
+            clipUrls.forEach(function (item) {
+                if (item && item.url && (!combined || item.url !== combined.url))
+                    releaseTempUrl(item.url);
             });
             if (placed.url !== spec.url)
                 releaseTempUrl(placed.url);
@@ -2883,6 +3035,15 @@
             combinedMs: 0,
             combinedValidated: false,
             combinedValidationMs: 0,
+            flatRequested: queryFlag("ffmpegFlat"),
+            flatUsed: false,
+            flatFellBack: false,
+            flatFallbackReason: "",
+            clipRequestedWorkers: requestedClipWorkerCount(),
+            clipEffectiveWorkers: 1,
+            clipPrepareMs: 0,
+            clipFellBackToOne: false,
+            clipFallbackReason: "",
             totalMs: 0,
         };
         cut._lastComposeMetrics = metrics;
@@ -2911,6 +3072,37 @@
                 const scenes = plan.scenes.length > 0
                     ? plan.scenes
                     : [{ scene: 1, first: 0, count: clips.length, seconds: 0, url: "" }];
+                if (!plan.reusePictureUrl && flatPipelineEligible(clips, scenes, audioUrl, metrics)) {
+                    const cachedFlatJoins = {};
+                    plan.joins.forEach(function (join) {
+                        if (join && join.encodes && join.url) cachedFlatJoins[join.from] = true;
+                    });
+                    const flat = await composeFlatClipsAndMixAsync(
+                        api, clips, scenes, plan.joins, audioUrl, onProgress, metrics);
+                    if (flat.success) {
+                        plan.joins.forEach(function (join) {
+                            if (join && join.encodes && join.url && !cachedFlatJoins[join.from])
+                                rebuiltJoins.push(join.from);
+                        });
+                        noteResult(flat);
+                        onProgress?.(100, "Ready");
+                        if (plan.jit) emitPrefix(dotNetRef, flat.url, clips.length);
+                        return {
+                            success: true, url: flat.url, pictureUrl: "", pictureReusable: false,
+                            stitched: true, owned: true, scenes: [],
+                            joins: plan.joins.filter(function (join) {
+                                return join && join.encodes && join.url;
+                            }).map(function (join) { return { id: join.from, url: join.url }; }),
+                            rebuiltScenes: [], rebuiltJoins: rebuiltJoins,
+                        };
+                    }
+                    metrics.flatFellBack = true;
+                    metrics.flatFallbackReason = flat.error || "Flat clip pipeline failed.";
+                    console.warn("Cut: flat clip pipeline failed; retrying scene pipeline",
+                        metrics.flatFallbackReason);
+                    await resetFfmpegWorker(api);
+                    onProgress?.(0, "Fast clip pipeline failed — retrying proven scene pipeline…");
+                }
                 const prepared = await prepareScenesWithPoolAsync(api, clips, scenes, onProgress, metrics);
                 if (!prepared.success)
                     return prepared;
