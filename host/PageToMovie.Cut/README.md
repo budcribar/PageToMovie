@@ -31,7 +31,7 @@ dotnet test PageToMovie.Cut.slnx
 
 Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** works as a fallback.
 
-FFmpeg scene preparation defaults to one worker. Use `?ffmpegWorkers=2`, `3`, or `4` to experiment; any parallel failure retries through one worker. Add `&ffmpegFresh=1` to bypass render caches for comparable timing. See the [media/timeline contract](../../docs/media-timeline-contract.md#ffmpeg-scene-worker-experiments).
+FFmpeg scene and transition preparation default to one worker. Mary19Test's fastest measured experiment used `?ffmpegWorkers=3&ffmpegStitchWorkers=4` (each accepts 1–4); either pool retries through one worker after a parallel failure. Add `&ffmpegFresh=1` to bypass render caches for comparable timing. See the [media/timeline contract](../../docs/media-timeline-contract.md#ffmpeg-worker-experiments).
 
 ## Take SSoT
 

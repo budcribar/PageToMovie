@@ -156,6 +156,25 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Cut_js_has_configurable_stitch_pool_with_independent_fallback_and_metrics()
+    {
+        var cutJs = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var src = File.ReadAllText(cutJs);
+
+        Assert.Contains("ffmpegStitchWorkers", src, StringComparison.Ordinal);
+        Assert.Contains("setFfmpegStitchWorkerCount", src, StringComparison.Ordinal);
+        Assert.Contains("prepareStitchPiecesWithPoolAsync", src, StringComparison.Ordinal);
+        Assert.Contains("stitchFellBackToOne", src, StringComparison.Ordinal);
+        Assert.Contains("Parallel transition render failed", src, StringComparison.Ordinal);
+        Assert.Contains("stitchPrepareMs", src, StringComparison.Ordinal);
+        Assert.Contains("concatMs", src, StringComparison.Ordinal);
+        Assert.Contains("musicPrepareMs", src, StringComparison.Ordinal);
+        Assert.Contains("mixMs", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Home_binds_selected_title_id_to_the_timeline()
     {
         var home = Path.GetFullPath(Path.Combine(

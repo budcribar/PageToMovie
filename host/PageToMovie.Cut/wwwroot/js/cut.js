@@ -50,6 +50,7 @@
     const FFMPEG_WORKER_MIN = 1;
     const FFMPEG_WORKER_MAX = 4;
     const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
+    const FFMPEG_STITCH_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegStitchWorkers";
 
     function clampWorkerCount(value) {
         const parsed = Math.trunc(Number(value));
@@ -77,15 +78,33 @@
         }
     }
 
+    function requestedStitchWorkerCount() {
+        try {
+            const query = new URLSearchParams(window.location.search).get("ffmpegStitchWorkers");
+            if (query !== null)
+                return clampWorkerCount(query);
+            return clampWorkerCount(window.localStorage.getItem(FFMPEG_STITCH_WORKER_STORAGE_KEY) || 1);
+        } catch (_) {
+            return FFMPEG_WORKER_MIN;
+        }
+    }
+
     cut.setFfmpegWorkerCount = function (value) {
         const count = clampWorkerCount(value);
         try { window.localStorage.setItem(FFMPEG_WORKER_STORAGE_KEY, String(count)); } catch (_) { }
         return count;
     };
 
+    cut.setFfmpegStitchWorkerCount = function (value) {
+        const count = clampWorkerCount(value);
+        try { window.localStorage.setItem(FFMPEG_STITCH_WORKER_STORAGE_KEY, String(count)); } catch (_) { }
+        return count;
+    };
+
     cut.getFfmpegWorkerConfig = function () {
         return {
             requested: requestedWorkerCount(),
+            stitchRequested: requestedStitchWorkerCount(),
             min: FFMPEG_WORKER_MIN,
             max: FFMPEG_WORKER_MAX,
             forceFresh: queryFlag("ffmpegFresh"),
@@ -1200,17 +1219,24 @@
         });
     }
 
-    async function mixOptionalAudio(api, videoUrl, audio, onProgress) {
+    async function mixOptionalAudio(api, videoUrl, audio, onProgress, metrics) {
         const spec = musicSpec(audio);
         if (!spec)
             return { success: true, url: videoUrl };
+        const prepareStarted = performance.now();
         const placed = await placeMusicAsync(api, spec, onProgress);
+        if (metrics) metrics.musicPrepareMs = Math.round(performance.now() - prepareStarted);
         if (!placed.success)
             return placed;
         try {
             return await withPinnedUrls([videoUrl, placed.url], async function () {
                 onProgress?.(80, "Mixing audio…");
-                return mixMovieAudioAsync(api, videoUrl, placed.url, onProgress, spec);
+                const mixStarted = performance.now();
+                try {
+                    return await mixMovieAudioAsync(api, videoUrl, placed.url, onProgress, spec);
+                } finally {
+                    if (metrics) metrics.mixMs = Math.round(performance.now() - mixStarted);
+                }
             });
         } finally {
             if (placed.url !== spec.url)
@@ -2408,13 +2434,13 @@
         return Object.assign(serial, { sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes });
     }
 
-    async function trimBodyAsync(url, seconds, inFade, outFade, onProgress) {
+    async function trimBodyAsync(api, url, seconds, inFade, outFade, onProgress) {
         const start = Math.max(0, Number(inFade) || 0);
         const total = Number(seconds) || 0;
         const end = Math.max(start + 0.1, total - (Number(outFade) || 0));
         if (start <= 0.05 && (total <= 0 || total - end <= 0.05))
             return { success: true, url: url };
-        return cut.trimRangeAsync(url, start, end, onProgress);
+        return trimRangeWithApiAsync(api, url, start, end, onProgress);
     }
 
     async function measuredSceneSecondsAsync(api, url, plannedSeconds) {
@@ -2473,31 +2499,151 @@
         }
     }
 
-    async function stitchScenesAsync(api, sceneUrls, joins, onProgress) {
+    function assembleStitchPieces(sceneUrls, joins, bodyUrls, joinUrls) {
         const pieces = [];
         const transientBodies = [];
         for (let i = 0; i < sceneUrls.length; i++) {
+            const bodyUrl = bodyUrls[i] || sceneUrls[i].url;
+            pieces.push(bodyUrl);
+            if (bodyUrl !== sceneUrls[i].url)
+                transientBodies.push(bodyUrl);
+            if (joinUrls[i])
+                pieces.push(joinUrls[i]);
+        }
+        return { success: true, pieces: pieces, transientBodies: transientBodies };
+    }
+
+    async function prepareStitchPiecesSerialAsync(api, sceneUrls, joins, onProgress) {
+        const bodyUrls = new Array(sceneUrls.length);
+        const joinUrls = new Array(joins.length);
+        for (let i = 0; i < sceneUrls.length; i++) {
+            if (composeStopped())
+                return { success: false, error: "Stopped." };
             const join = i < joins.length ? joins[i] : null;
             const prev = i > 0 ? joins[i - 1] : null;
             const inFade = prev && xfadeName(prev.kind) ? Number(prev.fade) || 0 : 0;
             const outFade = join && xfadeName(join.kind) ? Number(join.fade) || 0 : 0;
-            const body = await trimBodyAsync(sceneUrls[i].url, sceneUrls[i].seconds, inFade, outFade, onProgress);
+            const body = await trimBodyAsync(api, sceneUrls[i].url, sceneUrls[i].seconds, inFade, outFade, onProgress);
             if (!body.success) return body;
-            pieces.push(body.url);
-            if (body.url !== sceneUrls[i].url)
-                transientBodies.push(body.url);
-            if (!join || !join.encodes)
+            bodyUrls[i] = body.url;
+            if (!join || !join.encodes || !sceneUrls[i + 1])
                 continue;
-            const next = sceneUrls[i + 1];
-            if (!next)
-                continue;
-            const made = await ensureJoinUrlAsync(api, join, sceneUrls[i], next, onProgress);
+            const made = await ensureJoinUrlAsync(api, join, sceneUrls[i], sceneUrls[i + 1], onProgress);
             if (!made.success) return made;
-            if (made.url)
-                pieces.push(made.url);
+            joinUrls[i] = made.url || "";
         }
+        return assembleStitchPieces(sceneUrls, joins, bodyUrls, joinUrls);
+    }
+
+    function releaseStitchAttempt(sceneUrls, joins, bodyUrls, dirtyJoinIndexes) {
+        for (let i = 0; i < bodyUrls.length; i++) {
+            if (bodyUrls[i] && bodyUrls[i] !== sceneUrls[i].url)
+                releaseTempUrl(bodyUrls[i]);
+        }
+        for (const index of dirtyJoinIndexes) {
+            const join = joins[index];
+            if (join && join.url) {
+                releaseTempUrl(join.url);
+                join.url = "";
+            }
+        }
+    }
+
+    async function prepareStitchPiecesWithPoolAsync(base, sceneUrls, joins, onProgress, metrics) {
+        const requested = requestedStitchWorkerCount();
+        const tasks = [];
+        const bodyUrls = new Array(sceneUrls.length);
+        const joinUrls = new Array(joins.length);
+        const dirtyJoinIndexes = [];
+        for (let i = 0; i < sceneUrls.length; i++) {
+            const index = i;
+            const join = index < joins.length ? joins[index] : null;
+            const prev = index > 0 ? joins[index - 1] : null;
+            const inFade = prev && xfadeName(prev.kind) ? Number(prev.fade) || 0 : 0;
+            const outFade = join && xfadeName(join.kind) ? Number(join.fade) || 0 : 0;
+            tasks.push(async function (api) {
+                const body = await trimBodyAsync(api, sceneUrls[index].url, sceneUrls[index].seconds,
+                    inFade, outFade, onProgress);
+                if (!body.success) throw new Error(body.error || "Scene body could not be trimmed.");
+                bodyUrls[index] = body.url;
+            });
+            if (join && join.encodes && sceneUrls[index + 1]) {
+                if (join.url) {
+                    joinUrls[index] = join.url;
+                } else {
+                    dirtyJoinIndexes.push(index);
+                    tasks.push(async function (api) {
+                        const made = await ensureJoinUrlAsync(
+                            api, join, sceneUrls[index], sceneUrls[index + 1], onProgress);
+                        if (!made.success) throw new Error(made.error || "Transition could not be rendered.");
+                        joinUrls[index] = made.url || "";
+                    });
+                }
+            }
+        }
+
+        const effective = Math.min(requested, Math.max(1, tasks.length));
+        if (metrics) {
+            metrics.stitchRequestedWorkers = requested;
+            metrics.stitchEffectiveWorkers = effective;
+            metrics.stitchTasks = tasks.length;
+        }
+        const started = performance.now();
+        if (effective === 1) {
+            const serial = await prepareStitchPiecesSerialAsync(base, sceneUrls, joins, onProgress);
+            if (metrics) metrics.stitchPrepareMs = Math.round(performance.now() - started);
+            return serial;
+        }
+
+        const apis = [base];
+        for (let i = 1; i < effective; i++)
+            apis.push(isolatedFfmpegApi(base, 100 + i + 1));
+        let cursor = 0;
+        let completed = 0;
+        const runs = apis.map(async function (api) {
+            while (true) {
+                const position = cursor++;
+                if (position >= tasks.length) return;
+                if (composeStopped()) throw new Error("Stopped.");
+                await tasks[position](api);
+                completed++;
+                onProgress?.(40 + Math.round((completed / tasks.length) * 15),
+                    "Preparing transitions with " + effective + " workers…");
+            }
+        });
+        const settled = await Promise.allSettled(runs);
+        if (metrics) metrics.stitchPrepareMs = Math.round(performance.now() - started);
+        const rejected = settled.find(function (result) { return result.status === "rejected"; });
+        for (let i = 1; i < apis.length; i++)
+            terminateIsolatedApi(apis[i], base);
+        if (!rejected)
+            return assembleStitchPieces(sceneUrls, joins, bodyUrls, joinUrls);
+        if (composeStopped()) {
+            releaseStitchAttempt(sceneUrls, joins, bodyUrls, dirtyJoinIndexes);
+            return { success: false, error: "Stopped." };
+        }
+
+        if (metrics) {
+            metrics.stitchFellBackToOne = true;
+            metrics.stitchFallbackReason = String(
+                rejected.reason && rejected.reason.message || rejected.reason || "Worker failed");
+        }
+        console.warn("Cut: FFmpeg stitch pool failed; retrying with one worker",
+            metrics ? metrics.stitchFallbackReason : rejected.reason);
+        releaseStitchAttempt(sceneUrls, joins, bodyUrls, dirtyJoinIndexes);
+        await resetFfmpegWorker(base);
+        onProgress?.(40, "Parallel transition render failed — retrying safely with 1 worker…");
+        return prepareStitchPiecesSerialAsync(base, sceneUrls, joins, onProgress);
+    }
+
+    async function stitchScenesAsync(api, sceneUrls, joins, onProgress, metrics) {
+        const prepared = await prepareStitchPiecesWithPoolAsync(api, sceneUrls, joins, onProgress, metrics);
+        if (!prepared.success) return prepared;
+        const pieces = prepared.pieces;
+        const transientBodies = prepared.transientBodies;
         onProgress?.(55, "Combining clips…");
         let combined = null;
+        const concatStarted = performance.now();
         try {
             let expectedSec = 0;
             for (const url of pieces)
@@ -2543,6 +2689,7 @@
             }
             return combined;
         } finally {
+            if (metrics) metrics.concatMs = Math.round(performance.now() - concatStarted);
             transientBodies.forEach(function (url) {
                 if (!combined || !combined.success || url !== combined.url)
                     releaseTempUrl(url);
@@ -2558,10 +2705,19 @@
             requestedWorkers: requestedWorkerCount(),
             effectiveWorkers: 1,
             dirtyScenes: 0,
+            stitchRequestedWorkers: requestedStitchWorkerCount(),
+            stitchEffectiveWorkers: 1,
+            stitchTasks: 0,
             forceFresh: queryFlag("ffmpegFresh"),
             fellBackToOne: false,
             fallbackReason: "",
+            stitchFellBackToOne: false,
+            stitchFallbackReason: "",
             scenePrepareMs: 0,
+            stitchPrepareMs: 0,
+            concatMs: 0,
+            musicPrepareMs: 0,
+            mixMs: 0,
             totalMs: 0,
         };
         cut._lastComposeMetrics = metrics;
@@ -2629,7 +2785,7 @@
                 if (plan.reusePictureUrl && rebuiltScenes.length === 0 && !joinsDirty) {
                     picture = { success: true, url: plan.reusePictureUrl };
                 } else {
-                    picture = await stitchScenesAsync(api, sceneUrls, plan.joins, onProgress);
+                    picture = await stitchScenesAsync(api, sceneUrls, plan.joins, onProgress, metrics);
                     if (!picture.success) return picture;
                     plan.joins.forEach(function (j) {
                         if (j && j.encodes && j.url && !cachedJoins[j.from])
@@ -2637,7 +2793,7 @@
                     });
                 }
 
-                const mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress);
+                const mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress, metrics);
                 if (!mixed.success) return mixed;
                 noteResult(mixed);
                 onProgress?.(100, "Ready");

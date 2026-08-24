@@ -56,18 +56,23 @@ Validation happens in two stages:
 
 Cached scene segments and the final merge are keyed by render fingerprints. Trim, transition, title, music placement, fades, speed, volume, or Black intro changes invalidate the affected fingerprint. File byte length is not used as a proxy for validity or cache freshness.
 
-### FFmpeg scene-worker experiments
+### FFmpeg worker experiments
 
-Cut defaults to one FFmpeg worker. Independent dirty scenes can be prepared concurrently with a configurable pool; transitions, ordered final concat, and soundtrack mixing remain serial.
+Cut defaults to one worker for each pool. Independent dirty scenes use the scene pool. Independent scene-body trims and uncached transition renders use a separate stitch pool. Ordered final concat and the final soundtrack mix each produce one dependent output and remain single-worker operations; avoiding that dependency would require an additional generation of video encoding or a codec-copy assumption that is not unconditionally valid.
 
 ```text
 ?ffmpegWorkers=1   safe baseline and default
 ?ffmpegWorkers=2   two scene workers
 ?ffmpegWorkers=3   three scene workers
 ?ffmpegWorkers=4   maximum supported experiment
+
+?ffmpegStitchWorkers=1   safe stitch baseline and default
+?ffmpegStitchWorkers=2   two body/transition workers
+?ffmpegStitchWorkers=3   three body/transition workers
+?ffmpegStitchWorkers=4   maximum supported stitch experiment
 ```
 
-The query parameter overrides the persisted browser setting. `PageToMovieCut.setFfmpegWorkerCount(n)` persists a clamped value from 1 through 4. If a parallel worker fails, Cut terminates the extra workers, discards partial scene results, resets the primary FFmpeg instance, and retries once through the one-worker path.
+Each query parameter overrides its persisted browser setting. `PageToMovieCut.setFfmpegWorkerCount(n)` and `PageToMovieCut.setFfmpegStitchWorkerCount(n)` persist clamped values from 1 through 4. If either parallel pool fails, Cut terminates its extra workers, discards that pool's partial results, resets the primary FFmpeg instance, and retries the affected phase once through the one-worker path.
 
 For repeatable benchmarks, add `ffmpegFresh=1`; this bypasses movie, picture, scene, and transition cache URLs for that compose without changing render fingerprints. `PageToMovieCut.getLastComposeMetrics()` reports requested/effective workers, dirty scenes, scene-preparation time, total time, and whether fallback occurred.
 
@@ -80,6 +85,17 @@ Mary19Test was benchmarked in the browser on August 24, 2026, with four dirty sc
 | 3 | 1:17.7 | 6:28.3 | 16.6% | No |
 | 4 | 1:17.8 | 6:31.2 | 16.0% | No |
 
-Pool 3 was the best result for this project. Pool 4 did not improve scene preparation and was 2.9 seconds slower overall, so three workers is the recommended experimental setting for Mary19Test. One worker remains the product default because it has the lowest memory pressure and is the unconditional recovery path. These timings are machine- and project-specific; re-run the forced-fresh benchmark before changing the default globally. The roughly five-minute serial tail is now the dominant optimization target.
+Pool 3 was the best scene-pool result for this project. Pool 4 did not improve scene preparation and was 2.9 seconds slower overall, so three scene workers is the recommended experimental setting for Mary19Test. One worker remains the product default because it has the lowest memory pressure and is the unconditional recovery path. These timings are machine- and project-specific; re-run the forced-fresh benchmark before changing the default globally.
+
+The transition/stitch pool was then benchmarked with the scene pool fixed at 3. Mary19Test produced seven independent scene-body/transition tasks:
+
+| Stitch pool | Stitch preparation | Final concat | Final mix | Total compose | Total improvement vs. stitch 1 | Fallback |
+| ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| 1 | 1:11.6 | 3:03.1 | 1:11.0 | 6:56.1 | baseline | No |
+| 2 | 0:42.8 | 3:08.3 | 1:12.4 | 6:27.3 | 6.9% | No |
+| 3 | 0:39.2 | 3:01.0 | 1:09.9 | 6:11.7 | 10.7% | No |
+| 4 | 0:35.6 | 2:53.0 | 1:09.0 | 5:59.7 | 13.6% | No |
+
+Four stitch workers produced the best Mary19Test result. Stitch preparation was 50.4% faster than the one-worker stitch baseline and the complete compose was 56.5 seconds faster. The recommended Mary19Test experiment is therefore `?ffmpegWorkers=3&ffmpegStitchWorkers=4&ffmpegFresh=1`. Concat and mix timings vary between runs and remain the dominant dependent work; their measured differences must not be attributed to the stitch pool. One stitch worker remains the default and automatic recovery path.
 
 For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).
