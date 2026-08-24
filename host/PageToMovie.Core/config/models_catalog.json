@@ -180,15 +180,15 @@
       ],
       "enabled": true,
       "maxInputTokens": 1050000,
-      "inputCostPerMillionTokens": 5.0,
-      "outputCostPerMillionTokens": 30.0,
-      "notes": "Replaces gpt-4o. Official alias gpt-5.6 resolves to Sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $10 input / $45 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
+      "inputCostPerMillionTokens": 4.0,
+      "outputCostPerMillionTokens": 20.0,
+      "notes": "Replaces gpt-4o. Official alias gpt-5.6 resolves to Sol. Reasoning-family model; rejects non-default temperature (GrokChatClient self-heals by retrying without it). Context 1,050,000. Long-context surcharge above 272K tokens: $8 input / $30 output per 1M. One of three gpt-5.6 variants (sol/terra/luna); no plain gpt-5.6 model id.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "OpenAI list price 2026-08-15: $5.00 / $30.00 per 1M tokens (<272K). Long-context >272K: $10 / $45 per 1M.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "OpenAI list price 2026-08-21: $4.00 / $20.00 per 1M tokens short-context (promo at least through 2026-11-21). Long-context >272K: $8 / $30 per 1M. developers.openai.com/api/docs/pricing and developers.openai.com/api/docs/models/gpt-5.6-sol.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
     },
     {
       "id": "gpt-5.6-terra",
@@ -671,6 +671,91 @@
       "pricingNotes": "fal.ai/models/fal-ai/wan/v2.7/text-to-video 2026-08-15: 720p $0.10/s, 1080p $0.15/s.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "alibaba/wan-3.0/text-to-video",
+      "displayName": "Wan 3.0 T2V (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "alibaba/wan-3.0/text-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "maxReferenceImages": 0,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 2,
+      "maxClipDurationSeconds": 30,
+      "absMaxClipDurationSeconds": 30,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.05,
+        "720p": 0.1,
+        "1080p": 0.2
+      },
+      "supportedAspectRatios": [
+        "adaptive",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "adaptive",
+      "notes": "Alibaba Wan 3.0 text-to-video on Fal.ai. Official Fal id alibaba/wan-3.0/text-to-video. 2\u201330s. Native audio (audio default true). 480p $0.05/s, 720p $0.10/s, 1080p $0.20/s. Aspect ratio default adaptive. Text-to-video only; use the I2V sibling for image-to-video (do not rely on FalVideoClient's text-endpoint + '-image-to-video' rewrite for this id). Distinct from Wan 2.7 (fal-ai/wan/v2.7/text-to-video).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 800,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/alibaba/wan-3.0/text-to-video 2026-08-24: 480p $0.05/s, 720p $0.10/s, 1080p $0.20/s.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
+    },
+    {
+      "id": "alibaba/wan-3.0/image-to-video",
+      "displayName": "Wan 3.0 I2V (Fal.ai)",
+      "capability": "Video",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "alibaba/wan-3.0/image-to-video",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 2,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 2,
+      "maxClipDurationSeconds": 30,
+      "absMaxClipDurationSeconds": 30,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.05,
+        "720p": 0.1,
+        "1080p": 0.2
+      },
+      "supportedAspectRatios": [
+        "adaptive",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "adaptive",
+      "notes": "Alibaba Wan 3.0 image-to-video on Fal.ai. Official Fal id alibaba/wan-3.0/image-to-video. 2\u201330s. Native audio (audio default true). Same $/s as T2V: 480p $0.05/s, 720p $0.10/s, 1080p $0.20/s. Official start_image_url plus optional end_image_url (start/end frame). Distinct from Wan 2.7 I2V (fal-ai/wan/v2.7/image-to-video).",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxPromptLength": 800,
+      "maxReferenceImageDimension": 2000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "fal.ai/models/alibaba/wan-3.0/image-to-video 2026-08-24: 480p $0.05/s, 720p $0.10/s, 1080p $0.20/s.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
     },
     {
       "id": "veo-3.1",
