@@ -2,6 +2,13 @@
  * Client media folder: store gen MP4s on the user's disk (File System Access API).
  * Server keeps hashes + metadata only.
  */
+function ignoreDirectoryProbe(err, reason) {
+    // Walking projectPrefix / probing assets is expected to fail when the
+    // connected handle is already the project directory or has no assets.
+    // Swallow so resolution continues; debug-log so the exception is handled.
+    console.debug("[PageToMovieMedia]", reason, err);
+}
+
 window.PageToMovieMedia = {
     _root: null, // FileSystemDirectoryHandle
     _blobUrls: {},
@@ -31,12 +38,15 @@ window.PageToMovieMedia = {
                 for (const part of parts)
                     dir = await dir.getDirectoryHandle(part, { create: false });
                 return dir;
-            } catch (_) { /* the connected handle may already be the project directory */ }
+            } catch (err) {
+                ignoreDirectoryProbe(err, "connected handle may already be the project directory");
+            }
         }
         try {
             await root.getDirectoryHandle("assets", { create: false });
             return root;
-        } catch (_) {
+        } catch (err) {
+            ignoreDirectoryProbe(err, "assets probe failed");
             return null;
         }
     },
