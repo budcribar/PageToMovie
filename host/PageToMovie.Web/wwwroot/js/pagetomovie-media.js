@@ -75,7 +75,7 @@ window.PageToMovieMedia = {
 
     fileIdErrorFrom: function (res) {
         try {
-            return (res && res.headers && res.headers.get(this.fileIdErrorHeader)) || "";
+            return res?.headers?.get(this.fileIdErrorHeader) || "";
         } catch (_) { return ""; }
     },
 
