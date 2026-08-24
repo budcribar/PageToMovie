@@ -28,10 +28,11 @@ public class CutFinishedMovieTests
         Assert.False(CutFinishedMovie.ShouldPlay("", movieFilePresent: true));
         Assert.False(CutFinishedMovie.ShouldPlay("{not-json", movieFilePresent: true));
 
-        var fp = CutPlayMerge.Fingerprint(clips, [], null);
-        var json = CutProjectFile.Serialize(clips, null, movieFingerprint: fp);
+        var music = new CutMusic();
+        var fp = CutPlayMerge.Fingerprint(clips, [], null, music);
+        var json = CutProjectFile.Serialize(clips, null, movieFingerprint: fp, music: music);
         clips[0].ApplyInOut(1, 4);
-        var stale = CutProjectFile.Serialize(clips, null, movieFingerprint: fp);
+        var stale = CutProjectFile.Serialize(clips, null, movieFingerprint: fp, music: music);
         Assert.False(CutFinishedMovie.ShouldPlay(stale, movieFilePresent: true));
         Assert.True(CutFinishedMovie.ShouldPlay(json, movieFilePresent: true));
     }
@@ -59,15 +60,16 @@ public class CutFinishedMovieTests
         a.ApplyInOut(0.5, 8);
         var b = NewClip(2, 1, 6);
         var clips = new[] { a, b };
-        var fp = CutPlayMerge.Fingerprint(clips, [], "score.mp3");
-        var json = CutProjectFile.Serialize(clips, "score.mp3", movieFingerprint: fp);
+        var music = new CutMusic { FileName = "score.mp3" };
+        var fp = CutPlayMerge.Fingerprint(clips, [], "score.mp3", music);
+        var json = CutProjectFile.Serialize(clips, "score.mp3", movieFingerprint: fp, music: music);
 
-        Assert.True(CutProjectFile.TryRead(json, out var read, out _, out var loaded, out var music));
+        Assert.True(CutProjectFile.TryRead(json, out var read, out _, out var loaded, out var loadedMusic));
         Assert.Equal(fp, loaded);
-        Assert.Equal("score.mp3", music.FileName);
+        Assert.Equal("score.mp3", loadedMusic.FileName);
         Assert.Equal(0.5, read[0].MarkIn);
         Assert.Equal(8, read[0].MarkOut);
-        Assert.True(CutPlayMerge.IsFreshMerge(loaded, read, [], music.FileName, music));
+        Assert.True(CutPlayMerge.IsFreshMerge(loaded, read, [], loadedMusic.FileName, loadedMusic));
     }
 
     private static CutClip NewClip(int scene, int clip, double duration)
