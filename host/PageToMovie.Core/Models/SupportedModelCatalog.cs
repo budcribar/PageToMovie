@@ -920,9 +920,6 @@ public static class SupportedModelCatalog
                 $"Model '{modelId.Trim()}' is not in models_catalog.json for Video. " +
                 "Open Settings → Studio coverage and choose a catalog model for this job.");
 
-        if (!selected.Enabled)
-            throw new InvalidOperationException($"Video model '{selected.Id}' is disabled in the catalog.");
-
         if (!selected.Virtual)
         {
             var extend = selected.SupportsVideoContinue ? selected : null;
