@@ -235,7 +235,15 @@ public static class ClipDurationEstimator
         {
             // Never under-run speech need — under-planned clips rush and clip the first word.
             // Budget for EVERY spoken line (+ inter-speaker gap), capped only at the model max.
-            return EstimateSpokenLinesSeconds(lines, visual, actionClass, minSeconds, maxSeconds);
+            // A generated visual_prompt contains the whole scene recap plus camera/performance
+            // boilerplate.  Feeding that enriched text back through the action classifier produces
+            // false timing hits (for example a bed described as "heavy" in the recap is mistaken for
+            // a heavy-carry action on every later voice-over clip).  Stage 2's action_class is the
+            // authoritative signal: only an action-bearing spoken beat should pay action overhead at
+            // generation time.  Dialogue/hold/establishing speech still keeps the calibrated 0.6s
+            // head through the empty-visual fallback.
+            var timingVisual = ActionClassCarriesSpokenAction(actionClass) ? visual : "";
+            return EstimateSpokenLinesSeconds(lines, timingVisual, actionClass, minSeconds, maxSeconds);
         }
 
         // Silent: honor Stage 2 planned duration within the class-aware cap (not a flat 5s).
@@ -288,6 +296,9 @@ public static class ClipDurationEstimator
             "hold" => ActionOnlyMinSeconds,
             _ => SilentActionMaxSeconds,
         };
+
+    private static bool ActionClassCarriesSpokenAction(string actionClass) =>
+        actionClass is "action" or BigActionClass;
 
     /// <summary>
     /// Adjusts duration based on strongly-typed <see cref="PacingMood"/>.

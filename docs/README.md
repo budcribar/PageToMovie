@@ -81,6 +81,7 @@ Ingest → Index → Write max Fountain → Auto-enrich
 | Prompts | [prompts/README](../prompts/README.md) |
 | Every model call | [MODEL_CALL_INVENTORY](architecture/MODEL_CALL_INVENTORY.md) |
 | Shot plan / action timing | [Action timing](action-timing-plan.md) |
+| Clip estimate vs actual | [Clip-duration calibration](clip-duration-calibration.md) |
 | Estimate / $ / minutes | [Decision flow §2](studio-decision-flow.md#2-progressive-costing-model) |
 | Cast / plates / voice | Decision flow + [voice substitution](voice-substitution-design.md) |
 | Review / stitch / ffmpeg.wasm | [Media/timeline contract](media-timeline-contract.md) · [host README](../host/README.md) (browser media) |

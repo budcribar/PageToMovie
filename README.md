@@ -121,6 +121,7 @@ Playwright pilot (against a running API): `host/playwright/README.md`.
 | [`docs/supported-models.md`](docs/supported-models.md) | Catalog / how models are chosen |
 | [`docs/voice-substitution-design.md`](docs/voice-substitution-design.md) | Easy Start / “speak as you” |
 | [`docs/media-timeline-contract.md`](docs/media-timeline-contract.md) | Valid video/audio, black intros, and frozen-frame outros |
+| [`docs/clip-duration-calibration.md`](docs/clip-duration-calibration.md) | Rerun estimate-vs-actual calibration and safely improve clip timing |
 | [`docs/public-community-plan.md`](docs/public-community-plan.md) | Public (Forkable) library |
 | [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
 | [`AGENTS.md`](AGENTS.md) | North star for contributors |
