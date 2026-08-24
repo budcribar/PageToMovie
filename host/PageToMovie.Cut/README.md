@@ -33,6 +33,8 @@ Chrome or Edge for **Pick folder** (File System Access API). **Choose MP4s** wor
 
 FFmpeg scene and transition preparation default to one worker. Mary19Test's fastest measured experiment used `?ffmpegWorkers=3&ffmpegStitchWorkers=4` (each accepts 1–4); either pool retries through one worker after a parallel failure. Add `&ffmpegFresh=1` to bypass render caches for comparable timing. See the [media/timeline contract](../../docs/media-timeline-contract.md#ffmpeg-worker-experiments).
 
+Add `&ffmpegCombined=1` to use one final concat-and-soundtrack encode instead of the normal reusable-picture concat followed by a mix. Mary19Test measured 2:50.6 versus 5:59.7 for the two-pass path. The combined result is duration-checked, browser-decodes both streams, and automatically retries the proven two-pass path on failure. A successful combined render intentionally has no reusable dry-picture cache, so later music-only edits must compose again.
+
 ## Take SSoT
 
 - Each take is `scene_SS_clip_CC_take_NN.mp4` (optional `.clip.json` sidecar).

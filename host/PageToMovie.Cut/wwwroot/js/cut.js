@@ -108,6 +108,7 @@
             min: FFMPEG_WORKER_MIN,
             max: FFMPEG_WORKER_MAX,
             forceFresh: queryFlag("ffmpegFresh"),
+            combinedConcatMix: queryFlag("ffmpegCombined"),
         };
     };
 
@@ -2190,6 +2191,7 @@
             success: true,
             url: url,
             pictureUrl: pictureUrl || url,
+            pictureReusable: true,
             stitched: false,
             owned: false,
             scenes: [],
@@ -2549,6 +2551,109 @@
         }
     }
 
+    async function concatAndMixOnce(api, ffmpeg, urls, musicUrl, spec, seq) {
+        const names = [];
+        const listName = "cut_onepass_" + seq + ".txt";
+        const musicName = "cut_onepass_music_" + seq + ".m4a";
+        const outName = "cut_onepass_out_" + seq + ".mp4";
+        try {
+            let pictureSec = 0;
+            const durations = [];
+            for (let i = 0; i < urls.length; i++) {
+                const name = "cut_onepass_" + seq + "_" + i + ".mp4";
+                names.push(name);
+                await writeMemfs(ffmpeg, name, await fetchInputBytes(api, urls[i], "Clip"));
+                const probe = await api._probeDurationMemfsAsync(name);
+                const seconds = probe.success && Number(probe.seconds) > 0 ? Number(probe.seconds) : 0;
+                durations.push(seconds);
+                pictureSec += seconds;
+            }
+            const list = [];
+            for (let i = 0; i < names.length; i++) {
+                list.push("file '" + names[i] + "'");
+                if (durations[i] > 0.001)
+                    list.push("duration " + durations[i]);
+            }
+            await writeMemfs(ffmpeg, listName, list.join("\n"));
+            await writeMemfs(ffmpeg, musicName, await fetchInputBytes(api, musicUrl, "Soundtrack"));
+            const musicProbe = await api._probeDurationMemfsAsync(musicName);
+            const musicSec = musicProbe.success && Number(musicProbe.seconds) > 0
+                ? Number(musicProbe.seconds) : 0;
+            const introBlack = spec && spec.introBlack > 0 ? spec.introBlack : 0;
+            const pictureEndSec = pictureSec + introBlack;
+            const outputSec = Math.max(pictureEndSec, musicSec);
+            const freezeSec = pictureSec > 0.05 ? Math.max(0, musicSec - pictureEndSec) : 0;
+            let videoFilter = "[0:v]setpts=PTS-STARTPTS";
+            if (introBlack > 0.05 || freezeSec > 0.05) {
+                videoFilter += ",tpad=start_mode=add:start_duration=" + String(introBlack)
+                    + ":color=black:stop_mode=clone:stop_duration=" + String(freezeSec);
+            }
+            videoFilter += ",format=yuv420p[v]";
+            const filters = mixFiltersOf(spec);
+            const input = [
+                "-hide_banner", "-y", "-fflags", "+genpts",
+                "-f", "concat", "-safe", "0", "-i", listName,
+                "-i", musicName,
+            ];
+            const output = ["-map", "[v]", "-map", "[a]"];
+            if (outputSec > 0.05)
+                output.push("-t", String(outputSec));
+            output.push.apply(output, h264EncodeArgs("aac"));
+            output.push(outName);
+            try {
+                await execChecked(ffmpeg, input.concat(
+                    ["-filter_complex", filters.withVo + ";" + videoFilter], output));
+            } catch (noNativeAudio) {
+                console.debug("Cut: one-pass concat has no native audio", noNativeAudio);
+                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                    console.debug("Cut: one-pass cleanup", delErr);
+                }
+                await execChecked(ffmpeg, input.concat(
+                    ["-filter_complex", filters.musicOnly + ";" + videoFilter], output));
+            }
+            const outProbe = await api._probeDurationMemfsAsync(outName);
+            const actualSec = outProbe.success && Number(outProbe.seconds) > 0
+                ? Number(outProbe.seconds) : 0;
+            if (outputSec > 0.1 && actualSec + 0.25 < outputSec)
+                throw new Error("Combined movie ended early.");
+            const out = await ffmpeg.readFile(outName);
+            const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+            noteTemp(url);
+            return { success: true, url: url, pictureSeconds: pictureSec, outputSeconds: outputSec };
+        } finally {
+            for (const name of names)
+                await deleteMemfs(ffmpeg, name);
+            await deleteMemfs(ffmpeg, listName);
+            await deleteMemfs(ffmpeg, musicName);
+            await deleteMemfs(ffmpeg, outName);
+        }
+    }
+
+    async function concatAndMixAsync(api, urls, musicUrl, spec, onProgress) {
+        return api._runExclusiveAsync(async function () {
+            await resetFfmpegWorker(api);
+            let load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const seq = ++cut._trimSeq;
+            try {
+                return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq);
+            } catch (err) {
+                if (!isFsError(err))
+                    return { success: false, error: messageOf(err, "Combined concat and mix failed.") };
+                await resetFfmpegWorker(api);
+                load = await api.ensureLoadedAsync(onProgress);
+                if (!load.success)
+                    return { success: false, error: load.error || fsUserMessage() };
+                try {
+                    return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq);
+                } catch (retry) {
+                    return { success: false, error: messageOf(retry, fsUserMessage()) };
+                }
+            }
+        });
+    }
+
     async function prepareStitchPiecesWithPoolAsync(base, sceneUrls, joins, onProgress, metrics) {
         const requested = requestedStitchWorkerCount();
         const tasks = [];
@@ -2697,6 +2802,59 @@
         }
     }
 
+    async function stitchAndMixScenesAsync(api, sceneUrls, joins, audio, onProgress, metrics) {
+        const spec = musicSpec(audio);
+        if (!spec)
+            return { success: false, error: "Soundtrack is missing." };
+        const prepared = await prepareStitchPiecesWithPoolAsync(api, sceneUrls, joins, onProgress, metrics);
+        if (!prepared.success) return prepared;
+        const prepareStarted = performance.now();
+        const placed = await placeMusicAsync(api, spec, onProgress);
+        if (metrics) metrics.musicPrepareMs = Math.round(performance.now() - prepareStarted);
+        if (!placed.success) {
+            prepared.transientBodies.forEach(releaseTempUrl);
+            return placed;
+        }
+        let combined = null;
+        const combinedStarted = performance.now();
+        try {
+            onProgress?.(55, "Combining clips and mixing audio…");
+            combined = await withPinnedUrls(prepared.pieces.concat([placed.url]), function () {
+                return concatAndMixAsync(api, prepared.pieces, placed.url, spec, onProgress);
+            });
+            if (combined.success) {
+                const validationStarted = performance.now();
+                const checks = await Promise.all([
+                    cut.validateVideoUrl(combined.url),
+                    cut.validateAudioUrl(combined.url),
+                ]);
+                if (metrics)
+                    metrics.combinedValidationMs = Math.round(performance.now() - validationStarted);
+                if (!checks[0].success || !checks[1].success) {
+                    const validationError = !checks[0].success
+                        ? checks[0].error || "Combined video stream could not be decoded."
+                        : checks[1].error || "Combined audio stream could not be decoded.";
+                    releaseTempUrl(combined.url);
+                    combined = { success: false, error: validationError };
+                } else if (metrics) {
+                    metrics.combinedValidated = true;
+                }
+            }
+            if (metrics) {
+                metrics.combinedMs = Math.round(performance.now() - combinedStarted);
+                metrics.combinedUsed = !!combined.success;
+            }
+            return combined;
+        } finally {
+            prepared.transientBodies.forEach(function (url) {
+                if (!combined || !combined.success || url !== combined.url)
+                    releaseTempUrl(url);
+            });
+            if (placed.url !== spec.url)
+                releaseTempUrl(placed.url);
+        }
+    }
+
     async function composeWorkAsync(clipsOrPlan, audioUrl, dotNetRef, jit) {
         cut._aborted = false;
         const onProgress = asProgress(dotNetRef);
@@ -2718,6 +2876,13 @@
             concatMs: 0,
             musicPrepareMs: 0,
             mixMs: 0,
+            combinedRequested: queryFlag("ffmpegCombined"),
+            combinedUsed: false,
+            combinedFellBack: false,
+            combinedFallbackReason: "",
+            combinedMs: 0,
+            combinedValidated: false,
+            combinedValidationMs: 0,
             totalMs: 0,
         };
         cut._lastComposeMetrics = metrics;
@@ -2780,21 +2945,42 @@
                     if (j && j.encodes && j.url)
                         cachedJoins[j.from] = true;
                 });
-                let picture;
+                let picture = null;
+                let mixed = null;
+                let pictureReusable = true;
                 const joinsDirty = plan.joins.some(function (j) { return j && j.encodes && !j.url; });
-                if (plan.reusePictureUrl && rebuiltScenes.length === 0 && !joinsDirty) {
-                    picture = { success: true, url: plan.reusePictureUrl };
-                } else {
-                    picture = await stitchScenesAsync(api, sceneUrls, plan.joins, onProgress, metrics);
-                    if (!picture.success) return picture;
-                    plan.joins.forEach(function (j) {
-                        if (j && j.encodes && j.url && !cachedJoins[j.from])
-                            rebuiltJoins.push(j.from);
-                    });
+                const combinedEligible = metrics.combinedRequested && !!spec
+                    && !plan.reusePictureUrl;
+                if (combinedEligible) {
+                    const onePass = await stitchAndMixScenesAsync(
+                        api, sceneUrls, plan.joins, audioUrl, onProgress, metrics);
+                    if (onePass.success) {
+                        mixed = onePass;
+                        pictureReusable = false;
+                    } else {
+                        metrics.combinedFellBack = true;
+                        metrics.combinedFallbackReason = onePass.error || "Combined pass failed.";
+                        console.warn("Cut: combined concat/mix failed; retrying two-pass pipeline",
+                            metrics.combinedFallbackReason);
+                        await resetFfmpegWorker(api);
+                        onProgress?.(40, "Combined pass failed — retrying proven export path…");
+                    }
                 }
 
-                const mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress, metrics);
+                if (!mixed) {
+                    if (plan.reusePictureUrl && rebuiltScenes.length === 0 && !joinsDirty) {
+                        picture = { success: true, url: plan.reusePictureUrl };
+                    } else {
+                        picture = await stitchScenesAsync(api, sceneUrls, plan.joins, onProgress, metrics);
+                        if (!picture.success) return picture;
+                    }
+                    mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress, metrics);
+                }
                 if (!mixed.success) return mixed;
+                plan.joins.forEach(function (j) {
+                    if (j && j.encodes && j.url && !cachedJoins[j.from])
+                        rebuiltJoins.push(j.from);
+                });
                 noteResult(mixed);
                 onProgress?.(100, "Ready");
                 if (plan.jit)
@@ -2802,7 +2988,8 @@
                 return {
                     success: true,
                     url: mixed.url,
-                    pictureUrl: picture.url,
+                    pictureUrl: picture ? picture.url : "",
+                    pictureReusable: pictureReusable,
                     stitched: true,
                     owned: true,
                     scenes: sceneUrls.map(function (s) { return { id: s.id, url: s.url }; }),

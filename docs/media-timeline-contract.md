@@ -98,4 +98,19 @@ The transition/stitch pool was then benchmarked with the scene pool fixed at 3. 
 
 Four stitch workers produced the best Mary19Test result. Stitch preparation was 50.4% faster than the one-worker stitch baseline and the complete compose was 56.5 seconds faster. The recommended Mary19Test experiment is therefore `?ffmpegWorkers=3&ffmpegStitchWorkers=4&ffmpegFresh=1`. Concat and mix timings vary between runs and remain the dominant dependent work; their measured differences must not be attributed to the stitch pool. One stitch worker remains the default and automatic recovery path.
 
+#### Combined concat and soundtrack experiment
+
+`ffmpegCombined=1` replaces the normal final picture concat plus subsequent soundtrack mix with one FFmpeg command when a soundtrack exists and no reusable picture is available. The command concatenates the ordered pieces, preserves native clip audio when present, mixes the placed soundtrack, adds intro black or a frozen final frame when required, and encodes the final movie once. Cut verifies that the output duration reaches the unconditional expected duration and separately requires the browser to decode both its video and audio streams. A command failure, short result, missing stream, or decode failure resets FFmpeg and retries the proven two-pass concat-then-mix path.
+
+The combined result cannot also be a reusable dry-picture cache: its audio already contains the soundtrack, and mapping a second dry output would require a second video encode. Cut therefore marks the picture as non-reusable so a later music-only edit performs a fresh composition rather than mixing the soundtrack twice. The experiment remains off by default while that remix-workflow tradeoff is evaluated.
+
+Mary19Test was benchmarked with scene pool 3, stitch pool 4, and forced-fresh inputs. The one-pass result had a browser-decoded video stream, a browser-decoded audio stream, and a duration of 121.888 seconds:
+
+| Final path | Final encode work | Total compose | Improvement | Fallback |
+| --- | ---: | ---: | ---: | :---: |
+| Picture concat, then mix | 2:53.0 + 1:09.0 | 5:59.7 | baseline | No |
+| Combined concat and mix | 0:59.1 | 2:50.6 | 52.6% | No |
+
+The combined pass saved 3:09.1. Its explicit benchmark URL is `?ffmpegWorkers=3&ffmpegStitchWorkers=4&ffmpegFresh=1&ffmpegCombined=1`. Browser stream validation added 0.109 seconds. The result supports continued use of the combined path for full renders, while the dry-picture cache tradeoff should be evaluated separately for workflows that repeatedly adjust only music settings.
+
 For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).

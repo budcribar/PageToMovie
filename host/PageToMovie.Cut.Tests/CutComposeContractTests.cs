@@ -175,6 +175,27 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Cut_js_has_verified_combined_concat_mix_with_two_pass_fallback()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var src = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var service = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut", "Services", "CutComposeService.cs"));
+
+        Assert.Contains("ffmpegCombined", src, StringComparison.Ordinal);
+        Assert.Contains("concatAndMixOnce", src, StringComparison.Ordinal);
+        Assert.Contains("filters.withVo", src, StringComparison.Ordinal);
+        Assert.Contains("filters.musicOnly", src, StringComparison.Ordinal);
+        Assert.Contains("Combined movie ended early", src, StringComparison.Ordinal);
+        Assert.Contains("cut.validateVideoUrl(combined.url)", src, StringComparison.Ordinal);
+        Assert.Contains("cut.validateAudioUrl(combined.url)", src, StringComparison.Ordinal);
+        Assert.Contains("combinedValidated", src, StringComparison.Ordinal);
+        Assert.Contains("combinedFellBack", src, StringComparison.Ordinal);
+        Assert.Contains("retrying proven export path", src, StringComparison.Ordinal);
+        Assert.Contains("pictureReusable: pictureReusable", src, StringComparison.Ordinal);
+        Assert.Contains("r.PictureReusable is false", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Home_binds_selected_title_id_to_the_timeline()
     {
         var home = Path.GetFullPath(Path.Combine(

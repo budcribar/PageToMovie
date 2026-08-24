@@ -27,6 +27,9 @@ public sealed class JsResult
     [JsonPropertyName("pictureUrl")]
     public string? PictureUrl { get; set; }
 
+    [JsonPropertyName("pictureReusable")]
+    public bool? PictureReusable { get; set; }
+
     [JsonPropertyName("stitched")]
     public bool Stitched { get; set; }
 
