@@ -2369,12 +2369,13 @@ public sealed class FilmJobService
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             var activeMp4Path = ResolveVideoEditSourcePath(projectId, videoDir, req.Scene, req.Clip);
 
-            if (!ProjectModelSelection.IsUsableModelId(req.Model))
+            var editModelId = (req.Model ?? "").Trim();
+            if (!ProjectModelSelection.IsUsableModelId(editModelId))
                 throw new InvalidOperationException(ProjectModelSelection.FormatMissingModel("video-edit"));
-            var entry = SupportedModelCatalog.Find(req.Model, ModelCapability.VideoEdit);
+            var entry = SupportedModelCatalog.Find(editModelId, ModelCapability.VideoEdit);
             if (entry is null || !entry.Enabled)
                 throw new InvalidOperationException(
-                    ProjectModelSelection.FormatUnknownModel("video-edit", req.Model!));
+                    ProjectModelSelection.FormatUnknownModel("video-edit", editModelId));
 
             // Eligibility + file_id/take lookup, both from the clip's own version list — never
             // trust the client-only UI gate. Duration cap is catalog-driven, never hardcoded.
