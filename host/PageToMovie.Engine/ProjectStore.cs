@@ -5840,7 +5840,7 @@ public sealed partial class ProjectStore
             if (cn > 0)
                 planned.Add(cn);
         }
-        return planned.Distinct().OrderBy(x => x).Where(cn => !mediaPresence.HasServerMp4(sn, cn)).ToList();
+        return planned.Distinct().Where(cn => !mediaPresence.HasServerMp4(sn, cn)).OrderBy(x => x).ToList();
     }
 
     private static double? ReadOptionalDuration(JsonElement s, string name)
@@ -6002,11 +6002,10 @@ public sealed partial class ProjectStore
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
         var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
         var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
-        var mediaPresence = new SceneMediaPresenceIndex(videoIndex);
         var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
 
         var (clips, duplicateClipNumbers) = await CollectSceneClipSummariesAsync(
-            projectId, sceneNumber, projectDir, sEl, videoIndex, mediaPresence, probeDurations, ct).ConfigureAwait(false);
+            projectId, sceneNumber, projectDir, sEl, videoIndex, probeDurations, ct).ConfigureAwait(false);
         clips = clips.OrderBy(c => c.ClipNumber).ToList();
 
         var planned = ReadOptionalDuration(sEl, "total_estimated_duration_seconds");
@@ -6080,10 +6079,10 @@ public sealed partial class ProjectStore
         string projectDir,
         JsonElement sEl,
         Dictionary<string, long> videoIndex,
-        SceneMediaPresenceIndex mediaPresence,
         bool probeDurations,
         CancellationToken ct)
     {
+        var mediaPresence = new SceneMediaPresenceIndex(videoIndex);
         var clips = new List<ClipSummary>();
         var duplicateClipNumbers = new List<int>();
         var seenClipNumbers = new HashSet<int>();
