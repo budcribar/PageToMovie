@@ -252,21 +252,7 @@ public partial class Scenes
             return;
         }
 
-        var needed = new HashSet<(int Scene, int Clip)>();
-        if (S.List._scenes is { Count: > 0 })
-        {
-            foreach (var s in S.List._scenes)
-            {
-                foreach (var cn in s.ClipsMissingServerVideo)
-                    needed.Add((s.SceneNumber, cn));
-            }
-        }
-        if (S.List._detail?.Clips is { Count: > 0 } clips)
-        {
-            var sn = S.List._detail.SceneNumber;
-            foreach (var c in clips.Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes)))
-                needed.Add((sn, c.ClipNumber));
-        }
+        var needed = CollectNeededLocalPlayableClips();
 
         foreach (var stale in _localVideoReady.Keys.Where(k => !needed.Contains(k)).ToList())
             _localVideoReady.Remove(stale);
@@ -282,6 +268,26 @@ public partial class Scenes
             var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
             _localVideoReady[(scene, clip)] = found && size >= ScenePlayGate.MinPlayableVideoBytes;
         }
+    }
+
+    private HashSet<(int Scene, int Clip)> CollectNeededLocalPlayableClips()
+    {
+        var needed = new HashSet<(int Scene, int Clip)>();
+        if (S.List._scenes is { Count: > 0 })
+        {
+            foreach (var s in S.List._scenes)
+            {
+                foreach (var cn in s.ClipsMissingServerVideo)
+                    needed.Add((s.SceneNumber, cn));
+            }
+        }
+        if (S.List._detail?.Clips is { Count: > 0 } clips)
+        {
+            var sn = S.List._detail.SceneNumber;
+            foreach (var c in clips.Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes)))
+                needed.Add((sn, c.ClipNumber));
+        }
+        return needed;
     }
 
     internal async Task PlaySceneCompositeAsync(int sn)
