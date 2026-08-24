@@ -646,6 +646,6 @@ public class SupportedModelCatalogTests
         Assert.Equal(entry.PresetVoices!.Select(v => v.Id), back.PresetVoices.Select(v => v.Id));
         var aurora = Assert.Single(back.PresetVoices, v => v.Id == "aurora");
         Assert.Equal("Aurora", aurora.DisplayName);
-        Assert.Equal(entry.PresetVoices.Single(v => v.Id == "aurora").Tags, aurora.Tags);
+        Assert.Equal(entry.PresetVoices!.Single(v => v.Id == "aurora").Tags, aurora.Tags);
     }
 }
