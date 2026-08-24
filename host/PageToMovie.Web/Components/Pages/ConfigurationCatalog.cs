@@ -147,34 +147,17 @@ public partial class Configuration
         }
 
 
-        /// <summary>If project has not chosen models yet, use capability defaultModelId from the catalog only.</summary>
+        /// <summary>
+        /// Optional slots may stay <c>none</c> until the user picks. Required slots stay
+        /// empty — do not seed <c>capabilities[].defaultModelId</c> into project Settings.
+        /// </summary>
         internal void ApplyCatalogDefaultsIfEmpty()
         {
-            if (string.IsNullOrWhiteSpace(S.Coverage._modelName))
-                S.Coverage._modelName = DefaultForCapability("video");
-            if (string.IsNullOrWhiteSpace(S.Coverage._imageModel))
-                S.Coverage._imageModel = DefaultForCapability("image");
-            if (string.IsNullOrWhiteSpace(S.Coverage._planningModel))
-                S.Coverage._planningModel = DefaultForCapability("chat");
-            if (string.IsNullOrWhiteSpace(S.Coverage._visionModel))
-                S.Coverage._visionModel = DefaultForCapability("vision");
-            if (string.IsNullOrWhiteSpace(S.Coverage._qualityModel))
-                S.Coverage._qualityModel = DefaultQualityModel();
             if (string.IsNullOrWhiteSpace(S.Coverage._audioModel))
                 S.Coverage._audioModel = "none";
             if (string.IsNullOrWhiteSpace(S.Coverage._voiceModel))
                 S.Coverage._voiceModel = "none";
         }
-
-
-        internal static string DefaultForCapability(string capabilityId) =>
-            SupportedModelCatalog.DefaultModelIdForCapability(capabilityId) ?? "";
-
-
-        internal static string DefaultQualityModel() =>
-            SupportedModelCatalog.DefaultModelIdForCapability("video-review")
-            ?? SupportedModelCatalog.DefaultModelIdForCapability("chat")
-            ?? "";
 
 
         internal static string ModelProviderId(SupportedModelDto m)

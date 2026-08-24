@@ -97,15 +97,7 @@ public partial class Configuration
                 S._cfg = dto?.Config;
                 _projectDir = dto?.ProjectDir ?? $"projects/{S._projectId}";
                 if (S._cfg is null) return;
-                var healed = ApplyLoadedConfig();
-                if (healed)
-                {
-                    try { await PersistProjectConfigAsync(); }
-                    catch (Exception persistEx)
-                    {
-                        S._error = persistEx.Message;
-                    }
-                }
+                ApplyLoadedConfig();
             }
             catch (Exception ex)
             {
@@ -125,12 +117,10 @@ public partial class Configuration
             }
         }
 
-        private bool ApplyLoadedConfig()
+        private void ApplyLoadedConfig()
         {
-            var healed = S._cfg is not null && ProjectCatalogModelHeal.Apply(S._cfg);
             ApplyUiAndModelFields();
             ApplyPipelineFields();
-            return healed;
         }
 
         private void ApplyUiAndModelFields()
@@ -274,9 +264,8 @@ public partial class Configuration
 
         internal Dictionary<string, object?> BuildVendorCostEstimatesSnapshot()
         {
-            var video = SupportedModelCatalog.ResolveOrDefault(S.Coverage._modelName, ModelCapability.Video);
-            var image = SupportedModelCatalog.Find(S.Coverage._imageModel, ModelCapability.Image)
-                        ?? SupportedModelCatalog.ResolveOrDefault(S.Coverage._imageModel, ModelCapability.Image);
+            var video = SupportedModelCatalog.Find(S.Coverage._modelName, ModelCapability.Video);
+            var image = SupportedModelCatalog.Find(S.Coverage._imageModel, ModelCapability.Image);
             var table = new Dictionary<string, object?>
             {
                 ["480p"] = S.Catalog.CatalogVideoRate("480p"),
@@ -302,12 +291,12 @@ public partial class Configuration
             {
                 ["currency"] = "USD",
                 ["source"] = "model_catalog",
-                ["video_model"] = video.Id,
-                ["video_provider"] = video.ProviderId,
-                ["image_model"] = image.Id,
-                ["image_provider"] = image.ProviderId,
+                ["video_model"] = video?.Id ?? "",
+                ["video_provider"] = video?.ProviderId ?? "",
+                ["image_model"] = image?.Id ?? "",
+                ["image_provider"] = image?.ProviderId ?? "",
                 ["video_output_per_sec"] = table,
-                ["image_output_quality"] = image.ImageCostPerImage ?? 0,
+                ["image_output_quality"] = image?.ImageCostPerImage ?? 0,
                 ["assume_avg_retries"] = assumeRetries,
                 ["assume_ref_image_per_clip"] = assumeRef,
                 ["notes"] =

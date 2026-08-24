@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -287,6 +288,17 @@ public class ClipVideoPromptBuilderTests
         Assert.Equal(
             ClipVideoPromptBuilder.VideoPromptHardCapChars,
             ClipVideoPromptBuilder.MaxPromptChars);
+    }
+
+    [Fact]
+    public void Build_unknown_video_model_fails_instead_of_using_catalog_default()
+    {
+        var clip = JsonDocument.Parse("""{"visual_prompt":"A quiet room."}""").RootElement;
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ClipVideoPromptBuilder.Build(clip, "proj", videoModel: "totally-unknown-video-model"));
+        Assert.Contains("video", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("totally-unknown-video-model", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("catalog default is not applied", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

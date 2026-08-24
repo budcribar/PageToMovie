@@ -5,9 +5,20 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 [Collection("catalog-serial")]
-public class ProjectCatalogModelHealTests
+public class ProjectCatalogModelHealTests : IDisposable
 {
     public ProjectCatalogModelHealTests()
+    {
+        // Real catalog — ReloadCatalog() follows PageToMovie_USE_FAKES where several
+        // retired ids are still enabled.
+        using var stream = typeof(SupportedModelCatalog).Assembly
+            .GetManifestResourceStream("PageToMovie.Core.config.models_catalog.json")
+            ?? throw new InvalidOperationException("Real models catalog resource missing.");
+        using var reader = new StreamReader(stream);
+        Assert.True(SupportedModelCatalog.TryLoadFromJson(reader.ReadToEnd()));
+    }
+
+    public void Dispose()
     {
         SupportedModelCatalog.ReloadCatalog();
     }
@@ -21,7 +32,7 @@ public class ProjectCatalogModelHealTests
     }
 
     [Fact]
-    public void Apply_rewrites_disabled_video_review_to_catalog_default()
+    public void Apply_throws_for_disabled_video_review_and_does_not_rewrite()
     {
         var cfg = Cfg(
             ("quality_model_name", "gemini-2.5-flash"),
@@ -34,36 +45,52 @@ public class ProjectCatalogModelHealTests
                 ["chat"] = "grok-4.6",
             }));
 
-        Assert.True(ProjectCatalogModelHeal.Apply(cfg));
+        var ex = Assert.Throws<InvalidOperationException>(() => ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Contains("video-review", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("gemini-2.5-flash", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("catalog default is not applied", ex.Message, StringComparison.OrdinalIgnoreCase);
 
-        var expected = SupportedModelCatalog.DefaultModelIdForCapability("video-review");
-        Assert.Equal("gemini-3.7-flash", expected);
-        Assert.Equal(expected, cfg["quality_model_name"].GetString());
-        Assert.Equal(expected, cfg["video_review_model_name"].GetString());
-        Assert.Equal(expected, cfg["model_selections"].GetProperty("video-review").GetString());
+        Assert.Equal("gemini-2.5-flash", cfg["quality_model_name"].GetString());
+        Assert.Equal("gemini-2.5-flash", cfg["video_review_model_name"].GetString());
+        Assert.Equal("gemini-2.5-flash", cfg["model_selections"].GetProperty("video-review").GetString());
         Assert.Equal("gemini", cfg["quality_provider"].GetString());
         Assert.Equal("grok-4.6", cfg["planning_model_name"].GetString());
-        Assert.Equal("grok-4.6", cfg["model_selections"].GetProperty("chat").GetString());
-        Assert.Equal(expected, ProjectModelSelection.RequireVideoReview(cfg));
+
+        var requireEx = Assert.Throws<InvalidOperationException>(
+            () => ProjectModelSelection.RequireVideoReview(cfg));
+        Assert.Contains("gemini-2.5-flash", requireEx.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
     [InlineData("grok-imagine-image-quality")]
     [InlineData("grok-imagine-image")]
-    public void Apply_rewrites_disabled_prior_image_ids_to_catalog_default(string stored)
+    public void Apply_throws_for_disabled_image_ids_and_does_not_rewrite(string stored)
     {
         var cfg = Cfg(
             ("image_model_name", stored),
             ("model_selections", new Dictionary<string, string> { ["image"] = stored }),
             ("model_name", "grok-imagine-video"));
 
-        Assert.True(ProjectCatalogModelHeal.Apply(cfg));
-        var expected = SupportedModelCatalog.DefaultModelIdForCapability("image");
-        Assert.Equal("grok-imagine-image-2.0", expected);
-        Assert.Equal(expected, cfg["image_model_name"].GetString());
-        Assert.Equal(expected, cfg["model_selections"].GetProperty("image").GetString());
+        var ex = Assert.Throws<InvalidOperationException>(() => ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Contains("image", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(stored, ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(stored, cfg["image_model_name"].GetString());
+        Assert.Equal(stored, cfg["model_selections"].GetProperty("image").GetString());
         Assert.Equal("grok-imagine-video", cfg["model_name"].GetString());
-        Assert.Equal(expected, ProjectModelSelection.RequireImage(cfg));
+
+        var requireEx = Assert.Throws<InvalidOperationException>(
+            () => ProjectModelSelection.RequireImage(cfg));
+        Assert.Contains(stored, requireEx.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Apply_throws_for_empty_required_video_slot()
+    {
+        var cfg = Cfg(("model_name", "  "));
+        var ex = Assert.Throws<InvalidOperationException>(() => ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Contains("video", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no model selected", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("  ", cfg["model_name"].GetString());
     }
 
     [Fact]
@@ -82,15 +109,35 @@ public class ProjectCatalogModelHealTests
     }
 
     [Fact]
-    public void Apply_does_not_invent_a_model_when_slot_is_empty()
+    public void Apply_does_not_invent_a_model_when_slot_is_absent()
     {
         var cfg = Cfg(("planning_model_name", "grok-4.6"));
         Assert.False(ProjectCatalogModelHeal.Apply(cfg));
         Assert.False(cfg.ContainsKey("quality_model_name"));
+        Assert.False(cfg.ContainsKey("image_model_name"));
     }
 
     [Fact]
-    public async Task GetConfigAsync_persists_healed_video_review_default()
+    public void Apply_leaves_optional_none_unset()
+    {
+        var cfg = Cfg(("audio_model_name", "none"), ("voice_model_name", ""));
+        Assert.False(ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Equal("none", cfg["audio_model_name"].GetString());
+        Assert.Equal("", cfg["voice_model_name"].GetString());
+    }
+
+    [Fact]
+    public void Apply_throws_for_unknown_optional_audio_and_does_not_write_none()
+    {
+        var cfg = Cfg(("audio_model_name", "not-a-real-audio-model"));
+        var ex = Assert.Throws<InvalidOperationException>(() => ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Contains("audio", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not-a-real-audio-model", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("not-a-real-audio-model", cfg["audio_model_name"].GetString());
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_does_not_persist_a_replacement_for_disabled_video_review()
     {
         var store = TestProjects.CreateStore("heal-vr-", out var root, "Demo");
         try
@@ -107,18 +154,21 @@ public class ProjectCatalogModelHealTests
                 """);
 
             var cfg = await store.GetConfigAsync("Demo");
-            var expected = SupportedModelCatalog.DefaultModelIdForCapability("video-review");
-            Assert.Equal("gemini-3.7-flash", expected);
-            Assert.Equal(expected, cfg["quality_model_name"].GetString());
-            Assert.Equal(expected, cfg["video_review_model_name"].GetString());
-            Assert.Equal(expected, cfg["model_selections"].GetProperty("video-review").GetString());
+            Assert.Equal("gemini-2.5-flash", cfg["quality_model_name"].GetString());
+            Assert.Equal("gemini-2.5-flash", cfg["video_review_model_name"].GetString());
+            Assert.Equal("gemini-2.5-flash", cfg["model_selections"].GetProperty("video-review").GetString());
             Assert.Equal("grok-4.6", cfg["planning_model_name"].GetString());
-            Assert.Equal(expected, ProjectModelSelection.RequireVideoReview(cfg));
+
+            var requireEx = Assert.Throws<InvalidOperationException>(
+                () => ProjectModelSelection.RequireVideoReview(cfg));
+            Assert.Contains("gemini-2.5-flash", requireEx.Message, StringComparison.OrdinalIgnoreCase);
 
             using var disk = JsonDocument.Parse(await File.ReadAllTextAsync(path));
-            Assert.Equal(expected, disk.RootElement.GetProperty("quality_model_name").GetString());
-            Assert.Equal(expected, disk.RootElement.GetProperty("video_review_model_name").GetString());
-            Assert.Equal(expected, disk.RootElement.GetProperty("model_selections").GetProperty("video-review").GetString());
+            Assert.Equal("gemini-2.5-flash", disk.RootElement.GetProperty("quality_model_name").GetString());
+            Assert.Equal("gemini-2.5-flash", disk.RootElement.GetProperty("video_review_model_name").GetString());
+            Assert.Equal(
+                "gemini-2.5-flash",
+                disk.RootElement.GetProperty("model_selections").GetProperty("video-review").GetString());
         }
         finally
         {
@@ -152,7 +202,7 @@ public class ProjectCatalogModelHealTests
     }
 
     [Fact]
-    public async Task ActivateAsync_heals_disabled_video_review_on_open()
+    public async Task ActivateAsync_does_not_rewrite_disabled_video_review()
     {
         var store = TestProjects.CreateStore("heal-open-", out var root, "Demo");
         try
@@ -163,9 +213,8 @@ public class ProjectCatalogModelHealTests
                 """);
 
             await store.ActivateAsync("Demo");
-            var expected = SupportedModelCatalog.DefaultModelIdForCapability("video-review");
             using var disk = JsonDocument.Parse(await File.ReadAllTextAsync(path));
-            Assert.Equal(expected, disk.RootElement.GetProperty("quality_model_name").GetString());
+            Assert.Equal("gemini-2.5-flash", disk.RootElement.GetProperty("quality_model_name").GetString());
         }
         finally
         {

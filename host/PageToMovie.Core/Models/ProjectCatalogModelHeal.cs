@@ -3,11 +3,12 @@ using System.Text.Json;
 namespace PageToMovie.Core.Models;
 
 /// <summary>
-/// Rewrite project config model slots whose stored id is disabled, deprecated, or missing
-/// from the enabled catalog. Required slots use
-/// <see cref="SupportedModelCatalog.DefaultModelIdForCapability"/>; optional audio/voice
-/// fall back to <c>none</c>. Does not remap an enabled stored id. Does not invent a model
-/// when the catalog has no default.
+/// Validate project config model slots against the enabled catalog. Never writes a
+/// replacement id — a missing or unknown id must fail fast so Settings stays the
+/// single source of truth. Required slots (video, image, chat, vision) fail when
+/// a stored value is empty/whitespace or not enabled in the catalog. Optional
+/// slots (audio, voice, video-review) may stay unset or <c>none</c>; an unknown
+/// non-empty id still fails.
 /// </summary>
 public static class ProjectCatalogModelHeal
 {
@@ -21,155 +22,95 @@ public static class ProjectCatalogModelHeal
     public const string VisionProviderKey = "vision_provider";
 
     /// <summary>
-    /// Heal <paramref name="cfg"/> in place. Returns true when any slot was rewritten.
+    /// Validate <paramref name="cfg"/> in place. Never rewrites slots (always
+    /// returns false). Throws <see cref="InvalidOperationException"/> when a
+    /// present required slot is empty/unknown or a present optional slot has an
+    /// unknown non-empty id.
     /// </summary>
     public static bool Apply(Dictionary<string, JsonElement> cfg)
     {
         if (cfg is null) return false;
-        var changed = false;
-        changed |= HealRequired(
+        ValidateRequired(
             cfg,
             ModelCapability.Video,
             "video",
-            [ProjectModelSelection.VideoConfigKey],
-            "video",
-            [VideoProviderKey]);
-        changed |= HealRequired(
+            [ProjectModelSelection.VideoConfigKey]);
+        ValidateRequired(
             cfg,
             ModelCapability.Image,
             "image",
-            [ProjectModelSelection.ImageConfigKey],
-            "image",
-            [ImageProviderKey, CharacterDesignProviderKey]);
-        changed |= HealRequired(
+            [ProjectModelSelection.ImageConfigKey]);
+        ValidateRequired(
             cfg,
             ModelCapability.Chat,
             "chat",
-            [ProjectModelSelection.PlanningConfigKey, ProjectModelSelection.ChatConfigKey],
-            "chat",
-            [PlanningProviderKey]);
-        changed |= HealRequired(
+            [ProjectModelSelection.PlanningConfigKey, ProjectModelSelection.ChatConfigKey]);
+        ValidateRequired(
             cfg,
             ModelCapability.Vision,
             "vision",
-            [ProjectModelSelection.VisionConfigKey],
-            "vision",
-            [VisionProviderKey]);
-        changed |= HealRequired(
+            [ProjectModelSelection.VisionConfigKey]);
+        ValidateOptional(
             cfg,
             ModelCapability.Chat,
             SupportedModelCatalog.VideoReviewCapabilityId,
-            [ProjectModelSelection.QualityConfigKey, VideoReviewModelKey],
-            SupportedModelCatalog.VideoReviewCapabilityId,
-            [QualityProviderKey]);
-        changed |= HealOptional(
+            [ProjectModelSelection.QualityConfigKey, VideoReviewModelKey]);
+        ValidateOptional(
             cfg,
             ModelCapability.Audio,
-            [ProjectModelSelection.AudioConfigKey],
-            "audio");
-        changed |= HealOptional(
+            "audio",
+            [ProjectModelSelection.AudioConfigKey]);
+        ValidateOptional(
             cfg,
             ModelCapability.Voice,
-            [ProjectModelSelection.VoiceConfigKey],
-            "voice");
-        return changed;
+            "voice",
+            [ProjectModelSelection.VoiceConfigKey]);
+        return false;
     }
 
-    private static bool HealRequired(
+    private static void ValidateRequired(
         Dictionary<string, JsonElement> cfg,
         ModelCapability capability,
-        string defaultCapabilityId,
-        string[] keys,
-        string selectionsKey,
-        string[] providerKeys)
+        string capabilityId,
+        string[] keys)
     {
+        if (!SlotPresent(cfg, keys)) return;
+
         var stored = ProjectModelSelection.TryGet(cfg, keys);
-        if (string.IsNullOrWhiteSpace(stored)) return false;
-        if (IsEnabledForCapability(stored, capability)) return false;
+        if (string.IsNullOrWhiteSpace(stored))
+            throw new InvalidOperationException(ProjectModelSelection.FormatMissingModel(capabilityId));
+        if (IsEnabledForCapability(stored, capability)) return;
 
-        var fallback = SupportedModelCatalog.DefaultModelIdForCapability(defaultCapabilityId);
-        if (string.IsNullOrWhiteSpace(fallback)) return false;
-        if (string.Equals(fallback, stored, StringComparison.OrdinalIgnoreCase)) return false;
-
-        WriteRequiredSlot(cfg, keys, fallback, selectionsKey, providerKeys, capability);
-        return true;
+        throw new InvalidOperationException(ProjectModelSelection.FormatUnknownModel(capabilityId, stored));
     }
 
-    private static bool HealOptional(
+    private static void ValidateOptional(
         Dictionary<string, JsonElement> cfg,
         ModelCapability capability,
-        string[] keys,
-        string selectionsKey)
+        string capabilityId,
+        string[] keys)
     {
-        var stored = ProjectModelSelection.TryGet(cfg, keys);
-        if (string.IsNullOrWhiteSpace(stored)) return false;
-        if (IsEnabledForCapability(stored, capability)) return false;
+        if (!SlotPresent(cfg, keys)) return;
 
-        WriteOptionalNone(cfg, keys, selectionsKey);
-        return true;
+        var stored = ProjectModelSelection.TryGet(cfg, keys);
+        if (string.IsNullOrWhiteSpace(stored)) return;
+        if (IsEnabledForCapability(stored, capability)) return;
+
+        throw new InvalidOperationException(ProjectModelSelection.FormatUnknownModel(capabilityId, stored));
+    }
+
+    private static bool SlotPresent(Dictionary<string, JsonElement> cfg, string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (cfg.ContainsKey(key)) return true;
+        }
+        return false;
     }
 
     private static bool IsEnabledForCapability(string id, ModelCapability capability)
     {
         var entry = SupportedModelCatalog.Find(id, capability);
         return entry is { Enabled: true, Deprecated: false };
-    }
-
-    private static void WriteRequiredSlot(
-        Dictionary<string, JsonElement> cfg,
-        string[] keys,
-        string modelId,
-        string selectionsKey,
-        string[] providerKeys,
-        ModelCapability capability)
-    {
-        SetString(cfg, keys[0], modelId);
-        for (var i = 1; i < keys.Length; i++)
-        {
-            if (cfg.ContainsKey(keys[i]))
-                SetString(cfg, keys[i], modelId);
-        }
-
-        var providerId = SupportedModelCatalog.ProviderIdFor(modelId, capability);
-        foreach (var providerKey in providerKeys.Where(providerKey =>
-                     cfg.ContainsKey(providerKey) || string.Equals(providerKey, QualityProviderKey, StringComparison.OrdinalIgnoreCase)))
-        {
-            SetString(cfg, providerKey, providerId);
-        }
-
-        SetSelection(cfg, selectionsKey, modelId);
-    }
-
-    private static void WriteOptionalNone(
-        Dictionary<string, JsonElement> cfg,
-        string[] keys,
-        string selectionsKey)
-    {
-        foreach (var key in keys.Where(cfg.ContainsKey))
-        {
-            SetString(cfg, key, "none");
-        }
-
-        if (cfg.ContainsKey(ModelSelectionsKey))
-            SetSelection(cfg, selectionsKey, "none");
-    }
-
-    private static void SetString(Dictionary<string, JsonElement> cfg, string key, string value) =>
-        cfg[key] = JsonSerializer.SerializeToElement(value);
-
-    private static void SetSelection(Dictionary<string, JsonElement> cfg, string capKey, string modelId)
-    {
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (cfg.TryGetValue(ModelSelectionsKey, out var el) && el.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var p in el.EnumerateObject())
-            {
-                if (p.Value.ValueKind == JsonValueKind.String)
-                    map[p.Name] = p.Value.GetString() ?? "";
-            }
-        }
-
-        map[capKey] = modelId;
-        cfg[ModelSelectionsKey] = JsonSerializer.SerializeToElement(map);
     }
 }

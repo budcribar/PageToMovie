@@ -346,7 +346,10 @@ public sealed class StartVideoEditRequest
     public int Scene { get; set; }
     public int Clip { get; set; }
     public string Prompt { get; set; } = "";
-    /// <summary>Catalog model id override (ModelCapability.VideoEdit). Empty → project/catalog default.</summary>
+    /// <summary>
+    /// Catalog VideoEdit model id. Empty or unknown fails — do not fall back to
+    /// <c>capabilities[].defaultModelId</c>.
+    /// </summary>
     public string? Model { get; set; }
 }
 
