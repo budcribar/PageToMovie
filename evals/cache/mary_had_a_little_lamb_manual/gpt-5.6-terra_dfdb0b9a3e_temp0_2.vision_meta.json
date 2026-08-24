@@ -1,0 +1,9 @@
+{
+  "schema_version": "vision_meta.v1",
+  "visual_medium": "illustrated_picture_book",
+  "render_style_lock": "STYLE LOCK: Hand-painted children\u0027s picture-book illustration with soft paper texture, warm pastoral watercolor colors, gentle expressive faces, and the same stylized illustrated treatment for every human, animal, prop, and location.",
+  "performance_lock": null,
+  "decided_by": "adaptation",
+  "decided_at": null,
+  "notes": "The source is a nursery rhyme centered on a gentle child-and-animal bond, best expressed as a cohesive painted storybook world."
+}

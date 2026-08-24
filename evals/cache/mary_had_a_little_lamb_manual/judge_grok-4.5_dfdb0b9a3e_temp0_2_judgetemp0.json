@@ -1,0 +1,25 @@
+{
+  "evaluations": [
+    {
+      "screenplayId": "Screenplay A",
+      "adaptationFidelity": 8,
+      "characterDisambiguation": 9,
+      "aiVideoDirectibility": 9,
+      "dramaticPacing": 7.5,
+      "dialogueAuthenticity": 7.5,
+      "soundDesignMusic": 9,
+      "overallQualitativeScore": 8.33,
+      "productionReady": true,
+      "disqualifyingIssues": [],
+      "rationale": "Faithful nursery-rhyme spine with essentially all source beats retained in order and theme intact; naming ELI/CLARA and giving Teacher/Eli short unquoted lines is light closed-cast connective tissue, not major invented plot, so fidelity stays high rather than severe-penalty territory. Cast locks are excellent and restated on re-entry (Mary\u2019s braids/blue pinafore/bonnet; lamb\u2019s snowy fleece/red ribbon; Teacher\u2019s gray dress/white collar; distinct pupil looks). Action is almost entirely single-clip observable micro-beats with proper grounding after every heading, ideal for 5\u201310s AI clips. Pacing is slightly over-fragmented: two consecutive EXT. SCHOOLHOUSE YARD - AFTERNOON headings and a near-reprise lane beat pad a very short source. Dialogue VO tracks the verse well, but invented pupil banter and Teacher\u2019s ejection line exceed the summarized-exchange cap. Sound/music parentheticals are concrete, present in every scene, and escalate appropriately at the reunion and moral close. Medium lock and vision sidecar are correct for a children\u2019s rhyme. No deal-breakers.",
+      "promptImprovementSuggestion": "Tighten the summarized-exchange rule: when the source attributes speech or a reaction to an unnamed group without quoting individuals, allow at most one named supporting token a single book-close line and put all other group reaction in Action only\u2014forbid distributing invented banter across multiple newly named speakers."
+    }
+  ],
+  "forcedRanking": [
+    "Screenplay A"
+  ],
+  "judgeSummaryNotes": "Strongest: Screenplay A because it is the sole candidate and delivers a clip-ready, medium-locked picture-book adaptation with consistent cast looks, full diegetic sound beds, and near-complete verse coverage. Weakest: Screenplay A because minor invented pupil/teacher dialogue and a duplicated afternoon schoolyard heading are the clearest fixable drains on book-only speech discipline and scene economy.",
+  "isMock": false,
+  "rubricVersion": "4-prompt-improvement-with-actual-prompt-text",
+  "screenplaysHash": "29A644772A386298C02465B276AE254A77A2B59DDF8F32D8978F78178D61B378"
+}

@@ -13846,6 +13846,68 @@
         }
       },
       "SelfBiasNotes": []
+    },
+    {
+      "RunId": "418759b0ccc445a68185d02bdd3692ae",
+      "Timestamp": "2026-08-03 03:38:50 UTC",
+      "BookSlug": "mary_had_a_little_lamb_manual",
+      "BookTitle": "MaryHadALittleLamb",
+      "BookPath": "books/MaryHadALittleLamb.txt",
+      "IsMockRun": false,
+      "ReasoningEffort": "",
+      "SamplingTemperature": 0.2,
+      "JudgeTemperature": 0,
+      "PromptVersion": "dfdb0b9a3e",
+      "PromptVersionInferred": false,
+      "ModelScores": [
+        {
+          "ModelId": "gpt-5.6-terra",
+          "AnonymousLabel": "",
+          "CompositeScore": 90,
+          "IsGenerationFallback": false,
+          "GenerationFallbackReason": null,
+          "BordaPoints": 1,
+          "AvgJudgeRank": 1,
+          "SyntaxAudit": {
+            "OverallSyntaxScore": 100,
+            "FormatComplianceScore": 100,
+            "SceneBudgetScore": 100,
+            "DialoguePacingScore": 100,
+            "CharacterDisambiguationScore": 100,
+            "MusicSpecScore": 100,
+            "TotalSceneHeadings": 8,
+            "TotalDialogueBlocks": 20,
+            "AvgWordsPerDialogue": 7.9,
+            "MaxWordsInSingleDialogue": 13,
+            "LongMonologueCount": 0,
+            "GenericNumberedSpeakerCount": 0,
+            "CharacterNamesFound": [
+              "NARRATOR",
+              "ELI",
+              "TEACHER",
+              "CLARA"
+            ],
+            "AgeDisambiguatedCharacters": [],
+            "DiagnosticWarnings": [
+              "Detected 1 descriptive instrumental music/sound cue(s)."
+            ]
+          },
+          "AvgAdaptationFidelity": 8,
+          "AvgCharacterDisambiguation": 9,
+          "AvgAiVideoDirectibility": 9,
+          "AvgDramaticPacing": 7.5,
+          "AvgDialogueAuthenticity": 7.5,
+          "AvgSoundDesignMusic": 9,
+          "AvgOverallQualitative": 8.3,
+          "DisqualifyingFlags": []
+        }
+      ],
+      "JudgeMatrix": {
+        "grok-4.5": {
+          "gpt-5.6-terra": 8.33
+        }
+      },
+      "SelfBiasNotes": []
     }
   ]
 }

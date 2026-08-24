@@ -1,0 +1,72 @@
+{
+  "BookPath": "books/MaryHadALittleLamb.txt",
+  "Timestamp": "2026-08-03 03:38:50 UTC",
+  "IsMockRun": false,
+  "Leaderboard": [
+    {
+      "ModelId": "gpt-5.6-terra",
+      "AnonymousLabel": "",
+      "CompositeScore": 90,
+      "IsGenerationFallback": false,
+      "GenerationFallbackReason": null,
+      "BordaPoints": 1,
+      "AvgJudgeRank": 1,
+      "SyntaxAudit": {
+        "OverallSyntaxScore": 100,
+        "FormatComplianceScore": 100,
+        "SceneBudgetScore": 100,
+        "DialoguePacingScore": 100,
+        "CharacterDisambiguationScore": 100,
+        "MusicSpecScore": 100,
+        "TotalSceneHeadings": 8,
+        "TotalDialogueBlocks": 20,
+        "AvgWordsPerDialogue": 7.9,
+        "MaxWordsInSingleDialogue": 13,
+        "LongMonologueCount": 0,
+        "GenericNumberedSpeakerCount": 0,
+        "CharacterNamesFound": [
+          "NARRATOR",
+          "ELI",
+          "TEACHER",
+          "CLARA"
+        ],
+        "AgeDisambiguatedCharacters": [],
+        "DiagnosticWarnings": [
+          "Detected 1 descriptive instrumental music/sound cue(s)."
+        ]
+      },
+      "AvgAdaptationFidelity": 8,
+      "AvgCharacterDisambiguation": 9,
+      "AvgAiVideoDirectibility": 9,
+      "AvgDramaticPacing": 7.5,
+      "AvgDialogueAuthenticity": 7.5,
+      "AvgSoundDesignMusic": 9,
+      "AvgOverallQualitative": 8.3,
+      "DisqualifyingFlags": []
+    }
+  ],
+  "JudgeMatrix": {
+    "grok-4.5": {
+      "gpt-5.6-terra": 8.33
+    }
+  },
+  "JudgeRankMatrix": {
+    "grok-4.5": {
+      "gpt-5.6-terra": 1
+    }
+  },
+  "SelfBiasNotes": [],
+  "JudgeRationale": {
+    "grok-4.5": {
+      "gpt-5.6-terra": "Faithful nursery-rhyme spine with essentially all source beats retained in order and theme intact; naming ELI/CLARA and giving Teacher/Eli short unquoted lines is light closed-cast connective tissue, not major invented plot, so fidelity stays high rather than severe-penalty territory. Cast locks are excellent and restated on re-entry (Mary\u2019s braids/blue pinafore/bonnet; lamb\u2019s snowy fleece/red ribbon; Teacher\u2019s gray dress/white collar; distinct pupil looks). Action is almost entirely single-clip observable micro-beats with proper grounding after every heading, ideal for 5\u201310s AI clips. Pacing is slightly over-fragmented: two consecutive EXT. SCHOOLHOUSE YARD - AFTERNOON headings and a near-reprise lane beat pad a very short source. Dialogue VO tracks the verse well, but invented pupil banter and Teacher\u2019s ejection line exceed the summarized-exchange cap. Sound/music parentheticals are concrete, present in every scene, and escalate appropriately at the reunion and moral close. Medium lock and vision sidecar are correct for a children\u2019s rhyme. No deal-breakers."
+    }
+  },
+  "JudgeSummaries": {
+    "grok-4.5": "Strongest: Screenplay A because it is the sole candidate and delivers a clip-ready, medium-locked picture-book adaptation with consistent cast looks, full diegetic sound beds, and near-complete verse coverage. Weakest: Screenplay A because minor invented pupil/teacher dialogue and a duplicated afternoon schoolyard heading are the clearest fixable drains on book-only speech discipline and scene economy."
+  },
+  "JudgePromptSuggestions": {
+    "grok-4.5": {
+      "gpt-5.6-terra": "Tighten the summarized-exchange rule: when the source attributes speech or a reaction to an unnamed group without quoting individuals, allow at most one named supporting token a single book-close line and put all other group reaction in Action only\u2014forbid distributing invented banter across multiple newly named speakers."
+    }
+  }
+}
