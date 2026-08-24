@@ -37,6 +37,8 @@ Add `&ffmpegCombined=1` to use one final concat-and-soundtrack encode instead of
 
 For the fastest full Mary19Test render, add `&ffmpegFlat=1&ffmpegClipWorkers=4` alongside the combined flag. This prepares clips globally, renders only scene-boundary transitions, and removes intermediate scene concat encodes. The measured forced-fresh result was 1:38.8; three clip workers took 1:43.3 with lower peak memory. Unsupported inline-card layouts or any fast-path failure use the proven scene pipeline.
 
+Add `&ffmpegCopyFinal=1` to copy the normalized final video stream while encoding only the soundtrack mix. Intro black and a soundtrack tail are rendered as short boundary clips so the full picture does not need another H.264 encode. Duration and browser video/audio validation remain mandatory; a failed command or decode automatically retries the proven full-encode combined pass. Two independent forced-fresh Mary19Test exports measured 51.6 and 51.2 seconds.
+
 ## Take SSoT
 
 - Each take is `scene_SS_clip_CC_take_NN.mp4` (optional `.clip.json` sidecar).

@@ -127,4 +127,19 @@ Mary19Test forced-fresh measurements used four transition workers:
 
 The maximum-speed Mary19Test URL is `?ffmpegClipWorkers=4&ffmpegStitchWorkers=4&ffmpegFresh=1&ffmpegCombined=1&ffmpegFlat=1`. Three clip workers are recommended when saving memory is more important than 4.5 seconds. Both flattened results had browser-decodable video and audio, completed without fallback, and produced 121.879-second output versus 121.888 seconds from the scene path.
 
+#### Stream-copy final-video experiment
+
+`ffmpegCopyFinal=1` keeps the normalized H.264 stream from the prepared pieces and encodes only the final audio mix. When the timeline begins with black or the soundtrack outlasts the picture, Cut first renders those short boundary holds with the same H.264/AAC contract and includes them in the ordered concat. The complete result still must reach the expected duration and browser-decode both video and audio. A stream-copy command failure retries the existing full-encode combined command immediately; a browser validation failure resets FFmpeg and repeats the combined pass with stream-copy disabled.
+
+The under-60-second Mary19Test benchmark URL is `?ffmpegClipWorkers=4&ffmpegStitchWorkers=4&ffmpegFresh=1&ffmpegCombined=1&ffmpegFlat=1&ffmpegCopyFinal=1`. Record `finalCopyUsed`, `finalCopyFellBack`, `finalCopyFallbackReason`, `combinedMs`, and `totalMs` from `PageToMovieCut.getLastComposeMetrics()` for every run.
+
+Mary19Test was exported twice from independent page loads on August 24, 2026. Both forced-fresh results browser-decoded video and audio, used stream-copy without fallback, and stayed below the 60-second goal:
+
+| Run | Clip preparation | Transition preparation | Final copy/mix + validation | Total compose | Fallback |
+| ---: | ---: | ---: | ---: | ---: | :---: |
+| 1 | 30.837s | 8.442s | 10.937s | 51.622s | No |
+| 2 | 30.690s | 7.928s | 11.185s | **51.174s** | No |
+
+Compared with the previous 1:38.8 flattened combined render, the best repeat saved 47.6 seconds (48.2%). The final dependent pass fell from roughly 58.7 seconds to about 11.1 seconds; clip preparation is now the largest measured phase.
+
 For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).

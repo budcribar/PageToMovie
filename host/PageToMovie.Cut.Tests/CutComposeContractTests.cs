@@ -191,6 +191,12 @@ public class CutComposeContractTests
         Assert.Contains("combinedValidated", src, StringComparison.Ordinal);
         Assert.Contains("combinedFellBack", src, StringComparison.Ordinal);
         Assert.Contains("retrying proven export path", src, StringComparison.Ordinal);
+        Assert.Contains("ffmpegCopyFinal", src, StringComparison.Ordinal);
+        Assert.Contains("renderBoundaryHoldAsync", src, StringComparison.Ordinal);
+        Assert.Contains("copyOutput.push.apply(copyOutput, audioRemuxArgs())", src, StringComparison.Ordinal);
+        Assert.Contains("streamCopyFailed", src, StringComparison.Ordinal);
+        Assert.Contains("finalCopyFellBack", src, StringComparison.Ordinal);
+        Assert.Contains("Fast final pass failed", src, StringComparison.Ordinal);
         Assert.Contains("pictureReusable: pictureReusable", src, StringComparison.Ordinal);
         Assert.Contains("r.PictureReusable is false", service, StringComparison.Ordinal);
     }

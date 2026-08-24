@@ -129,6 +129,7 @@
             forceFresh: queryFlag("ffmpegFresh"),
             combinedConcatMix: queryFlag("ffmpegCombined"),
             flatClipPipeline: queryFlag("ffmpegFlat"),
+            streamCopyFinal: queryFlag("ffmpegCopyFinal"),
         };
     };
 
@@ -2647,11 +2648,53 @@
         }
     }
 
-    async function concatAndMixOnce(api, ffmpeg, urls, musicUrl, spec, seq) {
+    async function writeConcatManifestAsync(ffmpeg, listName, names, durations) {
+        const list = [];
+        for (let i = 0; i < names.length; i++) {
+            list.push("file '" + names[i] + "'");
+            if (durations[i] > 0.001)
+                list.push("duration " + durations[i]);
+        }
+        await writeMemfs(ffmpeg, listName, list.join("\n"));
+    }
+
+    async function renderBoundaryHoldAsync(ffmpeg, sourceName, sourceSec, outName, holdSec, black) {
+        const sampleStart = black ? 0 : Math.max(0, sourceSec - 0.05);
+        let video = "[0:v]trim=start=" + String(sampleStart) + ":duration=0.05"
+            + ",setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=" + String(holdSec);
+        if (black)
+            video += ",drawbox=color=black:t=fill";
+        video += ",format=yuv420p[v]";
+        const args = [
+            "-hide_banner", "-y", "-i", sourceName,
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+            "-filter_complex", video,
+            "-map", "[v]", "-map", "1:a:0", "-t", String(holdSec),
+        ];
+        args.push.apply(args, h264EncodeArgs("aac"));
+        args.push(outName);
+        await execChecked(ffmpeg, args, black ? "Intro hold failed" : "Final frame hold failed");
+    }
+
+    async function runConcatMixCommandAsync(ffmpeg, input, filters, output, outName) {
+        try {
+            await execChecked(ffmpeg, input.concat(
+                ["-filter_complex", filters.withVo], output, [outName]));
+        } catch (noNativeAudio) {
+            console.debug("Cut: one-pass concat has no native audio", noNativeAudio);
+            await deleteMemfs(ffmpeg, outName);
+            await execChecked(ffmpeg, input.concat(
+                ["-filter_complex", filters.musicOnly], output, [outName]));
+        }
+    }
+
+    async function concatAndMixOnce(api, ffmpeg, urls, musicUrl, spec, seq, allowStreamCopy) {
         const names = [];
+        const boundaryNames = [];
         const listName = "cut_onepass_" + seq + ".txt";
         const musicName = "cut_onepass_music_" + seq + ".m4a";
         const outName = "cut_onepass_out_" + seq + ".mp4";
+        let streamCopyFallbackReason = "";
         try {
             let pictureSec = 0;
             const durations = [];
@@ -2664,21 +2707,77 @@
                 durations.push(seconds);
                 pictureSec += seconds;
             }
-            const list = [];
-            for (let i = 0; i < names.length; i++) {
-                list.push("file '" + names[i] + "'");
-                if (durations[i] > 0.001)
-                    list.push("duration " + durations[i]);
-            }
-            await writeMemfs(ffmpeg, listName, list.join("\n"));
             await writeMemfs(ffmpeg, musicName, await fetchInputBytes(api, musicUrl, "Soundtrack"));
             const musicProbe = await api._probeDurationMemfsAsync(musicName);
             const musicSec = musicProbe.success && Number(musicProbe.seconds) > 0
                 ? Number(musicProbe.seconds) : 0;
+            const sourceNames = names.slice();
+            const sourceDurations = durations.slice();
             const introBlack = spec && spec.introBlack > 0 ? spec.introBlack : 0;
             const pictureEndSec = pictureSec + introBlack;
             const outputSec = Math.max(pictureEndSec, musicSec);
             const freezeSec = pictureSec > 0.05 ? Math.max(0, musicSec - pictureEndSec) : 0;
+            const input = [
+                "-hide_banner", "-y", "-fflags", "+genpts",
+                "-f", "concat", "-safe", "0", "-i", listName,
+                "-i", musicName,
+            ];
+
+            if (allowStreamCopy && names.length > 0) {
+                try {
+                    if (introBlack > 0.05) {
+                        const introName = "cut_onepass_intro_" + seq + ".mp4";
+                        await renderBoundaryHoldAsync(
+                            ffmpeg, names[0], durations[0], introName, introBlack, true);
+                        boundaryNames.push(introName);
+                        names.unshift(introName);
+                        durations.unshift(introBlack);
+                    }
+                    if (freezeSec > 0.05) {
+                        const lastIndex = names.length - 1;
+                        const freezeName = "cut_onepass_freeze_" + seq + ".mp4";
+                        await renderBoundaryHoldAsync(
+                            ffmpeg, names[lastIndex], durations[lastIndex], freezeName, freezeSec, false);
+                        boundaryNames.push(freezeName);
+                        names.push(freezeName);
+                        durations.push(freezeSec);
+                    }
+                    await writeConcatManifestAsync(ffmpeg, listName, names, durations);
+                    const copySpec = Object.assign({}, spec || {}, {
+                        introBlack: 0,
+                        filter: "",
+                        fallbackFilter: "",
+                    });
+                    const copyOutput = ["-map", "0:v:0", "-map", "[a]"];
+                    if (outputSec > 0.05)
+                        copyOutput.push("-t", String(outputSec));
+                    copyOutput.push.apply(copyOutput, audioRemuxArgs());
+                    await runConcatMixCommandAsync(
+                        ffmpeg, input, mixFiltersOf(copySpec), copyOutput, outName);
+                    const copiedProbe = await api._probeDurationMemfsAsync(outName);
+                    const copiedSec = copiedProbe.success && Number(copiedProbe.seconds) > 0
+                        ? Number(copiedProbe.seconds) : 0;
+                    if (outputSec > 0.1 && copiedSec + 0.25 < outputSec)
+                        throw new Error("Stream-copy movie ended early.");
+                    const copied = await ffmpeg.readFile(outName);
+                    const copiedUrl = URL.createObjectURL(new Blob([copied.buffer], { type: "video/mp4" }));
+                    noteTemp(copiedUrl);
+                    return {
+                        success: true, url: copiedUrl, pictureSeconds: pictureSec,
+                        outputSeconds: outputSec, streamCopied: true,
+                    };
+                } catch (copyErr) {
+                    streamCopyFallbackReason = messageOf(copyErr, "Final video stream-copy failed.");
+                    console.warn("Cut: final video stream-copy failed; encoding proven path", copyErr);
+                    await deleteMemfs(ffmpeg, outName);
+                    for (const name of boundaryNames)
+                        await deleteMemfs(ffmpeg, name);
+                    names.splice(0, names.length, ...sourceNames);
+                    durations.splice(0, durations.length, ...sourceDurations);
+                }
+            }
+
+            await writeConcatManifestAsync(ffmpeg, listName, names, durations);
             let videoFilter = "[0:v]setpts=PTS-STARTPTS";
             if (introBlack > 0.05 || freezeSec > 0.05) {
                 videoFilter += ",tpad=start_mode=add:start_duration=" + String(introBlack)
@@ -2686,27 +2785,14 @@
             }
             videoFilter += ",format=yuv420p[v]";
             const filters = mixFiltersOf(spec);
-            const input = [
-                "-hide_banner", "-y", "-fflags", "+genpts",
-                "-f", "concat", "-safe", "0", "-i", listName,
-                "-i", musicName,
-            ];
             const output = ["-map", "[v]", "-map", "[a]"];
             if (outputSec > 0.05)
                 output.push("-t", String(outputSec));
             output.push.apply(output, h264EncodeArgs("aac"));
-            output.push(outName);
-            try {
-                await execChecked(ffmpeg, input.concat(
-                    ["-filter_complex", filters.withVo + ";" + videoFilter], output));
-            } catch (noNativeAudio) {
-                console.debug("Cut: one-pass concat has no native audio", noNativeAudio);
-                try { await ffmpeg.deleteFile(outName); } catch (delErr) {
-                    console.debug("Cut: one-pass cleanup", delErr);
-                }
-                await execChecked(ffmpeg, input.concat(
-                    ["-filter_complex", filters.musicOnly + ";" + videoFilter], output));
-            }
+            await runConcatMixCommandAsync(ffmpeg, input, {
+                withVo: filters.withVo + ";" + videoFilter,
+                musicOnly: filters.musicOnly + ";" + videoFilter,
+            }, output, outName);
             const outProbe = await api._probeDurationMemfsAsync(outName);
             const actualSec = outProbe.success && Number(outProbe.seconds) > 0
                 ? Number(outProbe.seconds) : 0;
@@ -2715,7 +2801,11 @@
             const out = await ffmpeg.readFile(outName);
             const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
             noteTemp(url);
-            return { success: true, url: url, pictureSeconds: pictureSec, outputSeconds: outputSec };
+            return {
+                success: true, url: url, pictureSeconds: pictureSec, outputSeconds: outputSec,
+                streamCopyFellBack: !!streamCopyFallbackReason,
+                streamCopyFallbackReason: streamCopyFallbackReason,
+            };
         } finally {
             for (const name of names)
                 await deleteMemfs(ffmpeg, name);
@@ -2725,7 +2815,7 @@
         }
     }
 
-    async function concatAndMixAsync(api, urls, musicUrl, spec, onProgress) {
+    async function concatAndMixAsync(api, urls, musicUrl, spec, onProgress, allowStreamCopy) {
         return api._runExclusiveAsync(async function () {
             await resetFfmpegWorker(api);
             let load = await api.ensureLoadedAsync(onProgress);
@@ -2733,7 +2823,7 @@
                 return { success: false, error: load.error };
             const seq = ++cut._trimSeq;
             try {
-                return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq);
+                return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq, allowStreamCopy);
             } catch (err) {
                 if (!isFsError(err))
                     return { success: false, error: messageOf(err, "Combined concat and mix failed.") };
@@ -2742,7 +2832,7 @@
                 if (!load.success)
                     return { success: false, error: load.error || fsUserMessage() };
                 try {
-                    return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq);
+                    return await concatAndMixOnce(api, api._ffmpeg, urls, musicUrl, spec, seq, allowStreamCopy);
                 } catch (retry) {
                     return { success: false, error: messageOf(retry, fsUserMessage()) };
                 }
@@ -2900,6 +2990,7 @@
 
     async function validateCombinedResultAsync(combined, metrics) {
         if (!combined || !combined.success) return combined;
+        const streamCopied = !!combined.streamCopied;
         const validationStarted = performance.now();
         const checks = await Promise.all([
             cut.validateVideoUrl(combined.url),
@@ -2915,7 +3006,31 @@
             ? checks[0].error || "Combined video stream could not be decoded."
             : checks[1].error || "Combined audio stream could not be decoded.";
         releaseTempUrl(combined.url);
-        return { success: false, error: validationError };
+        return { success: false, error: validationError, streamCopyFailed: streamCopied };
+    }
+
+    async function concatMixAndValidateAsync(api, pieces, musicUrl, spec, onProgress, metrics) {
+        const tryStreamCopy = queryFlag("ffmpegCopyFinal");
+        let combined = await concatAndMixAsync(
+            api, pieces, musicUrl, spec, onProgress, tryStreamCopy);
+        if (metrics && combined && combined.streamCopyFellBack) {
+            metrics.finalCopyFellBack = true;
+            metrics.finalCopyFallbackReason = combined.streamCopyFallbackReason || "Stream-copy command failed.";
+        }
+        combined = await validateCombinedResultAsync(combined, metrics);
+        if (!combined.success && combined.streamCopyFailed) {
+            if (metrics) {
+                metrics.finalCopyFellBack = true;
+                metrics.finalCopyFallbackReason = combined.error || "Stream-copy validation failed.";
+            }
+            console.warn("Cut: copied final video failed validation; encoding proven path",
+                combined.error || "validation failed");
+            onProgress?.(55, "Fast final pass failed — retrying proven export path…");
+            combined = await concatAndMixAsync(api, pieces, musicUrl, spec, onProgress, false);
+            combined = await validateCombinedResultAsync(combined, metrics);
+        }
+        if (metrics) metrics.finalCopyUsed = !!(combined.success && combined.streamCopied);
+        return combined;
     }
 
     async function stitchAndMixScenesAsync(api, sceneUrls, joins, audio, onProgress, metrics) {
@@ -2936,9 +3051,9 @@
         try {
             onProgress?.(55, "Combining clips and mixing audio…");
             combined = await withPinnedUrls(prepared.pieces.concat([placed.url]), function () {
-                return concatAndMixAsync(api, prepared.pieces, placed.url, spec, onProgress);
+                return concatMixAndValidateAsync(
+                    api, prepared.pieces, placed.url, spec, onProgress, metrics);
             });
-            combined = await validateCombinedResultAsync(combined, metrics);
             if (metrics) {
                 metrics.combinedMs = Math.round(performance.now() - combinedStarted);
                 metrics.combinedUsed = !!combined.success;
@@ -2986,9 +3101,9 @@
         try {
             onProgress?.(55, "Combining prepared clips and mixing audio…");
             combined = await withPinnedUrls(prepared.pieces.concat([placed.url]), function () {
-                return concatAndMixAsync(api, prepared.pieces, placed.url, spec, onProgress);
+                return concatMixAndValidateAsync(
+                    api, prepared.pieces, placed.url, spec, onProgress, metrics);
             });
-            combined = await validateCombinedResultAsync(combined, metrics);
             metrics.combinedMs = Math.round(performance.now() - combinedStarted);
             metrics.combinedUsed = !!combined.success;
             metrics.flatUsed = !!combined.success;
@@ -3035,6 +3150,10 @@
             combinedMs: 0,
             combinedValidated: false,
             combinedValidationMs: 0,
+            finalCopyRequested: queryFlag("ffmpegCopyFinal"),
+            finalCopyUsed: false,
+            finalCopyFellBack: false,
+            finalCopyFallbackReason: "",
             flatRequested: queryFlag("ffmpegFlat"),
             flatUsed: false,
             flatFellBack: false,
