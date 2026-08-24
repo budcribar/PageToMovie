@@ -29,6 +29,10 @@ public static class VoiceEndpoints
         app.MapPost("/api/projects/{id}/voice-alignment/timestamps", PostProjectsIdVoiceAlignmentTimestamps);
         // <summary>Save voice_label / voice_profile into cast_seeds (+ blueprint) character seeds.</summary>
         app.MapPost("/api/projects/{id}/characters/{charKey}/voice", PostProjectsIdCharactersCharKeyVoice);
+        // Generate-role Imagine preset voices for the project's selected video model.
+        app.MapGet("/api/projects/{id}/video-preset-voices", GetProjectsIdVideoPresetVoices);
+        // Pick and persist a catalog preset voice when the character has none yet.
+        app.MapPost("/api/projects/{id}/characters/{charKey}/voice/ensure-imagine", PostProjectsIdCharactersCharKeyVoiceEnsureImagine);
         // <summary>
         // Upload or replace voice-clone template audio (mic recording or file).
         // Multipart field: file. Stored under assets/characters/{key}/voice_clone_sample.*.
@@ -118,6 +122,73 @@ public static class VoiceEndpoints
     return Results.Ok(new { ok = true, clipsUpdated = applied });
 }
 
+    private static async Task<IResult> GetProjectsIdVideoPresetVoices(
+        string id, ProjectStore store, CancellationToken ct)
+    {
+        var cfg = await store.GetConfigAsync(id, ct);
+        var videoId = ProjectModelSelection.TryVideo(cfg);
+        var roster = ImagineVoiceAssignment.RosterForProjectVideo(videoId);
+        string? generateId = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(videoId))
+                generateId = SupportedModelCatalog.ResolveVideoRoles(videoId).Generate.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            generateId = null;
+        }
+
+        return Results.Ok(new
+        {
+            ok = true,
+            videoModelId = videoId,
+            generateModelId = generateId,
+            voices = roster.Select(v => new
+            {
+                id = v.Id,
+                displayName = v.DisplayName,
+                gender = v.Gender,
+                age = v.Age,
+                temperament = v.Temperament,
+                description = v.Description,
+            }).ToList(),
+        });
+    }
+
+    private static async Task<IResult> PostProjectsIdCharactersCharKeyVoiceEnsureImagine(
+        string id, string charKey, ProjectStore store, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(charKey))
+                return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
+            var cfg = await store.GetConfigAsync(id, ct);
+            var roster = ImagineVoiceAssignment.RosterForProjectVideo(ProjectModelSelection.TryVideo(cfg));
+            if (roster.Count == 0)
+                return Results.Ok(new { ok = true, imagineVoiceId = (string?)null, picked = false });
+
+            var summary = store.ListCharacters(id)
+                .FirstOrDefault(c => string.Equals(c.Key, charKey, StringComparison.OrdinalIgnoreCase));
+            var existing = summary?.ImagineVoiceId;
+            var picked = ImagineVoiceAssignment.Ensure(
+                store, id, charKey, roster,
+                ImagineVoiceAssignment.HintsFromSummary(summary),
+                existing);
+            return Results.Ok(new
+            {
+                ok = true,
+                imagineVoiceId = picked,
+                picked = !string.Equals(existing, picked, StringComparison.OrdinalIgnoreCase)
+                         && !string.IsNullOrWhiteSpace(picked),
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
+
     private static IResult PostProjectsIdCharactersCharKeyVoice(string id, string charKey, UpdateCharacterVoiceRequest? body, ProjectStore store)
     {
     try
@@ -129,7 +200,8 @@ public static class VoiceEndpoints
             id,
             charKey,
             voiceProfile: body.VoiceProfile,
-            voiceLabel: body.VoiceLabel);
+            voiceLabel: body.VoiceLabel,
+            imagineVoiceId: body.ImagineVoiceId);
         return Results.Ok(new
         {
             ok = true,

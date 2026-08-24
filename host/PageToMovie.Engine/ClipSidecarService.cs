@@ -140,6 +140,26 @@ public sealed class ClipSidecarService
         return name is null ? null : Path.Combine(videoDir, name);
     }
 
+    /// <summary>Wire model id stored on the current take sidecar, or null when missing.</summary>
+    public static string? ReadCurrentTakeModel(string videoDir, int scene, int clip)
+    {
+        var take = ReadCurrentTake(videoDir, scene, clip);
+        if (take <= 0)
+            return null;
+        var path = Path.Combine(videoDir, ClipTakeNaming.TakeSidecarFileName(scene, clip, take));
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            return doc.RootElement.TryGetProperty("model", out var el) ? el.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Project-relative player path from <c>.current.json</c>, or null.</summary>
     public static string? CurrentTakeRelativePath(string videoDir, int scene, int clip)
     {

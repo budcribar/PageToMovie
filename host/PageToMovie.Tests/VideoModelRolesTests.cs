@@ -373,7 +373,8 @@ public class VideoModelRolesTests : IDisposable
             string? startFrameImagePath = null,
             string? continueFromVideoPath = null,
             string? aspectRatio = null,
-            string? extendSourceFileId = null)
+            string? extendSourceFileId = null,
+            IReadOnlyList<string>? referenceAudioVoiceIds = null)
         {
             Models.Add(model);
             return Task.FromResult("rec-" + Models.Count);

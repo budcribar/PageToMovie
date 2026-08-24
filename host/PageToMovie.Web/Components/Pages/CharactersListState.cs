@@ -443,6 +443,7 @@ public partial class Characters
                 S.LookEdit._lookSaveCts = null;
                 S.Voice._editVoiceLabel = _selected.VoiceLabel ?? "";
                 S.Voice._editVoiceProfile = _selected.VoiceProfile ?? "";
+                S.Voice._editImagineVoiceId = _selected.ImagineVoiceId ?? "";
                 S.Voice._forceShowVoice = false;
                 S.Voice.RefreshVoiceClonePlayUrl();
                 S.Voice._voiceCloneHint = null;
@@ -451,7 +452,12 @@ public partial class Characters
                 S.Voice._voicePreviewError = null;
                 S.Voice._voicePreviewHint = null;
                 S.Voice._voicePreviewStale = false;
-                _ = S.InvokeAsync(() => S.Voice.TryLoadCachedVoiceAsync());
+                _ = S.InvokeAsync(async () =>
+                {
+                    await S.Voice.LoadImagineVoicesAsync();
+                    await S.Voice.EnsureImagineVoiceForSelectedAsync();
+                    await S.Voice.TryLoadCachedVoiceAsync();
+                });
             }
             if (switched)
             {
@@ -598,6 +604,7 @@ public partial class Characters
                 {
                     S.Voice._editVoiceLabel = _selected.VoiceLabel ?? "";
                     S.Voice._editVoiceProfile = _selected.VoiceProfile ?? "";
+                    S.Voice._editImagineVoiceId = _selected.ImagineVoiceId ?? S.Voice._editImagineVoiceId;
                     S.Voice.RefreshVoiceClonePlayUrl();
                 }
             }

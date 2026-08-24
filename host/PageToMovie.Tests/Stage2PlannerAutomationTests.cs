@@ -248,6 +248,7 @@ public sealed class Stage2PlannerAutomationTests
             string? S(string k) => c.TryGetValue(k, out var v) ? v?.ToString() : null;
             if (!string.IsNullOrWhiteSpace(S("dialogue"))) outp.Add((S("speaker") ?? "", S("dialogue")!));
             if (!string.IsNullOrWhiteSpace(S("secondary_dialogue"))) outp.Add((S("secondary_speaker") ?? "", S("secondary_dialogue")!));
+            if (!string.IsNullOrWhiteSpace(S("tertiary_dialogue"))) outp.Add((S("tertiary_speaker") ?? "", S("tertiary_dialogue")!));
         }
         return outp;
     }
@@ -257,6 +258,7 @@ public sealed class Stage2PlannerAutomationTests
         var n = 0;
         if (c.TryGetValue("dialogue", out var d) && !string.IsNullOrWhiteSpace(d?.ToString())) n++;
         if (c.TryGetValue("secondary_dialogue", out var s) && !string.IsNullOrWhiteSpace(s?.ToString())) n++;
+        if (c.TryGetValue("tertiary_dialogue", out var t) && !string.IsNullOrWhiteSpace(t?.ToString())) n++;
         return n;
     }
 
@@ -334,6 +336,57 @@ public sealed class Stage2PlannerAutomationTests
     {
         // Safe default: one speaker per clip is always renderable, so an unset/unknown model is 1.
         Assert.Equal(1, Stage2PlannerService.ResolveMaxSpeakersPerClip("no-such-model-xyz"));
+    }
+
+    [Fact]
+    public void ResolveMaxSpeakersPerClip_Imagine15_generateIsThree_extendHopIsOne()
+    {
+        SupportedModelCatalog.ReloadCatalog();
+        Assert.Equal(3, Stage2PlannerService.ResolveMaxSpeakersPerClip("grok-imagine-video-1.5"));
+        Assert.Equal(1, Stage2PlannerService.ResolveMaxSpeakersPerClip("grok-imagine-video-1.5", isExtendHop: true));
+        Assert.Equal(3, Stage2PlannerService.ResolveMaxSpeakersPerClip("imagine-video-1.5-extend"));
+        Assert.Equal(1, Stage2PlannerService.ResolveMaxSpeakersPerClip("imagine-video-1.5-extend", isExtendHop: true));
+        var bundle = SupportedModelCatalog.Find("imagine-video-1.5-extend", ModelCapability.Video);
+        Assert.NotEqual(3, bundle!.MaxSpeakersPerClip);
+    }
+
+    [Fact]
+    public void ApplyCrossSpeakerCoalescing_threeSpeakerGenerate_mergesThreeHander()
+    {
+        var beats = new List<Dictionary<string, object?>>
+        {
+            DialogueBeat("b1", "Character_Alice", "We convene at last."),
+            DialogueBeat("b2", "Character_Boris", "The north stands ready."),
+            DialogueBeat("b3", "Character_Cora", "And the ledger balances."),
+        };
+
+        var clips = Stage2PlannerService.ApplyCrossSpeakerCoalescing(
+            beats, maxSpeakersPerClip: 3, maxSeconds: 12);
+
+        Assert.Single(clips);
+        Assert.Equal(3, SpeakersOnClip(clips[0]));
+        Assert.Equal("Character_Cora", clips[0]["tertiary_speaker"]);
+        Assert.Equal("And the ledger balances.", clips[0]["tertiary_dialogue"]);
+    }
+
+    [Fact]
+    public void ApplyCrossSpeakerCoalescing_extendHopStaysOneSpeaker()
+    {
+        var beats = new List<Dictionary<string, object?>>
+        {
+            DialogueBeat("b1", "Character_Alice", "We convene at last."),
+            DialogueBeat("b2", "Character_Boris", "The north stands ready."),
+        };
+
+        var clips = Stage2PlannerService.ApplyCrossSpeakerCoalescing(
+            beats,
+            maxSpeakersPerClip: 3,
+            maxSeconds: 12,
+            extendsFromPrevious: new[] { true, false },
+            extendMaxSpeakersPerClip: 1);
+
+        Assert.Equal(2, clips.Count);
+        Assert.All(clips, c => Assert.Equal(1, SpeakersOnClip(c)));
     }
 
     [Fact]

@@ -79,7 +79,8 @@ public sealed class GrokVideoClient : IVideoClient
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
         string? aspectRatio = null,
-        string? extendSourceFileId = null)
+        string? extendSourceFileId = null,
+        IReadOnlyList<string>? referenceAudioVoiceIds = null)
     {
         // Catalog maxReferenceImages only — never invent 7 (or any default).
         var videoEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
@@ -91,7 +92,7 @@ public sealed class GrokVideoClient : IVideoClient
         var setup = await BuildSubmitSetupAsync(
             durationSeconds, resolution, model,
             referenceImagePaths, startFrameImagePath, continueFromVideoPath,
-            maxRefsForModel, aspectRatio, extendSourceFileId, ct).ConfigureAwait(false);
+            maxRefsForModel, aspectRatio, extendSourceFileId, referenceAudioVoiceIds, ct).ConfigureAwait(false);
 
         var original = prompt ?? "";
         Exception? lastLengthError = null;
@@ -126,6 +127,7 @@ public sealed class GrokVideoClient : IVideoClient
         public string? ContinueFromVideoPath { get; init; }
         public string? StartFrameImagePath { get; init; }
         public string? ExtendSourceFileId { get; init; }
+        public IReadOnlyList<string> ReferenceAudioVoiceIds { get; init; } = Array.Empty<string>();
     }
 
     private static bool IsExistingMediaPath(string? p) =>
@@ -141,6 +143,7 @@ public sealed class GrokVideoClient : IVideoClient
         int maxRefsForModel,
         string? aspectRatio,
         string? extendSourceFileId,
+        IReadOnlyList<string>? referenceAudioVoiceIds,
         CancellationToken ct)
     {
         var refs = (referenceImagePaths ?? Array.Empty<string>())
@@ -153,6 +156,10 @@ public sealed class GrokVideoClient : IVideoClient
         ApplySubmitRefPriority(refs, ref hasContinue, ref hasStart, startFrameImagePath);
 
         var catalogEntry = SupportedModelCatalog.Find(model, ModelCapability.Video);
+        if (hasContinue && catalogEntry is not { SupportsVideoContinue: true })
+            throw new InvalidOperationException(
+                $"Video model '{model}' does not support video continue/extend.");
+        var voiceIds = ResolveReferenceAudioVoiceIds(catalogEntry, referenceAudioVoiceIds, hasContinue);
         if (hasContinue)
             durationSeconds = ClipDurationEstimator.ResolveActualDurationForModel(
                 model, durationSeconds, isExtensionMode: true);
@@ -168,6 +175,9 @@ public sealed class GrokVideoClient : IVideoClient
             ?? throw new InvalidOperationException(
                 $"Video model has no maxPromptLength in models_catalog.json.");
 
+        var cappedResolution = VideoReferenceResolution.Cap(
+            resolution, catalogEntry, refs.Count > 0, voiceIds.Count > 0);
+
         return new SubmitSetup
         {
             Refs = refs,
@@ -177,17 +187,42 @@ public sealed class GrokVideoClient : IVideoClient
             VideoUri = videoUri,
             StartUri = startUri,
             RefObjs = refObjs,
-            Mode = ResolveSubmitMode(hasContinue, hasStart, refs.Count),
+            Mode = ResolveSubmitMode(hasContinue, hasStart, refs.Count, voiceIds.Count),
             Kind = hasContinue ? "video_extend" : "video",
             RefNames = refs.Select(Path.GetFileName).OfType<string>().ToList(),
             PromptHardCap = promptHardCap,
             Model = model,
-            Resolution = resolution,
+            Resolution = cappedResolution,
             AspectRatio = aspectRatio,
             ContinueFromVideoPath = continueFromVideoPath,
             StartFrameImagePath = startFrameImagePath,
             ExtendSourceFileId = extendSourceFileId,
+            ReferenceAudioVoiceIds = voiceIds,
         };
+    }
+
+    internal static IReadOnlyList<string> ResolveReferenceAudioVoiceIds(
+        SupportedModelEntry? catalogEntry,
+        IReadOnlyList<string>? requested,
+        bool hasContinue)
+    {
+        if (hasContinue || catalogEntry is not { SupportsReferenceAudios: true })
+            return Array.Empty<string>();
+        var max = catalogEntry.MaxReferenceAudios is > 0 ? catalogEntry.MaxReferenceAudios.Value : 0;
+        if (max <= 0 || requested is null || requested.Count == 0)
+            return Array.Empty<string>();
+        var roster = catalogEntry.PresetVoices;
+        var ids = new List<string>();
+        foreach (var raw in requested)
+        {
+            var id = ImagineVoicePicker.NormalizeVoiceId(roster, raw);
+            if (id is null || ids.Contains(id, StringComparer.OrdinalIgnoreCase))
+                continue;
+            ids.Add(id);
+            if (ids.Count >= max)
+                break;
+        }
+        return ids;
     }
 
     private void ApplySubmitRefPriority(
@@ -209,11 +244,11 @@ public sealed class GrokVideoClient : IVideoClient
         }
     }
 
-    private static string ResolveSubmitMode(bool hasContinue, bool hasStart, int refCount)
+    private static string ResolveSubmitMode(bool hasContinue, bool hasStart, int refCount, int voiceCount)
     {
         if (hasContinue) return "video-extend";
+        if (refCount > 0 || voiceCount > 0) return "reference-to-video";
         if (hasStart) return "image-to-video";
-        if (refCount > 0) return "reference-to-video";
         return "text-to-video";
     }
 
@@ -424,6 +459,17 @@ public sealed class GrokVideoClient : IVideoClient
             _log.LogInformation(
                 "Grok video text-to-video promptLen={Len} duration={Dur}s",
                 prompt.Length, setup.DurationSeconds);
+        }
+
+        if (setup.ReferenceAudioVoiceIds.Count > 0)
+        {
+            payload["reference_audios"] = setup.ReferenceAudioVoiceIds
+                .Select(id => new Dictionary<string, object?> { ["voice_id"] = id })
+                .Cast<object?>()
+                .ToList();
+            _log.LogInformation(
+                "Grok video reference_audios voices={N} res={Res}",
+                setup.ReferenceAudioVoiceIds.Count, setup.Resolution);
         }
 
         // Same reasoning as SubmitExtendOnceAsync: a lost response here is unrecoverable either

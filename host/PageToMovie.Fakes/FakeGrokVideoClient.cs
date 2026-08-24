@@ -44,7 +44,8 @@ public sealed class FakeGrokVideoClient : IVideoClient
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
         string? aspectRatio = null,
-        string? extendSourceFileId = null)
+        string? extendSourceFileId = null,
+        IReadOnlyList<string>? referenceAudioVoiceIds = null)
     {
         var n = Interlocked.Increment(ref _submitCount);
         var fakes = _opts.Fakes ?? new FakesOptions();

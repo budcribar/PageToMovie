@@ -4273,6 +4273,12 @@ public sealed class FilmJobService
             ? spk => CastKindClassifier.SameCharacter(spk, charKey)
             : null;
         var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
+        clipLines = clipLines
+            .Where(c => !NativeVideoAudioPolicy.ShouldSkipVoiceOverlay(
+                ClipSidecarService.ReadCurrentTakeModel(videoDir, c.Scene, c.Clip)))
+            .ToList();
         if (clipLines.Count == 0)
         {
             await FinishAsync(StatusDone, "No matching dialogue lines to substitute.").ConfigureAwait(false);
@@ -5645,6 +5651,53 @@ public sealed class FilmJobService
         return null;
     }
 
+    private Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> EnsureImagineVoicesForClip(
+        ClipGenContext ctx)
+    {
+        var roster = ImagineVoiceAssignment.RosterForProjectVideo(ctx.VideoRoles.Generate.Id);
+        if (roster.Count == 0)
+            return ctx.Profiles;
+
+        var updated = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            ctx.Profiles, StringComparer.OrdinalIgnoreCase);
+        foreach (var speaker in ClipSpokenLines.FromClipElement(ctx.ClipEl).Select(line => line.Speaker))
+        {
+            if (string.IsNullOrWhiteSpace(speaker))
+                continue;
+            updated.TryGetValue(speaker, out var prof);
+            var id = ImagineVoiceAssignment.Ensure(
+                _projects,
+                ctx.ProjectId,
+                speaker,
+                roster,
+                ImagineVoiceAssignment.HintsFromProfile(prof),
+                prof?.ImagineVoiceId);
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+            updated[speaker] = CopyProfileWithImagineVoice(prof, speaker, id);
+        }
+        return updated;
+    }
+
+    private static ClipVideoPromptBuilder.CharacterProfile CopyProfileWithImagineVoice(
+        ClipVideoPromptBuilder.CharacterProfile? prof,
+        string key,
+        string imagineVoiceId) =>
+        new()
+        {
+            Key = prof?.Key ?? key,
+            DisplayName = prof?.DisplayName ?? key,
+            Description = prof?.Description ?? "",
+            VisualLock = prof?.VisualLock ?? "",
+            VoiceProfile = prof?.VoiceProfile ?? "",
+            VoiceLabel = prof?.VoiceLabel ?? "",
+            ImagineVoiceId = imagineVoiceId,
+            Gender = prof?.Gender ?? "",
+            AgeBand = prof?.AgeBand ?? "",
+            VoiceOnly = prof?.VoiceOnly ?? false,
+            CastKind = prof?.CastKind ?? "",
+        };
+
     private async Task<double> ExecuteClipGenerationAsync(ClipGenContext ctx)
     {
         // PR2: reseed with locked refs when on-screen cast set changes (API drops refs on extend).
@@ -5680,10 +5733,11 @@ public sealed class FilmJobService
         }
         var wireModel = wireEntry.Id;
 
+        var profiles = EnsureImagineVoicesForClip(ctx);
         var built = ClipVideoPromptBuilder.Build(
             ctx.ClipEl,
             ctx.ProjectDir,
-            characters: ctx.Profiles,
+            characters: profiles,
             previousClipVisualPrompt: ctx.PrevVisual,
             previousClipVideoPath: ctx.PrevVideoPath,
             startFrameImagePath: null,
@@ -5704,6 +5758,11 @@ public sealed class FilmJobService
 
         if (string.IsNullOrWhiteSpace(ctx.Resolution))
             ctx.Resolution = await ResolveVideoResolutionAsync(ctx.ProjectId, null, ctx.Ct);
+        ctx.Resolution = VideoReferenceResolution.Cap(
+            ctx.Resolution,
+            wireEntry,
+            built.ReferenceImagePaths.Count > 0,
+            built.ReferenceAudioVoiceIds.Count > 0);
 
         built = await ApplyPromptBudgetAsync(built, wireEntry).ConfigureAwait(false);
         await WriteAndLogPromptAsync(ctx.ProjectId, ctx.ProjectDir, ctx.Scene, ctx.Clip, built, ctx.Ct)
@@ -5730,7 +5789,8 @@ public sealed class FilmJobService
             startFrameImagePath: null,
             continueFromVideoPath: ctx.PrevVideoPath,
             aspectRatio: targetAspectRatio,
-            extendSourceFileId: ctx.ExtendSourceFileId);
+            extendSourceFileId: ctx.ExtendSourceFileId,
+            referenceAudioVoiceIds: isExtendHop ? null : built.ReferenceAudioVoiceIds);
         await AppendLogAsync($"  [Grok] request_id={requestId}");
 
         var url = await _grok.PollForVideoUrlAsync(

@@ -43,7 +43,8 @@ public interface IVideoClient
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
         string? aspectRatio = null,
-        string? extendSourceFileId = null);
+        string? extendSourceFileId = null,
+        IReadOnlyList<string>? referenceAudioVoiceIds = null);
 
     Task<string> PollForVideoUrlAsync(
         string requestId,

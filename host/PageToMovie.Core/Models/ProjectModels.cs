@@ -436,6 +436,8 @@ public sealed class CharacterSummary
     public string? VoiceProvider { get; set; }
     /// <summary>Provider-side voice id for TTS (ElevenLabs voice_id).</summary>
     public string? VoiceProviderVoiceId { get; set; }
+    /// <summary>Imagine Video preset voice id from the generate-role catalog roster.</summary>
+    public string? ImagineVoiceId { get; set; }
     public bool VoiceOnly { get; set; }
     /// <summary>Plural/ensemble cast (CHILDREN, CROWD, …) — no single-face portrait required.</summary>
     public bool IsGroup { get; set; }
@@ -735,6 +737,8 @@ public sealed class UpdateCharacterVoiceRequest
     public string CharKey { get; set; } = "";
     public string? VoiceLabel { get; set; }
     public string? VoiceProfile { get; set; }
+    /// <summary>Imagine Video preset voice id. Persisted on the same character seed.</summary>
+    public string? ImagineVoiceId { get; set; }
 }
 
 /// <summary>POST .../voice/clone body — optional catalog model id override.</summary>
@@ -1024,6 +1028,10 @@ public sealed class ClipSummary
     public string? SecondarySpeaker { get; set; }
     /// <summary>Second speaker's line in a two-hander clip (else null).</summary>
     public string? SecondaryDialogue { get; set; }
+    /// <summary>Third speaker in a generate-role three-hander clip (else null).</summary>
+    public string? TertiarySpeaker { get; set; }
+    /// <summary>Third speaker's line in a three-hander clip (else null).</summary>
+    public string? TertiaryDialogue { get; set; }
     public string? PronunciationHint { get; set; }
     public List<string> CharactersOnScreen { get; set; } = new();
     public string? ColorPalette { get; set; }

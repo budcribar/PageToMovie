@@ -36,6 +36,7 @@ internal static class ClipSpokenLines
     {
         ("speaker", "dialogue", "delivery"),
         ("secondary_speaker", "secondary_dialogue", "secondary_delivery"),
+        ("tertiary_speaker", "tertiary_dialogue", "tertiary_delivery"),
     };
 
     /// <summary>Delivery value that explicitly marks a beat as silent (no spoken line).</summary>
@@ -87,6 +88,7 @@ internal static class ClipSpokenLines
         {
             (clip.Speaker, clip.Dialogue, clip.Delivery),
             (clip.SecondarySpeaker, clip.SecondaryDialogue, null),
+            (clip.TertiarySpeaker, clip.TertiaryDialogue, null),
         });
     }
 

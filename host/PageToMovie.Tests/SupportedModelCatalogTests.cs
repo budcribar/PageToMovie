@@ -580,7 +580,11 @@ public class SupportedModelCatalogTests
         Assert.NotNull(m);
         Assert.True(m!.SupportsReferenceAudios);
         Assert.Equal(3, m.MaxReferenceAudios);
-        Assert.Equal(1, m.MaxSpeakersPerClip);
+        Assert.Equal(3, m.MaxSpeakersPerClip);
+        Assert.Equal("720p", m.MaxResolutionWithReferences);
+        Assert.Equal(0.08, m.VideoCostPerSecondByResolution!["480p"]);
+        Assert.Equal(0.08, m.VideoCostPerSecondByResolution["720p"]);
+        Assert.Equal(0.08, m.VideoCostPerSecondByResolution["1080p"]);
         Assert.NotNull(m.PresetVoices);
         Assert.Equal(28, m.PresetVoices!.Count);
         Assert.Equal(28, m.PresetVoices.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count());
@@ -642,6 +646,8 @@ public class SupportedModelCatalogTests
         var back = SupportedModelCatalog.FromDto(dto);
         Assert.True(back.SupportsReferenceAudios);
         Assert.Equal(3, back.MaxReferenceAudios);
+        Assert.Equal(3, dto.MaxSpeakersPerClip);
+        Assert.Equal("720p", dto.MaxResolutionWithReferences);
         Assert.Equal(28, back.PresetVoices!.Count);
         Assert.Equal(entry.PresetVoices!.Select(v => v.Id), back.PresetVoices.Select(v => v.Id));
         var aurora = Assert.Single(back.PresetVoices, v => v.Id == "aurora");

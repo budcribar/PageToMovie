@@ -348,12 +348,23 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "maxReferenceImages": 7,
+      "supportsReferenceAudios": true,
+      "maxReferenceAudios": 3,
+      "presetVoices": [
+        {"id":"eve","displayName":"Eve","gender":"female","age":"adult","temperament":"refined","tags":["articulate","storyteller"],"description":"Polished, expressive, and distinctive."},
+        {"id":"rex","displayName":"Rex","gender":"male","age":"adult","temperament":"authoritative","tags":["deep","commanding"],"description":"Deep, commanding, and resolute."},
+        {"id":"orion","displayName":"Orion","gender":"male","age":"elderly","temperament":"warm","tags":["gravelly","storyteller"],"description":"Warm, weathered, and wise."},
+        {"id":"iris","displayName":"Iris","gender":"female","age":"youthful","temperament":"bright","tags":["cheerful","lively"],"description":"Crisp, bright, and cheerful."}
+      ],
       "supportsVideoReview": false,
       "minClipDurationSeconds": 1,
       "maxClipDurationSeconds": 15,
       "absMaxClipDurationSeconds": 15,
-      "maxSpeakersPerClip": 1,
+      "maxSpeakersPerClip": 3,
+      "maxResolutionWithReferences": "720p",
       "videoCostPerSecondByResolution": {
+        "480p": 0.08,
+        "720p": 0.08,
         "1080p": 0.08
       },
       "supportedAspectRatios": [

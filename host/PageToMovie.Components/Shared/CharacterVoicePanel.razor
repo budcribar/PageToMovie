@@ -1,6 +1,29 @@
 @namespace PageToMovie.Web.Components
 
 <div class="character-voice-panel" data-testid="@TestId">
+    @if (PresetVoices.Count > 0)
+    {
+        <div class="mb-2">
+            <label class="form-label small mb-1" for="char-imagine-voice">Speaking voice</label>
+            <select id="char-imagine-voice"
+                    class="form-select form-select-sm"
+                    disabled="@Busy"
+                    value="@ImagineVoiceId"
+                    data-testid="char-imagine-voice"
+                    @onchange="OnImagineVoiceChanged">
+                @if (string.IsNullOrWhiteSpace(ImagineVoiceId))
+                {
+                    <option value="">Choose…</option>
+                }
+                @foreach (var voice in PresetVoices)
+                {
+                    <option value="@voice.Id">@VoiceOptionLabel(voice)</option>
+                }
+            </select>
+        </div>
+    }
+    @if (ShowProfileFields)
+    {
     <div class="mb-2">
         <label class="form-label small mb-1">Voice label</label>
         <input class="form-control form-control-sm"
@@ -16,6 +39,7 @@
                   value="@VoiceProfile"
                   @oninput="OnProfileInput"></textarea>
     </div>
+    }
     @if (!string.IsNullOrWhiteSpace(PreviewUrl))
     {
         <audio class="w-100 mb-2" controls src="@PreviewUrl"></audio>
