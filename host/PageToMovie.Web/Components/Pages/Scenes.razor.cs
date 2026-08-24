@@ -303,7 +303,10 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
                     await Playback.PlaySceneCompositeAsync(sn);
                 StateHasChanged();
             }
-            catch (OperationCanceledException) when (debounce.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (debounce.IsCancellationRequested)
+            {
+                /* superseded by a later folder-change debounce */
+            }
         });
     }
 
@@ -483,8 +486,11 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         Hub.JobUpdated -= Gen.OnJobUpdated;
         Hub.JobLog -= Gen.OnJobLog;
         MediaFolder.Changed -= OnMediaFolderChanged;
-        _mediaFolderChangedDebounce?.Cancel();
-        _mediaFolderChangedDebounce?.Dispose();
+        if (_mediaFolderChangedDebounce is { } debounce)
+        {
+            await debounce.CancelAsync();
+            debounce.Dispose();
+        }
         Playback._clientPreviewUrl = null;
         Playback._clientSceneUrl = null;
         await Stitch.RevokePreviewUrlAsync();
