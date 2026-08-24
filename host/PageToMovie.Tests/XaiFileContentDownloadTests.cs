@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
@@ -134,6 +135,78 @@ public sealed class XaiFileContentDownloadTests
     }
 
     [Fact]
+    public async Task MediaProxy_file_content_500_falls_back_to_source_url()
+    {
+        var files = new StubFilesHandler
+        {
+            Status = HttpStatusCode.InternalServerError,
+            ErrorBody = "{\"error\":\"Failed to retrieve file\"}",
+        };
+        using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
+        var urls = new Url200Factory(new byte[] { 0x11, 0x22, 0x33, 0x44 });
+        var ctx = new DefaultHttpContext();
+
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
+        {
+            var result = await MediaEndpoints.StreamProviderCopyAsync(
+                "https://files.x.ai/p/public.mp4",
+                "file_1ed4c54f-2edd-485b-8d35-5f31c854132a",
+                urls,
+                video,
+                RequireVideoModel(),
+                ctx,
+                CancellationToken.None);
+            Assert.Equal(StatusCodes.Status200OK, result is IStatusCodeHttpResult s ? s.StatusCode : 200);
+            var warning = ctx.Response.Headers[MediaProxyHeaders.FileIdError].ToString();
+            Assert.Contains("500", warning, StringComparison.Ordinal);
+            Assert.Contains("Failed to retrieve file", warning, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("media-proxy", urls.LastName);
+        Assert.Equal(1, files.SendCount);
+        Assert.Equal("/v1/files/file_1ed4c54f-2edd-485b-8d35-5f31c854132a/content", files.Path);
+        Assert.Equal(1, urls.SendCount);
+    }
+
+    [Fact]
+    public async Task MediaProxy_file_content_500_and_url_miss_mentions_both()
+    {
+        var files = new StubFilesHandler
+        {
+            Status = HttpStatusCode.InternalServerError,
+            ErrorBody = "{\"error\":\"Failed to retrieve file\"}",
+        };
+        using var xaiHttp = new HttpClient(files) { BaseAddress = new Uri("https://api.x.ai/v1/") };
+        IVideoClient video = new CatalogRoutedFilesClient(new XaiResponsesClient(xaiHttp));
+        var ctx = new DefaultHttpContext();
+
+        using (CatalogApiKey.PushKey(AdapterProviderId(), "xai-from-ticket"))
+        {
+            var result = await MediaEndpoints.StreamProviderCopyAsync(
+                "https://vidgen.example/expired.mp4",
+                "file_dead",
+                new Url404Factory(),
+                video,
+                RequireVideoModel(),
+                ctx,
+                CancellationToken.None);
+            Assert.Equal(StatusCodes.Status502BadGateway, result is IStatusCodeHttpResult s ? s.StatusCode : 0);
+            var err = result is IValueHttpResult { Value: { } v }
+                ? System.Text.Json.JsonSerializer.Serialize(v)
+                : result.GetType().Name;
+            Assert.Contains("Provider file download failed", err, StringComparison.Ordinal);
+            Assert.Contains("500", err, StringComparison.Ordinal);
+            Assert.Contains("Failed to retrieve file", err, StringComparison.Ordinal);
+            Assert.Contains(ClipProviderSource.SourceUrlAlsoFailedPrefix, err, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"File not found\"", err, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("/v1/files/file_dead/content", files.Path);
+        Assert.Equal(1, files.SendCount);
+    }
+
+    [Fact]
     public async Task MediaProxy_OpenFileContent_failure_is_502_not_file_not_found()
     {
         var files = new StubFilesHandler
@@ -221,6 +294,43 @@ public sealed class XaiFileContentDownloadTests
             {
                 BaseAddress = new Uri("https://example.invalid/"),
             };
+        }
+    }
+
+    private sealed class Url200Factory : IHttpClientFactory
+    {
+        private readonly byte[] _body;
+        public Url200Factory(byte[] body) => _body = body;
+        public string? LastName { get; private set; }
+        public int SendCount { get; private set; }
+
+        public HttpClient CreateClient(string name)
+        {
+            LastName = name;
+            return new HttpClient(new CountingHandler(_body, () => SendCount++))
+            {
+                BaseAddress = new Uri("https://files.x.ai/"),
+            };
+        }
+
+        private sealed class CountingHandler : HttpMessageHandler
+        {
+            private readonly byte[] _body;
+            private readonly Action _onSend;
+            public CountingHandler(byte[] body, Action onSend)
+            {
+                _body = body;
+                _onSend = onSend;
+            }
+
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            {
+                _onSend();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(_body),
+                });
+            }
         }
     }
 

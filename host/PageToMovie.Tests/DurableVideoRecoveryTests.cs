@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using PageToMovie.Api;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -13,6 +14,45 @@ namespace PageToMovie.Tests;
 /// </summary>
 public sealed class DurableVideoRecoveryTests
 {
+    [Fact]
+    public void RecoveredViaSourceUrlStatus_uses_http_code_from_file_id_error()
+    {
+        Assert.Equal(
+            "recovered via source_url after file content HTTP 500",
+            MediaProxyHeaders.RecoveredViaSourceUrlStatus(
+                "xAI file content HTTP 500: {\"error\":\"Failed to retrieve file\"}"));
+        Assert.Equal(500, MediaProxyHeaders.TryHttpStatus("xAI file content HTTP 500: Failed to retrieve file"));
+        Assert.Equal(4, (int)ClipProviderSource.PublicUrlTimeoutWhenFileIdPresent.TotalSeconds);
+    }
+
+    [Fact]
+    public void Media_js_reads_the_same_FileIdError_header()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        string? jsDir = null;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "PageToMovie.Web", "wwwroot", "js");
+            if (Directory.Exists(candidate))
+            {
+                jsDir = candidate;
+                break;
+            }
+            candidate = Path.Combine(dir.FullName, "host", "PageToMovie.Web", "wwwroot", "js");
+            if (Directory.Exists(candidate))
+            {
+                jsDir = candidate;
+                break;
+            }
+            dir = dir.Parent;
+        }
+        Assert.False(string.IsNullOrWhiteSpace(jsDir));
+        var media = File.ReadAllText(Path.Combine(jsDir!, "pagetomovie-media.js"));
+        var ffmpeg = File.ReadAllText(Path.Combine(jsDir!, "pagetomovie-ffmpeg.js"));
+        Assert.Contains(MediaProxyHeaders.FileIdError, media, StringComparison.Ordinal);
+        Assert.Contains("fileIdErrorFrom", ffmpeg, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void PermanentVideoStorageOptions_requests_public_url_without_expiry()
     {
@@ -82,24 +122,33 @@ public sealed class DurableVideoRecoveryTests
     }
 
     [Fact]
-    public async Task StreamProviderCopy_marks_need_fork_and_surfaces_xai_error()
+    public async Task StreamProviderCopy_marks_need_fork_after_file_id_500_and_url_miss()
     {
         var project = Path.Combine(Path.GetTempPath(), "ptm-dur-" + Guid.NewGuid().ToString("N")[..8]);
         try
         {
+            var urlHits = 0;
             var result = await MediaEndpoints.StreamProviderCopyAsync(
                 "https://vidgen.example/expired.mp4",
                 "file_dead",
-                (_, _) => Task.FromResult<IResult?>(null),
-                (_, _) => throw new InvalidOperationException("xAI file content HTTP 403: {\"code\":\"forbidden\"}"),
+                (_, _) =>
+                {
+                    urlHits++;
+                    return Task.FromResult<IResult?>(null);
+                },
+                (_, _) => throw new InvalidOperationException(
+                    "xAI file content HTTP 500: {\"error\":\"Failed to retrieve file\"}"),
                 CancellationToken.None,
                 recoverAfterProvider: (_, _, _) => Task.FromResult(
                     MediaEndpoints.TryRecoverHostedCopy(project, 1, 2)));
 
+            Assert.Equal(1, urlHits);
             Assert.Equal(StatusCodes.Status502BadGateway, StatusOf(result));
             var err = ErrorOf(result);
             Assert.Contains("Provider file download failed", err, StringComparison.Ordinal);
-            Assert.Contains("403", err, StringComparison.Ordinal);
+            Assert.Contains("500", err, StringComparison.Ordinal);
+            Assert.Contains("Failed to retrieve file", err, StringComparison.Ordinal);
+            Assert.Contains(ClipProviderSource.SourceUrlAlsoFailedPrefix, err, StringComparison.Ordinal);
             Assert.DoesNotContain("\"File not found\"", err, StringComparison.Ordinal);
             Assert.Equal((1, 2), Assert.Single(ClipForkFallback.ListNeeded(project)));
         }

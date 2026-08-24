@@ -557,9 +557,10 @@ public static class MediaEndpoints
     /// Stream the provider copy: catalog-routed <see cref="IVideoClient"/> stored-file
     /// path first when <c>file_id</c> is set (xAI models reuse
     /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> — the only Files
-    /// content GET), then the public URL capped so a dead vidgen link cannot hang
-    /// the 10-minute media-proxy client. Combined-extend slicing/hop-walk is
-    /// unchanged — the same bytes (combined file) are streamed either way.
+    /// content GET). A Files GET that throws or returns null still tries the public
+    /// URL, capped so a dead vidgen link cannot hang the 10-minute media-proxy
+    /// client. Combined-extend slicing/hop-walk is unchanged — the same bytes
+    /// (combined file) are streamed either way.
     /// </summary>
     internal static Task<IResult> StreamProviderCopyAsync(
         string? url,
@@ -575,7 +576,8 @@ public static class MediaEndpoints
             (id, token) => TryOpenStoredFileAsync(options.Video, options.Model, id, httpContext, token),
             ct,
             options.LogFactory?.CreateLogger("MediaProxy"),
-            options.RecoverAfterProvider);
+            options.RecoverAfterProvider,
+            httpContext);
 
     /// <summary>
     /// Positional <paramref name="video"/> / <paramref name="model"/> form used by tests.
@@ -592,9 +594,13 @@ public static class MediaEndpoints
             url, fileId, httpFactory, httpContext, ct,
             new StreamProviderCopyOptions(Video: video, Model: model));
 
-    /// <summary>Test hook: URL then file_id openers. A file_id failure is a visible error,
-    /// not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/> is the
-    /// Railway hosted-copy / <c>.need-fork</c> path when the provider file cannot be downloaded.</summary>
+    /// <summary>Test hook: file_id first, then <c>source_url</c>. A Files content GET that
+    /// throws or returns null still tries the public URL (short timeout when a file_id
+    /// was present). Both failing is a visible 502 with the provider status and the URL
+    /// miss — not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/>
+    /// is the Railway hosted-copy / <c>.need-fork</c> path after both provider pointers miss.
+    /// When the URL recovers after a file_id throw, <see cref="MediaProxyHeaders.FileIdError"/>
+    /// is set so wipe-resync can show the Files 500 in LastStatus.</summary>
     internal static async Task<IResult> StreamProviderCopyAsync(
         string? url,
         string? fileId,
@@ -602,14 +608,33 @@ public static class MediaEndpoints
         Func<string, CancellationToken, Task<IResult?>> openFileId,
         CancellationToken ct,
         ILogger? log = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null)
+        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null,
+        HttpContext? httpContext = null)
     {
+        Exception? fileIdError = null;
+        async Task<IResult?> CaptureFileIdAsync(string id, CancellationToken token)
+        {
+            try
+            {
+                return await openFileId(id, token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                fileIdError = ex;
+                throw;
+            }
+        }
+
         try
         {
             var streamed = await ClipProviderSource.TryOpenAsync(
-                url, fileId, openUrl, openFileId, ct).ConfigureAwait(false);
+                url, fileId, openUrl, CaptureFileIdAsync, ct).ConfigureAwait(false);
             if (streamed is not null)
+            {
+                if (fileIdError is not null)
+                    TrySetFileIdErrorHeader(httpContext, fileIdError);
                 return streamed;
+            }
             if (recoverAfterProvider is not null
                 && await recoverAfterProvider(fileId, null, ct).ConfigureAwait(false) is { } hosted)
                 return hosted;
@@ -695,6 +720,16 @@ public static class MediaEndpoints
             stream,
             contentType: SpecializedMimeType.VideoMp4.ToMimeTypeString(),
             fileDownloadName: "clip.mp4");
+    }
+
+    private static void TrySetFileIdErrorHeader(HttpContext? httpContext, Exception fileIdError)
+    {
+        if (httpContext is null)
+            return;
+        var detail = TrimForError(fileIdError.Message, 400);
+        if (string.IsNullOrWhiteSpace(detail))
+            return;
+        httpContext.Response.Headers[MediaProxyHeaders.FileIdError] = detail;
     }
 
     private static string TrimForError(string s, int n)

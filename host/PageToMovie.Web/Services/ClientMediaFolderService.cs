@@ -1142,6 +1142,7 @@ public sealed class ClientMediaFolderService
 
         var count = 0;
         string? lastError = null;
+        string? fileIdFallback = null;
         for (var i = 0; i < outOfDateFiles.Count; i++)
         {
             var file = outOfDateFiles[i];
@@ -1150,14 +1151,19 @@ public sealed class ClientMediaFolderService
             LastStatus = $"Downloading {file.FileName} to local folder ({SyncCurrent}/{SyncTotal})…";
             Changed?.Invoke();
             if (await TrySaveSyncedMediaFileAsync(projectId, file))
+            {
                 count++;
+                if (!string.IsNullOrWhiteSpace(LastStatus)
+                    && LastStatus.StartsWith(MediaProxyHeaders.RecoveredViaSourceUrlPrefix, StringComparison.Ordinal))
+                    fileIdFallback = LastStatus;
+            }
             else if (!string.IsNullOrWhiteSpace(LastStatus)
                      && !LastStatus.StartsWith("Downloading ", StringComparison.Ordinal))
                 lastError = LastStatus;
         }
 
         LastStatus = lastError is null
-            ? $"Media folder synced: {count} missing/updated file(s) saved on local disk"
+            ? fileIdFallback ?? $"Media folder synced: {count} missing/updated file(s) saved on local disk"
             : $"Media folder synced: {count} of {outOfDateFiles.Count} file(s). Last error: {lastError}";
         Changed?.Invoke();
         return count;
@@ -1298,7 +1304,10 @@ public sealed class ClientMediaFolderService
     {
         var fetched = await _js.InvokeAsync<JsTrimTailResult>(PrefetchToBlobJs, url);
         if (fetched is { Success: true } && !string.IsNullOrWhiteSpace(fetched.Url))
+        {
+            NoteFileIdFallback(fetched.FileIdError);
             return fetched.Url;
+        }
         NoteMediaFailure(string.IsNullOrWhiteSpace(fetched?.Error)
             ? "Provider copy download failed"
             : fetched.Error);
@@ -1308,6 +1317,18 @@ public sealed class ClientMediaFolderService
     private void NoteMediaFailure(string message)
     {
         LastStatus = message;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Files content GET failed but <c>source_url</c> still streamed. Keep the 500 on
+    /// LastStatus so wipe-resync does not look fine while Files is dead.
+    /// </summary>
+    private void NoteFileIdFallback(string? fileIdError)
+    {
+        if (string.IsNullOrWhiteSpace(fileIdError))
+            return;
+        LastStatus = MediaProxyHeaders.RecoveredViaSourceUrlStatus(fileIdError);
         Changed?.Invoke();
     }
 
@@ -1385,6 +1406,7 @@ public sealed class ClientMediaFolderService
             SizeBytes = saved.SizeBytes,
             Kind = isMp4 ? "clip" : "sidecar",
         });
+        NoteFileIdFallback(saved.FileIdError);
         return true;
     }
 
@@ -1425,6 +1447,7 @@ public sealed class ClientMediaFolderService
         public long SizeBytes { get; set; } = 0;
         public string? RelativePath { get; set; } = null;
         public string? Error { get; set; } = null;
+        public string? FileIdError { get; set; } = null;
     }
 
     private sealed class JsSilenceAnalysis
@@ -1450,6 +1473,7 @@ public sealed class ClientMediaFolderService
         public double SourceDurationSec { get; set; } = 0;
         public double KeptSec { get; set; } = 0;
         public string? Error { get; set; } = null;
+        public string? FileIdError { get; set; } = null;
     }
 
     private sealed class JsProbeResult
