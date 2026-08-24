@@ -5664,8 +5664,20 @@ public sealed class FilmJobService
             await AppendLogAsync($"  [Plan] ⚠ S{ctx.Scene:D2}C{ctx.Clip:D2} {f.Rule}: {f.Message}");
 
         var isExtendHop = ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null;
-        var wireModel = ctx.VideoRoles.WireModelId(isExtendHop);
-        var wireEntry = isExtendHop ? ctx.VideoRoles.Extend! : ctx.VideoRoles.Generate;
+        SupportedModelEntry wireEntry;
+        if (isExtendHop)
+        {
+            var extend = ctx.VideoRoles.Extend;
+            if (extend is null)
+                throw new InvalidOperationException(
+                    $"Video model '{ctx.VideoRoles.Selected.Id}' has no extend role. Generate a fresh clip, or pick a model that can continue.");
+            wireEntry = extend;
+        }
+        else
+        {
+            wireEntry = ctx.VideoRoles.Generate;
+        }
+        var wireModel = wireEntry.Id;
 
         var built = ClipVideoPromptBuilder.Build(
             ctx.ClipEl,
