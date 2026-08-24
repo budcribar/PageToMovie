@@ -572,4 +572,80 @@ public class SupportedModelCatalogTests
         Assert.True(SupportedModelCatalog.TaskRankings.ContainsKey("script_import"));
         Assert.True(SupportedModelCatalog.TaskRankings.ContainsKey("video_review"));
     }
+
+    [Fact]
+    public void ImagineVideo15_loads_reference_audio_roster()
+    {
+        var m = SupportedModelCatalog.Find("grok-imagine-video-1.5", ModelCapability.Video);
+        Assert.NotNull(m);
+        Assert.True(m!.SupportsReferenceAudios);
+        Assert.Equal(3, m.MaxReferenceAudios);
+        Assert.Equal(1, m.MaxSpeakersPerClip);
+        Assert.NotNull(m.PresetVoices);
+        Assert.Equal(28, m.PresetVoices!.Count);
+        Assert.Equal(28, m.PresetVoices.Select(v => v.Id).Distinct(StringComparer.Ordinal).Count());
+
+        var aurora = Assert.Single(m.PresetVoices, v => v.Id == "aurora");
+        Assert.Equal("Aurora", aurora.DisplayName);
+        Assert.Equal("female", aurora.Gender);
+        Assert.Equal("adult", aurora.Age);
+        Assert.Equal("calm", aurora.Temperament);
+        Assert.Contains("composed", aurora.Tags);
+        Assert.Equal("Smooth, balanced, and composed.", aurora.Description);
+
+        var liora = Assert.Single(m.PresetVoices, v => v.Id == "liora");
+        Assert.Equal("Liora", liora.DisplayName);
+        Assert.Equal("female", liora.Gender);
+        Assert.Equal("adult", liora.Age);
+        Assert.Equal("gentle", liora.Temperament);
+        Assert.Contains("soothing", liora.Tags);
+        Assert.Equal("Soft, calm, and soothing.", liora.Description);
+    }
+
+    [Fact]
+    public void Other_video_models_do_not_claim_reference_audios()
+    {
+        foreach (var e in SupportedModelCatalog.ForCapability(ModelCapability.Video, enabledOnly: false))
+        {
+            if (string.Equals(e.Id, "grok-imagine-video-1.5", StringComparison.OrdinalIgnoreCase))
+                continue;
+            Assert.False(e.SupportsReferenceAudios, e.Id);
+            Assert.Null(e.MaxReferenceAudios);
+            Assert.True(e.PresetVoices is null || e.PresetVoices.Count == 0, e.Id);
+        }
+    }
+
+    [Fact]
+    public void Reference_audios_round_trip_through_ToDto_and_FromDto()
+    {
+        var entry = SupportedModelCatalog.Find("grok-imagine-video-1.5", ModelCapability.Video);
+        Assert.NotNull(entry);
+        Assert.False(new SupportedModelEntry
+        {
+            Id = "unset-reference-audios",
+            DisplayName = "Unset",
+            Capability = ModelCapability.Video,
+            Provider = ModelProviderFamily.Xai,
+            ApiBase = SupportedModelCatalog.XaiApiBase,
+            EndpointPath = "videos/generations",
+            RequiredEnvKeys = Array.Empty<string>(),
+        }.SupportsReferenceAudios);
+        Assert.False(new SupportedModelDto().SupportsReferenceAudios);
+
+        var dto = SupportedModelCatalog.ToDto(entry!);
+        Assert.True(dto.SupportsReferenceAudios);
+        Assert.Equal(3, dto.MaxReferenceAudios);
+        Assert.Equal(28, dto.PresetVoices!.Count);
+        Assert.Contains(dto.PresetVoices, v => v.Id == "aurora");
+        Assert.Contains(dto.PresetVoices, v => v.Id == "liora");
+
+        var back = SupportedModelCatalog.FromDto(dto);
+        Assert.True(back.SupportsReferenceAudios);
+        Assert.Equal(3, back.MaxReferenceAudios);
+        Assert.Equal(28, back.PresetVoices!.Count);
+        Assert.Equal(entry.PresetVoices!.Select(v => v.Id), back.PresetVoices.Select(v => v.Id));
+        var aurora = Assert.Single(back.PresetVoices, v => v.Id == "aurora");
+        Assert.Equal("Aurora", aurora.DisplayName);
+        Assert.Equal(entry.PresetVoices.Single(v => v.Id == "aurora").Tags, aurora.Tags);
+    }
 }

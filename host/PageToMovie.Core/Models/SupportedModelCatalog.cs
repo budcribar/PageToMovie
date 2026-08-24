@@ -61,6 +61,20 @@ public enum ModelProviderFamily
 }
 
 /// <summary>
+/// One native preset voice a video model can lock (catalog-driven roster).
+/// </summary>
+public sealed class PresetVoiceEntry
+{
+    public string Id { get; init; } = "";
+    public string DisplayName { get; init; } = "";
+    public string Gender { get; init; } = "";
+    public string Age { get; init; } = "";
+    public string Temperament { get; init; } = "";
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+    public string Description { get; init; } = "";
+}
+
+/// <summary>
 /// One supported model. Only entries with <see cref="Enabled"/> true appear in user pickers.
 /// Wishlist / not-yet-wired models stay off the list and can be tracked as GitHub feature requests.
 /// </summary>
@@ -228,6 +242,24 @@ public sealed class SupportedModelEntry
     /// <c>FilmJobService</c> call site) until every model has a confirmed real number here.
     /// </summary>
     public int? MaxReferenceImages { get; init; }
+
+    /// <summary>
+    /// When true, native preset / reference audio voices can be attached on fresh gen.
+    /// Default false — models must opt in via catalog JSON; do not infer from model id.
+    /// </summary>
+    public bool SupportsReferenceAudios { get; init; }
+
+    /// <summary>
+    /// Real max reference audio clips this model's API accepts (Video only).
+    /// Null when the model does not support reference audio.
+    /// </summary>
+    public int? MaxReferenceAudios { get; init; }
+
+    /// <summary>
+    /// Built-in preset voices this video model can lock (Video only).
+    /// Null / empty when the model has no native voice roster.
+    /// </summary>
+    public IReadOnlyList<PresetVoiceEntry>? PresetVoices { get; init; }
 
     /// <summary>
     /// When true, accepts native MP4 video & audio files directly for clip/dialogue review (Google Gemini).
@@ -1373,6 +1405,9 @@ public static class SupportedModelCatalog
         SupportsVideoContinue = e.SupportsVideoContinue,
         SupportsReferenceImages = e.SupportsReferenceImages,
         MaxReferenceImages = e.MaxReferenceImages,
+        SupportsReferenceAudios = e.SupportsReferenceAudios,
+        MaxReferenceAudios = e.MaxReferenceAudios,
+        PresetVoices = e.PresetVoices is { } voices ? voices.ToList() : null,
         SupportsVideoReview = e.SupportsVideoReview,
         MinClipDurationSeconds = e.MinClipDurationSeconds,
         MaxClipDurationSeconds = e.MaxClipDurationSeconds,
@@ -1434,6 +1469,9 @@ public static class SupportedModelCatalog
         SupportsVideoContinue = d.SupportsVideoContinue,
         SupportsReferenceImages = d.SupportsReferenceImages,
         MaxReferenceImages = d.MaxReferenceImages,
+        SupportsReferenceAudios = d.SupportsReferenceAudios,
+        MaxReferenceAudios = d.MaxReferenceAudios,
+        PresetVoices = d.PresetVoices,
         SupportsVideoReview = d.SupportsVideoReview,
         MinClipDurationSeconds = d.MinClipDurationSeconds,
         MaxClipDurationSeconds = d.MaxClipDurationSeconds,
@@ -1569,6 +1607,9 @@ public string? Notes { get; set; }
     public bool SupportsVideoContinue { get; set; } = true;
     public bool SupportsReferenceImages { get; set; } = true;
     public int? MaxReferenceImages { get; set; }
+    public bool SupportsReferenceAudios { get; set; }
+    public int? MaxReferenceAudios { get; set; }
+    public IReadOnlyList<PresetVoiceEntry>? PresetVoices { get; set; }
     public bool SupportsVideoReview { get; set; }
     public int? MinClipDurationSeconds { get; set; }
     public int? MaxClipDurationSeconds { get; set; }
