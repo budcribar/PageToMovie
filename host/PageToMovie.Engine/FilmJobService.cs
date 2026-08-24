@@ -5710,7 +5710,7 @@ public sealed class FilmJobService
         await LogPromptRefsAsync(built, ctx.PrevVideoPath, ctx.ExtendSourceFileId).ConfigureAwait(false);
 
         var supportsContinue = ctx.VideoRoles.CanExtend;
-        var duration = await ResolveClipDurationAsync(ctx, built, supportsContinue).ConfigureAwait(false);
+        var duration = await ResolveClipDurationAsync(ctx, supportsContinue).ConfigureAwait(false);
 
         var modeLabel = isExtendHop ? "video-extend" : built.Mode;
         await AppendLogAsync(
@@ -5955,7 +5955,6 @@ public sealed class FilmJobService
 
     private async Task<int> ResolveClipDurationAsync(
         ClipGenContext ctx,
-        ClipVideoPromptBuilder.PromptBuildResult built,
         bool supportsContinue)
     {
         // Only continuation-chain models get carried-forward padding: clip N+1 already can't
