@@ -544,14 +544,17 @@ public static class MediaEndpoints
     }
 
     /// <summary>
-    /// Catalog-routed stored-file client plus optional logger and Railway
-    /// hosted-copy recovery for the DI wrapper.
+    /// Catalog-routed stored-file client plus optional logger, HTTP context
+    /// (for <see cref="MediaProxyHeaders.FileIdError"/>), and Railway
+    /// hosted-copy recovery.
     /// </summary>
     internal sealed record StreamProviderCopyOptions(
-        IVideoClient Video,
+        IVideoClient? Video = null,
         string? Model = null,
         ILoggerFactory? LogFactory = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
+        ILogger? Log = null,
+        Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null,
+        HttpContext? HttpContext = null);
 
     /// <summary>
     /// Stream the provider copy: catalog-routed <see cref="IVideoClient"/> stored-file
@@ -573,11 +576,20 @@ public static class MediaEndpoints
             url,
             fileId,
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
-            (id, token) => TryOpenStoredFileAsync(options.Video, options.Model, id, httpContext, token),
+            (id, token) => TryOpenStoredFileAsync(
+                options.Video
+                    ?? throw new InvalidOperationException(
+                        "Video client is required to open a stored provider file."),
+                options.Model,
+                id,
+                httpContext,
+                token),
             ct,
-            options.LogFactory?.CreateLogger("MediaProxy"),
-            options.RecoverAfterProvider,
-            httpContext);
+            options with
+            {
+                Log = options.Log ?? options.LogFactory?.CreateLogger("MediaProxy"),
+                HttpContext = options.HttpContext ?? httpContext,
+            });
 
     /// <summary>
     /// Positional <paramref name="video"/> / <paramref name="model"/> form used by tests.
@@ -597,8 +609,9 @@ public static class MediaEndpoints
     /// <summary>Test hook: file_id first, then <c>source_url</c>. A Files content GET that
     /// throws or returns null still tries the public URL (short timeout when a file_id
     /// was present). Both failing is a visible 502 with the provider status and the URL
-    /// miss — not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/>
-    /// is the Railway hosted-copy / <c>.need-fork</c> path after both provider pointers miss.
+    /// miss — not a silent <c>File not found</c>.
+    /// <see cref="StreamProviderCopyOptions.RecoverAfterProvider"/> is the Railway
+    /// hosted-copy / <c>.need-fork</c> path after both provider pointers miss.
     /// When the URL recovers after a file_id throw, <see cref="MediaProxyHeaders.FileIdError"/>
     /// is set so wipe-resync can show the Files 500 in LastStatus.</summary>
     internal static async Task<IResult> StreamProviderCopyAsync(
@@ -607,10 +620,12 @@ public static class MediaEndpoints
         Func<string, CancellationToken, Task<IResult?>> openUrl,
         Func<string, CancellationToken, Task<IResult?>> openFileId,
         CancellationToken ct,
-        ILogger? log = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null,
-        HttpContext? httpContext = null)
+        StreamProviderCopyOptions? options = null)
     {
+        options ??= new StreamProviderCopyOptions();
+        var log = options.Log ?? options.LogFactory?.CreateLogger("MediaProxy");
+        var recoverAfterProvider = options.RecoverAfterProvider;
+        var httpContext = options.HttpContext;
         Exception? fileIdError = null;
         async Task<IResult?> CaptureFileIdAsync(string id, CancellationToken token)
         {
