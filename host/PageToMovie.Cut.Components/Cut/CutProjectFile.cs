@@ -151,6 +151,61 @@ public static class CutProjectFile
     }
 
     /// <summary>
+    /// Read-only reconstruct of the saved finish (clips, titles, music, fingerprint)
+    /// from <c>cut.project.json</c>. Does not need folder takes — Review uses this
+    /// to ask whether <c>movie.mp4</c> still matches the saved cut.
+    /// </summary>
+    public static bool TryRead(
+        string? json,
+        out List<CutClip> clips,
+        out List<CutTextClip> textClips,
+        out string? movieFingerprint,
+        out CutMusic music)
+    {
+        clips = [];
+        textClips = [];
+        movieFingerprint = null;
+        music = new CutMusic();
+        if (string.IsNullOrWhiteSpace(json))
+            return false;
+        ProjectDto? dto;
+        try
+        {
+            dto = JsonSerializer.Deserialize<ProjectDto>(json, JsonOpts);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (dto?.Clips is null)
+            return false;
+        var seen = new HashSet<(int Scene, int Clip)>();
+        foreach (var row in dto.Clips)
+        {
+            if (!seen.Add((row.Scene, row.Clip)))
+                continue;
+            clips.Add(CreateReadClip(row.Scene, row.Clip));
+        }
+
+        return TryApply(clips, json, out _, out textClips, out movieFingerprint, out music, out _);
+    }
+
+    private static CutClip CreateReadClip(int scene, int clip)
+    {
+        var created = new CutClip { Scene = scene, Clip = clip };
+        created.Takes.Add(new CutTake
+        {
+            Take = 1,
+            FileName = $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4",
+            RelativePath = $"assets/video/scene_{scene:D2}_clip_{clip:D2}_take_01.mp4",
+        });
+        created.ActiveTakeNumber = 1;
+        created.SeedSelection();
+        return created;
+    }
+
+    /// <summary>
     /// First row for a (scene, clip) applies to the folder slot. Extra rows
     /// are scissors windows of the same take — insert clones, no new MP4.
     /// </summary>
