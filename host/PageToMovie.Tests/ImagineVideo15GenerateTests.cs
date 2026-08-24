@@ -241,7 +241,7 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
         {
             await client.SubmitGenerationAsync(
                 "bare text", 6, "1080p", GenerateId, CancellationToken.None);
-            Assert.Contains("videos/generations", handler.Paths);
+            Assert.Contains(handler.Paths, p => p.EndsWith("videos/generations", StringComparison.Ordinal));
             Assert.DoesNotContain(handler.Paths, p => p.Contains("extensions", StringComparison.OrdinalIgnoreCase));
             Assert.Equal("1080p", handler.LastBody!["resolution"]!.GetValue<string>());
             Assert.False(handler.LastBody.ContainsKey("reference_audios"));
@@ -278,8 +278,6 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
     {
         var handler = new StubGrokVideoHandler();
         var client = BuildClient(handler);
-        var prev = Path.Combine(_root, "prev.mp4");
-        await File.WriteAllBytesAsync(prev, new byte[] { 1, 2, 3, 4 });
         var had = Environment.GetEnvironmentVariable("XAI_API_KEY");
         Environment.SetEnvironmentVariable("XAI_API_KEY", "test-key");
         try
@@ -287,7 +285,7 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 client.SubmitGenerationAsync(
                     "hop", 6, "720p", GenerateId, CancellationToken.None,
-                    continueFromVideoPath: prev));
+                    extendSourceFileId: "file-prev"));
             Assert.Contains("does not support video continue", ex.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Empty(handler.Paths);
         }
