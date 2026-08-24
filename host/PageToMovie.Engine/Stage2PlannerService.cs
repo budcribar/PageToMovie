@@ -1752,7 +1752,7 @@ public sealed class Stage2PlannerService
         double perLineCap,
         int nextSpeakerSlot = 2)
     {
-        if (!IsEligibleCrossSpeakerPrimary(beats, i, cur, out var d1, out var sp1, out var loc1))
+        if (!IsEligibleCrossSpeakerPrimary(beats, i, cur, out var d1, out _, out var loc1))
             return false;
         var already = SpeakersAlreadyOnClip(cur);
         if (!IsEligibleCrossSpeakerNext(beats[i + 1], already, loc1, out var d2, out var sp2))
@@ -1825,12 +1825,10 @@ public sealed class Stage2PlannerService
 
     private static List<string> SpeakersAlreadyOnClip(Dictionary<string, object?> cur)
     {
-        var speakers = new List<string>();
-        foreach (var line in ClipSpokenLines.FromBeat(cur))
-        {
-            if (!string.IsNullOrWhiteSpace(line.Speaker))
-                speakers.Add(line.Speaker);
-        }
+        var speakers = ClipSpokenLines.FromBeat(cur)
+            .Select(line => line.Speaker)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
         if (speakers.Count == 0)
         {
             var primary = ReadBeatString(cur, JsonKeys.Speaker);

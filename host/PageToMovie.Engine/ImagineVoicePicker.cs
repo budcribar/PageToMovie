@@ -59,11 +59,8 @@ public static class ImagineVoicePicker
         if (!string.IsNullOrWhiteSpace(voice.Temperament) &&
             tokens.Contains(voice.Temperament.Trim().ToLowerInvariant()))
             score += 10;
-        foreach (var tag in voice.Tags ?? Array.Empty<string>())
-        {
-            if (!string.IsNullOrWhiteSpace(tag) && tokens.Contains(tag.Trim().ToLowerInvariant()))
-                score += 5;
-        }
+        score += 5 * (voice.Tags ?? Array.Empty<string>())
+            .Count(tag => !string.IsNullOrWhiteSpace(tag) && tokens.Contains(tag.Trim().ToLowerInvariant()));
         return score;
     }
 
@@ -112,11 +109,6 @@ public static class ImagineVoicePicker
     {
         if (string.IsNullOrWhiteSpace(blob))
             return false;
-        foreach (var needle in needles)
-        {
-            if (blob.Contains(needle, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
+        return needles.Any(needle => blob.Contains(needle, StringComparison.OrdinalIgnoreCase));
     }
 }

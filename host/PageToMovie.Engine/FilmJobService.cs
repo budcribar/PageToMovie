@@ -5660,21 +5660,21 @@ public sealed class FilmJobService
 
         var updated = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
             ctx.Profiles, StringComparer.OrdinalIgnoreCase);
-        foreach (var line in ClipSpokenLines.FromClipElement(ctx.ClipEl))
+        foreach (var speaker in ClipSpokenLines.FromClipElement(ctx.ClipEl).Select(line => line.Speaker))
         {
-            if (string.IsNullOrWhiteSpace(line.Speaker))
+            if (string.IsNullOrWhiteSpace(speaker))
                 continue;
-            updated.TryGetValue(line.Speaker, out var prof);
+            updated.TryGetValue(speaker, out var prof);
             var id = ImagineVoiceAssignment.Ensure(
                 _projects,
                 ctx.ProjectId,
-                line.Speaker,
+                speaker,
                 roster,
                 ImagineVoiceAssignment.HintsFromProfile(prof),
                 prof?.ImagineVoiceId);
             if (string.IsNullOrWhiteSpace(id))
                 continue;
-            updated[line.Speaker] = CopyProfileWithImagineVoice(prof, line.Speaker, id);
+            updated[speaker] = CopyProfileWithImagineVoice(prof, speaker, id);
         }
         return updated;
     }

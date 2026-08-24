@@ -1505,17 +1505,17 @@ public static class ClipVideoPromptBuilder
 
         var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var ids = new List<string>();
-        foreach (var line in ClipSpokenLines.FromClipElement(clipEl))
+        foreach (var speaker in ClipSpokenLines.FromClipElement(clipEl).Select(line => line.Speaker))
         {
-            if (ids.Count >= max || string.IsNullOrWhiteSpace(line.Speaker))
+            if (ids.Count >= max || string.IsNullOrWhiteSpace(speaker))
                 continue;
-            if (tags.ContainsKey(line.Speaker))
+            if (tags.ContainsKey(speaker))
                 continue;
-            var prof = GetCharacterProfile(characters, line.Speaker);
+            var prof = GetCharacterProfile(characters, speaker);
             var voiceId = ImagineVoicePicker.NormalizeVoiceId(entry.PresetVoices, prof?.ImagineVoiceId);
             if (voiceId is null)
                 continue;
-            tags[line.Speaker] = $"<AUDIO_{ids.Count}>";
+            tags[speaker] = $"<AUDIO_{ids.Count}>";
             ids.Add(voiceId);
         }
         return (tags, ids);
@@ -1544,7 +1544,8 @@ public static class ClipVideoPromptBuilder
 
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
-                audio, spoken, sfx, ambient, score, voiceLock, correction, audioTags);
+                audio, spoken, sfx, ambient, score,
+                new SpokenAudioExtras(voiceLock, correction, audioTags));
 
         if (HasAmbientLayers(ambient, sfx, score))
             return BuildAmbientOnlyAudio(ambient, sfx, score);
@@ -1656,16 +1657,22 @@ public static class ClipVideoPromptBuilder
         return BuildPronunciationHints(quote);
     }
 
+    private readonly record struct SpokenAudioExtras(
+        string VoiceLock,
+        ClipCorrection? Correction,
+        IReadOnlyDictionary<string, string>? AudioTags);
+
     private static string BuildSpokenDialogueAudio(
         JsonElement audio,
         (string Speaker, string Dialogue, string SecondarySpeaker, string SecondaryDialogue, string Delivery) spoken,
         string sfx,
         string ambient,
         string score,
-        string voiceLock,
-        ClipCorrection? correction = null,
-        IReadOnlyDictionary<string, string>? audioTags = null)
+        SpokenAudioExtras extras)
     {
+        var audioTags = extras.AudioTags;
+        var correction = extras.Correction;
+        var voiceLock = extras.VoiceLock;
         var who = string.IsNullOrWhiteSpace(spoken.Speaker) ? "SPEAKER" : spoken.Speaker.Trim();
         var whoCue = SpeakerCue(who, audioTags);
         var isVoiceover = IsVoiceoverDelivery(spoken.Delivery, who);
@@ -1710,19 +1717,19 @@ public static class ClipVideoPromptBuilder
             .ToList();
         if (extraLines.Count > 0)
         {
-            var extras = new System.Text.StringBuilder();
+            var extraCue = new System.Text.StringBuilder();
             var extraHints = new System.Text.StringBuilder();
             extraHints.Append(pronHint);
             foreach (var line in extraLines)
             {
                 var whoN = line.Speaker.Trim();
                 var quoteN = PromptTags.SanitizeValue(SanitizeSpokenDialogue(line.Dialogue));
-                extras.Append($" Then {SpeakerCue(whoN, audioTags)} ON CAMERA lip-syncs exactly: \"{quoteN}\".");
+                extraCue.Append($" Then {SpeakerCue(whoN, audioTags)} ON CAMERA lip-syncs exactly: \"{quoteN}\".");
                 extraHints.Append(BuildPronunciationHints(quoteN));
             }
             return PromptTags.Wrap(AudioTag,
                 $"REQUIRED native Grok dialogue. {whoCue} ON CAMERA lip-syncs " +
-                $"exactly: \"{quote}\".{openCue}{extras}{endPause}{extraHints}{speakerLock} Speech intelligible; never silent.{bed}{voiceLock}");
+                $"exactly: \"{quote}\".{openCue}{extraCue}{endPause}{extraHints}{speakerLock} Speech intelligible; never silent.{bed}{voiceLock}");
         }
 
         // spoken_on_camera / on_camera (normalized)
