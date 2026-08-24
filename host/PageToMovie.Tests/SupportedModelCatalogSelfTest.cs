@@ -44,6 +44,8 @@ public class SupportedModelCatalogSelfTest : IDisposable
     {
         foreach (var e in SupportedModelCatalog.Entries.Where(x => x.Enabled))
         {
+            if (e.Virtual)
+                continue;
             Assert.False(string.IsNullOrWhiteSpace(e.LastVerifiedAt), e.Id + " lastVerifiedAt");
             var hasCost = e.InputCostPerMillionTokens is not null
                 || e.OutputCostPerMillionTokens is not null

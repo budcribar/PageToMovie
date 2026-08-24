@@ -398,6 +398,28 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
+      "id": "imagine-video-1.5-extend",
+      "displayName": "Imagine Video 1.5 + extend",
+      "capability": "Video",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "videos/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "virtual": true,
+      "supportsVideoContinue": false,
+      "roles": {
+        "generate": "grok-imagine-video-1.5",
+        "extend": "grok-imagine-video"
+      },
+      "notes": "Catalog role bundle. generate is grok-imagine-video-1.5; extend is grok-imagine-video. This virtual id is never sent to the provider as model. Extra role keys (for example voice) are legal and ignored until routed.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "lastVerifiedAt": "2026-08-24"
+    },
+    {
       "id": "grok-imagine-video-edit",
       "displayName": "Grok Imagine Video Edit",
       "capability": "VideoEdit",
