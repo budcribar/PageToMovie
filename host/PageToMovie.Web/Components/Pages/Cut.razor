@@ -1,12 +1,11 @@
 @page "/cut"
-@inject ActiveProjectState ActiveProject
+@inject NavigationManager Nav
 
-<PageTitle>Cut</PageTitle>
+<p class="text-muted p-3 mb-0">Opening finish…</p>
 
-<div class="mb-3">
-    <h1 class="mb-1">Cut</h1>
-    <p class="text-muted mb-0">Finish the movie with trims, transitions, titles, and music.</p>
-</div>
-
-<PageToMovie.Cut.Pages.CutEditor HostProjectPrefix="@ActiveProject.ProjectId"
-                                    AutoAttachHostFolder="true" />
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.NavigateTo("/review?tab=finish", replace: true);
+    }
+}

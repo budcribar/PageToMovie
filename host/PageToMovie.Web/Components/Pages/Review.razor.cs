@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review : IAsyncDisposable, IPageSliceHost
 {
-    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Review/Play/Share tabs are slices.</summary>
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Review/Play/Share/Finish tabs are slices.</summary>
     public event Action? Rendered;
 
     public void RenderRequestedBySlice() => StateHasChanged();
@@ -106,6 +106,7 @@ public partial class Review : IAsyncDisposable, IPageSliceHost
 
             try { await Hub.StartAsync(); } catch { /* optional */ }
             await List.LoadAsync();
+            await List.ApplyQueryTabAsync();
 
             // Contextual sync: Review plays this project's media, so pull it to the local folder now
             // (replaces the old sync-on-every-page-load behaviour).
