@@ -211,10 +211,12 @@ public partial class Review
             _dubStatus = "Starting…";
             try
             {
+                var finishedMovieUrl = await TryResolveFinishedCutUrlAsync();
                 var res = await S.VoiceSub.DubMovieInMyVoiceAsync(
                     S._projectId,
                     charKey: null, // narrator by default (server default)
-                    onProgress: s => { _dubStatus = s; _ = S.InvokeAsync(S.StateHasChanged); });
+                    onProgress: s => { _dubStatus = s; _ = S.InvokeAsync(S.StateHasChanged); },
+                    sourceMovieUrl: finishedMovieUrl);
                 if (res.Ok && !string.IsNullOrWhiteSpace(res.DownloadUrl))
                 {
                     await S.VoiceSub.DownloadAsync(res.DownloadUrl, "movie-in-my-voice.mp4");
@@ -246,19 +248,16 @@ public partial class Review
             S._message = null;
             try
             {
-                var res = await S.Engine.OpenInExternalEditorAsync(S._projectId, sceneNumber: null, clipNumber: null, _preferredVideoEditor);
-
-                bool isClipchamp = string.Equals(_preferredVideoEditor, "ClipChamp", StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(_preferredVideoEditor, "Clipchamp", StringComparison.OrdinalIgnoreCase);
-
-                if (isClipchamp)
+                var finished = await TryResolveFinishedCutUrlAsync();
+                if (!string.IsNullOrWhiteSpace(finished))
                 {
-                    try
-                    {
-                        await S.JS.InvokeVoidAsync("eval", "try { window.location.href = 'ms-clipchamp:'; } catch(_) {}");
-                    }
-                    catch { /* best-effort client protocol trigger */ }
+                    await TryLaunchClipchampAsync();
+                    await DownloadMovieForEditorAsync(finished, _preferredVideoEditor, missingMusic: false);
+                    return;
                 }
+
+                var res = await S.Engine.OpenInExternalEditorAsync(S._projectId, sceneNumber: null, clipNumber: null, _preferredVideoEditor);
+                await TryLaunchClipchampAsync();
 
                 if (res.Ok)
                 {
@@ -271,11 +270,8 @@ public partial class Review
                     var movieUrl = await S.Share.EnsureShareableMovieUrlAsync();
                     if (!string.IsNullOrEmpty(movieUrl))
                     {
-                        var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
-                        var fileName = $"{cleanPid}_full.mp4";
-                        S._message = $"🎬 Downloaded movie to your PC — opening in {res.Editor ?? _preferredVideoEditor}." +
-                            (S.Share._lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
-                        await S.JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='{movieUrl}';a.download='{fileName}';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+                        await DownloadMovieForEditorAsync(
+                            movieUrl, res.Editor ?? _preferredVideoEditor, S.Share._lastExportMissingMusic);
                     }
                     else
                     {
@@ -291,6 +287,26 @@ public partial class Review
             {
                 S._busy = false;
             }
+        }
+
+        private async Task TryLaunchClipchampAsync()
+        {
+            if (!string.Equals(_preferredVideoEditor, "Clipchamp", StringComparison.OrdinalIgnoreCase))
+                return;
+            try
+            {
+                await S.JS.InvokeVoidAsync("eval", "try { window.location.href = 'ms-clipchamp:'; } catch(_) {}");
+            }
+            catch { /* best-effort client protocol trigger */ }
+        }
+
+        private async Task DownloadMovieForEditorAsync(string movieUrl, string editorLabel, bool missingMusic)
+        {
+            var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
+            var fileName = $"{cleanPid}_full.mp4";
+            S._message = $"🎬 Downloaded movie to your PC — opening in {editorLabel}." +
+                (missingMusic ? " (No local media folder connected — background music not included.)" : "");
+            await S.JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='{movieUrl}';a.download='{fileName}';document.body.appendChild(a);a.click();document.body.removeChild(a);");
         }
 
 
@@ -400,7 +416,11 @@ public partial class Review
             return true;
         }
 
-        private async Task<string?> TryResolveFinishedCutUrlAsync()
+        /// <summary>
+        /// Fresh Finish <c>movie.mp4</c> blob when <see cref="CutFinishedMovie.ShouldPlay"/>
+        /// is true. Play, Share, editor, and dub all call this — do not fork.
+        /// </summary>
+        internal async Task<string?> TryResolveFinishedCutUrlAsync()
         {
             if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
                 return null;
