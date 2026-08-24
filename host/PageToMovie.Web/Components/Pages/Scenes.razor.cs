@@ -13,6 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes : IAsyncDisposable, IPageSliceHost
 {
+    private CancellationTokenSource? _mediaFolderChangedDebounce;
     /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Scenes_* pieces are slices.</summary>
     public event Action? Rendered;
 
@@ -283,16 +284,28 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         catch { /* best effort */ }
     }
 
-    internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
+    internal void OnMediaFolderChanged()
     {
-        await TryRestoreSidecarsOnceAsync();
-        await Playback.RefreshLocalPlayableAsync();
-        if (Playback._showScenePlayer && Playback._playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
+        _mediaFolderChangedDebounce?.Cancel();
+        _mediaFolderChangedDebounce?.Dispose();
+        var debounce = _mediaFolderChangedDebounce = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
         {
-            await Playback.PlaySceneCompositeAsync(sn);
-        }
-        StateHasChanged();
-    });
+            StateHasChanged();
+            if (MediaFolder.IsSyncing)
+                return;
+            try
+            {
+                await Task.Delay(100, debounce.Token);
+                await TryRestoreSidecarsOnceAsync();
+                await Playback.RefreshLocalPlayableAsync();
+                if (Playback._showScenePlayer && Playback._playingScene is int sn && string.IsNullOrEmpty(Playback._clientSceneUrl))
+                    await Playback.PlaySceneCompositeAsync(sn);
+                StateHasChanged();
+            }
+            catch (OperationCanceledException) when (debounce.IsCancellationRequested) { }
+        });
+    }
 
 
 
@@ -470,6 +483,8 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         Hub.JobUpdated -= Gen.OnJobUpdated;
         Hub.JobLog -= Gen.OnJobLog;
         MediaFolder.Changed -= OnMediaFolderChanged;
+        _mediaFolderChangedDebounce?.Cancel();
+        _mediaFolderChangedDebounce?.Dispose();
         Playback._clientPreviewUrl = null;
         Playback._clientSceneUrl = null;
         await Stitch.RevokePreviewUrlAsync();

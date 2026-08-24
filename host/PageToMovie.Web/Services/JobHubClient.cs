@@ -11,7 +11,9 @@ public sealed class JobHubClient : IAsyncDisposable
     private readonly AdminSessionService? _session;
     private readonly NavigationManager? _nav;
     private readonly ServerHealthState? _health;
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private HubConnection? _connection;
+    private bool _disposed;
     /// <summary>Identity the live connection joined the server's per-user group with — see
     /// <see cref="OnSessionChanged"/> for why a stale one must force a reconnect.</summary>
     private (string UserId, bool HasToken)? _connectedIdentity;
@@ -50,7 +52,7 @@ public sealed class JobHubClient : IAsyncDisposable
     /// </summary>
     private void OnSessionChanged()
     {
-        if (_connection is null || _connectedIdentity == CurrentIdentity())
+        if (_disposed || _connection is null || _connectedIdentity == CurrentIdentity())
             return;
         _ = RestartWithCurrentIdentityAsync();
     }
@@ -59,13 +61,38 @@ public sealed class JobHubClient : IAsyncDisposable
     {
         try
         {
-            await StopAsync();
-            await StartAsync();
+            await _lifecycleGate.WaitAsync();
+            try
+            {
+                if (_disposed || _connectedIdentity == CurrentIdentity())
+                    return;
+                await StopCoreAsync();
+                await StartCoreAsync(CancellationToken.None);
+            }
+            finally
+            {
+                _lifecycleGate.Release();
+            }
         }
         catch { /* optional — the next EnsureStartedAsync retries */ }
     }
 
     public async Task StartAsync(CancellationToken ct = default)
+    {
+        await _lifecycleGate.WaitAsync(ct);
+        try
+        {
+            if (_disposed)
+                return;
+            await StartCoreAsync(ct);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    private async Task StartCoreAsync(CancellationToken ct)
     {
         if (_connection is { State: HubConnectionState.Connected or HubConnectionState.Connecting })
             return;
@@ -134,9 +161,19 @@ public sealed class JobHubClient : IAsyncDisposable
         if (IsConnected && _connectedIdentity == CurrentIdentity()) return;
         try
         {
-            if (_connection is not null)
-                await StopAsync();
-            await StartAsync();
+            await _lifecycleGate.WaitAsync();
+            try
+            {
+                if (_disposed || (IsConnected && _connectedIdentity == CurrentIdentity()))
+                    return;
+                if (_connection is not null)
+                    await StopCoreAsync();
+                await StartCoreAsync(CancellationToken.None);
+            }
+            finally
+            {
+                _lifecycleGate.Release();
+            }
         }
         catch { /* optional */ }
     }
@@ -154,6 +191,19 @@ public sealed class JobHubClient : IAsyncDisposable
 
     public async Task StopAsync()
     {
+        await _lifecycleGate.WaitAsync();
+        try
+        {
+            await StopCoreAsync();
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    private async Task StopCoreAsync()
+    {
         if (_connection is null) return;
         await _connection.StopAsync();
         await _connection.DisposeAsync();
@@ -165,6 +215,17 @@ public sealed class JobHubClient : IAsyncDisposable
     {
         if (_session is not null)
             _session.Changed -= OnSessionChanged;
-        await StopAsync();
+        await _lifecycleGate.WaitAsync();
+        try
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            await StopCoreAsync();
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
     }
 }

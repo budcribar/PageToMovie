@@ -12,6 +12,7 @@ namespace PageToMovie.Engine;
 public sealed class MultiProviderVideoClient : IVideoClient
 {
     private readonly IReadOnlyDictionary<string, IVideoClient> _clients;
+    private readonly HashSet<string> _providerIds;
 
     /// <summary>
     /// Production registration: each adapter is keyed by its catalog
@@ -38,6 +39,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
             throw new InvalidOperationException(
                 "Video: no IVideoClient adapters registered from catalog provider attributes.");
         _clients = map;
+        _providerIds = map.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public bool IsConfigured => _clients.Values.Any(c => c.IsConfigured);
@@ -117,6 +119,19 @@ public sealed class MultiProviderVideoClient : IVideoClient
         out string providerId,
         out string rawId)
     {
+        var known = catalogProviderIds
+            .Select(SupportedModelCatalog.NormalizeProviderId)
+            .Where(id => id.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return TrySplitTaggedRequestIdKnownProviders(requestId, known, out providerId, out rawId);
+    }
+
+    private static bool TrySplitTaggedRequestIdKnownProviders(
+        string? requestId,
+        IReadOnlySet<string> known,
+        out string providerId,
+        out string rawId)
+    {
         providerId = "";
         rawId = requestId ?? "";
         if (string.IsNullOrWhiteSpace(requestId))
@@ -125,10 +140,6 @@ public sealed class MultiProviderVideoClient : IVideoClient
         if (colon <= 0)
             return false;
         var prefix = requestId[..colon];
-        var known = catalogProviderIds
-            .Select(SupportedModelCatalog.NormalizeProviderId)
-            .Where(id => id.Length > 0)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (known.Count == 0)
             return false;
         var normalized = SupportedModelCatalog.NormalizeProviderId(prefix);
@@ -152,7 +163,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
 
     private (IVideoClient Client, string RawId) ResolveRequest(string requestId)
     {
-        if (TrySplitTaggedRequestId(requestId, _clients.Keys, out var taggedProvider, out var raw)
+        if (TrySplitTaggedRequestIdKnownProviders(requestId, _providerIds, out var taggedProvider, out var raw)
             && _clients.TryGetValue(taggedProvider, out var taggedClient))
             return (taggedClient, raw);
 

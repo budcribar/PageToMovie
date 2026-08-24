@@ -445,8 +445,10 @@ public sealed partial class ProjectStore
         AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
         AddCanonicalAliasIfNoTakes(result, activeMp4, scene, clip);
         await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
-        AssignUniqueTakeNumbers(result);
         MarkCurrentTake(result, videoDir, scene, clip);
+        // Preserve the pointer-selected object before repairing duplicate/invalid display take
+        // numbers. Comparing the pointer after renumbering can mark a different take current.
+        AssignUniqueTakeNumbers(result);
         return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
     }
 
@@ -467,18 +469,32 @@ public sealed partial class ProjectStore
                 continue;
             var takeMp4 = Path.Combine(videoDir, stem + ".mp4");
             var fi = File.Exists(takeMp4) ? new FileInfo(takeMp4) : new FileInfo(sidecar);
-            var sidecarTake = ReadSidecarTakeField(sidecar);
-            var take = ClipTakeNaming.ResolveTakeNumber(stem, sidecarTake);
-            var item = ParseClipSidecarOrMeta(sidecar, takeMp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
-            item.RelativePath = $"{ClipTakeNaming.AssetsVideoPrefix}/{stem}.mp4";
-            var src = ClipProviderSource.Read(sidecar);
-            if (src is not null)
+            try
             {
+                // A take sidecar used to be read and parsed three times here (take, card, source).
+                // Parse once and project all three views from the same JSON element.
+                using var doc = JsonDocument.Parse(File.ReadAllText(sidecar));
+                var root = doc.RootElement;
+                var sidecarTake = root.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) ? n : 0;
+                var take = ClipTakeNaming.ResolveTakeNumber(stem, sidecarTake);
+                var item = CreateClipVersionItem(takeMp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
+                ApplyClipSidecarJson(item, root);
+                item.RelativePath = $"{ClipTakeNaming.AssetsVideoPrefix}/{stem}.mp4";
+                var src = ClipProviderSource.Read(root);
                 item.SourceUrl = src.SourceUrl ?? item.SourceUrl;
                 item.SourceFileId = src.SourceFileId ?? item.SourceFileId;
                 item.ProviderLeadInSeconds = src.LeadInSeconds;
+                result.Add(item);
             }
-            result.Add(item);
+            catch
+            {
+                // Preserve the historical best-effort behavior for a malformed sidecar: the
+                // filename still identifies a take card even when its optional metadata is bad.
+                var take = ClipTakeNaming.ResolveTakeNumber(stem, 0);
+                var item = CreateClipVersionItem(takeMp4, scene, clip, take, isCurrent: false, fi.LastWriteTimeUtc);
+                item.RelativePath = $"{ClipTakeNaming.AssetsVideoPrefix}/{stem}.mp4";
+                result.Add(item);
+            }
         }
     }
 
@@ -538,8 +554,11 @@ public sealed partial class ProjectStore
             return;
         var pointer = ClipSidecarService.ReadCurrentTake(videoDir, scene, clip);
         ClipVersionItem? current = pointer > 0
-            ? result.FirstOrDefault(v => v.Take == pointer)
+            ? result.FirstOrDefault(v =>
+                ClipTakeNaming.IsStableTakeName(v.Mp4FileName)
+                && ClipTakeNaming.ParseTakeNumber(v.Mp4FileName) == pointer)
             : null;
+        current ??= pointer > 0 ? result.FirstOrDefault(v => v.Take == pointer) : null;
         current ??= result
             .Where(v => !ClipTakeNaming.IsCanonicalClipName(v.Mp4FileName))
             .OrderByDescending(x => x.Take).ThenByDescending(x => x.CreatedAtUtc)
@@ -736,16 +755,7 @@ public sealed partial class ProjectStore
 
     private static ClipVersionItem ParseClipSidecarOrMeta(string sidecarPath, string mp4Path, int scene, int clip, int take, bool isCurrent, DateTime lastWriteUtc)
     {
-        var item = new ClipVersionItem
-        {
-            VersionId = Path.GetFileName(mp4Path),
-            Scene = scene,
-            Clip = clip,
-            Take = take,
-            IsCurrent = isCurrent,
-            CreatedAtUtc = lastWriteUtc,
-            Mp4FileName = Path.GetFileName(mp4Path),
-        };
+        var item = CreateClipVersionItem(mp4Path, scene, clip, take, isCurrent, lastWriteUtc);
 
         if (File.Exists(sidecarPath))
         {
@@ -759,6 +769,19 @@ public sealed partial class ProjectStore
 
         return item;
     }
+
+    private static ClipVersionItem CreateClipVersionItem(
+        string mp4Path, int scene, int clip, int take, bool isCurrent, DateTime lastWriteUtc) =>
+        new()
+        {
+            VersionId = Path.GetFileName(mp4Path),
+            Scene = scene,
+            Clip = clip,
+            Take = take,
+            IsCurrent = isCurrent,
+            CreatedAtUtc = lastWriteUtc,
+            Mp4FileName = Path.GetFileName(mp4Path),
+        };
 
     private static void ApplyClipSidecarJson(ClipVersionItem item, JsonElement root)
     {
@@ -5678,6 +5701,7 @@ public sealed partial class ProjectStore
     private sealed class SceneListContext
     {
         public required Dictionary<string, long> VideoIndex { get; init; }
+        public required SceneMediaPresenceIndex MediaPresence { get; init; }
         public required Dictionary<string, long> ScenesIndex { get; init; }
         public HashSet<string>? ApprovedScenes { get; init; }
         public required HashSet<int> MusicScenes { get; init; }
@@ -5688,9 +5712,11 @@ public sealed partial class ProjectStore
         var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
         var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
+        var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
         return new SceneListContext
         {
-            VideoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false),
+            VideoIndex = videoIndex,
+            MediaPresence = new SceneMediaPresenceIndex(videoIndex),
             ScenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false),
             ApprovedScenes = await LoadApprovedSceneKeysAsync(projectDir, ct).ConfigureAwait(false),
             MusicScenes = await LoadMusicSceneNumbersAsync(projectId, ct).ConfigureAwait(false),
@@ -5752,11 +5778,11 @@ public sealed partial class ProjectStore
 
         var clips = SceneClipElements(s);
         var nClips = clips.Count;
-        var onDisk = CountClipsOnDisk(ctx.VideoIndex, sn, clips);
+        var onDisk = CountClipsOnDisk(ctx.MediaPresence, sn, clips);
         var complete = nClips > 0 && onDisk >= nClips;
-        var missingServerVideo = ListClipsMissingServerVideo(ctx.VideoIndex, sn, clips);
+        var missingServerVideo = ListClipsMissingServerVideo(ctx.MediaPresence, sn, clips);
         var (locs, primaryLoc) = CollectSceneLocations(s);
-        var staleClipCount = CountStaleClips(projectId, s, sn, onDisk, ctx.VideoIndex);
+        var staleClipCount = CountStaleClips(projectId, s, sn, onDisk, ctx.MediaPresence);
 
         var planned = ReadOptionalDuration(s, "total_estimated_duration_seconds");
         var actual = await ProbeSceneActualDurationAsync(projectId, sn, clips, probeDurations, ct).ConfigureAwait(false);
@@ -5791,21 +5817,21 @@ public sealed partial class ProjectStore
             ? vc.EnumerateArray().ToList()
             : new List<JsonElement>();
 
-    private static int CountClipsOnDisk(Dictionary<string, long> videoIndex, int sn, List<JsonElement> clips)
+    private static int CountClipsOnDisk(SceneMediaPresenceIndex mediaPresence, int sn, List<JsonElement> clips)
     {
         var onDisk = 0;
         foreach (var c in clips)
         {
             var cn = ClipKeying.ClipNumber(c);
             if (cn <= 0) continue;
-            if (ClipOnDisk(videoIndex, sn, cn))
+            if (mediaPresence.IsPresent(sn, cn))
                 onDisk++;
         }
         return onDisk;
     }
 
     private static List<int> ListClipsMissingServerVideo(
-        Dictionary<string, long> videoIndex, int sn, List<JsonElement> clips)
+        SceneMediaPresenceIndex mediaPresence, int sn, List<JsonElement> clips)
     {
         var planned = new List<int>();
         foreach (var c in clips)
@@ -5814,7 +5840,7 @@ public sealed partial class ProjectStore
             if (cn > 0)
                 planned.Add(cn);
         }
-        return ScenePlayGate.MissingServerVideoClips(videoIndex, sn, planned);
+        return planned.Distinct().OrderBy(x => x).Where(cn => !mediaPresence.HasServerMp4(sn, cn)).ToList();
     }
 
     private static double? ReadOptionalDuration(JsonElement s, string name)
@@ -5913,7 +5939,7 @@ public sealed partial class ProjectStore
     }
 
     private int CountStaleClips(
-        string projectId, JsonElement s, int sn, int onDisk, Dictionary<string, long> videoIndex)
+        string projectId, JsonElement s, int sn, int onDisk, SceneMediaPresenceIndex mediaPresence)
     {
         try
         {
@@ -5927,7 +5953,7 @@ public sealed partial class ProjectStore
             {
                 if (!cEl.TryGetProperty(JsonKeys.ClipNumber, out var cnEl) || !cnEl.TryGetInt32(out var cn2))
                     continue;
-                if (!ClipOnDisk(videoIndex, sn, cn2)) continue;
+                if (!mediaPresence.IsPresent(sn, cn2)) continue;
                 var path = ResolveClipVideoPath(projectId, sn, cn2);
                 if (path is null || !File.Exists(path)) continue;
                 if (bpM > File.GetLastWriteTimeUtc(path).AddSeconds(2))
@@ -5976,10 +6002,11 @@ public sealed partial class ProjectStore
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
         var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
         var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
+        var mediaPresence = new SceneMediaPresenceIndex(videoIndex);
         var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
 
         var (clips, duplicateClipNumbers) = await CollectSceneClipSummariesAsync(
-            projectId, sceneNumber, projectDir, sEl, videoIndex, probeDurations, ct).ConfigureAwait(false);
+            projectId, sceneNumber, projectDir, sEl, videoIndex, mediaPresence, probeDurations, ct).ConfigureAwait(false);
         clips = clips.OrderBy(c => c.ClipNumber).ToList();
 
         var planned = ReadOptionalDuration(sEl, "total_estimated_duration_seconds");
@@ -6053,6 +6080,7 @@ public sealed partial class ProjectStore
         string projectDir,
         JsonElement sEl,
         Dictionary<string, long> videoIndex,
+        SceneMediaPresenceIndex mediaPresence,
         bool probeDurations,
         CancellationToken ct)
     {
@@ -6079,7 +6107,7 @@ public sealed partial class ProjectStore
             }
 
             clips.Add(await BuildClipSummaryAsync(
-                projectId, sceneNumber, projectDir, c, cn, videoIndex, probeDurations, ct).ConfigureAwait(false));
+                projectId, sceneNumber, projectDir, c, cn, videoIndex, mediaPresence, probeDurations, ct).ConfigureAwait(false));
         }
         return (clips, duplicateClipNumbers);
     }
@@ -6091,11 +6119,12 @@ public sealed partial class ProjectStore
         JsonElement c,
         int cn,
         Dictionary<string, long> videoIndex,
+        SceneMediaPresenceIndex mediaPresence,
         bool probeDurations,
         CancellationToken ct)
     {
         var fileName = $"scene_{sceneNumber:D2}_clip_{cn:D2}.mp4";
-        var onDisk = ClipOnDisk(videoIndex, sceneNumber, cn);
+        var onDisk = mediaPresence.IsPresent(sceneNumber, cn);
         var size = ResolveClipSizeOnDisk(videoIndex, fileName, sceneNumber, cn, onDisk);
         var audio = ParseClipAudio(c);
         var dur = 0;

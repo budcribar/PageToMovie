@@ -60,4 +60,34 @@ public class ClipVersionAndUncommittedTests
             DeleteDir(root);
         }
     }
+
+    [Fact]
+    public async Task Current_pointer_stays_on_stable_take_when_duplicate_take_numbers_are_repaired()
+    {
+        var root = NewTempDir("ptm_clip_current_collision");
+        try
+        {
+            var projectDir = Path.Combine(root, "projects", "TestProj");
+            var videoDir = Path.Combine(projectDir, "assets", "video");
+            Directory.CreateDirectory(videoDir);
+            var leftover = Path.Combine(videoDir, "scene_01_clip_01_take_01_20260820_120000.clip.json");
+            File.WriteAllText(leftover, """{"take":1,"visual_prompt":"Leftover"}""");
+            File.SetLastWriteTimeUtc(leftover, DateTime.UtcNow.AddMinutes(-2));
+            File.WriteAllText(
+                Path.Combine(videoDir, "scene_01_clip_01_take_01.clip.json"),
+                """{"take":1,"visual_prompt":"Stable current"}""");
+            ClipSidecarService.WriteCurrentTake(videoDir, 1, 1, 1);
+
+            var store = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = root }));
+            var versions = await store.GetClipVersionsAsync("TestProj", 1, 1);
+
+            var current = Assert.Single(versions, v => v.IsCurrent);
+            Assert.Equal("scene_01_clip_01_take_01.mp4", current.Mp4FileName);
+            Assert.Equal("Stable current", current.VisualPrompt);
+        }
+        finally
+        {
+            DeleteDir(root);
+        }
+    }
 }

@@ -23,7 +23,7 @@ public sealed class ClipProviderSourceTests : IDisposable
     public async Task Sidecar_records_lead_in_and_is_found_by_pattern_not_exact_name()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "P");
         Directory.CreateDirectory(projectDir);
 
@@ -51,7 +51,7 @@ public sealed class ClipProviderSourceTests : IDisposable
     public async Task Fresh_clip_sidecar_has_no_lead_in()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "P");
         Directory.CreateDirectory(projectDir);
         var path = await service.WriteSidecarAsync(projectDir, 1, 1, "prompt", "", "grok-imagine-video", "480p", 8.0, "", 0,
@@ -354,7 +354,7 @@ public sealed class ClipTakesFromSidecarsTests : IDisposable
     public async Task Each_generation_writes_a_new_numbered_sidecar_and_all_takes_are_listed()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "P");
         Directory.CreateDirectory(Path.Combine(projectDir, "source"));
         File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
@@ -398,7 +398,7 @@ public sealed class ClipTakesFromSidecarsTests : IDisposable
     public async Task Second_generation_lists_take_N_plus_1_as_current()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "Regen");
         Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
         File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");
@@ -417,7 +417,7 @@ public sealed class ClipTakesFromSidecarsTests : IDisposable
     public async Task Provider_only_take_can_be_promoted_without_an_mp4()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "Prov");
         Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
         File.WriteAllText(Path.Combine(projectDir, "project.json"), "{}");

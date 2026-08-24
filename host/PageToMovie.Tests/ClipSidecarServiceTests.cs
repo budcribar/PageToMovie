@@ -26,7 +26,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task WriteSidecarAsync_creates_valid_json_sidecar()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "TestMovie");
         Directory.CreateDirectory(projectDir);
@@ -68,7 +68,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task EnsureAllSidecarsExistAsync_backfills_missing_sidecars_for_mp4s()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "TestMovie");
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -96,7 +96,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task ConvertProjectClipsToNewFormatAsync_renames_clips_and_writes_take_sidecars()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "TellTaleTest");
         var videoDir = Path.Combine(projectDir, "assets", "video");
@@ -127,7 +127,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task ConvertProjectClipsToNewFormatAsync_does_not_timestamp_already_converted_takes()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_tempWorkspace, "projects", "StableTakes");
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);
@@ -150,7 +150,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task WriteSidecarAsync_after_leftover_alias_becomes_take_02()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_tempWorkspace, "projects", "AliasThenRegen");
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);
@@ -185,7 +185,7 @@ public class ClipSidecarServiceTests : IDisposable
         Assert.Equal(1, ClipSidecarService.NextTakeNumber(videoDir, 2, 1));
 
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_tempWorkspace, "projects", "StubThenRender");
         Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
         File.Copy(
@@ -200,7 +200,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task Two_generated_takes_then_promote_first_makes_it_current()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_tempWorkspace, "projects", "CreditsTakes");
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);
@@ -234,7 +234,7 @@ public class ClipSidecarServiceTests : IDisposable
     public async Task PersistGeneratedTake_does_not_create_or_refresh_a_bare_alias()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var service = new ClipSidecarService(projects);
+        var service = new ClipSidecarService();
         var projectDir = Path.Combine(_tempWorkspace, "projects", "NoAlias");
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);

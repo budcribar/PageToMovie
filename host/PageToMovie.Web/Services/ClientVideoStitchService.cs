@@ -118,12 +118,14 @@ public sealed class ClientVideoStitchService
         if (clips is not { Count: > 0 })
             return new List<string>();
 
+        var playable = await ResolvePlayableClipUrlsBatchAsync(
+            projectId, sn, clips, includeServerFallback: true, ct).ConfigureAwait(false);
         var resolved = new List<string>(clips.Count);
         var missing = new List<string>();
-        foreach (var c in clips)
+        for (var i = 0; i < clips.Count; i++)
         {
-            var url = await TryResolvePlayableClipUrlAsync(projectId, sn, c, includeServerFallback: true, ct)
-                .ConfigureAwait(false);
+            var c = clips[i];
+            var url = playable[i];
             if (!string.IsNullOrEmpty(url))
                 resolved.Add(url);
             else
@@ -173,7 +175,7 @@ public sealed class ClientVideoStitchService
             var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", ct, url);
             if (probe is { Success: true, Seconds: > 0 } && probe.Seconds > leadIn + 0.1)
             {
-                var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", ct, url, probe.Seconds - leadIn, null);
+                var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.keepLastSecondsAsync", ct, url, probe.Seconds - leadIn, null);
                 if (slice is { Success: true } && !string.IsNullOrWhiteSpace(slice.Url))
                     return slice.Url;
             }
@@ -257,14 +259,15 @@ public sealed class ClientVideoStitchService
             query = detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber);
         }
 
-        foreach (var clipRow in query)
+        var rows = query.ToList();
+        var resolved = await ResolvePlayableClipUrlsBatchAsync(
+            projectId, sceneNumber, rows, includeServerFallback, ct).ConfigureAwait(false);
+        for (var i = 0; i < rows.Count; i++)
         {
-            var url = await TryResolvePlayableClipUrlAsync(
-                projectId, sceneNumber, clipRow, includeServerFallback, ct).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(url))
-                list.Add(url);
+            if (!string.IsNullOrEmpty(resolved[i]))
+                list.Add(resolved[i]!);
             else
-                missing.Add(ScenePlayGate.FormatClipLabel(sceneNumber, clipRow.ClipNumber));
+                missing.Add(ScenePlayGate.FormatClipLabel(sceneNumber, rows[i].ClipNumber));
         }
 
         if (missing.Count > 0)
@@ -275,26 +278,43 @@ public sealed class ClientVideoStitchService
         return list;
     }
 
-    /// <summary>Local media-folder blob, else a reachable server clip URL — never a 404 URL.</summary>
-    private async Task<string?> TryResolvePlayableClipUrlAsync(
+    private async Task<string?[]> ResolvePlayableClipUrlsBatchAsync(
         string projectId,
         int sceneNumber,
-        ClipSummary clipRow,
+        IReadOnlyList<ClipSummary> rows,
         bool includeServerFallback,
         CancellationToken ct)
     {
-        var local = await TryLocalClipBlobUrlAsync(projectId, sceneNumber, clipRow).ConfigureAwait(false);
-        if (!string.IsNullOrEmpty(local))
-            return local;
-        if (!includeServerFallback)
-            return null;
+        var resolved = new string?[rows.Count];
+        var serverCandidates = new List<(int Index, string Url)>();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var clipRow = rows[i];
+            var local = await TryLocalClipBlobUrlAsync(projectId, sceneNumber, clipRow).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(local))
+            {
+                resolved[i] = local;
+                continue;
+            }
+            if (!includeServerFallback)
+                continue;
+            var server = await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(server))
+                serverCandidates.Add((i, server));
+        }
 
-        var server = await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(server))
-            return null;
-        return await _engine.MediaUrlReachableAsync(server, ct).ConfigureAwait(false)
-            ? server
-            : null;
+        // Range probes are independent network operations. Run them together so scene startup
+        // costs one probe round-trip instead of one round-trip per clip.
+        await Parallel.ForEachAsync(
+            serverCandidates,
+            new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },
+            async (candidate, token) =>
+            {
+                if (await _engine.MediaUrlReachableAsync(candidate.Url, token).ConfigureAwait(false))
+                    resolved[candidate.Index] = candidate.Url;
+            }).ConfigureAwait(false);
+
+        return resolved;
     }
 
     private async Task<string?> TryLocalClipBlobUrlAsync(string projectId, int sceneNumber, ClipSummary clipRow)
@@ -701,7 +721,7 @@ public sealed class ClientVideoStitchService
     {
         try
         {
-            var r = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", ct, url, keepSeconds, null);
+            var r = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.keepLastSecondsAsync", ct, url, keepSeconds, null);
             return r is { Success: true } && !string.IsNullOrWhiteSpace(r.Url) ? r.Url : null;
         }
         catch { return null; }

@@ -26,7 +26,7 @@ public class ProjectMigrationServiceTests : IDisposable
     public async Task MigrateIfNeededAsync_upgrades_v0_project_to_current_and_updates_schema_version()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var sidecars = new ClipSidecarService(projects);
+        var sidecars = new ClipSidecarService();
         var migration = new ProjectMigrationService(sidecars);
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "UnversionedMovie");
@@ -61,7 +61,7 @@ public class ProjectMigrationServiceTests : IDisposable
     public async Task MigrateIfNeededAsync_is_noop_for_already_current_project()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var sidecars = new ClipSidecarService(projects);
+        var sidecars = new ClipSidecarService();
         var migration = new ProjectMigrationService(sidecars);
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "VersionedMovie");
@@ -79,7 +79,7 @@ public class ProjectMigrationServiceTests : IDisposable
     public async Task MigrateIfNeededAsync_upgrades_v1_project_visual_prompt_labels_to_tags()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
-        var sidecars = new ClipSidecarService(projects);
+        var sidecars = new ClipSidecarService();
         var migration = new ProjectMigrationService(sidecars);
 
         var projectDir = Path.Combine(_tempWorkspace, "projects", "V1Movie");

@@ -11,6 +11,18 @@ namespace PageToMovie.Tests;
 public class FilmJobServiceDurationReconciliationTests
 {
     [Fact]
+    public void GeneratedSidecarTiming_preserves_uncapped_fresh_clip_duration_and_window()
+    {
+        var timing = FilmJobService.GeneratedSidecarTiming(12.0, providerLeadInSeconds: null);
+
+        Assert.Equal(12.0, timing.Duration);
+        Assert.Equal(0.0, timing.Start);
+        Assert.Equal(12.0, timing.Stop);
+        Assert.Equal(12.0, ClipExtendSource.ProviderInputDurationSeconds(
+            leadInSeconds: 0, durationSeconds: timing.Duration, clipStopSeconds: timing.Stop));
+    }
+
+    [Fact]
     public void ComputeCarryoverOverrunSec_ZeroForNonContinuationModels()
     {
         // Constraint 3: only continuation-chain models get free same-scene reconciliation.

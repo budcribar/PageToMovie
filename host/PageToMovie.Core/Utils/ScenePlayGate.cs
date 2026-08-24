@@ -1,5 +1,51 @@
 namespace PageToMovie.Core.Utils;
 
+/// <summary>One-pass index for repeated clip-presence checks against a video directory listing.</summary>
+public sealed class SceneMediaPresenceIndex
+{
+    private readonly HashSet<(int Scene, int Clip)> _present = new();
+    private readonly HashSet<(int Scene, int Clip)> _serverMp4 = new();
+
+    public SceneMediaPresenceIndex(IReadOnlyDictionary<string, long> files)
+    {
+        foreach (var (name, size) in files)
+        {
+            if (!TryParse(name, out var key))
+                continue;
+            var isMp4 = name.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
+            var isClipSidecar = name.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
+            var isVideoMarker = name.EndsWith(".mp4.client.json", StringComparison.OrdinalIgnoreCase);
+            if (isMp4 || isClipSidecar || isVideoMarker)
+                _present.Add(key);
+            if (isMp4 && size >= ScenePlayGate.MinPlayableVideoBytes)
+                _serverMp4.Add(key);
+        }
+    }
+
+    public bool IsPresent(int scene, int clip) => _present.Contains((scene, clip));
+    public bool HasServerMp4(int scene, int clip) => _serverMp4.Contains((scene, clip));
+
+    private static bool TryParse(string name, out (int Scene, int Clip) key)
+    {
+        key = default;
+        var stem = Path.GetFileName(name);
+        if (!stem.StartsWith("scene_", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var clipMarker = stem.IndexOf("_clip_", StringComparison.OrdinalIgnoreCase);
+        if (clipMarker <= 6
+            || !int.TryParse(stem.AsSpan(6, clipMarker - 6), out var scene))
+            return false;
+        var clipStart = clipMarker + 6;
+        var clipEnd = stem.IndexOfAny(new[] { '_', '.' }, clipStart);
+        if (clipEnd < 0)
+            clipEnd = stem.Length;
+        if (!int.TryParse(stem.AsSpan(clipStart, clipEnd - clipStart), out var clip))
+            return false;
+        key = (scene, clip);
+        return scene > 0 && clip > 0;
+    }
+}
+
 /// <summary>
 /// Scene-level Play is allowed only when every planned clip is actually playable
 /// (a real MP4, not just an OnDisk <c>.client.json</c> / sidecar marker).
@@ -46,12 +92,13 @@ public static class ScenePlayGate
         int scene,
         IEnumerable<int> plannedClipNumbers)
     {
+        var presence = new SceneMediaPresenceIndex(videoIndex);
         var missing = new List<int>();
         foreach (var cn in plannedClipNumbers.Distinct().OrderBy(x => x))
         {
             if (cn <= 0)
                 continue;
-            if (!HasServerMp4(videoIndex, scene, cn))
+            if (!presence.HasServerMp4(scene, cn))
                 missing.Add(cn);
         }
         return missing;

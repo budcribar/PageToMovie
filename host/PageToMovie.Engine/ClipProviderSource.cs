@@ -68,20 +68,24 @@ public sealed record ClipProviderSource(
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(sidecarPath));
-            var r = doc.RootElement;
-            string? Str(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-            double? Num(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : null;
-            return new ClipProviderSource(
-                Str("source_url"),
-                Str("source_file_id"),
-                Num(LeadInProperty) ?? 0,
-                Num("duration_seconds"),
-                Num(ClipStartProperty),
-                Num(ClipStopProperty),
-                Str("model"),
-                Str("source_provider"));
+            return Read(doc.RootElement);
         }
         catch { return null; }
+    }
+
+    public static ClipProviderSource Read(JsonElement r)
+    {
+        string? Str(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        double? Num(string name) => r.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : null;
+        return new ClipProviderSource(
+            Str("source_url"),
+            Str("source_file_id"),
+            Num(LeadInProperty) ?? 0,
+            Num("duration_seconds"),
+            Num(ClipStartProperty),
+            Num(ClipStopProperty),
+            Str("model"),
+            Str("source_provider"));
     }
 
     /// <summary>

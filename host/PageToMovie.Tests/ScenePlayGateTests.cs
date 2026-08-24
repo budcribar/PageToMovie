@@ -40,6 +40,25 @@ public class ScenePlayGateTests
     }
 
     [Fact]
+    public void SceneMediaPresenceIndex_buckets_take_files_and_markers_once()
+    {
+        var index = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["scene_02_clip_01_take_03.mp4"] = 50_000,
+            ["scene_02_clip_02_take_04.mp4.client.json"] = 120,
+            ["scene_02_clip_03_take_02.clip.json"] = 400,
+            ["unrelated.json"] = 99,
+        };
+
+        var presence = new SceneMediaPresenceIndex(index);
+        Assert.True(presence.HasServerMp4(2, 1));
+        Assert.False(presence.HasServerMp4(2, 2));
+        Assert.True(presence.IsPresent(2, 1));
+        Assert.True(presence.IsPresent(2, 2));
+        Assert.True(presence.IsPresent(2, 3));
+    }
+
+    [Fact]
     public void DecideScenePlay_disabled_when_a_clip_is_missing()
     {
         var (canPlay, reason) = ScenePlayGate.DecideScenePlay(2, clipCount: 4, missingServerVideoClips: new[] { 3 });

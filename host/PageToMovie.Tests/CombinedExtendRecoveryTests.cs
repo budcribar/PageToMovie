@@ -155,9 +155,9 @@ public class CombinedExtendRecoveryTests
         Assert.True(n);
         Assert.True(js.SavedFromTail(C2));
         Assert.Contains(js.TrimKeeps, k =>
-            k.Identifier.EndsWith("trimTailAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - clipDur) < 0.05);
+            k.Identifier.EndsWith("keepLastSecondsAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - clipDur) < 0.05);
         Assert.DoesNotContain(js.TrimKeeps, k =>
-            k.Identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
+            k.Identifier.EndsWith("keepFirstSecondsAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
         Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
     }
 
@@ -177,9 +177,9 @@ public class CombinedExtendRecoveryTests
         Assert.True(js.SavedRelative(C2));
         Assert.DoesNotContain(js.Saves, s => IsCombinedSource(s.Url));
         Assert.Contains(js.TrimKeeps, k =>
-            k.Identifier.EndsWith("trimTailAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - screenplay) < 0.05);
+            k.Identifier.EndsWith("keepLastSecondsAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - screenplay) < 0.05);
         Assert.Contains(js.TrimKeeps, k =>
-            k.Identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
+            k.Identifier.EndsWith("keepFirstSecondsAsync", StringComparison.Ordinal) && Math.Abs(k.Keep - cap.Value) < 0.05);
     }
 
     [Fact]
@@ -214,6 +214,22 @@ public class CombinedExtendRecoveryTests
         Assert.True(js.SavedFromTail(C2));
         Assert.False(js.SavedRelative(C1));
         Assert.Contains(C1, js.LocalFiles);
+        Assert.DoesNotContain(js.TrimKeeps, k =>
+            k.Identifier.EndsWith("keepFirstSecondsAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Recovered_predecessor_is_written_to_its_current_take()
+    {
+        const string currentC1 = "assets/video/scene_01_clip_01_take_03.mp4";
+        var (svc, js) = await ConnectAsync(providerDuration: 10);
+        js.CurrentTakes[(1, 1)] = 3;
+
+        var saved = await svc.TrySaveSyncedMediaFileAsync(ProjectId, CombinedClip(C2, leadIn: 4.9));
+
+        Assert.True(saved);
+        Assert.True(js.SavedRelative(currentC1));
+        Assert.False(js.SavedRelative(C1));
     }
 
     [Fact]
@@ -421,6 +437,7 @@ public class CombinedExtendRecoveryTests
         public List<string> ProbeSources { get; } = new();
         public List<string> TrimSources { get; } = new();
         public List<(string Identifier, double Keep)> TrimKeeps { get; } = new();
+        public Dictionary<(int Scene, int Clip), int> CurrentTakes { get; } = new();
         public bool ProviderUnavailable { get; set; }
         public string? FileIdErrorOnSuccess { get; set; }
         public double ProviderDurationSeconds { get; set; } = 10;
@@ -480,6 +497,20 @@ public class CombinedExtendRecoveryTests
                 return """{"success":false}""";
             }
 
+            if (identifier == "PageToMovieMedia.getBytesAsync")
+            {
+                var rel = StripProject(Arg(args, 0));
+                foreach (var ((scene, clip), take) in CurrentTakes)
+                {
+                    var pointer = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.current.json";
+                    if (!rel.Equals(pointer, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var bytes = Encoding.UTF8.GetBytes($"{{\"take\":{take}}}");
+                    return $"{{\"success\":true,\"bytes\":\"{Convert.ToBase64String(bytes)}\"}}";
+                }
+                return """{"success":false}""";
+            }
+
             if (identifier == "PageToMovieFfmpeg.prefetchToBlobUrlAsync")
             {
                 var url = Arg(args, 0);
@@ -498,7 +529,7 @@ public class CombinedExtendRecoveryTests
                 return Probe(url);
             }
 
-            if (identifier is "PageToMovieFfmpeg.trimTailAsync" or "PageToMovieFfmpeg.trimHeadAsync")
+            if (identifier is "PageToMovieFfmpeg.keepLastSecondsAsync" or "PageToMovieFfmpeg.keepFirstSecondsAsync")
             {
                 var url = Arg(args, 0);
                 TrimSources.Add(url);
@@ -506,7 +537,7 @@ public class CombinedExtendRecoveryTests
                     return """{"success":false,"error":"HTTP 404"}""";
                 var keep = args.Length > 1 && double.TryParse(args[1]?.ToString(), out var k) ? k : 1;
                 TrimKeeps.Add((identifier, keep));
-                var kind = identifier.EndsWith("trimHeadAsync", StringComparison.Ordinal) ? "head" : "tail";
+                var kind = identifier.EndsWith("keepFirstSecondsAsync", StringComparison.Ordinal) ? "head" : "tail";
                 var blob = $"blob:{kind}:{++_trimSeq}";
                 _durations[blob] = keep;
                 return $"{{\"success\":true,\"url\":\"{blob}\"}}";

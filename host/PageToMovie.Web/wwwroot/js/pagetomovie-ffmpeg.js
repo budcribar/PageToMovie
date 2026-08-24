@@ -1474,7 +1474,7 @@ window.PageToMovieFfmpeg = {
         });
     },
 
-    // Shared by trimTailAsync (keep last N seconds) and trimHeadAsync (keep first N).
+    // Shared by keepLastSecondsAsync and keepFirstSecondsAsync.
     // Standalone — not the silence-trim session bookkeeping that encodeSliceAsync uses.
     _trimKeepSecondsAsync: async function (url, keepSeconds, onProgress, opts) {
         if (!url) return { success: false, error: "No URL" };
@@ -1532,7 +1532,7 @@ window.PageToMovieFfmpeg = {
     // Trims a video down to its last `keepSeconds` — used to prepare a video-extend continuation
     // source (see FilmJobService.GenerateOneClipAsync): the model rejects input video longer than
     // its own max clip length, so the client keeps only the tail before uploading it.
-    trimTailAsync: async function (url, keepSeconds, onProgress) {
+    keepLastSecondsAsync: async function (url, keepSeconds, onProgress) {
         return this._trimKeepSecondsAsync(url, keepSeconds, onProgress, {
             prefix: "trimtail",
             seqKey: "_trimTailSeq",
@@ -1543,14 +1543,22 @@ window.PageToMovieFfmpeg = {
 
     // Keeps the first `keepSeconds` of a combined video-extend copy — the previous clip, which
     // lives at the head (see CombinedExtendRecovery / provider_lead_in_seconds). Pair of
-    // trimTailAsync; the API host never trims.
-    trimHeadAsync: async function (url, keepSeconds, onProgress) {
+    // Pair of keepLastSecondsAsync; the API host never trims.
+    keepFirstSecondsAsync: async function (url, keepSeconds, onProgress) {
         return this._trimKeepSecondsAsync(url, keepSeconds, onProgress, {
             prefix: "trimhead",
             seqKey: "_trimHeadSeq",
             fromEnd: false,
             progressLabel: "Trimming head…",
         });
+    },
+
+    // Backward-compatible aliases for older browser bundles/callers.
+    trimTailAsync: async function (url, keepSeconds, onProgress) {
+        return this.keepLastSecondsAsync(url, keepSeconds, onProgress);
+    },
+    trimHeadAsync: async function (url, keepSeconds, onProgress) {
+        return this.keepFirstSecondsAsync(url, keepSeconds, onProgress);
     },
 
     discardSessionAsync: async function (token) {

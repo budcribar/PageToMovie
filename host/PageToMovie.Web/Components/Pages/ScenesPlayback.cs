@@ -63,6 +63,7 @@ public partial class Scenes
 
     /// <summary>Local MP4 confirmed via media-folder stat (not just a connected folder).</summary>
     internal readonly Dictionary<(int Scene, int Clip), bool> _localVideoReady = new();
+    private readonly SemaphoreSlim _localPlayableRefreshGate = new(1, 1);
 
 
 
@@ -228,9 +229,28 @@ public partial class Scenes
 
     internal async Task RefreshLocalPlayableAsync()
     {
-        _localVideoReady.Clear();
-        if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
+        await _localPlayableRefreshGate.WaitAsync();
+        try
+        {
+            await RefreshLocalPlayableCoreAsync();
+        }
+        finally
+        {
+            _localPlayableRefreshGate.Release();
+        }
+    }
+
+    private async Task RefreshLocalPlayableCoreAsync()
+    {
+        // A folder sync raises Changed for every saved file. Wait for its final event, then
+        // update only missing/negative entries rather than clearing and re-statting every clip.
+        if (S.MediaFolder.IsSyncing)
             return;
+        if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
+        {
+            _localVideoReady.Clear();
+            return;
+        }
 
         var needed = new HashSet<(int Scene, int Clip)>();
         if (S.List._scenes is { Count: > 0 })
@@ -248,7 +268,10 @@ public partial class Scenes
                 needed.Add((sn, c.ClipNumber));
         }
 
-        foreach (var (scene, clip) in needed)
+        foreach (var stale in _localVideoReady.Keys.Where(k => !needed.Contains(k)).ToList())
+            _localVideoReady.Remove(stale);
+
+        foreach (var (scene, clip) in needed.Where(k => !_localVideoReady.TryGetValue(k, out var ready) || !ready))
         {
             var rel = await S.MediaFolder.ResolveCurrentTakeRelativePathAsync(S._projectId, scene, clip);
             if (string.IsNullOrWhiteSpace(rel))

@@ -158,7 +158,7 @@ public class ClipExtendSourceTests : IDisposable
     public async Task Sidecar_on_disk_combined_predecessor_selects_file_id_and_C1_plus_C2_lead_in()
     {
         var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _root }));
-        var sidecars = new ClipSidecarService(projects);
+        var sidecars = new ClipSidecarService();
         var projectDir = Path.Combine(_root, "projects", "P");
         Directory.CreateDirectory(projectDir);
 

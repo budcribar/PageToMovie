@@ -58,7 +58,7 @@ public sealed class ClipSidecarService
     private readonly ProjectAutoGitService? _autoGit;
     private readonly ILogger<ClipSidecarService> _log;
 
-    public ClipSidecarService(ProjectStore projects, ProjectAutoGitService? autoGit = null, ILogger<ClipSidecarService>? log = null)
+    public ClipSidecarService(ProjectAutoGitService? autoGit = null, ILogger<ClipSidecarService>? log = null)
     {
         _autoGit = autoGit;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipSidecarService>.Instance;

@@ -5738,6 +5738,10 @@ public sealed class FilmJobService
             msg => { _ = AppendLogAsync($"  [Grok] {msg}"); },
             ctx.Ct);
 
+        // Migrate a legacy canonical-only clip before choosing the output name. Otherwise
+        // WriteSidecarAsync performs the migration later and advances the take a second time,
+        // leaving the downloaded MP4 and its sidecar with different take numbers.
+        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(ctx.VideoDir, ctx.Scene, ctx.Clip);
         var nextTake = ClipSidecarService.NextTakeNumber(ctx.VideoDir, ctx.Scene, ctx.Clip);
         var mp4Path = Path.Combine(ctx.VideoDir, ClipTakeNaming.TakeMp4FileName(ctx.Scene, ctx.Clip, nextTake));
         var overrunSec = await DownloadClipAndRecordTelemetryAsync(
@@ -6279,15 +6283,10 @@ public sealed class FilmJobService
             // playback link; file_id is for later edit/extend attach and IVideoClient recovery.
             var stored = _grok.TryGetStoredFileReference(requestId);
             var generated = (double)duration;
-            var savedSlice = ClipExtendSource.SavedSliceDurationSeconds(generated);
-            double? clipStart = null;
-            double? clipStop = null;
-            if (providerLeadInSeconds is { } lead && lead > 0.1)
-            {
-                var window = ClipExtendSource.ClipWindowInProviderFile(lead, generated);
-                clipStart = window.Start;
-                clipStop = window.Stop;
-            }
+            // duration_seconds describes the generated clip, not the editor's preferred saved
+            // slice. Keep the provider window explicit even for a fresh clip so a later extend
+            // never mistakes a capped display duration for the predecessor's true duration.
+            var timing = GeneratedSidecarTiming(generated, providerLeadInSeconds);
             var sidecarPath = await _sidecars.WriteSidecarAsync(
                 projDir,
                 ctx.Scene,
@@ -6296,7 +6295,7 @@ public sealed class FilmJobService
                 scriptText: "",
                 model: ClipWireModelId(ctx),
                 resolution: ctx.Resolution,
-                durationSeconds: savedSlice,
+                durationSeconds: timing.Duration,
                 sha256: "",
                 sizeBytes: 0,
                 // Prefer file_output.public_url (durable) over the poll video.url (vidgen expires).
@@ -6306,8 +6305,8 @@ public sealed class FilmJobService
                 sourceFileId: stored.FileId,
                 sourceFileExpiresAtUnixSeconds: stored.ExpiresAtUnixSeconds,
                 providerLeadInSeconds: providerLeadInSeconds,
-                providerClipStartSeconds: clipStart,
-                providerClipStopSeconds: clipStop,
+                providerClipStartSeconds: timing.Start,
+                providerClipStopSeconds: timing.Stop,
                 ct: ctx.Ct).ConfigureAwait(false);
             return ClipTakeNaming.ParseTakeNumber(Path.GetFileName(sidecarPath));
         }
@@ -6316,6 +6315,14 @@ public sealed class FilmJobService
             _log.LogWarning(ex, "Could not write clip sidecar for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
             return 0;
         }
+    }
+
+    internal static (double Duration, double Start, double Stop) GeneratedSidecarTiming(
+        double generatedDurationSeconds, double? providerLeadInSeconds)
+    {
+        var window = ClipExtendSource.ClipWindowInProviderFile(
+            providerLeadInSeconds.GetValueOrDefault(), generatedDurationSeconds);
+        return (generatedDurationSeconds, window.Start, window.Stop);
     }
 
     private static string? TryGetStableBeatId(JsonElement clipEl)

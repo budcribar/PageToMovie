@@ -470,7 +470,7 @@ public sealed class ClientMediaFolderService
 
         // Screenplay-boundary tail, then cap to the VideoEdit catalog field (never a hardcoded 8.7).
         var savedDurationSec = SupportedModelCatalog.CapToVideoEditInput(newDurationSec.Value);
-        var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, newDurationSec.Value, null);
+        var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.keepLastSecondsAsync", url, newDurationSec.Value, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
             NoteMediaFailure($"Video-extend slice failed for {rel} " +
@@ -483,7 +483,7 @@ public sealed class ClientMediaFolderService
 
         // Keep lead-in → lead-in+cappedDuration (the first N seconds of the new screenplay clip).
         var capped = await _js.InvokeAsync<JsTrimTailResult>(
-            "PageToMovieFfmpeg.trimHeadAsync", slice.Url, savedDurationSec, null);
+            "PageToMovieFfmpeg.keepFirstSecondsAsync", slice.Url, savedDurationSec, null);
         await RevokeBlobIfAnyAsync(slice.Url);
         if (capped is not { Success: true } || string.IsNullOrWhiteSpace(capped.Url))
         {
@@ -1238,30 +1238,51 @@ public sealed class ClientMediaFolderService
             if (tailUrl is not null)
             {
                 revoke.Add(tailUrl);
-                // Never save the combined file as the current clip — only the sliced tail.
-                savedAny |= await SaveSyncedClipFromUrlAsync(projectId, relativePath, tailUrl, isMp4: true);
+                try
+                {
+                    // Never save the combined file as the current clip — only the sliced tail.
+                    savedAny |= await SaveSyncedClipFromUrlAsync(projectId, relativePath, tailUrl, isMp4: true);
+                }
+                finally
+                {
+                    revoke.Remove(tailUrl);
+                    await RevokeBlobIfAnyAsync(tailUrl);
+                }
             }
         }
 
-        if (!CombinedExtendRecovery.TryGetPreviousClipRelativePath(relativePath, out var prevPath))
+        if (!CombinedExtendRecovery.TryGetPreviousClipRelativePath(relativePath, out var prevCandidate))
+            return savedAny;
+        var prevPath = await ResolveRecoveryClipRelativePathAsync(projectId, prevCandidate);
+
+        // The common one-hop case needs no head slice when the predecessor is already present.
+        // Avoid allocating a large ffmpeg blob only to discard it.
+        if (remainingHops.Count == 0 && await HasPlayableLocalClipAsync(projectId, prevPath))
             return savedAny;
 
         var headUrl = await SliceCombinedHeadAsync(combinedUrl, leadInSec, prevPath);
         if (headUrl is null)
             return savedAny;
         revoke.Add(headUrl);
-
-        var nextLead = remainingHops.Count > 0 ? remainingHops[0] : 0;
-        if (CombinedExtendRecovery.IsCombined(nextLead) && await HeadDurationIsCombinedAsync(headUrl, nextLead))
+        try
         {
-            var rest = remainingHops.Skip(1).ToList();
-            savedAny |= await SplitCombinedHopsAsync(projectId, headUrl, prevPath, nextLead, rest, revoke);
+            var nextLead = remainingHops.Count > 0 ? remainingHops[0] : 0;
+            if (CombinedExtendRecovery.IsCombined(nextLead) && await HeadDurationIsCombinedAsync(headUrl, nextLead))
+            {
+                var rest = remainingHops.Skip(1).ToList();
+                savedAny |= await SplitCombinedHopsAsync(projectId, headUrl, prevPath, nextLead, rest, revoke);
+                return savedAny;
+            }
+
+            if (!await HasPlayableLocalClipAsync(projectId, prevPath))
+                savedAny |= await SaveSyncedClipFromUrlAsync(projectId, prevPath, headUrl, isMp4: true);
             return savedAny;
         }
-
-        if (!await HasPlayableLocalClipAsync(projectId, prevPath))
-            savedAny |= await SaveSyncedClipFromUrlAsync(projectId, prevPath, headUrl, isMp4: true);
-        return savedAny;
+        finally
+        {
+            revoke.Remove(headUrl);
+            await RevokeBlobIfAnyAsync(headUrl);
+        }
     }
 
     private async Task<bool> AnyPredecessorClipMissingAsync(string projectId, ProjectMediaSyncFile file)
@@ -1271,11 +1292,21 @@ public sealed class ClientMediaFolderService
         var steps = 1 + hops.Count;
         for (var i = 1; i <= steps; i++)
         {
-            if (CombinedExtendRecovery.TryGetNthPreviousClipRelativePath(file.RelativePath, i, out var prev)
-                && !await HasPlayableLocalClipAsync(projectId, prev))
-                return true;
+            if (CombinedExtendRecovery.TryGetNthPreviousClipRelativePath(file.RelativePath, i, out var candidate))
+            {
+                var prev = await ResolveRecoveryClipRelativePathAsync(projectId, candidate);
+                if (!await HasPlayableLocalClipAsync(projectId, prev))
+                    return true;
+            }
         }
         return false;
+    }
+
+    private async Task<string> ResolveRecoveryClipRelativePathAsync(string projectId, string candidate)
+    {
+        if (!CombinedExtendRecovery.TryParseClipRelativePath(candidate, out var scene, out var clip))
+            return candidate;
+        return await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip) ?? candidate;
     }
 
     private async Task<bool> IsLocalFileCombinedDurationAsync(string projectId, string relativePath, double leadInSec)
@@ -1364,7 +1395,7 @@ public sealed class ClientMediaFolderService
         if (keep <= CombinedExtendRecovery.CombinedLeadInThresholdSeconds)
             return null;
 
-        var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimHeadAsync", url, keep, null);
+        var slice = await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.keepFirstSecondsAsync", url, keep, null);
         if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
         {
             NoteMediaFailure($"Video-extend previous-clip split failed for {rel} " +
@@ -1535,7 +1566,7 @@ public sealed class ClientMediaFolderService
             if (string.IsNullOrWhiteSpace(sourceUrl)) return false;
 
             var trim = await _js.InvokeAsync<JsTrimTailResult>(
-                "PageToMovieFfmpeg.trimTailAsync", sourceUrl, maxInputSeconds, null);
+                "PageToMovieFfmpeg.keepLastSecondsAsync", sourceUrl, maxInputSeconds, null);
             if (trim is not { Success: true } || string.IsNullOrWhiteSpace(trim.Url)) return false;
             trimUrl = trim.Url;
 
