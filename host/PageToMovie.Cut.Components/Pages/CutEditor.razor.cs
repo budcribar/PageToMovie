@@ -28,6 +28,7 @@ public partial class CutEditor : IAsyncDisposable
     private bool _folderBusy;
     private bool _debugFolderLoadTried;
     private bool _hostFolderAttachTried;
+    private bool _hostAttachFailed;
     private bool _exporting;
     private bool _composing;
     private bool _wantPlay;
@@ -64,6 +65,23 @@ public partial class CutEditor : IAsyncDisposable
 
     private bool _busy => TransportLocked;
     internal bool TransportLocked => _folderBusy || _exporting;
+
+    private bool ShowFolderPickButtons =>
+        CutFolderChrome.ShowPickButtons(
+            AutoAttachHostFolder,
+            HostProjectPrefix,
+            Folder.HasFolder,
+            _folderBusy,
+            _hostFolderAttachTried,
+            Folder.HostFolderUnavailable);
+
+    private bool ShowHostAttachRetry =>
+        CutFolderChrome.ShowAttachRetry(
+            AutoAttachHostFolder,
+            HostProjectPrefix,
+            Folder.HasFolder,
+            _folderBusy,
+            _hostAttachFailed);
 
     internal bool ShowComposeOverlay =>
         CutPlayClock.ShouldShowPlayComposeOverlay(
@@ -489,25 +507,41 @@ public partial class CutEditor : IAsyncDisposable
 
     private async Task TryAttachHostFolderAsync()
     {
-        if (_hostFolderAttachTried || !AutoAttachHostFolder)
+        if (_hostFolderAttachTried || !CutFolderChrome.IsHosted(AutoAttachHostFolder, HostProjectPrefix))
             return;
         _hostFolderAttachTried = true;
+        _hostAttachFailed = false;
         _folderBusy = true;
         try
         {
             if (await Folder.TryAttachHostFolderAsync(HostProjectPrefix))
+            {
                 await AfterFolderLoadAsync();
-            else if (!string.IsNullOrWhiteSpace(Folder.FolderError))
-                _error = Folder.FolderError;
+                return;
+            }
+
+            _hostAttachFailed = true;
+            _error = string.IsNullOrWhiteSpace(Folder.FolderError)
+                ? CutFolderChrome.AttachFailedMessage
+                : Folder.FolderError;
         }
         catch (JSException)
         {
-            // The standalone host intentionally has no PageToMovie media-folder bridge.
+            _hostAttachFailed = true;
+            _error = CutFolderChrome.AttachFailedMessage;
         }
         finally
         {
             _folderBusy = false;
         }
+    }
+
+    private Task RetryHostAttachAsync()
+    {
+        _error = null;
+        _hostFolderAttachTried = false;
+        _hostAttachFailed = false;
+        return TryAttachHostFolderAsync();
     }
 
     private bool RequiresComposedMusic => Compose.Music.HasFile;
