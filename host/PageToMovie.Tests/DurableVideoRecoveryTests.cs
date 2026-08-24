@@ -109,8 +109,9 @@ public sealed class DurableVideoRecoveryTests
                 (_, _) => Task.FromResult<IResult?>(null),
                 (_, _) => throw new InvalidOperationException("xAI file content HTTP 404: not found"),
                 CancellationToken.None,
-                recoverAfterProvider: (_, _, _) => Task.FromResult(
-                    MediaEndpoints.TryRecoverHostedCopy(project, 1, 1)));
+                new MediaEndpoints.StreamProviderCopyHooks(
+                    RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                        MediaEndpoints.TryRecoverHostedCopy(project, 1, 1))));
 
             Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
             Assert.DoesNotContain("File not found", ErrorOf(result), StringComparison.Ordinal);
@@ -139,8 +140,9 @@ public sealed class DurableVideoRecoveryTests
                 (_, _) => throw new InvalidOperationException(
                     "xAI file content HTTP 500: {\"error\":\"Failed to retrieve file\"}"),
                 CancellationToken.None,
-                recoverAfterProvider: (_, _, _) => Task.FromResult(
-                    MediaEndpoints.TryRecoverHostedCopy(project, 1, 2)));
+                new MediaEndpoints.StreamProviderCopyHooks(
+                    RecoverAfterProvider: (_, _, _) => Task.FromResult(
+                        MediaEndpoints.TryRecoverHostedCopy(project, 1, 2))));
 
             Assert.Equal(1, urlHits);
             Assert.Equal(StatusCodes.Status502BadGateway, StatusOf(result));

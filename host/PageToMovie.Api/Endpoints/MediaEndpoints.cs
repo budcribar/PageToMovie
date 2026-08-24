@@ -554,6 +554,15 @@ public static class MediaEndpoints
         Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null);
 
     /// <summary>
+    /// Optional logger, Railway hosted-copy recovery, and HttpContext for the
+    /// test-hook <see cref="StreamProviderCopyAsync"/> overload.
+    /// </summary>
+    internal sealed record StreamProviderCopyHooks(
+        ILogger? Log = null,
+        Func<string?, Exception?, CancellationToken, Task<IResult?>>? RecoverAfterProvider = null,
+        HttpContext? HttpContext = null);
+
+    /// <summary>
     /// Stream the provider copy: catalog-routed <see cref="IVideoClient"/> stored-file
     /// path first when <c>file_id</c> is set (xAI models reuse
     /// <see cref="XaiResponsesClient.OpenFileContentStreamAsync"/> — the only Files
@@ -575,9 +584,10 @@ public static class MediaEndpoints
             (u, token) => TryOpenHttpOrFixtureAsync(u, httpFactory, httpContext, token),
             (id, token) => TryOpenStoredFileAsync(options.Video, options.Model, id, httpContext, token),
             ct,
-            options.LogFactory?.CreateLogger("MediaProxy"),
-            options.RecoverAfterProvider,
-            httpContext);
+            new StreamProviderCopyHooks(
+                Log: options.LogFactory?.CreateLogger("MediaProxy"),
+                RecoverAfterProvider: options.RecoverAfterProvider,
+                HttpContext: httpContext));
 
     /// <summary>
     /// Positional <paramref name="video"/> / <paramref name="model"/> form used by tests.
@@ -597,7 +607,7 @@ public static class MediaEndpoints
     /// <summary>Test hook: file_id first, then <c>source_url</c>. A Files content GET that
     /// throws or returns null still tries the public URL (short timeout when a file_id
     /// was present). Both failing is a visible 502 with the provider status and the URL
-    /// miss — not a silent <c>File not found</c>. <paramref name="recoverAfterProvider"/>
+    /// miss — not a silent <c>File not found</c>. <see cref="StreamProviderCopyHooks.RecoverAfterProvider"/>
     /// is the Railway hosted-copy / <c>.need-fork</c> path after both provider pointers miss.
     /// When the URL recovers after a file_id throw, <see cref="MediaProxyHeaders.FileIdError"/>
     /// is set so wipe-resync can show the Files 500 in LastStatus.</summary>
@@ -607,10 +617,11 @@ public static class MediaEndpoints
         Func<string, CancellationToken, Task<IResult?>> openUrl,
         Func<string, CancellationToken, Task<IResult?>> openFileId,
         CancellationToken ct,
-        ILogger? log = null,
-        Func<string?, Exception?, CancellationToken, Task<IResult?>>? recoverAfterProvider = null,
-        HttpContext? httpContext = null)
+        StreamProviderCopyHooks? hooks = null)
     {
+        var log = hooks?.Log;
+        var recoverAfterProvider = hooks?.RecoverAfterProvider;
+        var httpContext = hooks?.HttpContext;
         Exception? fileIdError = null;
         async Task<IResult?> CaptureFileIdAsync(string id, CancellationToken token)
         {
