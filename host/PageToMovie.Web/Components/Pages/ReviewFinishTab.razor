@@ -1,0 +1,6 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
+@* Page-local to Review — finish (trims, titles, music). Built only when this tab is selected. *@
+@inject ActiveProjectState ActiveProject
+
+<PageToMovie.Cut.Pages.CutEditor HostProjectPrefix="@ActiveProject.ProjectId"
+                                 AutoAttachHostFolder="true" />

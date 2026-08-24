@@ -77,6 +77,12 @@ else
             📤 @L["ReviewPage.ShareAndExport"]
         </button>
         <button type="button"
+                class="btn @(List._activeTab == ReviewTab.Finish ? "btn-warning fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                data-testid="review-tab-finish"
+                @onclick='() => List.ToggleTabAsync(ReviewTab.Finish)'>
+            ✂️ @L["ReviewPage.Finish"]
+        </button>
+        <button type="button"
                 class="btn btn-outline-info text-info px-3"
                 data-testid="review-open-editor"
                 disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
@@ -222,6 +228,10 @@ else if (List._activeTab == ReviewTab.Play)
 else if (List._activeTab == ReviewTab.Share)
 {
     <ReviewShareTab />
+}
+else if (List._activeTab == ReviewTab.Finish)
+{
+    <ReviewFinishTab />
 }
 
     </CascadingValue>

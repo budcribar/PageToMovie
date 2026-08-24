@@ -261,8 +261,14 @@ public class CutComposeContractTests
 
         var webPage = File.ReadAllText(Path.Combine(web, "Components", "Pages", "Cut.razor"));
         Assert.Contains("@page \"/cut\"", webPage, StringComparison.Ordinal);
-        Assert.Contains("HostProjectPrefix=\"@ActiveProject.ProjectId\"", webPage, StringComparison.Ordinal);
-        Assert.Contains("AutoAttachHostFolder=\"true\"", webPage, StringComparison.Ordinal);
+        Assert.Contains("/review?tab=finish", webPage, StringComparison.Ordinal);
+        Assert.Contains("replace: true", webPage, StringComparison.Ordinal);
+
+        var finishTab = File.ReadAllText(Path.Combine(web, "Components", "Pages", "ReviewFinishTab.razor"));
+        Assert.Contains("HostProjectPrefix=\"@ActiveProject.ProjectId\"", finishTab, StringComparison.Ordinal);
+        Assert.Contains("AutoAttachHostFolder=\"true\"", finishTab, StringComparison.Ordinal);
+        Assert.DoesNotContain("CutEditor",
+            File.ReadAllText(Path.Combine(web, "Components", "Pages", "Review.razor")), StringComparison.Ordinal);
         Assert.Contains("resolveProjectDirectoryForCutAsync",
             File.ReadAllText(Path.Combine(web, "wwwroot", "js", "pagetomovie-media.js")), StringComparison.Ordinal);
         Assert.Contains("attachHostMediaFolderAsync",

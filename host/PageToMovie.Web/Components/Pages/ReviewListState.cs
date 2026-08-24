@@ -15,7 +15,8 @@ public enum ReviewTab
 {
     Review,
     Play,
-    Share
+    Share,
+    Finish
 }
 
 public partial class Review
@@ -61,6 +62,40 @@ public partial class Review
         }
 
 
+        internal static bool TryParseTab(string? raw, out ReviewTab tab)
+        {
+            tab = default;
+            if (string.IsNullOrWhiteSpace(raw) || int.TryParse(raw, out _))
+                return false;
+            return Enum.TryParse(raw, ignoreCase: true, out tab) && Enum.IsDefined(tab);
+        }
+
+        internal async Task ApplyQueryTabAsync()
+        {
+            var uri = S.Nav.ToAbsoluteUri(S.Nav.Uri);
+            if (!Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("tab", out var values))
+                return;
+            if (!TryParseTab(values.ToString(), out var tab))
+                return;
+            await ApplyTabAsync(tab);
+        }
+
+        internal async Task ApplyTabAsync(ReviewTab tab)
+        {
+            if (_activeTab == tab)
+                return;
+            _activeTab = tab;
+            if (tab == ReviewTab.Play)
+            {
+                await S.Playback.PlayWipAsync();
+            }
+            else if (tab == ReviewTab.Share)
+            {
+                S.Share.PrepopulateDemoFields();
+                await S.Share.RefreshYouTubeStatusAsync();
+            }
+        }
+
         internal async Task ToggleTabAsync(ReviewTab tab)
         {
             if (_activeTab == tab)
@@ -74,16 +109,7 @@ public partial class Review
             }
             else
             {
-                _activeTab = tab;
-                if (tab == ReviewTab.Play)
-                {
-                    await S.Playback.PlayWipAsync();
-                }
-                else if (tab == ReviewTab.Share)
-                {
-                    S.Share.PrepopulateDemoFields();
-                    await S.Share.RefreshYouTubeStatusAsync();
-                }
+                await ApplyTabAsync(tab);
             }
         }
 
