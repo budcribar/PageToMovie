@@ -197,6 +197,7 @@ public sealed class MultiProviderVideoClient : IVideoClient
         if (entry is null || !entry.Enabled)
             throw new InvalidOperationException(
                 $"Video: model '{model}' is not in the models catalog (or is disabled). Open Settings and pick a current model.");
+        SupportedModelCatalog.EnsureNotVirtualWireModel(entry.Id);
         if (string.IsNullOrWhiteSpace(entry.ProviderId))
             throw new InvalidOperationException(
                 $"Video: catalog row '{entry.Id}' has no providerId.");

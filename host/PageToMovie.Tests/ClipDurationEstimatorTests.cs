@@ -294,6 +294,69 @@ public class ClipDurationEstimatorTests
     }
 
     [Fact]
+    public void EstimateForClip_does_not_charge_scene_recap_action_to_spoken_hold()
+    {
+        // Production visual_prompt text is enriched with the whole scene recap. The old estimator
+        // treated "heavy bed" below as a heavy-carry action performed during this quiet VO hold.
+        var enriched = JsonDocument.Parse("""
+            {
+              "action_class": "hold",
+              "visual_prompt": "Earlier, he pulled the heavy bed across the room. Camera directive: close on his listening face.",
+              "audio_payload": {
+                "speaker": "Character_Narrator",
+                "dialogue": "The heart beat on.",
+                "delivery": "voiceover_internal"
+              }
+            }
+            """).RootElement;
+        var clean = JsonDocument.Parse("""
+            {
+              "action_class": "hold",
+              "visual_prompt": "",
+              "audio_payload": {
+                "speaker": "Character_Narrator",
+                "dialogue": "The heart beat on.",
+                "delivery": "voiceover_internal"
+              }
+            }
+            """).RootElement;
+
+        Assert.Equal(
+            ClipDurationEstimator.EstimateForClip(clean),
+            ClipDurationEstimator.EstimateForClip(enriched));
+    }
+
+    [Fact]
+    public void EstimateForClip_keeps_action_overhead_for_action_bearing_spoken_beat()
+    {
+        var action = JsonDocument.Parse("""
+            {
+              "action_class": "action",
+              "visual_prompt": "He pulls the heavy bed across the room, then speaks.",
+              "audio_payload": {
+                "speaker": "Character_Narrator",
+                "dialogue": "Move back.",
+                "delivery": "spoken_on_camera"
+              }
+            }
+            """).RootElement;
+        var hold = JsonDocument.Parse("""
+            {
+              "action_class": "hold",
+              "visual_prompt": "He pulls the heavy bed across the room, then speaks.",
+              "audio_payload": {
+                "speaker": "Character_Narrator",
+                "dialogue": "Move back.",
+                "delivery": "spoken_on_camera"
+              }
+            }
+            """).RootElement;
+
+        Assert.True(
+            ClipDurationEstimator.EstimateForClip(action) > ClipDurationEstimator.EstimateForClip(hold));
+    }
+
+    [Fact]
     public void EstimateForClip_honors_planned_silent_big_action_beyond_default_5s()
     {
         // Stage 2 writes duration_seconds + action_class; gen must not clamp all silent to 5s.

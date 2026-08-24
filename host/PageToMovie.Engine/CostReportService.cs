@@ -2074,16 +2074,27 @@ public sealed class CostReportService
         Dictionary<string, JsonElement>? cfgOverrides = null)
     {
         // Catalog only — never invent synthetic models for rates/provider identity.
-        var video = SupportedModelCatalog.Find(videoModelId, ModelCapability.Video)
+        var selectedVideo = SupportedModelCatalog.Find(videoModelId, ModelCapability.Video)
                     ?? SupportedModelCatalog.Find(videoModelId);
         var imagePrimary = SupportedModelCatalog.Find(imageModelId, ModelCapability.Image)
                            ?? SupportedModelCatalog.Find(imageModelId);
 
-        if (video is null && imagePrimary is null)
+        if (selectedVideo is null && imagePrimary is null)
             return MissingCatalogRates(videoModelId, imageModelId);
 
         // If only one side is missing, keep going with empty pricing for that side (no invent of provider).
-        video ??= PlaceholderEntry(videoModelId, ModelCapability.Video);
+        SupportedModelEntry video;
+        SupportedModelEntry? extendRole = null;
+        if (selectedVideo is null)
+        {
+            video = PlaceholderEntry(videoModelId, ModelCapability.Video);
+        }
+        else
+        {
+            var roles = SupportedModelCatalog.ResolveVideoRoles(selectedVideo.Id);
+            video = roles.Generate;
+            extendRole = roles.Extend;
+        }
         imagePrimary ??= PlaceholderEntry(imageModelId, ModelCapability.Image);
 
         // Prefer a cheaper "standard" sibling in the same family when the project uses a quality image model.
@@ -2108,9 +2119,10 @@ public sealed class CostReportService
         // today and the fallback constants apply uniformly — but the catalog is checked first so a
         // future vendor-verified number takes over automatically.
         var refImageCostReal = video.VideoReferenceImageCost;
-        var extendCostReal = video.VideoExtendCostPerSecond;
+        var extendEntry = extendRole ?? video;
+        var extendCostReal = extendEntry.VideoExtendCostPerSecond;
         var refImageSource = refImageCostReal is not null ? Keys.ModelCatalog : Keys.MissingCatalog;
-        var extendSource = ResolveExtendCostSource(video, extendCostReal);
+        var extendSource = ResolveExtendCostSource(extendEntry, extendCostReal);
 
         // Overall video pricing is only "fully real" when the output pricing (per-second table OR
         // a flat base fee — a model priced entirely via base fee with no per-second rate, e.g.
@@ -2119,10 +2131,10 @@ public sealed class CostReportService
         // sourced from the catalog rather than a fallback estimate.
         var videoOutputIsCatalog = !videoPricingIsEstimated;
         var videoPricingFullyReal = IsVideoPricingFullyReal(
-            video, videoOutputIsCatalog, refImageCostReal, extendCostReal);
+            extendEntry, videoOutputIsCatalog, refImageCostReal, extendCostReal);
 
         var rates = BuildCatalogRateTable(
-            video, imagePrimary, videoTable, videoBaseTable,
+            video, extendEntry, imagePrimary, videoTable, videoBaseTable,
             refImageCostReal, refImageSource, extendCostReal, extendSource,
             qualityUnit, standardUnit, videoPricingFullyReal, imagePricingIsEstimated);
 
@@ -2224,6 +2236,7 @@ public sealed class CostReportService
 
     private static Dictionary<string, object?> BuildCatalogRateTable(
         SupportedModelEntry video,
+        SupportedModelEntry extendEntry,
         SupportedModelEntry imagePrimary,
         Dictionary<string, double> videoTable,
         Dictionary<string, double> videoBaseTable,
@@ -2247,7 +2260,7 @@ public sealed class CostReportService
             ["video_base_per_video"] = videoBaseTable,
             ["video_input_image"] = ResolveVideoInputImageCost(video, refImageCostReal),
             ["video_input_image_source"] = refImageSource,
-            ["video_input_per_sec"] = ResolveVideoExtendCost(video, extendCostReal),
+            ["video_input_per_sec"] = ResolveVideoExtendCost(extendEntry, extendCostReal),
             ["video_input_per_sec_source"] = extendSource,
             ["image_output_quality"] = qualityUnit,
             ["image_output_standard"] = standardUnit,

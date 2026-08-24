@@ -106,6 +106,18 @@ public sealed class SupportedModelEntry
     /// <summary>When false, hidden from Configuration pickers.</summary>
     public bool Enabled { get; init; } = true;
 
+    /// <summary>
+    /// When true, this row is a product-facing role bundle: <see cref="Roles"/> names real sibling
+    /// catalog ids. The virtual id is never sent to a provider as <c>model</c>. Default false.
+    /// </summary>
+    public bool Virtual { get; init; }
+
+    /// <summary>
+    /// Role name → existing catalog id (e.g. <c>generate</c>, <c>extend</c>). Extra keys such as
+    /// <c>voice</c> are legal and ignored until a caller routes them. Default empty/null.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Roles { get; init; }
+
     /// <summary>When true, this model is deprecated: hidden from standard catalog pickers and ignored by automated update scans.</summary>
     public bool Deprecated { get; init; }
 
@@ -428,6 +440,32 @@ public sealed class SupportedModelEntry
 }
 
 /// <summary>
+/// Resolved generate / extend siblings for a project video-model id.
+/// <see cref="Generate"/> and <see cref="Extend"/> are never virtual — use
+/// <see cref="WireModelId"/> as the <c>model</c> sent to an <c>IVideoClient</c>.
+/// </summary>
+public readonly record struct VideoModelRoles(
+    SupportedModelEntry Selected,
+    SupportedModelEntry Generate,
+    SupportedModelEntry? Extend)
+{
+    public bool CanExtend => Extend is { SupportsVideoContinue: true };
+
+    /// <summary>
+    /// Catalog id to send on the wire. Never returns <see cref="Selected"/> when that row is virtual.
+    /// </summary>
+    public string WireModelId(bool isExtendHop)
+    {
+        if (!isExtendHop)
+            return Generate.Id;
+        if (Extend is null)
+            throw new InvalidOperationException(
+                $"Video model '{Selected.Id}' has no extend role. Generate a fresh clip, or pick a model that can continue.");
+        return Extend.Id;
+    }
+}
+
+/// <summary>
 /// Master list of models Film Studio knows how to call.
 /// User picks <see cref="SupportedModelEntry.Id"/> only; app resolves endpoint + keys.
 /// </summary>
@@ -450,6 +488,8 @@ public static class SupportedModelCatalog
     public const string AiMusicApiKeyEnv = "AIMUSICAPI_API_KEY";
     public const string ElevenLabsApiKeyEnv = "ElevenLabs_API_KEY";
     public const string VideoReviewCapabilityId = "video-review";
+    public const string VideoRoleGenerate = "generate";
+    public const string VideoRoleExtend = "extend";
     private const string MaxPromptLengthField = "maxPromptLength";
     public const string ElevenLabsApiBase = "https://api.elevenlabs.io/v1";
 
@@ -861,6 +901,88 @@ public static class SupportedModelCatalog
             "Do not rely on code defaults.");
     }
 
+    /// <summary>
+    /// Resolve generate / extend siblings for a project video-model id.
+    /// Non-virtual: generate is self; extend is self when <see cref="SupportedModelEntry.SupportsVideoContinue"/>,
+    /// otherwise none. Virtual: load <c>roles.generate</c> (required) and <c>roles.extend</c>
+    /// (required for Video bundles). Fail fast if a named sibling is missing, disabled, wrong
+    /// capability, itself virtual, or (for extend) cannot continue. Never returns a virtual entry
+    /// as a wire model.
+    /// </summary>
+    public static VideoModelRoles ResolveVideoRoles(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+            throw new InvalidOperationException(
+                "Video model is required. Open Settings → Studio coverage and choose a video model.");
+
+        var selected = Find(modelId.Trim(), ModelCapability.Video)
+            ?? throw new InvalidOperationException(
+                $"Model '{modelId.Trim()}' is not in models_catalog.json for Video. " +
+                "Open Settings → Studio coverage and choose a catalog model for this job.");
+
+        if (!selected.Virtual)
+        {
+            var extend = selected.SupportsVideoContinue ? selected : null;
+            return new VideoModelRoles(selected, selected, extend);
+        }
+
+        var generate = RequireVideoRoleSibling(selected, VideoRoleGenerate, requireContinue: false);
+        var extendRole = RequireVideoRoleSibling(selected, VideoRoleExtend, requireContinue: true);
+        return new VideoModelRoles(selected, generate, extendRole);
+    }
+
+    /// <summary>
+    /// Reject a virtual catalog id on the provider wire. Call before <c>IVideoClient</c> submit.
+    /// </summary>
+    public static void EnsureNotVirtualWireModel(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+            return;
+        var entry = Find(modelId.Trim(), ModelCapability.Video);
+        if (entry is { Virtual: true })
+            throw new InvalidOperationException(
+                $"Video model '{entry.Id}' is a catalog role bundle and is never sent as the provider model.");
+    }
+
+    private static SupportedModelEntry RequireVideoRoleSibling(
+        SupportedModelEntry selected, string role, bool requireContinue)
+    {
+        var siblingId = ReadRoleId(selected, role);
+        if (string.IsNullOrWhiteSpace(siblingId))
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' is a role bundle but has no roles.{role} catalog id.");
+
+        var sibling = Find(siblingId, ModelCapability.Video);
+        if (sibling is null)
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' roles.{role} '{siblingId}' is not in models_catalog.json for Video.");
+        if (!sibling.Enabled)
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' roles.{role} '{sibling.Id}' is disabled in the catalog.");
+        if (sibling.Capability != ModelCapability.Video)
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' roles.{role} '{sibling.Id}' is not a Video model.");
+        if (sibling.Virtual)
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' roles.{role} '{sibling.Id}' is itself virtual. Nested role bundles are not allowed.");
+        if (requireContinue && !sibling.SupportsVideoContinue)
+            throw new InvalidOperationException(
+                $"Video model '{selected.Id}' roles.{role} '{sibling.Id}' does not support video continue/extend.");
+        return sibling;
+    }
+
+    private static string? ReadRoleId(SupportedModelEntry selected, string role)
+    {
+        if (selected.Roles is null)
+            return null;
+        foreach (var (key, value) in selected.Roles)
+        {
+            if (string.Equals(key, role, StringComparison.OrdinalIgnoreCase))
+                return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+        return null;
+    }
+
     private static SupportedModelEntry? TryCompatibleCapabilityHit(string? modelId, ModelCapability capability)
     {
         if (string.IsNullOrWhiteSpace(modelId)) return null;
@@ -1069,6 +1191,8 @@ public static class SupportedModelCatalog
         var want = apiBase.Trim().TrimEnd('/');
         foreach (var e in Entries)
         {
+            if (e.Virtual)
+                continue;
             if (string.IsNullOrWhiteSpace(e.ApiBase) || string.IsNullOrWhiteSpace(e.ProviderId))
                 continue;
             if (string.Equals(e.ApiBase.Trim().TrimEnd('/'), want, StringComparison.OrdinalIgnoreCase))
@@ -1281,6 +1405,12 @@ public static class SupportedModelCatalog
         Need(!string.IsNullOrWhiteSpace(e.Id), "id");
         Need(!string.IsNullOrWhiteSpace(e.DisplayName), "displayName");
 
+        if (e.Virtual)
+        {
+            ValidateVirtualVideoRoles(e, errors);
+            return;
+        }
+
         // Lab models: structural only — incomplete limits/costs are intentional.
         if (e.LabMode)
         {
@@ -1350,6 +1480,45 @@ public static class SupportedModelCatalog
         }
     }
 
+    private static void ValidateVirtualVideoRoles(SupportedModelEntry e, List<string> errors)
+    {
+        if (e.Capability != ModelCapability.Video)
+        {
+            errors.Add($"{e.Id}: virtual rows are only supported for Video");
+            return;
+        }
+
+        NeedRole(e, VideoRoleGenerate, errors);
+        NeedRole(e, VideoRoleExtend, errors);
+        if (!string.IsNullOrWhiteSpace(e.Notes))
+            return;
+        errors.Add($"{e.Id} ({e.Capability}): missing or invalid notes");
+    }
+
+    private static void NeedRole(SupportedModelEntry e, string role, List<string> errors)
+    {
+        var siblingId = ReadRoleId(e, role);
+        if (string.IsNullOrWhiteSpace(siblingId))
+        {
+            errors.Add($"{e.Id} ({e.Capability}): virtual Video row requires roles.{role}");
+            return;
+        }
+
+        var sibling = Find(siblingId, ModelCapability.Video);
+        if (sibling is null)
+        {
+            errors.Add($"{e.Id} ({e.Capability}): roles.{role} '{siblingId}' is missing or not Video");
+            return;
+        }
+        if (!sibling.Enabled)
+            errors.Add($"{e.Id} ({e.Capability}): roles.{role} '{sibling.Id}' is disabled");
+        if (sibling.Virtual)
+            errors.Add($"{e.Id} ({e.Capability}): roles.{role} '{sibling.Id}' is itself virtual");
+        if (string.Equals(role, VideoRoleExtend, StringComparison.OrdinalIgnoreCase)
+            && !sibling.SupportsVideoContinue)
+            errors.Add($"{e.Id} ({e.Capability}): roles.{role} '{sibling.Id}' does not support continue");
+    }
+
 
     /// <param name="includeLabModels">
     /// When false (default), lab-mode rows are omitted — regular users never see incomplete models.
@@ -1379,6 +1548,8 @@ public static class SupportedModelCatalog
         EndpointPath = e.EndpointPath,
         RequiredEnvKeys = e.RequiredEnvKeys.ToList(),
         Enabled = e.Enabled,
+        Virtual = e.Virtual,
+        Roles = e.Roles is { } roles ? new Dictionary<string, string>(roles, StringComparer.OrdinalIgnoreCase) : null,
         Deprecated = e.Deprecated,
         MaxInputTokens = e.MaxInputTokens,
         MaxOutputTokens = e.MaxOutputTokens,
@@ -1449,6 +1620,8 @@ public static class SupportedModelCatalog
         EndpointPath = d.EndpointPath ?? "",
         RequiredEnvKeys = d.RequiredEnvKeys ?? new List<string>(),
         Enabled = d.Enabled,
+        Virtual = d.Virtual,
+        Roles = d.Roles,
         Deprecated = d.Deprecated,
         MaxInputTokens = d.MaxInputTokens,
         MaxOutputTokens = d.MaxOutputTokens,
@@ -1585,6 +1758,8 @@ public sealed class SupportedModelDto
     public ApiAuthLocation AuthLocation { get; set; } = ApiAuthLocation.Bearer;
     public RetryBackoffKind BackoffKind { get; set; } = RetryBackoffKind.Quadratic;
     public bool Enabled { get; set; } = true;
+    public bool Virtual { get; set; }
+    public Dictionary<string, string>? Roles { get; set; }
     public bool Deprecated { get; set; }
     public int? MaxInputTokens { get; set; }
     public int? MaxOutputTokens { get; set; }

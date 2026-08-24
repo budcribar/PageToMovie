@@ -223,8 +223,7 @@ public partial class Scenes
         }
 
         /// <summary>Active project video model's max input length for a real video-extend call, or
-        /// null when the model doesn't support real continuity (today: only Grok's video model does)
-        /// or lookup fails.</summary>
+        /// null when the selected model (or its extend role) cannot continue, or lookup fails.</summary>
         internal async Task<double?> ResolveActiveVideoExtendModelAsync()
         {
             try
@@ -236,11 +235,10 @@ public partial class Scenes
                     : null;
                 if (string.IsNullOrWhiteSpace(modelId)) return null;
 
-                var models = await S.Engine.GetSupportedModelsAsync(capability: "video");
-                var entry = models.FirstOrDefault(m => string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase));
-                if (entry is not { SupportsVideoContinue: true }) return null;
+                var roles = SupportedModelCatalog.ResolveVideoRoles(modelId);
+                if (roles.Extend is not { } extend) return null;
 
-                return entry.AbsMaxClipDurationSeconds ?? entry.MaxClipDurationSeconds ?? 15;
+                return extend.AbsMaxClipDurationSeconds ?? extend.MaxClipDurationSeconds;
             }
             catch
             {
