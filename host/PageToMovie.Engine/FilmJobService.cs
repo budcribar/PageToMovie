@@ -1619,12 +1619,10 @@ public sealed class FilmJobService
 
         var enableMusic = SceneMusicScoringService.GetConfigBool(cfg, "enable_background_music", true);
         var configuredModel = SceneMusicScoringService.GetConfigStr(cfg, "audio_model_name", "");
-        // Per-run override wins when given; otherwise fall back to the project's configured
-        // default (itself blank-safe — SupportedModelCatalog.ResolveOrDefault below resolves an
-        // empty/unset model to the catalog's own dynamic default) — the Configuration page's
-        // global picker is unaffected either way.
+        // Per-run override wins when given; otherwise the project's configured audio model.
+        // Empty / none stays unset — do not substitute capabilities[].defaultModelId.
         var audioModel = string.IsNullOrWhiteSpace(modelOverride) ? configuredModel : modelOverride;
-        if (!enableMusic || string.Equals(audioModel, "none", StringComparison.OrdinalIgnoreCase))
+        if (!enableMusic || !ProjectModelSelection.IsUsableModelId(audioModel))
         {
             await FinishAsync(StatusDone, "Background music disabled in settings.");
             return null;
@@ -1639,7 +1637,9 @@ public sealed class FilmJobService
             pDir, scene, screenplay, totalDuration, planningModel, ct).ConfigureAwait(false);
         await AppendLogAsync($"Music prompt: {prompt}");
 
-        var entry = SupportedModelCatalog.ResolveOrDefault(audioModel, ModelCapability.Audio);
+        var entry = SupportedModelCatalog.Find(audioModel, ModelCapability.Audio);
+        if (entry is null || !entry.Enabled)
+            throw new InvalidOperationException(ProjectModelSelection.FormatUnknownModel("audio", audioModel));
 
         // Catalog SupportsVocals only — never infer from provider family.
         var canSing = entry.SupportsVocals;
@@ -2369,12 +2369,13 @@ public sealed class FilmJobService
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             var activeMp4Path = ResolveVideoEditSourcePath(projectId, videoDir, req.Scene, req.Clip);
 
-            // ResolveOrDefault doesn't consult the capability's own defaultModelId automatically —
-            // an explicit fallback is required, or a null/omitted req.Model (the common case: no
-            // per-request override) throws instead of resolving the catalog default.
-            var entry = SupportedModelCatalog.ResolveOrDefault(
-                req.Model, ModelCapability.VideoEdit,
-                fallbackId: SupportedModelCatalog.DefaultModelIdForCapability("video-edit"));
+            var editModelId = (req.Model ?? "").Trim();
+            if (!ProjectModelSelection.IsUsableModelId(editModelId))
+                throw new InvalidOperationException(ProjectModelSelection.FormatMissingModel("video-edit"));
+            var entry = SupportedModelCatalog.Find(editModelId, ModelCapability.VideoEdit);
+            if (entry is null || !entry.Enabled)
+                throw new InvalidOperationException(
+                    ProjectModelSelection.FormatUnknownModel("video-edit", editModelId));
 
             // Eligibility + file_id/take lookup, both from the clip's own version list — never
             // trust the client-only UI gate. Duration cap is catalog-driven, never hardcoded.

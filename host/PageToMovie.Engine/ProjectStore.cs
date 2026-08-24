@@ -1580,8 +1580,6 @@ public sealed partial class ProjectStore
             wsPath,
             JsonSerializer.Serialize(new WorkspaceState { ActiveProject = p.Id }, JsonOpts),
             ct).ConfigureAwait(false);
-        try { await GetConfigAsync(p.Id, ct).ConfigureAwait(false); }
-        catch { /* heal is best-effort; opening must still succeed */ }
         return p;
     }
 
@@ -2580,7 +2578,6 @@ public sealed partial class ProjectStore
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in doc.RootElement.EnumerateObject())
             dict[p.Name] = p.Value.Clone();
-        PersistHealedCatalogModels(projectId, dict);
         return dict;
     }
 
@@ -2597,43 +2594,7 @@ public sealed partial class ProjectStore
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in doc.RootElement.EnumerateObject())
             dict[p.Name] = p.Value.Clone();
-        await PersistHealedCatalogModelsAsync(projectId, dict, ct).ConfigureAwait(false);
         return dict;
-    }
-
-    /// <summary>
-    /// When a stored model id is disabled or missing from the enabled catalog, rewrite that
-    /// slot to the catalog default and persist <c>pipeline_config.json</c>. No-op when every
-    /// stored id is still enabled. Shared by project-open and the first job config read.
-    /// </summary>
-    private async Task PersistHealedCatalogModelsAsync(
-        string projectId,
-        Dictionary<string, JsonElement> dict,
-        CancellationToken ct)
-    {
-        if (!ProjectCatalogModelHeal.Apply(dict))
-            return;
-        var json = SerializeHealedConfig(dict);
-        await File.WriteAllTextAsync(ConfigPath(projectId), json, ct).ConfigureAwait(false);
-        InvalidateReadCaches(projectId);
-        TriggerAutoGitCommit(projectId, "Heal disabled catalog model ids");
-    }
-
-    private void PersistHealedCatalogModels(string projectId, Dictionary<string, JsonElement> dict)
-    {
-        if (!ProjectCatalogModelHeal.Apply(dict))
-            return;
-        File.WriteAllText(ConfigPath(projectId), SerializeHealedConfig(dict));
-        InvalidateReadCaches(projectId);
-        TriggerAutoGitCommit(projectId, "Heal disabled catalog model ids");
-    }
-
-    private static string SerializeHealedConfig(Dictionary<string, JsonElement> dict)
-    {
-        var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, el) in dict)
-            merged[key] = el.Deserialize<object>();
-        return JsonSerializer.Serialize(merged, JsonDefaults.Indented) + "\n";
     }
 
     public async Task<Dictionary<string, JsonElement>> SaveConfigAsync(

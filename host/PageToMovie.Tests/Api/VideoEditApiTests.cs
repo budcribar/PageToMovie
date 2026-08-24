@@ -41,8 +41,8 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         var act = await _client.PostAsync($"/api/projects/{Uri.EscapeDataString(_projectId)}/activate", null);
         Assert.True(act.IsSuccessStatusCode, await act.Content.ReadAsStringAsync());
 
-        // Seed a blueprint with one normal scene/clip — video-edit resolves its own model from the
-        // VideoEdit capability's catalog default, not project config, so no config PUT is needed.
+        // Seed a blueprint with one normal scene/clip. The job requires an explicit VideoEdit
+        // model id on the request — it does not fall back to capabilities[].defaultModelId.
         var store = _factory.Services.GetRequiredService<ProjectStore>();
         var projectDir = store.GetProjectDir(_projectId);
         var blueprintPath = Path.Combine(projectDir, "blueprint.clips.grok.json");
@@ -140,6 +140,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
             scene = 1,
             clip = 1,
             prompt = "change her jacket to red",
+            model = "grok-imagine-video-edit",
         });
 
         Assert.Equal("done", status);
@@ -204,6 +205,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
             scene = 1,
             clip = 1,
             prompt = "change her jacket to red",
+            model = "grok-imagine-video-edit",
         });
 
         Assert.Equal("error", status);
@@ -242,6 +244,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
             scene = 1,
             clip = 1,
             prompt = "first edit",
+            model = "grok-imagine-video-edit",
         });
         Assert.Equal("done", first.Status);
         Assert.Null(first.Error);
@@ -258,6 +261,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
             scene = 1,
             clip = 1,
             prompt = "second edit",
+            model = "grok-imagine-video-edit",
         });
         Assert.Equal("done", second.Status);
         Assert.Null(second.Error);
@@ -282,6 +286,23 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task Edit_without_model_fails_instead_of_using_catalog_default()
+    {
+        SeedActiveClip(scene: 1, clip: 1, durationSeconds: 4.0);
+        var (status, error, _) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
+        {
+            projectId = _projectId,
+            scene = 1,
+            clip = 1,
+            prompt = "change her jacket to red",
+        });
+
+        Assert.Equal("error", status);
+        Assert.Contains("video-edit", error ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no model selected", error ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Edit_of_an_is_credits_clip_still_writes_a_numbered_take()
     {
         SeedActiveClip(scene: 2, clip: 1, durationSeconds: 4.0);
@@ -291,6 +312,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
             scene = 2,
             clip = 1,
             prompt = "brighten the card",
+            model = "grok-imagine-video-edit",
         });
 
         Assert.Equal("done", status);

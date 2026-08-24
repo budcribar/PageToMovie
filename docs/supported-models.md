@@ -40,7 +40,7 @@ Studio jobs + **`defaultModelId`** (must be a real enabled model id in `models[]
 
 1. **If it is not in the JSON, it is not real** — no C# fallback model cards.
 2. Resolve provider only via catalog (`providerId` / `NormalizeProviderId` + aliases), never from model-id heuristics.
-3. Project config that points at a missing model id should be reset to `capabilities[].defaultModelId` or `none` (optional features).
+3. Project config that points at a missing or unknown model id must **fail** with a clear error naming the capability and the bad id. Do **not** reset to `capabilities[].defaultModelId`. Required slots (video, image, chat, vision) also fail when empty or whitespace. Optional slots (audio, voice, lipsync, video-edit, video-review) may stay unset or `none`; an unknown non-empty id still fails. `capabilities[].defaultModelId` may stay in the JSON as documentation or a Settings placeholder suggestion — runtime and heal must not apply it.
 4. Configuration writes provider fields derived from the **selected model’s** catalog row (for keys/cost), not from free-typed service names.
 
 ## Adding a model

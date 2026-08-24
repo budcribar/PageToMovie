@@ -230,17 +230,20 @@ public static class ClipVideoPromptBuilder
 
     private static int ResolvePromptMaxLen(string? videoModel)
     {
-        // Model-aware, not a hardcoded constant: a future model with a larger (or smaller) prompt
-        // budget only needs its models_catalog.json MaxPromptLength updated, never a code change.
-        // Same resolution pattern already proven in FalVideoClient/FilmJobService; VideoPromptHardCapChars
-        // is only the fallback for models with no catalog-specific value set.
-        var selectedVideoModel = string.IsNullOrWhiteSpace(videoModel)
-            ? SupportedModelCatalog.DefaultModelIdForCapability("video")
-            : videoModel;
-        return SupportedModelCatalog.ResolveOrDefault(selectedVideoModel, ModelCapability.Video)
-            .MaxPromptLength
+        // Product callers pass the project video id. An unknown id fails; an omitted id
+        // uses the hard cap so prompt-composition tests need no catalog default.
+        // Never substitute capabilities[].defaultModelId.
+        if (string.IsNullOrWhiteSpace(videoModel))
+            return VideoPromptHardCapChars;
+
+        var entry = SupportedModelCatalog.Find(videoModel.Trim(), ModelCapability.Video);
+        if (entry is null || !entry.Enabled)
+            throw new InvalidOperationException(
+                ProjectModelSelection.FormatUnknownModel("video", videoModel));
+
+        return entry.MaxPromptLength
             ?? throw new InvalidOperationException(
-                $"Model has no maxPromptLength in models_catalog.json for video prompt budget.");
+                $"video: model '{entry.Id}' has no maxPromptLength in models_catalog.json.");
     }
 
     private static bool HasExistingMedia(string? path) =>

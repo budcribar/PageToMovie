@@ -51,8 +51,49 @@ public static class ProjectModelSelection
     }
 
     /// <summary>
+    /// Catalog capability id for error text (<c>video</c>, <c>video-edit</c>, …).
+    /// </summary>
+    public static string CatalogCapabilityId(ModelCapability capability) => capability switch
+    {
+        ModelCapability.Video => "video",
+        ModelCapability.Image => "image",
+        ModelCapability.Chat => "chat",
+        ModelCapability.Vision => "vision",
+        ModelCapability.Audio => "audio",
+        ModelCapability.Voice => "voice",
+        ModelCapability.LipSync => "lipsync",
+        ModelCapability.VideoEdit => "video-edit",
+        _ => capability.ToString().ToLowerInvariant(),
+    };
+
+    /// <summary>Operator error when a required (or in-use optional) slot has no model id.</summary>
+    public static string FormatMissingModel(string capabilityId, string? jobLabel = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(jobLabel)
+            ? capabilityId
+            : $"{jobLabel} ({capabilityId})";
+        return $"{prefix}: no model selected. Open Settings → Studio coverage and choose a model.";
+    }
+
+    /// <summary>
+    /// Operator error when a stored id is missing from the enabled catalog.
+    /// Does not suggest <c>capabilities[].defaultModelId</c> — the user must pick.
+    /// </summary>
+    public static string FormatUnknownModel(string capabilityId, string modelId, string? jobLabel = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(jobLabel)
+            ? capabilityId
+            : $"{jobLabel} ({capabilityId})";
+        var id = string.IsNullOrWhiteSpace(modelId) ? "(empty)" : modelId.Trim();
+        return $"{prefix}: model '{id}' is not in the models catalog (or is disabled). " +
+               "Open Settings → Studio coverage and choose a model. The catalog default is not applied.";
+    }
+
+    /// <summary>
     /// Require a project-configured model that exists (enabled) in the catalog.
     /// Throws <see cref="InvalidOperationException"/> with operator-facing guidance.
+    /// Empty / unknown ids fail fast — never substituted with
+    /// <see cref="SupportedModelCatalog.DefaultModelIdForCapability(string)"/>.
     /// </summary>
     public static string Require(
         IReadOnlyDictionary<string, JsonElement>? cfg,
@@ -60,10 +101,10 @@ public static class ProjectModelSelection
         string jobLabel,
         params string[] configKeys)
     {
+        var capabilityId = CatalogCapabilityId(capability);
         var id = TryGet(cfg, configKeys);
         if (string.IsNullOrWhiteSpace(id))
-            throw new InvalidOperationException(
-                $"{jobLabel}: no model selected. Open Settings → Studio coverage and choose a model for this job.");
+            throw new InvalidOperationException(FormatMissingModel(capabilityId, jobLabel));
 
         // Capability-scoped lookup only. Do not fall back to Find(id) without capability —
         // that allowed a Chat model in the Video slot (and similar mismatches).
@@ -71,12 +112,10 @@ public static class ProjectModelSelection
         var entry = SupportedModelCatalog.Find(id, capability);
         if (entry is null || !entry.Enabled)
         {
-            var wrongCap = SupportedModelCatalog.Find(id) is { } other
-                ? $" Model '{id}' is catalogued as {other.Capability}, not {capability}."
-                : "";
-            throw new InvalidOperationException(
-                $"{jobLabel}: model '{id}' is not in the models catalog for {capability} (or is disabled).{wrongCap} " +
-                "Open Settings → Studio coverage and pick a model that matches this job.");
+            var msg = FormatUnknownModel(capabilityId, id, jobLabel);
+            if (SupportedModelCatalog.Find(id) is { } other && other.Capability != capability)
+                msg += $" Model '{id}' is catalogued as {other.Capability}, not {capability}.";
+            throw new InvalidOperationException(msg);
         }
 
         return entry.Id;
@@ -127,19 +166,17 @@ public static class ProjectModelSelection
     /// </summary>
     public static string RequireExplicit(string? modelId, ModelCapability capability, string jobLabel)
     {
+        var capabilityId = CatalogCapabilityId(capability);
         if (string.IsNullOrWhiteSpace(modelId)
             || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
             || modelId.Equals("disabled", StringComparison.OrdinalIgnoreCase)
             || modelId.Equals("auto", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
-                $"{jobLabel}: model is required. Open Settings → Studio coverage and choose a model.");
+            throw new InvalidOperationException(FormatMissingModel(capabilityId, jobLabel));
 
         var entry = SupportedModelCatalog.Find(modelId.Trim(), capability)
                     ?? SupportedModelCatalog.Find(modelId.Trim());
         if (entry is null || !entry.Enabled)
-            throw new InvalidOperationException(
-                $"{jobLabel}: model '{modelId}' is not in the models catalog (or is disabled). " +
-                "Open Settings and pick a current model.");
+            throw new InvalidOperationException(FormatUnknownModel(capabilityId, modelId, jobLabel));
 
         return entry.Id;
     }
