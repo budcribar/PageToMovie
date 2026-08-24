@@ -58,7 +58,8 @@ jobs:
           export ASPNETCORE_URLS=http://127.0.0.1:5088
           # UseUrls ignores ASPNETCORE_URLS; bind only 5088 (no privileged port 80).
           export PAGETOMOVIE_BIND_PORTS=5088
-          nohup dotnet run --project PageToMovie.Api --no-build -c Release > /tmp/pagetomovie-api.log 2>&1 &
+          # Skip launchSettings (localhost / IPv6) so CI binds only the ports above.
+          nohup dotnet run --project PageToMovie.Api --no-build -c Release --no-launch-profile > /tmp/pagetomovie-api.log 2>&1 &
           echo $! > /tmp/pagetomovie-api.pid
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:5088/health >/dev/null; then
