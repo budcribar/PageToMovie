@@ -6,9 +6,16 @@
 <div class="cut-editor">
 
 <div class="cut-toolbar">
-    <button type="button" class="cut-btn" @onclick="PickFolderAsync" disabled="@_busy">Pick folder</button>
-    <button type="button" class="cut-btn cut-btn-ghost" @onclick="PickFilesAsync" disabled="@_busy">Choose MP4s</button>
+    @if (ShowFolderPickButtons)
+    {
+        <button type="button" class="cut-btn" @onclick="PickFolderAsync" disabled="@_busy">Pick folder</button>
+        <button type="button" class="cut-btn cut-btn-ghost" @onclick="PickFilesAsync" disabled="@_busy">Choose MP4s</button>
+    }
     <button type="button" class="cut-btn cut-btn-ghost" @onclick="SaveFinishAsync" disabled="@(_busy || !Folder.CanWrite)">Save cut</button>
+    @if (ShowHostAttachRetry)
+    {
+        <button type="button" class="cut-btn" @onclick="RetryHostAttachAsync" disabled="@_busy">Try again</button>
+    }
     @if (Folder.HasFolder)
     {
         <span>@Folder.FolderName · @Folder.Clips.Count clip@(Folder.Clips.Count == 1 ? "" : "s")</span>

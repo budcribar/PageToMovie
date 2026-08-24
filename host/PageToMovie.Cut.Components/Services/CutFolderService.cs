@@ -19,6 +19,11 @@ public sealed class CutFolderService : IAsyncDisposable
     public string? FolderName { get; private set; }
     public string? HostProjectPrefix { get; private set; }
     public string? FolderError { get; private set; }
+    /// <summary>
+    /// Last <see cref="TryAttachHostFolderAsync"/> found no host media folder (or no bridge).
+    /// Distinct from a hard attach error — hosted Cut may offer a last-resort picker.
+    /// </summary>
+    public bool HostFolderUnavailable { get; private set; }
     public string? PendingMusicFileName { get; private set; }
     public string? MusicFileOnDisk { get; private set; }
     public CutMusic PendingMusic { get; } = new();
@@ -60,12 +65,14 @@ public sealed class CutFolderService : IAsyncDisposable
         if (HasFolder && string.Equals(HostProjectPrefix, normalizedPrefix, StringComparison.Ordinal))
             return true;
         FolderError = null;
+        HostFolderUnavailable = false;
         var attach = await _js.InvokeAsync<JsResult>(
             "PageToMovieCut.attachHostMediaFolderAsync", normalizedPrefix);
         if (!attach.Success)
         {
+            HostFolderUnavailable = attach.Unavailable;
             if (!attach.Unavailable)
-                FolderError = attach.Error ?? "Could not open project media.";
+                FolderError = attach.Error ?? CutFolderChrome.AttachFailedMessage;
             return false;
         }
 
