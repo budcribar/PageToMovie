@@ -57,6 +57,7 @@ public sealed class ClientVoiceSubstitutionService
         string projectId,
         string? charKey = null,
         Action<string>? onProgress = null,
+        string? sourceMovieUrl = null,
         CancellationToken ct = default)
     {
         var recordedKey = await ResolveRecordedCharacterKeyAsync(projectId, charKey, ct);
@@ -85,6 +86,21 @@ public sealed class ClientVoiceSubstitutionService
         // lines would mismatch this movie's placement windows.
         await EnsureVoiceCapturePhrasesAsync(projectId, charKey, onProgress, ct);
 
+        if (!string.IsNullOrWhiteSpace(sourceMovieUrl))
+        {
+            onProgress?.Invoke("Placing your voice on the finished movie…");
+            try
+            {
+                var ontoFinished = await TryDubOntoSourceMovieAsync(projectId, sourceMovieUrl, ct);
+                if (ontoFinished is not null)
+                    return ontoFinished;
+            }
+            catch
+            {
+                /* keep today's per-scene stitch */
+            }
+        }
+
         onProgress?.Invoke("Placing your voice over each scene…");
         var overlays = await ApplyAcrossMovieAsync(projectId, ct);
         var ordered = SuccessfulOverlayUrls(overlays);
@@ -100,6 +116,59 @@ public sealed class ClientVoiceSubstitutionService
 
         return new DubMovieResult(true, stitched.Url, ordered.Count, failed, null);
     }
+
+    /// <summary>
+    /// Overlay cloned-voice lines onto a resolved Finish <c>movie.mp4</c> (one
+    /// detect + overlay pass). Null → caller keeps today's per-scene stitch.
+    /// </summary>
+    private async Task<DubMovieResult?> TryDubOntoSourceMovieAsync(
+        string projectId, string movieUrl, CancellationToken ct)
+    {
+        var alignment = await TryGetVoiceAlignmentAsync(projectId, ct);
+        if (alignment is null || alignment.SceneVoices.Count == 0)
+            return null;
+
+        var lines = CollectVoicedLines(alignment);
+        if (lines.Count == 0)
+            return new DubMovieResult(true, movieUrl, 0, 0, null);
+
+        var timing = await TryGetDialogueTimingAsync(projectId, ct);
+        var phrases = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
+        var confident = FlattenConfidentPhrases(BuildConfidentByScene(phrases, timing));
+
+        var detect = await _js.InvokeAsync<JsSpeechDetectResult>(
+            "PageToMovieFfmpeg.detectSpeechSegmentsAsync", ct, movieUrl, new { });
+        var windows = FilterSpeechWindows(detect);
+        var wpsSamples = new List<double>();
+        CollectWpsSamples(windows, lines, wpsSamples);
+
+        var (segs, _) = await BuildOverlaySegmentsAsync(
+            projectId, lines, windows, detect?.TotalSec ?? 0, MedianSpeakerWps(wpsSamples), confident);
+        if (segs.Count == 0)
+            return new DubMovieResult(true, movieUrl, 0, 0, null);
+
+        var overlay = await _js.InvokeAsync<JsOverlayResult>(
+            "PageToMovieFfmpeg.overlayVoiceSegmentsAsync",
+            ct, movieUrl, segs.ToArray(), new { muteBase = true });
+        if (overlay is { Success: true } && !string.IsNullOrWhiteSpace(overlay.Url))
+            return new DubMovieResult(true, overlay.Url, lines.Count, 0, null);
+        return null;
+    }
+
+    private static List<SceneVoiceLine> CollectVoicedLines(ProjectVoiceAlignment alignment) =>
+        alignment.SceneVoices
+            .OrderBy(v => v.Scene)
+            .SelectMany(v => v.Lines
+                .Where(l => !string.IsNullOrWhiteSpace(l.VoiceAudioRelativePath))
+                .OrderBy(l => l.Index))
+            .ToList();
+
+    private static List<VoiceCapturePhrase> FlattenConfidentPhrases(
+        Dictionary<int, List<VoiceCapturePhrase>> byScene) =>
+        byScene
+            .OrderBy(kv => kv.Key)
+            .SelectMany(kv => kv.Value)
+            .ToList();
 
     private async Task<string?> ResolveRecordedCharacterKeyAsync(
         string projectId, string? charKey, CancellationToken ct)

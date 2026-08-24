@@ -38,6 +38,18 @@ public class CutFinishedMovieTests
     }
 
     [Fact]
+    public void ChooseUrl_prefers_finished_movie_over_stitch()
+    {
+        Assert.Equal("blob:cut", CutFinishedMovie.ChooseUrl("blob:cut", "blob:stitch"));
+        Assert.Equal("blob:cut", CutFinishedMovie.ChooseUrl("blob:cut", null));
+        Assert.Equal("blob:stitch", CutFinishedMovie.ChooseUrl(null, "blob:stitch"));
+        Assert.Equal("blob:stitch", CutFinishedMovie.ChooseUrl("", "blob:stitch"));
+        Assert.Equal("blob:stitch", CutFinishedMovie.ChooseUrl("   ", "blob:stitch"));
+        Assert.Null(CutFinishedMovie.ChooseUrl(null, null));
+        Assert.Null(CutFinishedMovie.ChooseUrl("", "  "));
+    }
+
+    [Fact]
     public void Review_full_movie_play_asks_cut_before_stitch()
     {
         var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -51,6 +63,50 @@ public class CutFinishedMovieTests
         Assert.Contains("CutFinishedMovie.ShouldPlay", playback, StringComparison.Ordinal);
         Assert.True(playScene >= 0 && !playback[playScene..playClip].Contains("TryPlayFinishedCutAsync()", StringComparison.Ordinal));
         Assert.True(playClip >= 0 && !playback[playClip..].Contains("TryPlayFinishedCutAsync()", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Review_share_editor_and_dub_reuse_play_finished_cut_helper()
+    {
+        var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var playback = File.ReadAllText(Path.Combine(
+            host, "PageToMovie.Web", "Components", "Pages", "ReviewPlayback.cs"));
+        var share = File.ReadAllText(Path.Combine(
+            host, "PageToMovie.Web", "Components", "Pages", "ReviewShare.cs"));
+
+        var ensure = share.IndexOf("internal async Task<string?> EnsureShareableMovieUrlAsync()", StringComparison.Ordinal);
+        var stitch = share.IndexOf("StitchShareableMovieAsync()", StringComparison.Ordinal);
+        var choose = share.IndexOf("CutFinishedMovie.ChooseUrl", StringComparison.Ordinal);
+        var resolve = share.IndexOf("TryResolveFinishedCutUrlAsync()", StringComparison.Ordinal);
+        Assert.True(ensure >= 0 && resolve > ensure && choose > resolve && stitch > choose);
+
+        var open = playback.IndexOf("internal async Task OpenInExternalEditorAsync()", StringComparison.Ordinal);
+        var openResolve = playback.IndexOf("TryResolveFinishedCutUrlAsync()", open, StringComparison.Ordinal);
+        var serverOpen = playback.IndexOf("Engine.OpenInExternalEditorAsync(", open, StringComparison.Ordinal);
+        Assert.True(open >= 0 && openResolve > open && serverOpen > openResolve);
+
+        var dub = playback.IndexOf("internal async Task DubInMyVoiceAsync()", StringComparison.Ordinal);
+        var dubResolve = playback.IndexOf("TryResolveFinishedCutUrlAsync()", dub, StringComparison.Ordinal);
+        var dubCall = playback.IndexOf("DubMovieInMyVoiceAsync(", dub, StringComparison.Ordinal);
+        Assert.True(dub >= 0 && dubResolve > dub && dubCall > dubResolve);
+        Assert.Contains("sourceMovieUrl: finishedMovieUrl", playback, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_cut_chrome_is_redirect_only()
+    {
+        var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var nav = File.ReadAllText(Path.Combine(host, "PageToMovie.Web", "Components", "Layout", "NavMenu.razor"));
+        var strip = File.ReadAllText(Path.Combine(host, "PageToMovie.Web", "Components", "Shared", "StudioProcessStrip.razor"));
+        var routes = File.ReadAllText(Path.Combine(host, "PageToMovie.Web", "AppRoutes.cs"));
+        var cutPage = File.ReadAllText(Path.Combine(host, "PageToMovie.Web", "Components", "Pages", "Cut.razor"));
+
+        Assert.DoesNotContain("href=\"/cut\"", nav, StringComparison.Ordinal);
+        Assert.DoesNotContain("nav-cut", nav, StringComparison.Ordinal);
+        Assert.DoesNotContain("studio-step-cut", strip, StringComparison.Ordinal);
+        Assert.Contains("Redirect to Review Finish", routes, StringComparison.Ordinal);
+        Assert.Contains("@page \"/cut\"", cutPage, StringComparison.Ordinal);
+        Assert.Contains("/review?tab=finish", cutPage, StringComparison.Ordinal);
     }
 
     [Fact]

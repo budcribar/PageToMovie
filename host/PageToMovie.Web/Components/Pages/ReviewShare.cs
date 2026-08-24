@@ -9,6 +9,7 @@ using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
 using PageToMovie.Core.Utils;
+using PageToMovie.Cut.Cut;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review
@@ -322,6 +323,26 @@ public partial class Review
                 await S.MediaFolder.TryReconnectAsync();
             _lastExportMissingMusic = !S.MediaFolder.IsConnected;
 
+            var finished = await S.Playback.TryResolveFinishedCutUrlAsync();
+            var chosen = CutFinishedMovie.ChooseUrl(finished, stitchUrl: null);
+            if (chosen is not null)
+                return UseShareableUrl(chosen, missingMusic: false, finishedCut: true);
+
+            return await StitchShareableMovieAsync();
+        }
+
+        private string UseShareableUrl(string url, bool missingMusic, bool finishedCut)
+        {
+            _lastExportMissingMusic = missingMusic;
+            S.Playback._clientWipUrl = url;
+            S.Playback._playingFinishedCut = finishedCut;
+            S.Playback._showWipPlayer = true;
+            S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            return url;
+        }
+
+        private async Task<string?> StitchShareableMovieAsync()
+        {
             // Stitch fresh in browser to ensure all newly generated clips are included with zero duplicates
             var sceneNums = S.List._scenes
                 .Where(s => s.CompositeExists || s.ClipsOnDisk > 0)
@@ -349,17 +370,15 @@ public partial class Review
                 var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S.List._scenes, stale);
                 if (segs.Count == 0) return null;
                 var result = await S.Stitch.ConcatAsync(segs.Select(s => s.Url).ToList());
-                if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
+                var stitchUrl = result.Url;
+                if (!result.Success || string.IsNullOrWhiteSpace(stitchUrl))
                     throw new InvalidOperationException(result.Error ?? "Browser stitch failed");
-                S.Playback._clientWipUrl = result.Url;
-                S.Playback._showWipPlayer = true;
-                S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 try
                 {
                     await S.Stitch.RegisterFilmBuildAfterWipStitchAsync(S._projectId, segs, result);
                 }
                 catch { /* non-fatal */ }
-                return S.Playback._clientWipUrl;
+                return UseShareableUrl(stitchUrl, _lastExportMissingMusic, finishedCut: false);
             }
             finally
             {
