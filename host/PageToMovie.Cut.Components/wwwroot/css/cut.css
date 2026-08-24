@@ -1,4 +1,5 @@
-:root {
+.cut-host,
+.cut-editor {
     color-scheme: dark;
     --fs-bg-main: #0a0b0d;
     --fs-bg-card: #12141a;
@@ -20,23 +21,20 @@
     font-family: Inter, system-ui, sans-serif;
 }
 
-* { box-sizing: border-box; }
+.cut-host,
+.cut-host *,
+.cut-editor,
+.cut-editor * {
+    box-sizing: border-box;
+}
 
-html, body {
-    margin: 0;
-    min-height: 100%;
+.cut-host {
+    min-height: 100vh;
     background: var(--fs-bg-main);
     color: var(--fs-text-primary);
 }
 
-#app { min-height: 100vh; }
-
-.cut-boot {
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    color: var(--fs-text-muted);
-}
+.cut-editor { color: var(--fs-text-primary); }
 
 .cut-shell {
     max-width: 1400px;
@@ -1029,14 +1027,3 @@ html, body {
     accent-color: #3d4450;
 }
 
-#blazor-error-ui {
-    display: none;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 0.6rem 1rem;
-    background: #3a1c1c;
-    color: #f3d2d2;
-}
-#blazor-error-ui.shown { display: block; }

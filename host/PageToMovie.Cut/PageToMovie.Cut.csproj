@@ -15,9 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>PageToMovie.Cut.Tests</_Parameter1>
-    </AssemblyAttribute>
+    <ProjectReference Include="..\PageToMovie.Cut.Components\PageToMovie.Cut.Components.csproj" />
   </ItemGroup>
 
   <!-- Loader SSoT is Web. Copy at build so Cut does not commit a second copy (Sonar CPD). -->

@@ -8,10 +8,13 @@ using PageToMovie.Cut.Services;
 
 namespace PageToMovie.Cut.Pages;
 
-public partial class Home : IAsyncDisposable
+public partial class CutEditor : IAsyncDisposable
 {
     [Inject] private IJSRuntime? Js { get; set; }
     [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    [Parameter] public string? HostProjectPrefix { get; set; }
+    [Parameter] public bool AutoAttachHostFolder { get; set; }
 
     private CutPreviewVideos? _preview = null;
     private CutTimeline? Timeline { get; set; } = null;
@@ -24,6 +27,7 @@ public partial class Home : IAsyncDisposable
     private CutClip? _selected;
     private bool _folderBusy;
     private bool _debugFolderLoadTried;
+    private bool _hostFolderAttachTried;
     private bool _exporting;
     private bool _composing;
     private bool _wantPlay;
@@ -481,6 +485,29 @@ public partial class Home : IAsyncDisposable
             return;
         }
         await ContinuePlayAsync(_playhead, userSeek: true);
+    }
+
+    private async Task TryAttachHostFolderAsync()
+    {
+        if (_hostFolderAttachTried || !AutoAttachHostFolder)
+            return;
+        _hostFolderAttachTried = true;
+        _folderBusy = true;
+        try
+        {
+            if (await Folder.TryAttachHostFolderAsync(HostProjectPrefix))
+                await AfterFolderLoadAsync();
+            else if (!string.IsNullOrWhiteSpace(Folder.FolderError))
+                _error = Folder.FolderError;
+        }
+        catch (JSException)
+        {
+            // The standalone host intentionally has no PageToMovie media-folder bridge.
+        }
+        finally
+        {
+            _folderBusy = false;
+        }
     }
 
     private bool RequiresComposedMusic => Compose.Music.HasFile;
@@ -1207,6 +1234,7 @@ public partial class Home : IAsyncDisposable
         if (firstRender)
         {
             await TryLoadDebugFolderAsync();
+            await TryAttachHostFolderAsync();
             await InvokeAsync(StateHasChanged);
         }
         try

@@ -16,6 +16,8 @@
         _pendingRevoke: new Set(),
         _lastDebugError: null,
         _lastComposeMetrics: null,
+        _lastSharedStitchMetrics: null,
+        _sharedStitchCache: new Map(),
         _progressRef: null,
         _aborted: false,
         _composeGate: Promise.resolve(),
@@ -52,6 +54,7 @@
     const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
     const FFMPEG_STITCH_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegStitchWorkers";
     const FFMPEG_CLIP_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegClipWorkers";
+    const SHARED_STITCH_CACHE_LIMIT = 12;
 
     function clampWorkerCount(value) {
         const parsed = Math.trunc(Number(value));
@@ -554,6 +557,63 @@
                 } catch (retry) {
                     return { success: false, error: messageOf(retry, fsUserMessage()) };
                 }
+            }
+        });
+    }
+
+    async function concatAvRemuxOnce(api, ffmpeg, urls, seq) {
+        const names = [];
+        const outName = "cut_avcat_" + seq + ".mp4";
+        const listName = "cut_avcat_" + seq + ".txt";
+        try {
+            let expectedSec = 0;
+            const list = [];
+            for (let i = 0; i < urls.length; i++) {
+                const name = "cut_avcat_" + seq + "_" + i + ".mp4";
+                names.push(name);
+                await writeMemfs(ffmpeg, name, await fetchInputBytes(api, urls[i], "Clip"));
+                const probe = await api._probeDurationMemfsAsync(name);
+                const seconds = probe.success && Number(probe.seconds) > 0
+                    ? Number(probe.seconds) : 0;
+                expectedSec += seconds;
+                list.push("file '" + name + "'");
+                if (seconds > 0.001)
+                    list.push("duration " + seconds);
+            }
+            await writeMemfs(ffmpeg, listName, list.join("\n"));
+            const cap = expectedSec > 0.05 ? ["-t", String(expectedSec)] : [];
+            await execChecked(ffmpeg, [
+                "-hide_banner", "-y", "-fflags", "+genpts",
+                "-f", "concat", "-safe", "0", "-i", listName,
+                "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
+                "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+            ].concat(cap, [outName]));
+            const out = await ffmpeg.readFile(outName);
+            const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+            noteTemp(url);
+            return { success: true, url: url, seconds: expectedSec };
+        } finally {
+            for (const name of names)
+                await deleteMemfs(ffmpeg, name);
+            await deleteMemfs(ffmpeg, listName);
+            await deleteMemfs(ffmpeg, outName);
+        }
+    }
+
+    /** Stream-copy compatible H.264/AAC clips without hiding a serial re-encode fallback.
+     * Callers use a failed copy as the signal to normalize clips through the worker pool. */
+    async function concatAvRemuxAsync(api, urls, onProgress) {
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const seq = ++cut._trimSeq;
+            try {
+                return await concatAvRemuxOnce(api, api._ffmpeg, urls, seq);
+            } catch (err) {
+                if (isFsError(err))
+                    await resetFfmpegWorker(api);
+                return { success: false, error: messageOf(err, "Stream-copy stitch failed.") };
             }
         });
     }
@@ -1494,6 +1554,23 @@
     cut.readMediaDuration = function (el) {
         const d = el?.duration;
         return (typeof d === "number" && Number.isFinite(d) && d > 0) ? d : 0;
+    };
+
+    cut.attachHostMediaFolderAsync = async function (projectPrefix) {
+        try {
+            const media = window.PageToMovieMedia;
+            if (!media || typeof media.resolveProjectDirectoryForCutAsync !== "function")
+                return { success: false, unavailable: true };
+            const handle = await media.resolveProjectDirectoryForCutAsync(projectPrefix || "");
+            if (!handle)
+                return { success: false, unavailable: true };
+            cut._root = handle;
+            cut._fallbackFiles = null;
+            cut._debugFolder = null;
+            return { success: true, folderName: handle.name || projectPrefix || "Project media" };
+        } catch (err) {
+            return { success: false, error: messageOf(err, "Could not open project media.") };
+        }
     };
 
     function validateMediaUrl(url, requireVideo) {
@@ -3121,6 +3198,239 @@
                 releaseTempUrl(placed.url);
         }
     }
+
+    function sharedStitchClips(urls) {
+        return (Array.isArray(urls) ? urls : [])
+            .filter(function (url) { return typeof url === "string" && url.length > 0; })
+            .map(function (url, index) {
+                return {
+                    url: url,
+                    label: "clip " + (index + 1),
+                    markIn: 0,
+                    markOut: 0,
+                    duration: 0,
+                    texts: [],
+                };
+            });
+    }
+
+    function sharedStitchCacheKey(urls, musicUrl, volumePercent) {
+        const inputs = (urls || []).concat(musicUrl ? [musicUrl] : []);
+        // Local-folder blob URLs are stable until the underlying take is refreshed. Server URLs can
+        // change bytes without changing their path, so never cache those across calls.
+        if (inputs.length === 0 || inputs.some(function (url) { return !String(url).startsWith("blob:"); }))
+            return "";
+        return [musicUrl ? "mix" : "concat", Number(volumePercent) || 0].concat(inputs).join("|");
+    }
+
+    function getSharedStitchCache(key) {
+        if (!key) return null;
+        const found = cut._sharedStitchCache.get(key);
+        if (!found) return null;
+        cut._sharedStitchCache.delete(key);
+        cut._sharedStitchCache.set(key, found);
+        return Object.assign({}, found, { cacheHit: true });
+    }
+
+    function putSharedStitchCache(key, result) {
+        if (!key || !result || !result.success || !result.url) return result;
+        const previous = cut._sharedStitchCache.get(key);
+        if (previous && previous.url !== result.url)
+            releaseTempUrl(previous.url);
+        cut._sharedStitchCache.delete(key);
+        cut._sharedStitchCache.set(key, Object.assign({}, result, { cacheHit: false }));
+        while (cut._sharedStitchCache.size > SHARED_STITCH_CACHE_LIMIT) {
+            const oldest = cut._sharedStitchCache.entries().next().value;
+            if (!oldest) break;
+            cut._sharedStitchCache.delete(oldest[0]);
+            if (oldest[1] && oldest[1].url !== result.url)
+                releaseTempUrl(oldest[1].url);
+        }
+        return result;
+    }
+
+    async function hashSharedStitchResultAsync(api, result, count) {
+        if (!result || !result.success || !result.url) return result;
+        try {
+            const hash = await api.hashUrlAsync(result.url);
+            if (hash && hash.success) {
+                result.sha256 = hash.sha256;
+                result.byteLength = hash.byteLength;
+            }
+        } catch (err) {
+            console.debug("Cut: shared stitch hash skipped", err);
+        }
+        result.count = count;
+        result.single = count === 1;
+        result.optimized = true;
+        return result;
+    }
+
+    async function validateSharedStitchAsync(result) {
+        if (!result || !result.success || !result.url) return result;
+        const video = await cut.validateVideoUrl(result.url);
+        if (!video.success) {
+            releaseTempUrl(result.url);
+            return { success: false, error: video.error || "Stitched video could not be decoded." };
+        }
+        const expected = Number(result.seconds) || 0;
+        if (expected > 0.1 && Number(video.duration) + 0.25 < expected) {
+            releaseTempUrl(result.url);
+            return { success: false, error: "Stitched video ended before all clips were included." };
+        }
+        return result;
+    }
+
+    function newSharedStitchMetrics(kind) {
+        return {
+            kind: kind,
+            requestedWorkers: requestedClipWorkerCount(),
+            effectiveWorkers: 1,
+            clipRequestedWorkers: requestedClipWorkerCount(),
+            clipEffectiveWorkers: 1,
+            clipPrepareMs: 0,
+            clipFellBackToOne: false,
+            clipFallbackReason: "",
+            stitchRequestedWorkers: requestedStitchWorkerCount(),
+            stitchEffectiveWorkers: 1,
+            stitchTasks: 0,
+            stitchPrepareMs: 0,
+            stitchFellBackToOne: false,
+            stitchFallbackReason: "",
+            musicPrepareMs: 0,
+            combinedMs: 0,
+            combinedUsed: false,
+            combinedValidated: false,
+            combinedValidationMs: 0,
+            finalCopyRequested: queryFlag("ffmpegCopyFinal"),
+            finalCopyUsed: false,
+            finalCopyFellBack: false,
+            finalCopyFallbackReason: "",
+            flatUsed: false,
+            totalMs: 0,
+            cacheHit: false,
+            path: "",
+        };
+    }
+
+    function noteSharedStitchCacheHit(kind) {
+        const metrics = newSharedStitchMetrics(kind);
+        metrics.cacheHit = true;
+        metrics.path = "cache";
+        cut._lastSharedStitchMetrics = metrics;
+    }
+
+    async function concatVideosOptimizedWorkAsync(urls, onProgress) {
+        const api = window.PageToMovieFfmpeg;
+        if (!api) return { success: false, error: "ffmpeg helper missing" };
+        const clips = sharedStitchClips(urls);
+        if (clips.length === 0) return { success: false, error: "No video URLs to combine" };
+        if (clips.length === 1)
+            return hashSharedStitchResultAsync(api, { success: true, url: clips[0].url, single: true }, 1);
+
+        const key = sharedStitchCacheKey(urls, "", 0);
+        const cached = getSharedStitchCache(key);
+        if (cached) {
+            noteSharedStitchCacheHit("concat");
+            return cached;
+        }
+
+        cut._aborted = false;
+        const started = performance.now();
+        const metrics = newSharedStitchMetrics("concat");
+        cut._lastSharedStitchMetrics = metrics;
+        try {
+            onProgress?.(5, "Trying fast stream copy…");
+            let result = await concatAvRemuxAsync(api, urls, onProgress);
+            result = await validateSharedStitchAsync(result);
+            if (result.success) {
+                metrics.path = "stream-copy";
+                result = await hashSharedStitchResultAsync(api, result, clips.length);
+                return putSharedStitchCache(key, result);
+            }
+
+            onProgress?.(10, "Normalizing clips in parallel…");
+            const prepared = await prepareFlatClipsWithPoolAsync(api, clips, onProgress, metrics);
+            if (!prepared.success) return prepared;
+            const normalized = prepared.clipUrls.map(function (item) { return item && item.url; }).filter(Boolean);
+            try {
+                await resetFfmpegWorker(api);
+                result = await concatAvRemuxAsync(api, normalized, onProgress);
+                result = await validateSharedStitchAsync(result);
+                if (!result.success) return result;
+                metrics.path = "parallel-normalize-copy";
+                result = await hashSharedStitchResultAsync(api, result, clips.length);
+                return putSharedStitchCache(key, result);
+            } finally {
+                normalized.forEach(function (url) {
+                    if (!result || !result.success || url !== result.url)
+                        releaseTempUrl(url);
+                });
+            }
+        } finally {
+            metrics.totalMs = Math.round(performance.now() - started);
+            console.info("Cut: shared stitch metrics", JSON.stringify(metrics));
+        }
+    }
+
+    async function concatAndMixVideosOptimizedWorkAsync(urls, musicUrl, volumePercent, onProgress) {
+        const api = window.PageToMovieFfmpeg;
+        if (!api) return { success: false, error: "ffmpeg helper missing" };
+        const clips = sharedStitchClips(urls);
+        if (clips.length === 0 || !musicUrl)
+            return { success: false, error: "Video clips and music are required." };
+        const volume = Math.max(0, Math.min(1, (Number(volumePercent) || 0) / 100));
+        const key = sharedStitchCacheKey(urls, musicUrl, volumePercent);
+        const cached = getSharedStitchCache(key);
+        if (cached) {
+            noteSharedStitchCacheHit("concat-and-mix");
+            return cached;
+        }
+
+        cut._aborted = false;
+        const started = performance.now();
+        const metrics = newSharedStitchMetrics("concat-and-mix");
+        cut._lastSharedStitchMetrics = metrics;
+        try {
+            const scenes = [{ scene: 1, first: 0, count: clips.length, seconds: 0, url: "" }];
+            let result = await composeFlatClipsAndMixAsync(
+                api, clips, scenes, [], { url: musicUrl, volume: volume }, onProgress, metrics);
+            if (!result.success) return result;
+            metrics.path = "parallel-normalize-combined-mix";
+            result = await hashSharedStitchResultAsync(api, result, clips.length);
+            return putSharedStitchCache(key, result);
+        } finally {
+            metrics.totalMs = Math.round(performance.now() - started);
+            console.info("Cut: shared stitch metrics", JSON.stringify(metrics));
+        }
+    }
+
+    cut.concatVideosOptimizedAsync = function (urls, onProgress) {
+        const run = function () { return concatVideosOptimizedWorkAsync(urls, onProgress); };
+        const done = cut._composeGate.then(run, run);
+        cut._composeGate = done.then(function () {}, function () {});
+        return done;
+    };
+
+    cut.concatAndMixVideosOptimizedAsync = function (urls, musicUrl, volumePercent, onProgress) {
+        const run = function () {
+            return concatAndMixVideosOptimizedWorkAsync(urls, musicUrl, volumePercent, onProgress);
+        };
+        const done = cut._composeGate.then(run, run);
+        cut._composeGate = done.then(function () {}, function () {});
+        return done;
+    };
+
+    cut.getLastSharedStitchMetrics = function () {
+        return cut._lastSharedStitchMetrics;
+    };
+
+    cut.clearSharedStitchCache = function () {
+        cut._sharedStitchCache.forEach(function (item) {
+            if (item && item.url) releaseTempUrl(item.url);
+        });
+        cut._sharedStitchCache.clear();
+    };
 
     async function composeWorkAsync(clipsOrPlan, audioUrl, dotNetRef, jit) {
         cut._aborted = false;

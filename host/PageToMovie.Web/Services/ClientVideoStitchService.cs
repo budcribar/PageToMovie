@@ -10,6 +10,10 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public sealed class ClientVideoStitchService
 {
+    private const string OptimizedConcatJs = "PageToMovieCut.concatVideosOptimizedAsync";
+    private const string OptimizedConcatAndMixJs = "PageToMovieCut.concatAndMixVideosOptimizedAsync";
+    private const string LegacyConcatJs = "PageToMovieFfmpeg.concatVideosAsync";
+
     private readonly IJSRuntime _js;
     private readonly EngineApiClient _engine;
     private readonly ClientMediaFolderService? _media;
@@ -349,22 +353,30 @@ public sealed class ClientVideoStitchService
             return ClientStitchResult.Ok(urls[0], count: 1, single: true, sha, blen);
         }
 
+        var optimized = await TryConcatWithJsAsync(OptimizedConcatJs, urls, ct);
+        if (optimized.HasPlayableUrl)
+            return optimized;
+
+        // The shared pool already retries with one worker. Keep the original implementation as a
+        // compatibility/recovery path for old cached clients and browser-specific codec failures.
+        var legacy = await TryConcatWithJsAsync(LegacyConcatJs, urls, ct);
+        return legacy;
+    }
+
+    private async Task<ClientStitchResult> TryConcatWithJsAsync(
+        string identifier,
+        IReadOnlyList<string> urls,
+        CancellationToken ct)
+    {
         try
         {
-            var raw = await _js.InvokeAsync<JsConcatResult>(
-                "PageToMovieFfmpeg.concatVideosAsync",
-                ct,
-                (object)urls.ToArray());
-
+            var raw = await _js.InvokeAsync<JsConcatResult>(identifier, ct, (object)urls.ToArray());
             if (raw is null)
                 return ClientStitchResult.Fail("No response from browser stitch");
-
             if (!raw.Success)
                 return ClientStitchResult.Fail(raw.Error ?? "Browser stitch failed");
-
             if (raw.Url is not { Length: > 0 } stitchedUrl)
                 return ClientStitchResult.Fail("Stitch produced no video URL");
-
             return ClientStitchResult.Ok(
                 stitchedUrl,
                 raw.Count > 0 ? raw.Count : urls.Count,
@@ -435,25 +447,16 @@ public sealed class ClientVideoStitchService
             if (sceneUrls.Count == 0)
                 continue;
 
-            string sceneUrl;
-            if (sceneUrls.Count == 1)
-                sceneUrl = sceneUrls[0];
-            else
+            var sceneUrl = await ConcatAndMixSceneAsync(projectId, sceneUrls, sn, ct: ct);
+            if (string.IsNullOrWhiteSpace(sceneUrl))
             {
-                var concat = await ConcatAsync(sceneUrls, ct);
-                if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
-                {
-                    // Remember why: "no clips" and "could not stitch the clips" are different problems.
-                    var why = concat?.Error ?? "browser stitch failed";
-                    LastCollectError = why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
-                        ? why
-                        : $"S{sn:D2}: {why}";
-                    continue;
-                }
-                sceneUrl = concatUrl;
+                // Remember why: "no clips" and "could not stitch the clips" are different problems.
+                var why = LastCollectError ?? "browser stitch failed";
+                LastCollectError = why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
+                    ? why
+                    : $"S{sn:D2}: {why}";
+                continue;
             }
-
-            sceneUrl = await MixSceneMusicAsync(projectId, sceneUrl, sn, ct: ct);
             segments.Add(new ClientWipSegment
             {
                 SceneNumber = sn,
@@ -569,32 +572,109 @@ public sealed class ClientVideoStitchService
         int volumePercent = 20,
         CancellationToken ct = default)
     {
-        _ = ct;
         if (_media is null || string.IsNullOrWhiteSpace(videoUrl))
             return videoUrl;
 
-        var segmentUrls = await _media.GetSceneMusicSegmentUrlsAsync(projectId, sceneNumber);
-        if (segmentUrls.Count == 0)
-            return videoUrl;
+        var musicUrl = await ResolveSceneMusicUrlAsync(projectId, sceneNumber);
+        return string.IsNullOrWhiteSpace(musicUrl)
+            ? videoUrl
+            : await MixResolvedMusicAsync([videoUrl], videoUrl, musicUrl, volumePercent, ct);
+    }
+
+    private async Task<string?> ConcatAndMixSceneAsync(
+        string projectId,
+        IReadOnlyList<string> videoUrls,
+        int sceneNumber,
+        int volumePercent = 20,
+        CancellationToken ct = default)
+    {
+        var musicUrl = await ResolveSceneMusicUrlAsync(projectId, sceneNumber);
+        if (string.IsNullOrWhiteSpace(musicUrl))
+        {
+            var concat = await ConcatAsync(videoUrls, ct);
+            if (concat.HasPlayableUrl)
+                return concat.Url;
+            LastCollectError = concat.StitchError;
+            return null;
+        }
 
         try
         {
-            string musicUrl;
-            if (segmentUrls.Count == 1)
-            {
-                musicUrl = segmentUrls[0];
-            }
-            else
-            {
-                var concat = await _js.InvokeAsync<JsConcatResult>(
-                    "PageToMovieFfmpeg.concatAudioSegmentsAsync", (object)segmentUrls.ToArray());
-                if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
-                    return videoUrl;
-                musicUrl = concatUrl;
-            }
+            var optimized = await _js.InvokeAsync<JsConcatResult>(
+                OptimizedConcatAndMixJs,
+                ct,
+                (object)videoUrls.ToArray(),
+                musicUrl,
+                volumePercent);
+            if (optimized is { Success: true, Url: { Length: > 0 } optimizedUrl })
+                return optimizedUrl;
+        }
+        catch
+        {
+            // Shared fast path is optional at runtime; use the proven two-pass path below.
+        }
 
+        var fallback = await ConcatAsync(videoUrls, ct);
+        if (!fallback.HasPlayableUrl)
+        {
+            LastCollectError = fallback.StitchError;
+            return null;
+        }
+        return await MixResolvedMusicAsync(videoUrls, fallback.Url!, musicUrl, volumePercent, ct, tryOptimized: false);
+    }
+
+    private async Task<string?> ResolveSceneMusicUrlAsync(string projectId, int sceneNumber)
+    {
+        if (_media is null)
+            return null;
+        var segmentUrls = await _media.GetSceneMusicSegmentUrlsAsync(projectId, sceneNumber);
+        if (segmentUrls.Count == 0)
+            return null;
+        if (segmentUrls.Count == 1)
+            return segmentUrls[0];
+        try
+        {
+            var concat = await _js.InvokeAsync<JsConcatResult>(
+                "PageToMovieFfmpeg.concatAudioSegmentsAsync", (object)segmentUrls.ToArray());
+            return concat is { Success: true, Url: { Length: > 0 } concatUrl } ? concatUrl : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string> MixResolvedMusicAsync(
+        IReadOnlyList<string> sourceVideoUrls,
+        string videoUrl,
+        string musicUrl,
+        int volumePercent,
+        CancellationToken ct,
+        bool tryOptimized = true)
+    {
+        if (tryOptimized)
+        {
+            try
+            {
+                var optimized = await _js.InvokeAsync<JsConcatResult>(
+                    OptimizedConcatAndMixJs,
+                    ct,
+                    (object)sourceVideoUrls.ToArray(),
+                    musicUrl,
+                    volumePercent);
+                if (optimized is { Success: true, Url: { Length: > 0 } optimizedUrl })
+                    return optimizedUrl;
+            }
+            catch
+            {
+                // Keep best-effort music behavior when the shared renderer is unavailable.
+            }
+        }
+
+        try
+        {
             var mixed = await _js.InvokeAsync<JsConcatResult>(
-                "PageToMovieFfmpeg.mixSceneAudioAsync", videoUrl, musicUrl, volumePercent);
+                "PageToMovieFfmpeg.mixSceneAudioAsync", ct, videoUrl, musicUrl, volumePercent);
             return mixed is { Success: true, Url: { Length: > 0 } mixedUrl } ? mixedUrl : videoUrl;
         }
         catch

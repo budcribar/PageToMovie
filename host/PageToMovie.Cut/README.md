@@ -1,6 +1,10 @@
 # PageToMovie.Cut
 
-Standalone finish editor. Film already owns order, deletes, and current takes. Cut reads that folder and finishes the movie (trim, transitions, music, cards, export). It is **not** wired into Film Studio yet.
+Standalone host for the finish editor. Film already owns order, deletes, and current takes. Cut reads that folder and finishes the movie (trim, transitions, music, cards, export).
+
+The editor implementation lives in the shared `PageToMovie.Cut.Components` Razor Class Library. This project is a thin, independently runnable WebAssembly host for experiments and benchmarks. `PageToMovie.Web` references the same RCL and hosts it at `/cut`; when the studio media folder is already connected, the Web host opens the active project's directory automatically. Neither host copies the Razor editor, Cut services, `cut.js`, or Cut CSS.
+
+PageToMovie.Web's existing Scenes and Review players also call the RCL's low-level optimized stitch API. They use stream-copy when clips are compatible, pooled clip normalization with one-worker recovery when they are not, a combined scene concat/music pass, and a local-blob result cache. The pre-existing `PageToMovieFfmpeg` stitch/mix path remains the final compatibility fallback.
 
 **1.0 (finish, not assembly):** [CUT-1.0.md](CUT-1.0.md) — Clipchamp-style timeline, hop-aware in/out, range-delete, Fountain join ticks, text row (scene cards + titles), music, save/reload. Do not stack two agents on the same slice. Do not add reorder / whole-clip delete / take-picking product work.
 
@@ -57,7 +61,7 @@ Add `&ffmpegCopyFinal=1` to copy the normalized final video stream while encodin
 6. **Play** stitches that finish (ffmpeg.wasm) and plays in-page. **Make movie** downloads `movie.mp4`.
 7. **Save cut** writes `cut.project.json` and reloads it with the folder.
 
-The ffmpeg loader is **Web’s file**, copied into Cut `wwwroot/js/` at build (`CopyWebFfmpegToCut`). Do not commit a second `pagetomovie-ffmpeg.js` or `ffmpeg/` tree. Ops share that file’s exclusive queue.
+The generic ffmpeg loader remains **Web’s file**, copied into the standalone host `wwwroot/js/` at build (`CopyWebFfmpegToCut`). Do not commit a second `pagetomovie-ffmpeg.js` or `ffmpeg/` tree. The shared Cut RCL owns its editor operations and both hosts use the loader's exclusive queue.
 
 ## Out of 1.0
 

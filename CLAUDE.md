@@ -45,6 +45,7 @@ Playwright: start Api only; `WEB_URL` is the same origin (`http://127.0.0.1:5088
 | `PageToMovie.Engine` | Remaining product logic: job runner (`FilmJobService`), Stage 2 shot planning, ~20 AI classifiers, video prompt building, provider clients, stores. Orchestrates `PageToMovie.Adaptation` for Stage 1 rather than reimplementing it |
 | `PageToMovie.Api` | Minimal-API REST + `/hubs/jobs` SignalR hub; hosts the WASM UI. **`Program.cs` is a large (~4k line) file holding essentially all route registrations** — search it by route path/verb rather than expecting a controller-per-resource layout |
 | `PageToMovie.Web` | Blazor WebAssembly UI (`Components/Pages`) + client-side media tools (ffmpeg.wasm: stitch, silence-trim, frame sampling) |
+| `PageToMovie.Cut.Components` | Shared finish-editor RCL used by both PageToMovie.Web `/cut` and the independent Cut benchmark host |
 | `PageToMovie.Fakes` | Fake `IChatClient`/`IImageClient`/`IVideoClient`/`IVisionClient` implementations + fixtures, swapped in via `PageToMovie:UseFakes` for spend-free dev/soak |
 | `PageToMovie.LoadSim` | Concurrent virtual-user load client (Phase E soak testing) |
 | `PageToMovie.Tests` | xUnit tests; `LiveApi/` subfolder is paid-provider tests gated by `[LiveApiFact]`/`[LiveApiTheory]` (skip cleanly unless both `PAGETOMOVIE_LIVE_API_TESTS` and the provider key are set) |

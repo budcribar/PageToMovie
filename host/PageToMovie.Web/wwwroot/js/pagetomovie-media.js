@@ -18,6 +18,29 @@ window.PageToMovieMedia = {
         return this.getFullPath() || (this._root ? this._root.name : null);
     },
 
+    /** Resolve the active project's directory for the shared Cut editor without exposing the
+     * FileSystemDirectoryHandle through .NET serialization. A connected root may either be the
+     * project itself or a parent containing the project-id path. */
+    resolveProjectDirectoryForCutAsync: async function (projectPrefix) {
+        if (!this._root) return null;
+        const root = this._root;
+        const parts = String(projectPrefix || "").split("/").filter(Boolean);
+        if (parts.length > 0) {
+            try {
+                let dir = root;
+                for (const part of parts)
+                    dir = await dir.getDirectoryHandle(part, { create: false });
+                return dir;
+            } catch (_) { /* the connected handle may already be the project directory */ }
+        }
+        try {
+            await root.getDirectoryHandle("assets", { create: false });
+            return root;
+        } catch (_) {
+            return null;
+        }
+    },
+
     getFullPath: function () {
         return localStorage.getItem("ptm-media-fullpath") || null;
     },

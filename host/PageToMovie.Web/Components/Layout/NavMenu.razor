@@ -98,6 +98,13 @@
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Review"]</span> }
                 </NavLink>
             </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="@(ActiveProject.CanReview ? "nav-link" : "nav-link disabled")" href="/cut" title='@(ActiveProject.CanReview ? "Finish movie" : ActiveProject.ReviewBlockedReason)' data-testid="nav-cut">
+                    <span class="bi bi-scissors" aria-hidden="true"></span>
+                    @if (!Collapsed) { <span class="nav-label">Cut</span> }
+                </NavLink>
+            </div>
         }
         else if (Session.IsLoggedIn)
         {

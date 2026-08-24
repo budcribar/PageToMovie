@@ -1,0 +1,79 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
+
+<Admin_CollapsibleCard Title="⚡ Browser Video Rendering"
+                       Badge="browser-local"
+                       BadgeClass="text-bg-info"
+                       Expanded="Ui._showBrowserRendering"
+                       ExpandedChanged="@(async v => { Ui._showBrowserRendering = v; await Host.NotifyChangedAsync(); })">
+    <p class="text-muted small mb-3">
+        These settings are saved in this browser profile. They control the shared FFmpeg renderer used by
+        Cut, Scenes, and Review. A parallel failure automatically retries with one worker.
+    </p>
+
+    @if (_loading)
+    {
+        <p class="text-muted mb-0" data-testid="browser-rendering-loading">Loading browser settings…</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <InlineAlert Variant="warning" CssClass="mb-0">
+            Browser rendering settings are unavailable: @_error
+        </InlineAlert>
+    }
+    else
+    {
+        <div class="row g-3" data-testid="browser-rendering-settings">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold" for="admin-clip-workers">Clip preparation workers</label>
+                <select id="admin-clip-workers"
+                        class="form-select"
+                        value="@_clipWorkers"
+                        @onchange="SetClipWorkersAsync"
+                        data-testid="admin-clip-workers">
+                    @WorkerOptions()
+                </select>
+                <div class="form-text">Used by Scenes and Review stitching, and Cut's flat fast path.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold" for="admin-scene-workers">Scene preparation workers</label>
+                <select id="admin-scene-workers"
+                        class="form-select"
+                        value="@_sceneWorkers"
+                        @onchange="SetSceneWorkersAsync"
+                        data-testid="admin-scene-workers">
+                    @WorkerOptions()
+                </select>
+                <div class="form-text">Used by Cut's compatible scene-based rendering pipeline.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold" for="admin-transition-workers">Transition workers</label>
+                <select id="admin-transition-workers"
+                        class="form-select"
+                        value="@_transitionWorkers"
+                        @onchange="SetTransitionWorkersAsync"
+                        data-testid="admin-transition-workers">
+                    @WorkerOptions()
+                </select>
+                <div class="form-text">Prepares independent transitions in parallel in Cut.</div>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    @onclick="ClearCacheAsync"
+                    data-testid="admin-clear-render-cache">
+                Clear browser render cache
+            </button>
+            @if (!string.IsNullOrWhiteSpace(_status))
+            {
+                <span class="small text-success" role="status" data-testid="admin-browser-rendering-status">@_status</span>
+            }
+        </div>
+
+        <div class="form-text mt-2">
+            Choose 1 for minimum memory use. Higher values may render faster but use more memory. URL query overrides,
+            when present, take precedence over these saved values.
+        </div>
+    }
+</Admin_CollapsibleCard>

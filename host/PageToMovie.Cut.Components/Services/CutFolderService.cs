@@ -17,6 +17,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public bool HasFolder { get; private set; }
     public bool CanWrite { get; private set; }
     public string? FolderName { get; private set; }
+    public string? HostProjectPrefix { get; private set; }
     public string? FolderError { get; private set; }
     public string? PendingMusicFileName { get; private set; }
     public string? MusicFileOnDisk { get; private set; }
@@ -39,6 +40,7 @@ public sealed class CutFolderService : IAsyncDisposable
     public async Task PickFolderAsync()
     {
         FolderError = null;
+        HostProjectPrefix = null;
         var pick = await _js.InvokeAsync<JsResult>("PageToMovieCut.pickFolderAsync");
         if (!pick.Success)
         {
@@ -52,9 +54,33 @@ public sealed class CutFolderService : IAsyncDisposable
         await LoadClipsFromCurrentFolderAsync();
     }
 
+    public async Task<bool> TryAttachHostFolderAsync(string? projectPrefix)
+    {
+        var normalizedPrefix = string.IsNullOrWhiteSpace(projectPrefix) ? "" : projectPrefix.Trim();
+        if (HasFolder && string.Equals(HostProjectPrefix, normalizedPrefix, StringComparison.Ordinal))
+            return true;
+        FolderError = null;
+        var attach = await _js.InvokeAsync<JsResult>(
+            "PageToMovieCut.attachHostMediaFolderAsync", normalizedPrefix);
+        if (!attach.Success)
+        {
+            if (!attach.Unavailable)
+                FolderError = attach.Error ?? "Could not open project media.";
+            return false;
+        }
+
+        FolderName = attach.FolderName ?? "Project media";
+        HostProjectPrefix = normalizedPrefix;
+        HasFolder = true;
+        CanWrite = true;
+        await LoadClipsFromCurrentFolderAsync();
+        return FolderError is null;
+    }
+
     public async Task PickMp4FilesFallbackAsync()
     {
         FolderError = null;
+        HostProjectPrefix = null;
         var pick = await _js.InvokeAsync<JsResult>("PageToMovieCut.pickMp4FilesAsync");
         if (!pick.Success)
         {
@@ -71,6 +97,7 @@ public sealed class CutFolderService : IAsyncDisposable
     internal async Task LoadDebugFolderAsync(string manifestUrl)
     {
         FolderError = null;
+        HostProjectPrefix = null;
         var pick = await _js.InvokeAsync<JsResult>("PageToMovieCut.loadDebugFolderAsync", manifestUrl);
         if (!pick.Success)
         {

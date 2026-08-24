@@ -56,6 +56,12 @@ Validation happens in two stages:
 
 Cached scene segments and the final merge are keyed by render fingerprints. Trim, transition, title, music placement, fades, speed, volume, or Black intro changes invalidate the affected fingerprint. File byte length is not used as a proxy for validity or cache freshness.
 
+### Film Studio scene and review integration
+
+`ClientVideoStitchService` uses the shared `PageToMovieCut` low-level stitch API for Scenes playback, Review playback, WIP assembly, and share preparation. Compatible clips first take a validated stream-copy path. If that fails, clips are normalized through the configurable clip-worker pool, which automatically retries with one worker, and the normalized streams are copied into the result. Local-folder results are cached by their stable blob URLs; refreshing a take produces a new URL and therefore a new cache key. Server URLs are never cached because their bytes can change without changing the route.
+
+When a scene has local background music, its clips and soundtrack use the shared combined concat-and-mix pass instead of first building a dry scene and then encoding it again for music. A missing shared API, pool failure, codec failure, short/decode-invalid result, or combined-pass failure falls back to the original `PageToMovieFfmpeg` concat/mix implementation. `PageToMovieCut.getLastSharedStitchMetrics()` reports the selected path, effective workers, cache hit, fallbacks, and timings.
+
 ### FFmpeg worker experiments
 
 Cut defaults to one worker for each pool. Independent dirty scenes use the scene pool. Independent scene-body trims and uncached transition renders use a separate stitch pool. Ordered final concat and the final soundtrack mix each produce one dependent output and remain single-worker operations; avoiding that dependency would require an additional generation of video encoding or a codec-copy assumption that is not unconditionally valid.
@@ -72,7 +78,9 @@ Cut defaults to one worker for each pool. Independent dirty scenes use the scene
 ?ffmpegStitchWorkers=4   maximum supported stitch experiment
 ```
 
-Each query parameter overrides its persisted browser setting. `PageToMovieCut.setFfmpegWorkerCount(n)` and `PageToMovieCut.setFfmpegStitchWorkerCount(n)` persist clamped values from 1 through 4. If either parallel pool fails, Cut terminates its extra workers, discards that pool's partial results, resets the primary FFmpeg instance, and retries the affected phase once through the one-worker path.
+Admins can change all three pools under **Admin dashboard → Browser Video Rendering**. The settings are browser-local, persist for that browser profile, and therefore apply to Cut plus the shared Scenes and Review stitcher running in that browser. The Admin card also clears the shared stitch cache so experiments can force the next integrated stitch to do real work.
+
+Each query parameter overrides its persisted browser setting. `PageToMovieCut.setFfmpegWorkerCount(n)`, `PageToMovieCut.setFfmpegStitchWorkerCount(n)`, and `PageToMovieCut.setFfmpegClipWorkerCount(n)` persist clamped values from 1 through 4. If a parallel pool fails, Cut terminates its extra workers, discards that pool's partial results, resets the primary FFmpeg instance, and retries the affected phase once through the one-worker path.
 
 For repeatable benchmarks, add `ffmpegFresh=1`; this bypasses movie, picture, scene, and transition cache URLs for that compose without changing render fingerprints. `PageToMovieCut.getLastComposeMetrics()` reports requested/effective workers, dirty scenes, scene-preparation time, total time, and whether fallback occurred.
 
@@ -141,5 +149,7 @@ Mary19Test was exported twice from independent page loads on August 24, 2026. Bo
 | 2 | 30.690s | 7.928s | 11.185s | **51.174s** | No |
 
 Compared with the previous 1:38.8 flattened combined render, the best repeat saved 47.6 seconds (48.2%). The final dependent pass fell from roughly 58.7 seconds to about 11.1 seconds; clip preparation is now the largest measured phase.
+
+The reusable editor, Cut services, JavaScript, and scoped CSS live in `PageToMovie.Cut.Components`. The independent `PageToMovie.Cut` WebAssembly host and PageToMovie.Web's `/cut` page both reference that RCL. Web can attach the active project under its existing client media-folder handle; the standalone host keeps its folder picker and debug benchmark fixture.
 
 For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).

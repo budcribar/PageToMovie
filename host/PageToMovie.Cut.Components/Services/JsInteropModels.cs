@@ -9,6 +9,9 @@ public sealed class JsResult
     [JsonPropertyName("success")]
     public bool Success { get; set; }
 
+    [JsonPropertyName("unavailable")]
+    public bool Unavailable { get; set; }
+
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 

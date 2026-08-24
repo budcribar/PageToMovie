@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PageToMovie.Cut\PageToMovie.Cut.csproj" />
+    <ProjectReference Include="..\PageToMovie.Cut.Components\PageToMovie.Cut.Components.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 using Xunit;
@@ -522,6 +523,51 @@ public class ClientVideoStitchServiceTests
         Assert.DoesNotContain("404", disconnected);
     }
 
+    [Fact]
+    public async Task ConcatAsync_uses_shared_optimized_stitch_before_legacy_stitcher()
+    {
+        var js = new StitchJsRuntime(identifier => identifier switch
+        {
+            "PageToMovieCut.concatVideosOptimizedAsync" =>
+                """{"success":true,"url":"blob:optimized","count":2,"sha256":"abc","byteLength":321}""",
+            _ => throw new InvalidOperationException($"Unexpected JS call: {identifier}"),
+        });
+        var engine = new EngineApiClient(new HttpClient(new FakeHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound))) { BaseAddress = new Uri("http://localhost") });
+        var service = new ClientVideoStitchService(js, engine);
+
+        var result = await service.ConcatAsync(["blob:first", "blob:second"]);
+
+        Assert.True(result.Success);
+        Assert.Equal("blob:optimized", result.Url);
+        Assert.Equal("abc", result.Sha256);
+        Assert.Equal(321, result.ByteLength);
+        Assert.Equal(["PageToMovieCut.concatVideosOptimizedAsync"], js.Calls);
+    }
+
+    [Fact]
+    public async Task ConcatAsync_falls_back_to_legacy_when_shared_stitch_fails()
+    {
+        var js = new StitchJsRuntime(identifier => identifier switch
+        {
+            "PageToMovieCut.concatVideosOptimizedAsync" => """{"success":false,"error":"pool failed"}""",
+            "PageToMovieFfmpeg.concatVideosAsync" =>
+                """{"success":true,"url":"blob:legacy","count":2}""",
+            _ => throw new InvalidOperationException($"Unexpected JS call: {identifier}"),
+        });
+        var engine = new EngineApiClient(new HttpClient(new FakeHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound))) { BaseAddress = new Uri("http://localhost") });
+        var service = new ClientVideoStitchService(js, engine);
+
+        var result = await service.ConcatAsync(["blob:first", "blob:second"]);
+
+        Assert.True(result.Success);
+        Assert.Equal("blob:legacy", result.Url);
+        Assert.Equal(
+            ["PageToMovieCut.concatVideosOptimizedAsync", "PageToMovieFfmpeg.concatVideosAsync"],
+            js.Calls);
+    }
+
     private static (ClientVideoStitchService Stitch, EngineApiClient Engine) CreateStitchWithMixedVideoStatus(
         int scene, int[] playable, int[] missing)
     {
@@ -612,5 +658,25 @@ public class ClientVideoStitchServiceTests
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
         var engineClient = new EngineApiClient(httpClient);
         return (new ClientVideoStitchService(null!, engineClient), engineClient);
+    }
+
+    private sealed class StitchJsRuntime(Func<string, string> resultJson) : IJSRuntime
+    {
+        public List<string> Calls { get; } = [];
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
+            InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(
+            string identifier,
+            CancellationToken cancellationToken,
+            object?[]? args)
+        {
+            Calls.Add(identifier);
+            var value = JsonSerializer.Deserialize<TValue>(
+                resultJson(identifier),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return ValueTask.FromResult(value!);
+        }
     }
 }

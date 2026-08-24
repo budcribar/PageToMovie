@@ -70,7 +70,7 @@ Multi-track NLE, Clipchamp sidebars (captions / filters / speed / brand kit), un
 
 - `host/PageToMovie.Cut` + tests only. Own slnx — **not** `PageToMovie.slnx`.
 - No Engine / Api / Web / Core ProjectReference. No Railway, catalog, auth.
-- Browser ffmpeg.wasm only. Loader SSoT is Web’s `pagetomovie-ffmpeg.js`, copied at build. One exclusive queue. Do not commit a second copy.
+- Browser ffmpeg.wasm only. The reusable editor lives in `PageToMovie.Cut.Components`; both Web `/cut` and this standalone host reference it. Loader SSoT is Web’s `pagetomovie-ffmpeg.js`, copied into the standalone host at build. One exclusive queue. Do not commit a second copy.
 - Bytes stay on the client. No hardcoded model attributes.
 - **Do not merge** until Bud asks.
 - **Do not stack two agents on the same slice.**

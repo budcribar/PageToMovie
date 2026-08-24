@@ -20,6 +20,7 @@ public partial class Admin
         internal bool _showTestEmailModal;
         internal bool _showJobsAndLocks = true;
         internal bool _showProjectArchiving = true;
+        internal bool _showBrowserRendering = false;
         internal bool _showLoadSim = false;
         internal bool _showTimingTelemetry = false;
         internal bool _showGenErrors = false;
@@ -44,6 +45,7 @@ public partial class Admin
         {
             _showJobsAndLocks = true;
             _showProjectArchiving = true;
+            _showBrowserRendering = true;
             _showLoadSim = true;
             _showTimingTelemetry = true;
             _showGenErrors = true;
@@ -57,6 +59,7 @@ public partial class Admin
         {
             _showJobsAndLocks = false;
             _showProjectArchiving = false;
+            _showBrowserRendering = false;
             _showLoadSim = false;
             _showTimingTelemetry = false;
             _showGenErrors = false;

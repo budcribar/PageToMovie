@@ -1,0 +1,12 @@
+@page "/cut"
+@inject ActiveProjectState ActiveProject
+
+<PageTitle>Cut</PageTitle>
+
+<div class="mb-3">
+    <h1 class="mb-1">Cut</h1>
+    <p class="text-muted mb-0">Finish the movie with trims, transitions, titles, and music.</p>
+</div>
+
+<PageToMovie.Cut.Pages.CutEditor HostProjectPrefix="@ActiveProject.ProjectId"
+                                    AutoAttachHostFolder="true" />

@@ -55,7 +55,7 @@ public class CutComposeContractTests
     {
         var cutJs = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+            "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
         var src = File.ReadAllText(cutJs);
         Assert.Contains(CutComposeContract.BrowserWorkingFileError, src, StringComparison.Ordinal);
         Assert.Contains("prepareExportAsync", src, StringComparison.Ordinal);
@@ -68,7 +68,7 @@ public class CutComposeContractTests
     {
         var cutJs = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+            "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
         var src = File.ReadAllText(cutJs);
         Assert.Contains("function releaseTempUrl(url)", src, StringComparison.Ordinal);
         Assert.Contains("releaseTempUrl(beforeOverlay)", src, StringComparison.Ordinal);
@@ -141,7 +141,7 @@ public class CutComposeContractTests
     {
         var cutJs = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+            "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
         var src = File.ReadAllText(cutJs);
 
         Assert.Contains("FFMPEG_WORKER_MIN = 1", src, StringComparison.Ordinal);
@@ -160,7 +160,7 @@ public class CutComposeContractTests
     {
         var cutJs = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+            "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
         var src = File.ReadAllText(cutJs);
 
         Assert.Contains("ffmpegStitchWorkers", src, StringComparison.Ordinal);
@@ -178,8 +178,8 @@ public class CutComposeContractTests
     public void Cut_js_has_verified_combined_concat_mix_with_two_pass_fallback()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        var src = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
-        var service = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut", "Services", "CutComposeService.cs"));
+        var src = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
+        var service = File.ReadAllText(Path.Combine(root, "PageToMovie.Cut.Components", "Services", "CutComposeService.cs"));
 
         Assert.Contains("ffmpegCombined", src, StringComparison.Ordinal);
         Assert.Contains("concatAndMixOnce", src, StringComparison.Ordinal);
@@ -206,7 +206,7 @@ public class CutComposeContractTests
     {
         var cutJs = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+            "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
         var src = File.ReadAllText(cutJs);
 
         Assert.Contains("ffmpegFlat", src, StringComparison.Ordinal);
@@ -220,11 +220,65 @@ public class CutComposeContractTests
     }
 
     [Fact]
+    public void Shared_stitch_api_reuses_cut_pool_cache_and_combined_mix_from_web_service()
+    {
+        var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var cutJs = File.ReadAllText(Path.Combine(
+            host, "PageToMovie.Cut.Components", "wwwroot", "js", "cut.js"));
+        var stitchService = File.ReadAllText(Path.Combine(
+            host, "PageToMovie.Web", "Services", "ClientVideoStitchService.cs"));
+
+        Assert.Contains("cut.concatVideosOptimizedAsync", cutJs, StringComparison.Ordinal);
+        Assert.Contains("cut.concatAndMixVideosOptimizedAsync", cutJs, StringComparison.Ordinal);
+        Assert.Contains("prepareFlatClipsWithPoolAsync", cutJs, StringComparison.Ordinal);
+        Assert.Contains("parallel-normalize-copy", cutJs, StringComparison.Ordinal);
+        Assert.Contains("parallel-normalize-combined-mix", cutJs, StringComparison.Ordinal);
+        Assert.Contains("_sharedStitchCache", cutJs, StringComparison.Ordinal);
+        Assert.Contains("getLastSharedStitchMetrics", cutJs, StringComparison.Ordinal);
+        Assert.Contains("PageToMovieCut.concatVideosOptimizedAsync", stitchService, StringComparison.Ordinal);
+        Assert.Contains("PageToMovieCut.concatAndMixVideosOptimizedAsync", stitchService, StringComparison.Ordinal);
+        Assert.Contains("PageToMovieFfmpeg.concatVideosAsync", stitchService, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Shared_cut_rcl_is_referenced_by_both_hosts_and_web_bridges_active_project_media()
+    {
+        var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var rcl = Path.Combine(host, "PageToMovie.Cut.Components");
+        var standalone = Path.Combine(host, "PageToMovie.Cut");
+        var web = Path.Combine(host, "PageToMovie.Web");
+
+        Assert.True(File.Exists(Path.Combine(rcl, "PageToMovie.Cut.Components.csproj")));
+        Assert.True(File.Exists(Path.Combine(rcl, "Pages", "CutEditor.razor")));
+        Assert.True(File.Exists(Path.Combine(rcl, "wwwroot", "js", "cut.js")));
+        Assert.True(File.Exists(Path.Combine(rcl, "wwwroot", "css", "cut.css")));
+        Assert.Contains("PageToMovie.Cut.Components.csproj",
+            File.ReadAllText(Path.Combine(standalone, "PageToMovie.Cut.csproj")), StringComparison.Ordinal);
+        Assert.Contains("PageToMovie.Cut.Components.csproj",
+            File.ReadAllText(Path.Combine(web, "PageToMovie.Web.csproj")), StringComparison.Ordinal);
+        Assert.Contains("<CutEditor />",
+            File.ReadAllText(Path.Combine(standalone, "Pages", "Home.razor")), StringComparison.Ordinal);
+
+        var webPage = File.ReadAllText(Path.Combine(web, "Components", "Pages", "Cut.razor"));
+        Assert.Contains("@page \"/cut\"", webPage, StringComparison.Ordinal);
+        Assert.Contains("HostProjectPrefix=\"@ActiveProject.ProjectId\"", webPage, StringComparison.Ordinal);
+        Assert.Contains("AutoAttachHostFolder=\"true\"", webPage, StringComparison.Ordinal);
+        Assert.Contains("resolveProjectDirectoryForCutAsync",
+            File.ReadAllText(Path.Combine(web, "wwwroot", "js", "pagetomovie-media.js")), StringComparison.Ordinal);
+        Assert.Contains("attachHostMediaFolderAsync",
+            File.ReadAllText(Path.Combine(rcl, "wwwroot", "js", "cut.js")), StringComparison.Ordinal);
+
+        var css = File.ReadAllText(Path.Combine(rcl, "wwwroot", "css", "cut.css"));
+        Assert.Contains(".cut-editor", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("html, body", css, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Home_binds_selected_title_id_to_the_timeline()
     {
         var home = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "Pages", "Home.razor"));
+            "PageToMovie.Cut.Components", "Pages", "CutEditor.razor"));
         var src = File.ReadAllText(home);
         Assert.Contains("SelectedTextId=\"@_selectedTextId\"", src, StringComparison.Ordinal);
         Assert.DoesNotContain("SelectedTextId=\"_selectedTextId\"", src, StringComparison.Ordinal);
@@ -235,9 +289,9 @@ public class CutComposeContractTests
     {
         var pages = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..",
-            "PageToMovie.Cut", "Pages"));
-        var markup = File.ReadAllText(Path.Combine(pages, "Home.razor"));
-        var code = File.ReadAllText(Path.Combine(pages, "Home.razor.cs"));
+            "PageToMovie.Cut.Components", "Pages"));
+        var markup = File.ReadAllText(Path.Combine(pages, "CutEditor.razor"));
+        var code = File.ReadAllText(Path.Combine(pages, "CutEditor.razor.cs"));
 
         Assert.Contains("video/mp4", markup, StringComparison.Ordinal);
         Assert.Contains(".mp4", markup, StringComparison.Ordinal);
