@@ -140,56 +140,73 @@ public sealed record ClipProviderSource(
         CancellationToken ct,
         TimeSpan? publicUrlTimeoutWhenFileIdPresent = null) where T : class
     {
-        Exception? fileIdError = null;
-        if (!string.IsNullOrWhiteSpace(sourceFileId))
-        {
-            try
-            {
-                var fromFile = await openFileId(sourceFileId, ct).ConfigureAwait(false);
-                if (fromFile is not null) return fromFile;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                fileIdError = ex;
-            }
-        }
+        var (fromFile, fileIdError) = await TryOpenByFileIdAsync(sourceFileId, openFileId, ct)
+            .ConfigureAwait(false);
+        if (fromFile is not null)
+            return fromFile;
 
         if (string.IsNullOrWhiteSpace(sourceUrl))
-        {
-            if (fileIdError is not null) throw fileIdError;
-            return null;
-        }
+            return fileIdError is null ? null : throw fileIdError;
 
-        using var urlCts = !string.IsNullOrWhiteSpace(sourceFileId)
+        var url = await TryOpenByPublicUrlAsync(
+            sourceUrl,
+            capTimeout: !string.IsNullOrWhiteSpace(sourceFileId),
+            publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent,
+            openUrl,
+            ct).ConfigureAwait(false);
+        if (url.Value is not null)
+            return url.Value;
+        if (fileIdError is null)
+            return url.Error is null || url.TimedOut ? null : throw url.Error;
+        throw CombineFileIdAndUrlErrors(fileIdError, url.Error);
+    }
+
+    private static async Task<(T? Result, Exception? Error)> TryOpenByFileIdAsync<T>(
+        string? sourceFileId,
+        Func<string, CancellationToken, Task<T?>> openFileId,
+        CancellationToken ct) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(sourceFileId))
+            return (null, null);
+        try
+        {
+            return (await openFileId(sourceFileId, ct).ConfigureAwait(false), null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            return (null, ex);
+        }
+    }
+
+    private readonly record struct PublicUrlAttempt<T>(T? Value, Exception? Error, bool TimedOut)
+        where T : class;
+
+    private static async Task<PublicUrlAttempt<T>> TryOpenByPublicUrlAsync<T>(
+        string sourceUrl,
+        bool capTimeout,
+        TimeSpan timeout,
+        Func<string, CancellationToken, Task<T?>> openUrl,
+        CancellationToken ct) where T : class
+    {
+        using var urlCts = capTimeout
             ? CancellationTokenSource.CreateLinkedTokenSource(ct)
             : null;
         if (urlCts is not null)
-            urlCts.CancelAfter(publicUrlTimeoutWhenFileIdPresent ?? PublicUrlTimeoutWhenFileIdPresent);
+            urlCts.CancelAfter(timeout);
         var urlCt = urlCts?.Token ?? ct;
-
-        Exception? urlError = null;
-        T? fromUrl = null;
         try
         {
-            fromUrl = await openUrl(sourceUrl, urlCt).ConfigureAwait(false);
+            return new PublicUrlAttempt<T>(
+                await openUrl(sourceUrl, urlCt).ConfigureAwait(false), null, false);
         }
         catch (OperationCanceledException) when (urlCts is not null && !ct.IsCancellationRequested)
         {
-            if (fileIdError is null) return null;
-            urlError = new TimeoutException("source_url timed out");
-            fromUrl = null;
+            return new PublicUrlAttempt<T>(null, new TimeoutException("source_url timed out"), true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            if (fileIdError is null) throw;
-            urlError = ex;
-            fromUrl = null;
+            return new PublicUrlAttempt<T>(null, ex, false);
         }
-
-        if (fromUrl is not null) return fromUrl;
-        if (fileIdError is not null)
-            throw CombineFileIdAndUrlErrors(fileIdError, urlError);
-        return null;
     }
 
     internal static Exception CombineFileIdAndUrlErrors(Exception fileIdError, Exception? urlError)

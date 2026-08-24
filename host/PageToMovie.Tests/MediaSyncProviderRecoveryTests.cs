@@ -340,7 +340,7 @@ public class MediaSyncProviderRecoveryTests : IDisposable
                     "xAI file content HTTP 500: Failed to retrieve file");
             },
             CancellationToken.None,
-            httpContext: ctx);
+            new MediaEndpoints.StreamProviderCopyOptions(HttpContext: ctx));
 
         Assert.Equal(1, fileHits);
         Assert.Equal(1, urlHits);
