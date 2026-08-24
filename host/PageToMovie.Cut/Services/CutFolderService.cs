@@ -216,6 +216,7 @@ public sealed class CutFolderService : IAsyncDisposable
         PendingMusic.DisplayName = track.DisplayName;
         PendingMusic.SetStart(track.StartSec);
         PendingMusic.ApplyInOut(track.MarkIn, track.MarkOut);
+        PendingMusic.SetIntroBlack(track.IntroBlackSec);
         PendingMusic.SetVolumePercent(track.VolumePercent);
         PendingMusic.SetFadeIn(track.FadeInSec);
         PendingMusic.SetFadeOut(track.FadeOutSec);

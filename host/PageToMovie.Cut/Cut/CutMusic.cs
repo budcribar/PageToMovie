@@ -7,6 +7,7 @@ namespace PageToMovie.Cut.Cut;
 public sealed class CutMusic
 {
     public const double MinSpanSeconds = 0.3;
+    public const double MaxIntroBlackSeconds = 60;
 
     public string? FileName { get; set; }
     public string? DisplayName { get; set; }
@@ -19,13 +20,15 @@ public sealed class CutMusic
     public double FadeOutSec { get; set; } = CutMusicMix.DefaultFadeSec;
     public double PlaybackRate { get; set; } = CutMusicMix.DefaultPlaybackRate;
     public bool NoiseSuppression { get; set; }
+    public double IntroBlackSec { get; private set; }
 
     public bool HasMixEdits =>
         VolumePercent != CutMusicMix.DefaultVolumePercent
         || FadeInSec > 0.001
         || FadeOutSec > 0.001
         || Math.Abs(PlaybackRate - CutMusicMix.DefaultPlaybackRate) > 0.001
-        || NoiseSuppression;
+        || NoiseSuppression
+        || IntroBlackSec > 0.001;
 
     public bool HasFile => !string.IsNullOrWhiteSpace(FileName);
     public string Label => CutMusicEdit.Label(this);
@@ -42,6 +45,9 @@ public sealed class CutMusic
     public double OutputDurationSec =>
         SlicedDurationSec / CutMusicMix.ClampPlaybackRate(PlaybackRate);
 
+    /// <summary>The soundtrack's end on the composed movie timeline.</summary>
+    public double TimelineEndSec => StartSec + OutputDurationSec;
+
     public void Clear()
     {
         FileName = null;
@@ -55,6 +61,7 @@ public sealed class CutMusic
         FadeOutSec = CutMusicMix.DefaultFadeSec;
         PlaybackRate = CutMusicMix.DefaultPlaybackRate;
         NoiseSuppression = false;
+        IntroBlackSec = 0;
     }
 
     public void SetFile(string? fileName)
@@ -70,6 +77,7 @@ public sealed class CutMusic
         FadeOutSec = CutMusicMix.DefaultFadeSec;
         PlaybackRate = CutMusicMix.DefaultPlaybackRate;
         NoiseSuppression = false;
+        IntroBlackSec = 0;
     }
 
     public void SetVolumePercent(int percent) =>
@@ -86,6 +94,13 @@ public sealed class CutMusic
 
     public void SetNoiseSuppression(bool enabled) =>
         NoiseSuppression = enabled;
+
+    public void SetIntroBlack(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0)
+            seconds = 0;
+        IntroBlackSec = Math.Min(MaxIntroBlackSeconds, seconds);
+    }
 
     public void SetDuration(double seconds)
     {

@@ -43,6 +43,24 @@ public sealed class JsResult
     public List<int> RebuiltJoins { get; set; } = [];
 }
 
+public sealed class JsMediaValidation
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("duration")]
+    public double Duration { get; set; }
+
+    [JsonPropertyName("width")]
+    public int Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public int Height { get; set; }
+}
+
 public sealed class JsCachedSeg
 {
     [JsonPropertyName("id")]
@@ -155,6 +173,9 @@ public sealed class JsMusicMix
 
     [JsonPropertyName("noiseSuppression")]
     public bool NoiseSuppression { get; set; }
+
+    [JsonPropertyName("introBlack")]
+    public double IntroBlack { get; set; }
 
     [JsonPropertyName("prepareFilter")]
     public string? PrepareFilter { get; set; }

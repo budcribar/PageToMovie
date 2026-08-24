@@ -36,6 +36,7 @@ public class CutComposeContractTests
         Assert.True(CutComposeContract.IsBrowserFsError("ErrnoError: FS error"));
         Assert.True(CutComposeContract.IsBrowserFsError("FS error"));
         Assert.True(CutComposeContract.IsBrowserFsError("ErrnoError"));
+        Assert.True(CutComposeContract.IsBrowserFsError("RuntimeError: memory access out of bounds"));
         Assert.False(CutComposeContract.IsBrowserFsError("Stopped."));
         Assert.False(CutComposeContract.IsBrowserFsError(null));
         Assert.Equal(
@@ -76,19 +77,82 @@ public class CutComposeContractTests
         Assert.Contains("transientBodies.forEach", src, StringComparison.Ordinal);
         Assert.Contains("const hasInlineCards = slice.some", src, StringComparison.Ordinal);
         Assert.Contains("combined = await concatPinned(api, pieces, onProgress)", src, StringComparison.Ordinal);
+        Assert.Contains("if (pieces.length > 1)", src, StringComparison.Ordinal);
+        Assert.Contains("await resetFfmpegWorker(api);", src, StringComparison.Ordinal);
         Assert.Contains("function execChecked(ffmpeg, args, label)", src, StringComparison.Ordinal);
         Assert.Contains("fps=30,settb=AVTB,setpts=PTS-STARTPTS", src, StringComparison.Ordinal);
         Assert.Contains("anullsrc=channel_layout=stereo:sample_rate=48000", src, StringComparison.Ordinal);
         Assert.Contains("\"-t\", String(outputSec)", src, StringComparison.Ordinal);
+        Assert.Contains("const hardCut = await concatPinned(api, [leftTail.url, rightHead.url], onProgress)", src, StringComparison.Ordinal);
+        var ensureJoin = src[src.IndexOf("async function ensureJoinUrlAsync", StringComparison.Ordinal)
+            ..src.IndexOf("async function stitchScenesAsync", StringComparison.Ordinal)];
+        Assert.Contains("async function ensureJoinUrlAsync(api, join", ensureJoin, StringComparison.Ordinal);
+        Assert.Contains("join.url = hardCut.url", src, StringComparison.Ordinal);
+        Assert.Contains("actualSec + 0.25 < expectedSec", src, StringComparison.Ordinal);
+        Assert.Contains("const appended = await xfadeAsync", src, StringComparison.Ordinal);
+        Assert.Contains("const video = await concatVideoRemuxAsync(api, pieces, onProgress)", src, StringComparison.Ordinal);
+        Assert.Contains("const repaired = await mixMovieAudioAsync", src, StringComparison.Ordinal);
+        Assert.Contains("tpad=start_mode=add:start_duration=", src, StringComparison.Ordinal);
+        Assert.Contains(":color=black:stop_mode=clone:stop_duration=", src, StringComparison.Ordinal);
+        Assert.Contains("const outputSec = Math.max(pictureEndSec, musicSec)", src, StringComparison.Ordinal);
+        Assert.Contains("extendPicture ? h264EncodeArgs(\"aac\") : audioRemuxArgs()", src, StringComparison.Ordinal);
+        Assert.DoesNotContain("videoEncodeArgs", src, StringComparison.Ordinal);
+        Assert.Contains("cut.validateVideoUrl", src, StringComparison.Ordinal);
+        Assert.Contains("cut.validateAudioUrl", src, StringComparison.Ordinal);
+        Assert.Contains("media.onloadeddata", src, StringComparison.Ordinal);
+        var videoRemux = src[src.IndexOf("async function concatVideoRemuxOnce", StringComparison.Ordinal)
+            ..src.IndexOf("async function concatVideoRemuxAsync", StringComparison.Ordinal)];
+        Assert.Contains("\"-map\", \"0:v:0\", \"-c:v\", \"copy\", \"-an\"", videoRemux, StringComparison.Ordinal);
         var trim = src[src.IndexOf("function buildTrimArgs", StringComparison.Ordinal)
             ..src.IndexOf("function xfadeName", StringComparison.Ordinal)];
         Assert.True(
             trim.IndexOf("args.push(\"-i\", inName)", StringComparison.Ordinal)
             < trim.IndexOf("args.push(\"-ss\", String(start))", StringComparison.Ordinal),
             "Accurate trim seeking must put -ss after -i so short transition tails keep video.");
-        Assert.Contains("await measuredSceneSecondsAsync(api, scene.url, scene.seconds)", src, StringComparison.Ordinal);
+        Assert.Contains("await measuredSceneSecondsAsync(base, scene.url, scene.seconds)", src, StringComparison.Ordinal);
         Assert.Contains("await measuredSceneSecondsAsync(api, built.url, scene.seconds)", src, StringComparison.Ordinal);
         Assert.Contains("api.probeDurationAsync(url)", src, StringComparison.Ordinal);
+        Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"0:a:0\")", src, StringComparison.Ordinal);
+        Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"1:a:0\", \"-shortest\")", src, StringComparison.Ordinal);
+        Assert.Contains("format=yuv420p,setpts=PTS-STARTPTS", trim, StringComparison.Ordinal);
+        Assert.Contains("\"-af\", \"asetpts=PTS-STARTPTS\"", trim, StringComparison.Ordinal);
+        var concat = src[src.IndexOf("async function concatEncodeOnce", StringComparison.Ordinal)
+            ..src.IndexOf("async function concatEncodeAsync", StringComparison.Ordinal)];
+        Assert.Contains("list.push(\"duration \" + durations[i])", concat, StringComparison.Ordinal);
+        Assert.Contains("setpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
+        Assert.Contains("asetpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
+        Assert.Contains("outputSec += seconds", concat, StringComparison.Ordinal);
+        Assert.Contains("[\"-t\", String(outputSec)]", concat, StringComparison.Ordinal);
+        Assert.Contains("\"-fflags\", \"+genpts\", \"-f\", \"concat\"", concat, StringComparison.Ordinal);
+        Assert.Contains("end - start < 0.1", src, StringComparison.Ordinal);
+        var windows = src[src.IndexOf("async function prepareWindowsAsync", StringComparison.Ordinal)
+            ..src.IndexOf("async function deleteMemfs", StringComparison.Ordinal)];
+        Assert.DoesNotContain("urls.push(c.url)", windows, StringComparison.Ordinal);
+        Assert.Contains("audioFilters.push(\"atrim=duration=\"", src, StringComparison.Ordinal);
+        Assert.Contains("amix=inputs=2:duration=longest", src, StringComparison.Ordinal);
+        Assert.DoesNotContain("amix=inputs=2:duration=first", src, StringComparison.Ordinal);
+        var musicPlace = src[src.IndexOf("async function placeMusicAsync", StringComparison.Ordinal)
+            ..src.IndexOf("function mixFiltersOf", StringComparison.Ordinal)];
+        Assert.DoesNotContain("args.push(\"-t\"", musicPlace, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Cut_js_has_configurable_scene_pool_with_single_worker_fallback()
+    {
+        var cutJs = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", "js", "cut.js"));
+        var src = File.ReadAllText(cutJs);
+
+        Assert.Contains("FFMPEG_WORKER_MIN = 1", src, StringComparison.Ordinal);
+        Assert.Contains("FFMPEG_WORKER_MAX = 4", src, StringComparison.Ordinal);
+        Assert.Contains("ffmpegWorkers", src, StringComparison.Ordinal);
+        Assert.Contains("prepareScenesWithPoolAsync", src, StringComparison.Ordinal);
+        Assert.Contains("Promise.allSettled(runs)", src, StringComparison.Ordinal);
+        Assert.Contains("fellBackToOne", src, StringComparison.Ordinal);
+        Assert.Contains("retrying safely with 1 worker", src, StringComparison.Ordinal);
+        Assert.Contains("forceFresh: queryFlag(\"ffmpegFresh\")", src, StringComparison.Ordinal);
+        Assert.Contains("getLastComposeMetrics", src, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -100,6 +164,22 @@ public class CutComposeContractTests
         var src = File.ReadAllText(home);
         Assert.Contains("SelectedTextId=\"@_selectedTextId\"", src, StringComparison.Ordinal);
         Assert.DoesNotContain("SelectedTextId=\"_selectedTextId\"", src, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Home_accepts_audio_only_mp4_and_waits_for_composed_music()
+    {
+        var pages = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "Pages"));
+        var markup = File.ReadAllText(Path.Combine(pages, "Home.razor"));
+        var code = File.ReadAllText(Path.Combine(pages, "Home.razor.cs"));
+
+        Assert.Contains("video/mp4", markup, StringComparison.Ordinal);
+        Assert.Contains(".mp4", markup, StringComparison.Ordinal);
+        Assert.Contains("RequiresComposedMusic", code, StringComparison.Ordinal);
+        Assert.Contains("Compose.Music.HasFile", code, StringComparison.Ordinal);
+        Assert.Contains("RequiresComposedMusic && !Compose.HasCachedMoviePreview", code, StringComparison.Ordinal);
     }
 
     [Fact]

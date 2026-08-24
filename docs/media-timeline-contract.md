@@ -1,0 +1,85 @@
+# Media and timeline contract
+
+This is the canonical contract for deciding whether media can be used by **Cut** and for deciding what appears when audio extends beyond the photographed picture.
+
+## Valid media is role-specific
+
+File size is not a media validator. Cut has no minimum-byte rule such as 50 KB. A nonempty file is only a candidate; the browser decoder and ffmpeg.wasm decide whether its streams are usable.
+
+| Role | Required evidence | Not required |
+|------|-------------------|--------------|
+| Video take | Nonempty file, finite positive duration, positive decoded width and height, browser decodes the first frame, and ffmpeg.wasm decodes the selected in/out range during compose | An audio stream |
+| Music / audio | Nonempty file, finite positive duration, and the browser decodes an audio stream | Video frames |
+
+Consequences:
+
+- A 192-byte placeholder is rejected because it cannot decode, not because it is below an invented size threshold.
+- A silent video is a valid video take.
+- An audio-only MP4 is valid audio, but it is not a valid video take.
+- A file with a plausible header but corrupt media later in the selected range fails the ffmpeg.wasm compose check.
+- Import errors should report the failed role (video or audio) and the decoder failure.
+
+Film's `scene_SS_clip_CC.current.json` selects the take. If that pointer is absent, Cut may recover the highest numbered `_take_NN.mp4` from the same scene/clip slot only; it never borrows a previous scene's picture. Recovery selects a candidate, not proof of validity, so the same browser and compose decoding checks still apply.
+
+## Continuous exported picture
+
+An exported movie always has a picture for its complete output duration.
+
+| Timeline condition | Exported picture |
+|--------------------|------------------|
+| Music starts before the first video frame | Black frames for the configured **Black intro** duration |
+| Music overlaps the video | The normal picture |
+| Music continues beyond the last video frame | The final video frame is frozen until the music ends |
+| An intentional cut-to-black hold | Black frames for that hold |
+| A missing Film slot | The existing missing-slot black placeholder/card |
+| An ordinary clip or scene boundary | The next picture begins contiguously; no accidental black or silent gap |
+
+Select the music block and set **Black intro** in its inspector to create a music-over-black opening. The first picture and its native voice are delayed by that amount; the music keeps its own timeline placement. The setting is saved in `cut.project.json`.
+
+When a music track is present, Play waits for a composed movie containing the real mix. It does not start a native video-only shortcut that would misleadingly omit the music.
+
+The output duration is:
+
+```text
+max(black intro + picture duration,
+    music start + selected music duration / playback rate)
+```
+
+This means a song is not cut off merely because the picture ends first. Cut freezes the final frame for the remaining song duration. If a project deliberately needs black rather than a frozen frame at the end, add an explicit cut-to-black/card hold instead of relying on an empty timeline gap.
+
+## Verification and caching
+
+Validation happens in two stages:
+
+1. Import quickly proves that the browser can decode the stream required by the file's role.
+2. Compose makes ffmpeg.wasm decode the complete selected range. Only a successful compose is proof that the chosen range can be exported.
+
+Cached scene segments and the final merge are keyed by render fingerprints. Trim, transition, title, music placement, fades, speed, volume, or Black intro changes invalidate the affected fingerprint. File byte length is not used as a proxy for validity or cache freshness.
+
+### FFmpeg scene-worker experiments
+
+Cut defaults to one FFmpeg worker. Independent dirty scenes can be prepared concurrently with a configurable pool; transitions, ordered final concat, and soundtrack mixing remain serial.
+
+```text
+?ffmpegWorkers=1   safe baseline and default
+?ffmpegWorkers=2   two scene workers
+?ffmpegWorkers=3   three scene workers
+?ffmpegWorkers=4   maximum supported experiment
+```
+
+The query parameter overrides the persisted browser setting. `PageToMovieCut.setFfmpegWorkerCount(n)` persists a clamped value from 1 through 4. If a parallel worker fails, Cut terminates the extra workers, discards partial scene results, resets the primary FFmpeg instance, and retries once through the one-worker path.
+
+For repeatable benchmarks, add `ffmpegFresh=1`; this bypasses movie, picture, scene, and transition cache URLs for that compose without changing render fingerprints. `PageToMovieCut.getLastComposeMetrics()` reports requested/effective workers, dirty scenes, scene-preparation time, total time, and whether fallback occurred.
+
+Mary19Test was benchmarked in the browser on August 24, 2026, with four dirty scenes and `ffmpegFresh=1`. Each row is one full compose through the same Play/export composition pipeline:
+
+| Pool | Scene preparation | Total compose | Total improvement vs. 1 | Fallback |
+| ---: | ---: | ---: | ---: | :---: |
+| 1 | 2:34.2 | 7:45.6 | baseline | No |
+| 2 | 1:40.2 | 6:49.8 | 12.0% | No |
+| 3 | 1:17.7 | 6:28.3 | 16.6% | No |
+| 4 | 1:17.8 | 6:31.2 | 16.0% | No |
+
+Pool 3 was the best result for this project. Pool 4 did not improve scene preparation and was 2.9 seconds slower overall, so three workers is the recommended experimental setting for Mary19Test. One worker remains the product default because it has the lowest memory pressure and is the unconditional recovery path. These timings are machine- and project-specific; re-run the forced-fresh benchmark before changing the default globally. The roughly five-minute serial tail is now the dominant optimization target.
+
+For the editor's scope and controls, see [Cut 1.0](../host/PageToMovie.Cut/CUT-1.0.md). For running and testing Cut, see its [README](../host/PageToMovie.Cut/README.md).

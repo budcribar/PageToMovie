@@ -96,7 +96,14 @@ public partial class CutTimeline
     private double RangeHi => Math.Max(_rangeA, _rangeB);
     private double RangePx => (RangeHi - RangeLo) * _pxPerSec;
     private string PlayheadClock => CutTimelineLayout.Clock(PlayheadSec);
-    private string TotalClock => CutTimelineLayout.Clock(Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec);
+    private double TimelineTotalSec => Math.Max(
+        (Layout.PlayableSec > 0 ? Layout.PlayableSec : Layout.TotalSec)
+            + (Music is { HasFile: true } ? Music.IntroBlackSec : 0),
+        Music is { HasFile: true } ? Music.TimelineEndSec : 0);
+    private double TimelineWidthPx => Math.Max(TimelineTotalSec * _pxPerSec, 1);
+    private IReadOnlyList<CutTimelineRulerMark> TimelineRuler =>
+        CutTimelineLayout.BuildRuler(TimelineTotalSec, _pxPerSec);
+    private string TotalClock => CutTimelineLayout.Clock(TimelineTotalSec);
     private bool PlayOrStopDisabled => IsPlaying ? Busy : PlayDisabled;
     private bool SplitDisabled => Busy || !CutSplit.CanAt(Clips, PlayheadSec);
     private bool PreventTitleKey =>
@@ -192,7 +199,7 @@ public partial class CutTimeline
         {
             try
             {
-                await Js.InvokeVoidAsync("PageToMovieCut.bindPlayClock", _pxPerSec, Layout.TotalSec);
+                await Js.InvokeVoidAsync("PageToMovieCut.bindPlayClock", _pxPerSec, TimelineTotalSec);
             }
             catch (JSException)
             {
@@ -248,7 +255,7 @@ public partial class CutTimeline
         {
             var rect = await Js.InvokeAsync<JsRect>("PageToMovieCut.elementRect", _scroll);
             var width = rect.Width > 40 ? rect.Width - 16 : 800;
-            _pxPerSec = CutTimelineLayout.FitPxPerSec(Math.Max(Layout.TotalSec, 1), width);
+            _pxPerSec = CutTimelineLayout.FitPxPerSec(Math.Max(TimelineTotalSec, 1), width);
             StateHasChanged();
         }
         catch (JSException)
@@ -950,7 +957,7 @@ public partial class CutTimeline
 
     private async Task SeekToAsync(double timelineSec)
     {
-        var total = Math.Max(Layout.TotalSec, 0);
+        var total = Math.Max(TimelineTotalSec, 0);
         var t = Math.Clamp(timelineSec, 0, total);
         if (CutTimelineLayout.HitTest(Clips, t) is { } hit)
             await SelectedChanged.InvokeAsync(hit.Clip);

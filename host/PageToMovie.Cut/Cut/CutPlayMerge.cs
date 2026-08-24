@@ -358,7 +358,7 @@ public static class CutPlayMerge
         string? audioFileName,
         CutMusic? music = null)
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(CutComposeContract.RenderVersion);
         AppendMusicMix(sb, audioFileName, music);
         foreach (var clip in clips)
             AppendClip(sb, clip);

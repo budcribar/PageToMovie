@@ -44,11 +44,11 @@
     <div class="cut-tl-scroll" @ref="_scroll">
         <div class="cut-tl-inner"
              @ref="_inner"
-             style="width: @(Math.Max(Layout.WidthPx, 240))px"
+             style="width: @(Math.Max(TimelineWidthPx, 240))px"
              @onpointermove="OnPointerMove"
              @onpointerup="OnPointerUp">
             <div class="cut-tl-ruler" data-testid="cut-tl-ruler" @onpointerdown="BeginRulerAsync">
-                @foreach (var mark in Layout.Ruler)
+                @foreach (var mark in TimelineRuler)
                 {
                     <span class="cut-tl-tick @(mark.Major ? "is-major" : "")" style="left: @(mark.Px)px">
                         @if (mark.Major)

@@ -49,7 +49,15 @@ public sealed class CutComposeService : IAsyncDisposable
         _audioUrl = r.Url;
         AudioFileName = CutClipNaming.FileNameOnly(file.Name);
         Music.SetFile(AudioFileName);
-        await ProbeMusicDurationAsync();
+        try
+        {
+            await ProbeMusicDurationAsync();
+        }
+        catch
+        {
+            await ClearAudioAsync();
+            throw;
+        }
     }
 
     public async Task<bool> TrySetAudioFromFolderAsync(string relativePath)
@@ -61,8 +69,16 @@ public sealed class CutComposeService : IAsyncDisposable
         _audioUrl = r.Url;
         AudioFileName = CutClipNaming.FileNameOnly(relativePath);
         Music.SetFile(AudioFileName);
-        await ProbeMusicDurationAsync();
-        return true;
+        try
+        {
+            await ProbeMusicDurationAsync();
+            return true;
+        }
+        catch
+        {
+            await ClearAudioAsync();
+            return false;
+        }
     }
 
     public void ApplySavedMusic(CutMusic saved)
@@ -70,6 +86,7 @@ public sealed class CutComposeService : IAsyncDisposable
         Music.DisplayName = saved.DisplayName;
         Music.SetStart(saved.StartSec);
         Music.ApplyInOut(saved.MarkIn, saved.MarkOut > saved.MarkIn ? saved.MarkOut : Music.MarkOut);
+        Music.SetIntroBlack(saved.IntroBlackSec);
         Music.SetVolumePercent(saved.VolumePercent);
         Music.SetFadeIn(saved.FadeInSec);
         Music.SetFadeOut(saved.FadeOutSec);
@@ -81,15 +98,11 @@ public sealed class CutComposeService : IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(_audioUrl))
             return;
-        try
-        {
-            var seconds = await _js.InvokeAsync<double>("PageToMovieCut.probeUrlDuration", _audioUrl);
-            Music.SetDuration(seconds);
-        }
-        catch (JSException)
-        {
-            // duration is optional until Play/export probes again
-        }
+        var validation = await _js.InvokeAsync<JsMediaValidation>(
+            "PageToMovieCut.validateAudioUrl", _audioUrl);
+        if (!validation.Success)
+            throw new InvalidOperationException(validation.Error ?? "The audio stream could not be decoded.");
+        Music.SetDuration(validation.Duration);
     }
 
     public async Task ClearAudioAsync()
@@ -463,6 +476,7 @@ public sealed class CutComposeService : IAsyncDisposable
             FadeOut = music.FadeOutSec,
             PlaybackRate = music.PlaybackRate,
             NoiseSuppression = music.NoiseSuppression,
+            IntroBlack = music.IntroBlackSec,
             PrepareFilter = CutMusicMix.PrepareFilter(music),
             Filter = CutMusicMix.ComplexFilter(music),
             FallbackFilter = CutMusicMix.MusicOnlyFilter(music),

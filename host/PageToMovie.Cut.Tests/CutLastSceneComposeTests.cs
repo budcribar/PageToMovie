@@ -16,12 +16,12 @@ public class CutLastSceneComposeTests
                 """{"duration_seconds":6}"""),
         ]);
         var clip = Assert.Single(clips);
-        Assert.True(clip.HoldsPicture);
-        Assert.Equal(0, clip.ActiveTakeNumber);
+        Assert.False(clip.HoldsPicture);
+        Assert.Equal(5, clip.ActiveTakeNumber);
         Assert.Equal(6, clip.DurationSec);
         Assert.Equal(0, clip.MarkIn);
         Assert.Equal(6, clip.MarkOut);
-        Assert.True(clip.MarksRepaired);
+        Assert.False(clip.MarksRepaired);
 
         var saved = """{"version":1,"clips":[{"scene":4,"clip":1,"markIn":0,"markOut":0}]}""";
         Assert.True(CutProjectFile.TryApply([clip], saved, out _));
@@ -121,23 +121,22 @@ public class CutLastSceneComposeTests
 
         Assert.Equal(2, clips.Count);
         Assert.Equal(1, clips[0].ActiveTakeNumber);
-        Assert.Equal(2, clips[1].ActiveTakeNumber);
-        Assert.Equal("scene_04_clip_01_take_02.mp4", clips[1].FileName);
+        Assert.Equal("scene_04_clip_01_take_05.mp4", clips[1].FileName);
         Assert.False(clips[1].HoldsPicture);
         Assert.DoesNotContain(clips[1].Takes, t => t.FileName.Contains("scene_03", StringComparison.Ordinal));
-        Assert.DoesNotContain(clips[1].Takes, t => t.Take == 5);
+        Assert.Equal(5, clips[1].ActiveTakeNumber);
     }
 
     [Fact]
-    public void Stub_last_take_without_current_json_is_not_bound()
+    public void Empty_last_take_without_current_json_is_not_bound()
     {
         var clips = CutClipList.FromFiles(
         [
             new("scene_03_clip_01_take_01.mp4", "assets/video/scene_03_clip_01_take_01.mp4", 200_000),
             new("scene_03_clip_01.current.json", "assets/video/scene_03_clip_01.current.json", 40,
                 """{"take":1}"""),
-            new("scene_04_clip_01_take_04.mp4", "assets/video/scene_04_clip_01_take_04.mp4", 44_780),
-            new("scene_04_clip_01_take_05.mp4", "assets/video/scene_04_clip_01_take_05.mp4", 44_780),
+            new("scene_04_clip_01_take_04.mp4", "assets/video/scene_04_clip_01_take_04.mp4", 0),
+            new("scene_04_clip_01_take_05.mp4", "assets/video/scene_04_clip_01_take_05.mp4", 0),
             new("scene_04_clip_01.clip.json", "assets/video/scene_04_clip_01.clip.json", 80,
                 """{"duration_seconds":6,"script_text":"","visual_prompt":""}"""),
         ]).ToList();
@@ -153,6 +152,19 @@ public class CutLastSceneComposeTests
         Assert.Equal("blob:teacher", payload[0].Url);
         Assert.True(payload[1].Hold);
         Assert.Null(payload[1].Url);
+    }
+
+    [Fact]
+    public void Nonempty_take_is_a_candidate_regardless_of_byte_length()
+    {
+        var clips = CutClipList.FromFiles(
+        [
+            new("scene_04_clip_01_take_01.mp4", "assets/video/scene_04_clip_01_take_01.mp4", 192),
+        ]).ToList();
+
+        Assert.Single(clips);
+        Assert.Equal(1, clips[0].ActiveTakeNumber);
+        Assert.False(clips[0].SelectedTake!.Missing);
     }
 
     [Fact]

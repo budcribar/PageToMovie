@@ -22,7 +22,8 @@ public class CutMusicMixTests
         var filter = CutMusicMix.ComplexFilter(music);
         Assert.Contains("volume=1", filter, StringComparison.Ordinal);
         Assert.DoesNotContain("afade", filter, StringComparison.Ordinal);
-        Assert.Contains("amix=inputs=2:duration=first", filter, StringComparison.Ordinal);
+        Assert.Contains("amix=inputs=2:duration=longest", filter, StringComparison.Ordinal);
+        Assert.DoesNotContain("duration=first", filter, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -42,6 +43,32 @@ public class CutMusicMixTests
         Assert.Equal(1.5, mix.PlaybackRate, 5);
         Assert.True(mix.NoiseSuppression);
         Assert.Equal("atempo=1.5,afftdn=nf=-25", mix.PrepareFilter);
+        Assert.Equal(8, music.TimelineEndSec, 5);
+    }
+
+    [Fact]
+    public void Timeline_end_includes_placement_and_playback_adjusted_music_length()
+    {
+        var music = new CutMusic { FileName = "score.mp3" };
+        music.SetDuration(40);
+        music.ApplyInOut(5, 25);
+        music.SetPlaybackRate(2);
+        music.SetStart(92.5);
+
+        Assert.Equal(10, music.OutputDurationSec, 5);
+        Assert.Equal(102.5, music.TimelineEndSec, 5);
+    }
+
+    [Fact]
+    public void Black_intro_delays_native_audio_and_is_sent_to_browser_compose()
+    {
+        var music = new CutMusic { FileName = "overture.mp3" };
+        music.SetDuration(20);
+        music.SetIntroBlack(4.5);
+
+        Assert.Contains("[0:a]adelay=4500:all=1[vo]", CutMusicMix.ComplexFilter(music), StringComparison.Ordinal);
+        Assert.Contains("B4.5", CutMusicMix.FingerprintToken(music.FileName, music), StringComparison.Ordinal);
+        Assert.Equal(4.5, CutComposeService.ToJsMix("blob:overture", music).IntroBlack, 5);
     }
 
     [Fact]

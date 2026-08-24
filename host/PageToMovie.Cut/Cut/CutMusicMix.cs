@@ -64,7 +64,8 @@ public static class CutMusicMix
                 .Append('I').Append(Num(music.FadeInSec))
                 .Append('O').Append(Num(music.FadeOutSec))
                 .Append('S').Append(Num(music.PlaybackRate))
-                .Append('N').Append(music.NoiseSuppression ? '1' : '0');
+                .Append('N').Append(music.NoiseSuppression ? '1' : '0')
+                .Append('B').Append(Num(music.IntroBlackSec));
         }
 
         return sb.ToString();
@@ -113,10 +114,20 @@ public static class CutMusicMix
         double fadeInSec,
         double fadeOutSec,
         double startSec,
-        double holdSec) =>
-        "[1:a]"
-        + VolumeChain(volumePercent, fadeInSec, fadeOutSec, startSec, holdSec)
-        + ",apad[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]";
+        double holdSec,
+        double pictureDelaySec = 0)
+    {
+        var delayMs = (int)Math.Round(Math.Max(0, pictureDelaySec) * 1000);
+        var voice = delayMs > 0
+            ? $"[0:a]adelay={delayMs}:all=1[vo];[vo]"
+            : "[0:a]";
+        return "[1:a]"
+            + VolumeChain(volumePercent, fadeInSec, fadeOutSec, startSec, holdSec)
+            // Native VO can end before a score placed over final credits. Keep the
+            // longer mix; the encoder holds the final picture through the score tail.
+            + ",apad[bg];" + voice
+            + "[bg]amix=inputs=2:duration=longest:dropout_transition=0[a]";
+    }
 
     public static string ComplexFilter(CutMusic music)
     {
@@ -126,7 +137,8 @@ public static class CutMusicMix
             music.FadeInSec,
             music.FadeOutSec,
             music.StartSec,
-            music.OutputDurationSec);
+            music.OutputDurationSec,
+            music.IntroBlackSec);
     }
 
     public static string MusicOnlyFilter(

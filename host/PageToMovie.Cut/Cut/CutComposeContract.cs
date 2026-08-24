@@ -9,6 +9,7 @@ namespace PageToMovie.Cut.Cut;
 /// </summary>
 public static class CutComposeContract
 {
+    public const string RenderVersion = "cut-render-20260823-media-contract";
     public const bool KeepNativeClipAudio = true;
     public const bool PadCardSilence = false;
 
@@ -60,7 +61,8 @@ public static class CutComposeContract
         if (string.IsNullOrWhiteSpace(raw))
             return false;
         return raw.Contains("ErrnoError", StringComparison.OrdinalIgnoreCase)
-            || raw.Contains("FS error", StringComparison.OrdinalIgnoreCase);
+            || raw.Contains("FS error", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("memory access out of bounds", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string OperatorComposeError(string? raw, bool download)

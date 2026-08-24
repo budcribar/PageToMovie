@@ -229,13 +229,24 @@ public partial class Home : IAsyncDisposable
             return;
         try
         {
-            var seconds = await Js.InvokeAsync<double>("PageToMovieCut.probeUrlDuration", take.PreviewUrl);
-            if (seconds > 0)
-                take.SetDuration(seconds);
+            var validation = await Js.InvokeAsync<JsMediaValidation>(
+                "PageToMovieCut.validateVideoUrl", take.PreviewUrl);
+            if (!validation.Success)
+            {
+                take.Missing = true;
+                take.MissingReason = validation.Error ?? "The video stream could not be decoded.";
+                return;
+            }
+
+            take.Missing = false;
+            take.MissingReason = null;
+            take.SetDuration(validation.Duration);
         }
         catch (JSException)
         {
-            // probe is best-effort; metadata on the preview player still applies hop
+            take.Missing = true;
+            take.MissingReason = "The video stream could not be validated.";
+            return;
         }
 
         if (captureStrip)
@@ -464,8 +475,15 @@ public partial class Home : IAsyncDisposable
         }
 
         StartJitCompose();
+        if (RequiresComposedMusic)
+        {
+            await EnterWaitAsync();
+            return;
+        }
         await ContinuePlayAsync(_playhead, userSeek: true);
     }
+
+    private bool RequiresComposedMusic => Compose.Music.HasFile;
 
     private void StartJitCompose()
     {
@@ -537,6 +555,11 @@ public partial class Home : IAsyncDisposable
         if (Js is null || !_wantPlay)
             return;
         _playhead = CutPlayMerge.PlaySeekSec(Folder.Clips, timelineSec);
+        if (RequiresComposedMusic && !Compose.HasCachedMoviePreview)
+        {
+            await EnterWaitAsync();
+            return;
+        }
         var ready = CutJitPlay.ReadyThroughSec(Folder.Clips, _prefixClipCount, _firstStart);
         var total = CutJitPlay.TotalSec(Folder.Clips);
         var playUrl = Compose.MoviePreviewUrl ?? _prefixUrl;
@@ -567,6 +590,8 @@ public partial class Home : IAsyncDisposable
 
     private bool ShouldHandOffToMerge()
     {
+        if (RequiresComposedMusic && !Compose.HasCachedMoviePreview)
+            return false;
         var playingEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _playingMergeClips);
         var newEnd = CutPlayMerge.MergeReadyThroughSec(Folder.Clips, _prefixClipCount);
         var total = CutJitPlay.TotalSec(Folder.Clips);

@@ -33,6 +33,7 @@ public static class CutProjectFile
             MusicStart = track.StartSec,
             MusicIn = track.MarkIn,
             MusicOut = track.MarkOut,
+            MusicIntroBlack = track.IntroBlackSec > 0.001 ? track.IntroBlackSec : null,
             MusicLabel = string.IsNullOrWhiteSpace(track.DisplayName) ? null : track.DisplayName.Trim(),
             MusicVolume = track.VolumePercent == CutMusicMix.DefaultVolumePercent
                 ? null
@@ -118,6 +119,7 @@ public static class CutProjectFile
         music.DisplayName = string.IsNullOrWhiteSpace(dto.MusicLabel) ? null : dto.MusicLabel.Trim();
         music.SetStart(dto.MusicStart);
         music.ApplyInOut(dto.MusicIn, dto.MusicOut);
+        music.SetIntroBlack(dto.MusicIntroBlack ?? 0);
         music.SetVolumePercent(dto.MusicVolume ?? CutMusicMix.DefaultVolumePercent);
         music.SetFadeIn(dto.MusicFadeIn ?? CutMusicMix.DefaultFadeSec);
         music.SetFadeOut(dto.MusicFadeOut ?? CutMusicMix.DefaultFadeSec);
@@ -317,6 +319,7 @@ public static class CutProjectFile
         public double MusicStart { get; set; }
         public double MusicIn { get; set; }
         public double MusicOut { get; set; }
+        public double? MusicIntroBlack { get; set; }
         public string? MusicLabel { get; set; }
         public int? MusicVolume { get; set; }
         public double? MusicFadeIn { get; set; }

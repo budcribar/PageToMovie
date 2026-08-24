@@ -189,7 +189,7 @@ public static class CutMergeCache
         IReadOnlyList<CutTextClip> titles,
         CutTimelineSceneBand band)
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(CutComposeContract.RenderVersion);
         sb.Append('S').Append(band.Scene);
         var last = Math.Min(clips.Count, band.FirstIndex + band.ClipCount);
         for (var i = band.FirstIndex; i < last; i++)
@@ -207,7 +207,7 @@ public static class CutMergeCache
         double fadeSec,
         double holdSec)
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(CutComposeContract.RenderVersion);
         sb.Append('J').Append(left.Scene).Append('>').Append(right.Scene);
         sb.Append(CutTransitionMap.WireName(kind));
         sb.Append('H').Append(Num(holdSec)).Append('F').Append(Num(fadeSec));

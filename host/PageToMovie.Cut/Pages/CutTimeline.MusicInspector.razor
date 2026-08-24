@@ -59,6 +59,19 @@
             <em>@SpeedWire(track.PlaybackRate)x</em>
         </label>
         <label class="cut-tl-inspector-group cut-tl-inspector-check">
+            <span>Black intro</span>
+            <input type="number"
+                   min="0"
+                   max="@CutMusic.MaxIntroBlackSeconds"
+                   step="0.1"
+                   value="@SecondsWire(track.IntroBlackSec)"
+                   aria-label="Black intro"
+                   data-testid="cut-tl-music-black-intro"
+                   disabled="@Busy"
+                   @onchange="OnIntroBlackChangeAsync" />
+            <em>s</em>
+        </label>
+        <label class="cut-tl-inspector-group cut-tl-inspector-check">
             <span>Noise suppression</span>
             <input type="checkbox"
                    checked="@track.NoiseSuppression"
@@ -87,6 +100,9 @@
 
     private static string SpeedWire(double rate) =>
         CutMusicMix.ClampPlaybackRate(rate).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string SecondsWire(double seconds) =>
+        seconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 
     private void OnVolumeInput(ChangeEventArgs e)
     {
@@ -135,6 +151,14 @@
         if (Music is null)
             return;
         Music.SetNoiseSuppression(e.Value is true || bool.TryParse(Convert.ToString(e.Value), out var enabled) && enabled);
+        await MixChanged.InvokeAsync();
+    }
+
+    private async Task OnIntroBlackChangeAsync(ChangeEventArgs e)
+    {
+        if (Music is null || !TryParseDouble(e.Value, out var seconds))
+            return;
+        Music.SetIntroBlack(seconds);
         await MixChanged.InvokeAsync();
     }
 

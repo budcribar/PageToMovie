@@ -81,7 +81,7 @@ public class CutClipNamingTests
     }
 
     [Fact]
-    public void FromFiles_without_current_json_has_no_current_take()
+    public void FromFiles_without_current_json_recovers_highest_same_slot_candidate()
     {
         var clips = CutClipList.FromFiles(
         [
@@ -90,12 +90,11 @@ public class CutClipNamingTests
         ]);
 
         var clip = Assert.Single(clips);
-        Assert.Equal(0, clip.ActiveTakeNumber);
-        Assert.Equal(0, clip.SelectedTakeNumber);
-        Assert.Empty(clip.Takes);
-        Assert.Null(clip.SelectedTake);
-        Assert.True(clip.Missing);
-        Assert.DoesNotContain("pick a take", clip.MissingReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(4, clip.ActiveTakeNumber);
+        Assert.Equal(4, clip.SelectedTakeNumber);
+        Assert.Equal(4, Assert.Single(clip.Takes).Take);
+        Assert.NotNull(clip.SelectedTake);
+        Assert.False(clip.SelectedTake!.Missing);
     }
 
     [Fact]

@@ -15,6 +15,7 @@
         _activeInputs: new Set(),
         _pendingRevoke: new Set(),
         _lastDebugError: null,
+        _lastComposeMetrics: null,
         _progressRef: null,
         _aborted: false,
         _composeGate: Promise.resolve(),
@@ -46,13 +47,68 @@
     const CUT_H264_PIX = "yuv420p";
     const CUT_H264_PROFILE = "main";
     const CUT_AAC_RATE = "128k";
+    const FFMPEG_WORKER_MIN = 1;
+    const FFMPEG_WORKER_MAX = 4;
+    const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
+
+    function clampWorkerCount(value) {
+        const parsed = Math.trunc(Number(value));
+        if (!Number.isFinite(parsed)) return FFMPEG_WORKER_MIN;
+        return Math.min(FFMPEG_WORKER_MAX, Math.max(FFMPEG_WORKER_MIN, parsed));
+    }
+
+    function queryFlag(name) {
+        try {
+            const value = new URLSearchParams(window.location.search).get(name);
+            return value === "1" || String(value || "").toLowerCase() === "true";
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function requestedWorkerCount() {
+        try {
+            const query = new URLSearchParams(window.location.search).get("ffmpegWorkers");
+            if (query !== null)
+                return clampWorkerCount(query);
+            return clampWorkerCount(window.localStorage.getItem(FFMPEG_WORKER_STORAGE_KEY) || 1);
+        } catch (_) {
+            return FFMPEG_WORKER_MIN;
+        }
+    }
+
+    cut.setFfmpegWorkerCount = function (value) {
+        const count = clampWorkerCount(value);
+        try { window.localStorage.setItem(FFMPEG_WORKER_STORAGE_KEY, String(count)); } catch (_) { }
+        return count;
+    };
+
+    cut.getFfmpegWorkerConfig = function () {
+        return {
+            requested: requestedWorkerCount(),
+            min: FFMPEG_WORKER_MIN,
+            max: FFMPEG_WORKER_MAX,
+            forceFresh: queryFlag("ffmpegFresh"),
+        };
+    };
+
+    cut.getLastComposeMetrics = function () {
+        return cut._lastComposeMetrics;
+    };
+
+    try {
+        document.documentElement.dataset.cutFfmpegConfig = JSON.stringify(cut.getFfmpegWorkerConfig());
+    } catch (_) { }
 
     function isFsError(err) {
         if (!err)
             return false;
         const name = String(err.name || "");
         const msg = String(err.message || err);
-        return name === "ErrnoError" || /FS error/i.test(msg) || /ErrnoError/i.test(msg);
+        return name === "ErrnoError"
+            || /FS error/i.test(msg)
+            || /ErrnoError/i.test(msg)
+            || /memory access out of bounds/i.test(msg);
     }
 
     /** Keep in sync with CutComposeContract.BrowserWorkingFileError. */
@@ -323,22 +379,39 @@
         const outName = "cut_cat_" + seq + ".mp4";
         const listName = "cut_cat_" + seq + ".txt";
         try {
+            let outputSec = 0;
+            const durations = [];
             for (let i = 0; i < urls.length; i++) {
                 const n = "cut_cat_" + seq + "_" + i + ".mp4";
                 names.push(n);
                 await writeMemfs(ffmpeg, n, await fetchInputBytes(api, urls[i], "Clip"));
+                const probe = await api._probeDurationMemfsAsync(n);
+                const seconds = probe.success && Number(probe.seconds) > 0
+                    ? Number(probe.seconds) : 0;
+                durations.push(seconds);
+                outputSec += seconds;
             }
-            await writeMemfs(ffmpeg, listName, names.map(function (n) { return "file '" + n + "'"; }).join("\n"));
+            const list = [];
+            for (let i = 0; i < names.length; i++) {
+                list.push("file '" + names[i] + "'");
+                if (durations[i] > 0.001)
+                    list.push("duration " + durations[i]);
+            }
+            await writeMemfs(ffmpeg, listName, list.join("\n"));
+            const input = ["-hide_banner", "-y", "-fflags", "+genpts", "-f", "concat", "-safe", "0", "-i", listName];
+            const cap = outputSec > 0.05 ? ["-t", String(outputSec)] : [];
             try {
-                await execChecked(ffmpeg, ["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
-                    .concat(h264EncodeArgs("aac"), [outName]));
+                await execChecked(ffmpeg, input.concat(
+                    ["-vf", "setpts=PTS-STARTPTS", "-af", "asetpts=PTS-STARTPTS"],
+                    h264EncodeArgs("aac"), cap, [outName]));
             } catch (audioErr) {
                 console.debug("Cut: concat audio missing", audioErr);
                 try { await ffmpeg.deleteFile(outName); } catch (delErr) {
                     console.debug("Cut: concat out cleanup", delErr);
                 }
-                await execChecked(ffmpeg, ["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", listName]
-                    .concat(h264EncodeArgs("an"), [outName]));
+                await execChecked(ffmpeg, input.concat(
+                    ["-vf", "setpts=PTS-STARTPTS"],
+                    h264EncodeArgs("an"), cap, [outName]));
             }
             const out = await ffmpeg.readFile(outName);
             const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
@@ -369,6 +442,74 @@
                     return { success: false, error: load.error || fsUserMessage() };
                 try {
                     return await concatEncodeOnce(api, api._ffmpeg, urls, seq);
+                } catch (retry) {
+                    return { success: false, error: messageOf(retry, fsUserMessage()) };
+                }
+            }
+        });
+    }
+
+    async function concatVideoRemuxOnce(api, ffmpeg, urls, seq) {
+        const names = [];
+        const outName = "cut_vcat_" + seq + ".mp4";
+        const listName = "cut_vcat_" + seq + ".txt";
+        try {
+            let outputSec = 0;
+            const durations = [];
+            for (let i = 0; i < urls.length; i++) {
+                const name = "cut_vcat_" + seq + "_" + i + ".mp4";
+                names.push(name);
+                await writeMemfs(ffmpeg, name, await fetchInputBytes(api, urls[i], "Clip"));
+                const probe = await api._probeDurationMemfsAsync(name);
+                const seconds = probe.success && Number(probe.seconds) > 0
+                    ? Number(probe.seconds) : 0;
+                durations.push(seconds);
+                outputSec += seconds;
+            }
+            const list = [];
+            for (let i = 0; i < names.length; i++) {
+                list.push("file '" + names[i] + "'");
+                if (durations[i] > 0.001)
+                    list.push("duration " + durations[i]);
+            }
+            await writeMemfs(ffmpeg, listName, list.join("\n"));
+            const cap = outputSec > 0.05 ? ["-t", String(outputSec)] : [];
+            await execChecked(ffmpeg, [
+                "-hide_banner", "-y", "-fflags", "+genpts",
+                "-f", "concat", "-safe", "0", "-i", listName,
+                "-map", "0:v:0", "-c:v", "copy", "-an",
+                "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+            ].concat(cap, [outName]));
+            const out = await ffmpeg.readFile(outName);
+            const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+            noteTemp(url);
+            return { success: true, url: url, seconds: outputSec };
+        } finally {
+            for (const name of names)
+                await deleteMemfs(ffmpeg, name);
+            await deleteMemfs(ffmpeg, listName);
+            await deleteMemfs(ffmpeg, outName);
+        }
+    }
+
+    async function concatVideoRemuxAsync(api, urls, onProgress) {
+        return api._runExclusiveAsync(async function () {
+            await resetFfmpegWorker(api);
+            let load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success)
+                return { success: false, error: load.error };
+            const seq = ++cut._trimSeq;
+            try {
+                return await concatVideoRemuxOnce(api, api._ffmpeg, urls, seq);
+            } catch (err) {
+                if (!isFsError(err))
+                    return { success: false, error: messageOf(err, "Video stitch failed.") };
+                await resetFfmpegWorker(api);
+                load = await api.ensureLoadedAsync(onProgress);
+                if (!load.success)
+                    return { success: false, error: load.error || fsUserMessage() };
+                try {
+                    return await concatVideoRemuxOnce(api, api._ffmpeg, urls, seq);
                 } catch (retry) {
                     return { success: false, error: messageOf(retry, fsUserMessage()) };
                 }
@@ -442,6 +583,8 @@
         if (start < 0) start = 0;
         if (total > 0 && start > total) start = total;
         if (total > 0 && end > total) end = total;
+        if (total > 0 && end - start < 0.1)
+            start = Math.max(0, end - 0.1);
         if (end <= start) end = start + 0.1;
         return { start: start, keep: Math.max(0.1, end - start) };
     }
@@ -449,16 +592,24 @@
     function buildTrimArgs(inName, outName, start, keep, silentAudio) {
         const args = ["-hide_banner", "-y"];
         args.push("-i", inName);
-        // Accurate output seek keeps a decoded video frame in short transition tails.
-        // Fast input seek can land after the final GOP and produce an audio-only MP4.
-        if (start > 0.001) args.push("-ss", String(start));
         if (silentAudio)
             args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
+        // Accurate output seek keeps a decoded video frame in short transition tails.
+        // It must follow every input or FFmpeg applies it to the next input instead.
+        if (start > 0.001) args.push("-ss", String(start));
         args.push("-t", String(keep),
-            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p");
+            // Every prepared clip must begin at PTS zero. Otherwise the concat
+            // demuxer preserves each source's trim offset as a gap: seeking
+            // lands on black frames and late scenes (notably credits) vanish.
+            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS",
+            "-af", "asetpts=PTS-STARTPTS");
         args.push.apply(args, h264EncodeArgs("aac"));
         if (silentAudio)
-            args.push("-map", "0:v", "-map", "1:a", "-shortest");
+            args.push("-map", "0:v:0", "-map", "1:a:0", "-shortest");
+        else
+            // Requiring native audio makes a silent source fail this pass and
+            // enter the padded-silence retry, keeping concat stream layouts equal.
+            args.push("-map", "0:v:0", "-map", "0:a:0");
         args.push(outName);
         return args;
     }
@@ -561,11 +712,11 @@
         return canvas.toDataURL("image/png");
     }
 
-    async function overlayTextsAsync(videoUrl, texts, onProgress) {
+    async function overlayTextsAsync(videoUrl, texts, onProgress, apiOverride) {
         const list = (texts || []).filter(function (t) { return t && String(t.text || "").trim(); });
         if (list.length === 0)
             return { success: true, url: videoUrl };
-        const api = window.PageToMovieFfmpeg;
+        const api = apiOverride || window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         if (!videoUrl) return { success: false, error: "No URL" };
         return api._runExclusiveAsync(async function () {
@@ -626,8 +777,8 @@
         });
     }
 
-    async function stillVideoAsync(pngUrl, seconds, onProgress, fadeSec) {
-        const api = window.PageToMovieFfmpeg;
+    async function stillVideoAsync(pngUrl, seconds, onProgress, fadeSec, apiOverride) {
+        const api = apiOverride || window.PageToMovieFfmpeg;
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         const hold = Math.max(0.3, Number(seconds) || 2);
         return api._runExclusiveAsync(async function () {
@@ -667,8 +818,8 @@
      * Scene-change default is Dissolve. Mapping video only with `-an` strips VO
      * from the accumulator; later concat cannot bring it back.
      */
-    async function xfadeAsync(leftUrl, rightUrl, kind, onProgress, fadeSec) {
-        const api = window.PageToMovieFfmpeg;
+    async function xfadeAsync(leftUrl, rightUrl, kind, onProgress, fadeSec, apiOverride) {
+        const api = apiOverride || window.PageToMovieFfmpeg;
         const trans = xfadeName(kind);
         if (!api || !trans) return { success: false, error: "no xfade" };
         return api._runExclusiveAsync(async function () {
@@ -777,7 +928,7 @@
         const k = String(kind || "cut").toLowerCase();
         if (k === "cuttoblack") {
             const hold = Math.max(0.3, Number(holdSec) || CUT_TO_BLACK_HOLD_SEC);
-            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress);
+            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress, 0, api);
             if (!black.success) return concatPinned(api, [leftUrl, rightUrl], onProgress);
             let mid = null;
             try {
@@ -791,7 +942,7 @@
             }
         }
         if (xfadeName(k)) {
-            const faded = await xfadeAsync(leftUrl, rightUrl, k, onProgress);
+            const faded = await xfadeAsync(leftUrl, rightUrl, k, onProgress, 0, api);
             if (faded.success) return faded;
         }
         return concatPinned(api, [leftUrl, rightUrl], onProgress);
@@ -806,20 +957,20 @@
         return Math.max(0.3, duration || 2);
     }
 
-    async function holdClipStillAsync(c, onProgress) {
+    async function holdClipStillAsync(c, onProgress, api) {
         const look = c.card && c.card.text ? textStyle(c.card.style) : null;
         const png = look ? cardPngUrl(c.card.text, look) : blackPngUrl();
-        const still = await stillVideoAsync(png, clipHoldSeconds(c), onProgress, look && look.fadeSec);
+        const still = await stillVideoAsync(png, clipHoldSeconds(c), onProgress, look && look.fadeSec, api);
         if (!still.success)
             return { error: still.error || "Hold failed." };
         return { url: still.url, source: "" };
     }
 
-    async function prepareWindowsAsync(c, index, total, onProgress) {
+    async function prepareWindowsAsync(c, index, total, onProgress, api) {
         const label = c.label || c.fileName || ("clip " + (index + 1));
         if (c.hold || !c.url) {
             onProgress?.(Math.round((index / Math.max(total, 1)) * 40), "Preparing " + label + "…");
-            return holdClipStillAsync(c, onProgress);
+            return holdClipStillAsync(c, onProgress, api);
         }
         onProgress?.(Math.round((index / Math.max(total, 1)) * 40), "Preparing " + label + "…");
         const windows = Array.isArray(c.windows) && c.windows.length > 0
@@ -829,13 +980,10 @@
         for (const w of windows) {
             const start = Number(w.start) || 0;
             const end = Number(w.end) || 0;
-            const duration = Number(c.duration) || 0;
-            const needTrim = duration <= 0 || start > 0.05 || (end > 0 && end < duration - 0.05);
-            if (!needTrim) {
-                urls.push(c.url);
-                continue;
-            }
-            const trimmed = await cut.trimRangeAsync(c.url, start, end, onProgress);
+            // Always normalize dimensions and audio layout. Passing an
+            // untouched silent credits MP4 into an audio-bearing concat can
+            // make the final scene disappear even when no trim is requested.
+            const trimmed = await trimRangeWithApiAsync(api, c.url, start, end, onProgress);
             if (!trimmed.success)
                 return { error: label + ": " + (trimmed.error || "trim failed") };
             urls.push(trimmed.url);
@@ -844,7 +992,7 @@
             return { url: urls[0], source: c.url };
         let cat = null;
         try {
-            cat = await concatPinned(window.PageToMovieFfmpeg, urls, onProgress);
+            cat = await concatPinned(api, urls, onProgress);
             if (!cat.success)
                 return { error: label + ": " + (cat.error || "range join failed") };
             return { url: cat.url, source: c.url };
@@ -883,6 +1031,7 @@
             fadeOut: Math.max(0, Number(audio.fadeOut) || 0),
             playbackRate: Math.max(0.5, Math.min(2, Number(audio.playbackRate) || 1)),
             noiseSuppression: audio.noiseSuppression === true,
+            introBlack: Math.max(0, Math.min(60, Number(audio.introBlack) || 0)),
             prepareFilter: audio.prepareFilter || "",
             filter: audio.filter || "",
             fallbackFilter: audio.fallbackFilter || "",
@@ -911,9 +1060,14 @@
                 if (inn > 0.02)
                     args.push("-ss", String(inn));
                 args.push("-i", inName);
-                if (outt > inn + 0.02)
-                    args.push("-t", String(Math.max(0.3, outt - inn)));
                 const audioFilters = [];
+                if (outt > inn + 0.02) {
+                    // Trim the source before adding timeline silence. Using
+                    // output -t here cuts a late-start track off inside its
+                    // leading delay, before any music can be heard.
+                    audioFilters.push("atrim=duration=" + String(Math.max(0.3, outt - inn)));
+                    audioFilters.push("asetpts=PTS-STARTPTS");
+                }
                 if (spec.prepareFilter)
                     audioFilters.push(spec.prepareFilter);
                 const delayMs = Math.round(start * 1000);
@@ -944,6 +1098,7 @@
         const fadeIn = spec && spec.fadeIn > 0 ? spec.fadeIn : 0;
         const fadeOut = spec && spec.fadeOut > 0 ? spec.fadeOut : 0;
         const start = spec && spec.start > 0 ? spec.start : 0;
+        const introBlack = spec && spec.introBlack > 0 ? spec.introBlack : 0;
         let chain = "volume=" + (Math.round(volume * 100) / 100);
         if (fadeIn > 0.001)
             chain += ",afade=t=in:st=" + start + ":d=" + fadeIn;
@@ -952,7 +1107,11 @@
             chain += ",afade=t=out:st=" + outAt + ":d=" + fadeOut;
         }
         return {
-            withVo: (spec && spec.filter) || ("[1:a]" + chain + ",apad[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]"),
+            withVo: (spec && spec.filter) || ("[1:a]" + chain + ",apad[bg];"
+                + (introBlack > 0
+                    ? "[0:a]adelay=" + String(Math.round(introBlack * 1000)) + ":all=1[vo];[vo]"
+                    : "[0:a]")
+                + "[bg]amix=inputs=2:duration=longest:dropout_transition=0[a]"),
             musicOnly: (spec && spec.fallbackFilter) || ("[1:a]" + chain + ",apad[a]"),
         };
     }
@@ -967,14 +1126,26 @@
             await writeMemfs(ffmpeg, inMusic, await fetchInputBytes(api, musicUrl, "Soundtrack"));
             const probe = await api._probeDurationMemfsAsync(inVideo);
             const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
+            const musicProbe = await api._probeDurationMemfsAsync(inMusic);
+            const musicSec = musicProbe.success && musicProbe.seconds > 0 ? musicProbe.seconds : 0;
+            const introBlack = spec && spec.introBlack > 0 ? spec.introBlack : 0;
+            const pictureEndSec = durationSec + introBlack;
+            const outputSec = Math.max(pictureEndSec, musicSec);
+            const freezeSec = durationSec > 0.05 ? Math.max(0, musicSec - pictureEndSec) : 0;
+            const extendPicture = introBlack > 0.05 || freezeSec > 0.05;
+            const videoFilter = extendPicture
+                ? ";[0:v]tpad=start_mode=add:start_duration=" + String(introBlack)
+                    + ":color=black:stop_mode=clone:stop_duration=" + String(freezeSec)
+                    + ",format=yuv420p[v]"
+                : "";
             const args = [
                 "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                "-filter_complex", filters.withVo,
-                "-map", "0:v", "-map", "[a]",
+                "-filter_complex", filters.withVo + videoFilter,
+                "-map", extendPicture ? "[v]" : "0:v", "-map", "[a]",
             ];
-            if (durationSec > 0.05)
-                args.push("-t", String(durationSec));
-            args.push.apply(args, audioRemuxArgs());
+            if (outputSec > 0.05)
+                args.push("-t", String(outputSec));
+            args.push.apply(args, extendPicture ? h264EncodeArgs("aac") : audioRemuxArgs());
             args.push(outName);
             try {
                 await execChecked(ffmpeg, args);
@@ -985,12 +1156,12 @@
                 }
                 const fallback = [
                     "-hide_banner", "-y", "-i", inVideo, "-i", inMusic,
-                    "-filter_complex", filters.musicOnly,
-                    "-map", "0:v", "-map", "[a]",
+                    "-filter_complex", filters.musicOnly + videoFilter,
+                    "-map", extendPicture ? "[v]" : "0:v", "-map", "[a]",
                 ];
-                if (durationSec > 0.05)
-                    fallback.push("-t", String(durationSec));
-                fallback.push.apply(fallback, audioRemuxArgs());
+                if (outputSec > 0.05)
+                    fallback.push("-t", String(outputSec));
+                fallback.push.apply(fallback, extendPicture ? h264EncodeArgs("aac") : audioRemuxArgs());
                 fallback.push(outName);
                 await execChecked(ffmpeg, fallback);
             }
@@ -1276,6 +1447,73 @@
         const d = el?.duration;
         return (typeof d === "number" && Number.isFinite(d) && d > 0) ? d : 0;
     };
+
+    function validateMediaUrl(url, requireVideo) {
+        return new Promise(function (resolve) {
+            if (!url) {
+                resolve({ success: false, error: "Media URL is missing.", duration: 0, width: 0, height: 0 });
+                return;
+            }
+            const media = document.createElement(requireVideo ? "video" : "audio");
+            media.preload = "auto";
+            media.muted = true;
+            let settled = false;
+            let metadataReady = false;
+            let timer = 0;
+            const finish = function (result) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                try {
+                    media.removeAttribute("src");
+                    media.load();
+                } catch (err) {
+                    console.debug("Cut: media validation cleanup", err);
+                }
+                resolve(result);
+            };
+            const facts = function () {
+                const duration = Number.isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
+                return {
+                    duration: duration,
+                    width: requireVideo ? Number(media.videoWidth) || 0 : 0,
+                    height: requireVideo ? Number(media.videoHeight) || 0 : 0,
+                };
+            };
+            media.onloadedmetadata = function () {
+                metadataReady = true;
+                const f = facts();
+                if (f.duration <= 0) {
+                    finish({ success: false, error: "Media has no positive duration.", ...f });
+                    return;
+                }
+                if (requireVideo && (f.width <= 0 || f.height <= 0))
+                    finish({ success: false, error: "The file has no video stream.", ...f });
+            };
+            // loadeddata means the browser decoded the first media frame. For a
+            // video take this is stronger than trusting MP4 boxes or file size.
+            media.onloadeddata = function () {
+                const f = facts();
+                if (!metadataReady || f.duration <= 0) return;
+                if (requireVideo && (f.width <= 0 || f.height <= 0)) return;
+                finish({ success: true, error: "", ...f });
+            };
+            media.onerror = function () {
+                finish({ success: false, error: requireVideo
+                    ? "The video stream could not be decoded."
+                    : "The audio stream could not be decoded.", ...facts() });
+            };
+            timer = setTimeout(function () {
+                finish({ success: false, error: requireVideo
+                    ? "Timed out while decoding the first video frame."
+                    : "Timed out while decoding the audio stream.", ...facts() });
+            }, 10000);
+            media.src = url;
+        });
+    }
+
+    cut.validateVideoUrl = function (url) { return validateMediaUrl(url, true); };
+    cut.validateAudioUrl = function (url) { return validateMediaUrl(url, false); };
 
     cut.probeUrlDuration = function (url) {
         return new Promise(function (resolve) {
@@ -1845,8 +2083,7 @@
      * Trim [startSec, endSec) using the same encode args as PageToMovieFfmpeg.encodeSliceAsync /
      * _trimKeepSecondsAsync. Serialized on the shared ffmpeg queue.
      */
-    cut.trimRangeAsync = async function (url, startSec, endSec, onProgress) {
-        const api = window.PageToMovieFfmpeg;
+    async function trimRangeWithApiAsync(api, url, startSec, endSec, onProgress) {
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         if (!url) return { success: false, error: "No URL" };
         return api._runExclusiveAsync(async function () {
@@ -1856,6 +2093,15 @@
             const seq = ++cut._trimSeq;
             const inName = "cut_in_" + seq + ".mp4";
             const outName = "cut_out_" + seq + ".mp4";
+            const logTail = [];
+            const logHandler = function (event) {
+                const message = event && event.message ? String(event.message) : "";
+                if (!message) return;
+                logTail.push(message);
+                if (logTail.length > 24) logTail.shift();
+            };
+            if (typeof ffmpeg.on === "function")
+                ffmpeg.on("log", logHandler);
             try {
                 onProgress?.(12, "Loading clip…");
                 const data = await withPinnedUrls([url], function () { return fetchInputBytes(api, url, "Clip"); });
@@ -1877,24 +2123,38 @@
                 noteTemp(urlOut);
                 return { success: true, url: urlOut };
             } catch (err) {
-                return { success: false, error: messageOf(err, String(err)) };
+                const detail = cut._debugFolder && logTail.length > 0
+                    ? " Debug: " + logTail.slice(-10).join(" | ")
+                    : "";
+                return { success: false, error: messageOf(err, String(err)) + detail };
             } finally {
+                if (typeof ffmpeg.off === "function")
+                    ffmpeg.off("log", logHandler);
                 await deleteMemfs(ffmpeg, inName);
                 await deleteMemfs(ffmpeg, outName);
             }
         });
+    }
+
+    cut.trimRangeAsync = async function (url, startSec, endSec, onProgress) {
+        return trimRangeWithApiAsync(window.PageToMovieFfmpeg, url, startSec, endSec, onProgress);
     };
 
     function normalizeComposePlan(raw, jit) {
         if (Array.isArray(raw))
             return { clips: raw, scenes: [], joins: [], jit: !!jit };
         const plan = raw || {};
+        const forceFresh = queryFlag("ffmpegFresh");
         return {
             clips: plan.clips || [],
-            scenes: plan.scenes || [],
-            joins: plan.joins || [],
-            reuseMovieUrl: plan.reuseMovieUrl || "",
-            reusePictureUrl: plan.reusePictureUrl || "",
+            scenes: (plan.scenes || []).map(function (scene) {
+                return forceFresh ? Object.assign({}, scene, { url: "" }) : scene;
+            }),
+            joins: (plan.joins || []).map(function (join) {
+                return forceFresh ? Object.assign({}, join, { url: "" }) : join;
+            }),
+            reuseMovieUrl: forceFresh ? "" : (plan.reuseMovieUrl || ""),
+            reusePictureUrl: forceFresh ? "" : (plan.reusePictureUrl || ""),
             jit: !!jit,
         };
     }
@@ -1913,16 +2173,16 @@
         };
     }
 
-    async function prepareSceneClipAsync(c, index, total, onProgress) {
+    async function prepareSceneClipAsync(api, c, index, total, onProgress) {
         const isHold = !!(c.hold || !c.url);
         const one = isHold
-            ? await holdClipStillAsync(c, onProgress)
-            : await prepareWindowsAsync(c, index, total, onProgress);
+            ? await holdClipStillAsync(c, onProgress, api)
+            : await prepareWindowsAsync(c, index, total, onProgress, api);
         if (one.error)
             return one;
         if (c.texts && c.texts.length > 0) {
             const beforeOverlay = one.url;
-            const over = await overlayTextsAsync(one.url, c.texts, onProgress);
+            const over = await overlayTextsAsync(one.url, c.texts, onProgress, api);
             if (!over.success) {
                 releaseTempUrl(beforeOverlay);
                 return { error: over.error || "Text overlay failed." };
@@ -1934,8 +2194,7 @@
         return one;
     }
 
-    async function composeSceneClipsAsync(clips, scene, onProgress) {
-        const api = window.PageToMovieFfmpeg;
+    async function composeSceneClipsAsync(api, clips, scene, onProgress) {
         const first = Math.max(0, Number(scene.first) || 0);
         const count = Math.max(0, Number(scene.count) || 0);
         const slice = clips.slice(first, first + count);
@@ -1951,11 +2210,13 @@
                 for (let i = 0; i < slice.length; i++) {
                     if (composeStopped())
                         return { success: false, error: "Stopped." };
-                    const one = await prepareSceneClipAsync(slice[i], first + i, clips.length, onProgress);
+                    const one = await prepareSceneClipAsync(api, slice[i], first + i, clips.length, onProgress);
                     if (one.error)
                         return { success: false, error: one.error };
                     pieces.push(one.url);
                 }
+                if (pieces.length > 1)
+                    await resetFfmpegWorker(api);
                 combined = await concatPinned(api, pieces, onProgress);
                 return combined;
             } finally {
@@ -1976,7 +2237,7 @@
             if (c.card && c.card.text && !isHold) {
                 const look = textStyle(c.card.style);
                 const card = await stillVideoAsync(
-                    cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec);
+                    cardPngUrl(c.card.text, look), c.card.seconds || 2, onProgress, look.fadeSec, api);
                 if (!card.success)
                     return { success: false, error: card.error || "Card failed." };
                 if (!acc)
@@ -1994,7 +2255,7 @@
                 pendingJoin = "dip";
                 pendingHold = 0;
             }
-            const one = await prepareSceneClipAsync(c, first + i, clips.length, onProgress);
+            const one = await prepareSceneClipAsync(api, c, first + i, clips.length, onProgress);
             if (one.error)
                 return { success: false, error: one.error };
             if (!acc)
@@ -2013,6 +2274,138 @@
             pendingHold = 0;
         }
         return { success: true, url: acc };
+    }
+
+    function isolatedFfmpegApi(base, workerIndex) {
+        const api = Object.create(base);
+        api._ffmpeg = null;
+        api._loaded = false;
+        api._loading = null;
+        api._blobUrl = null;
+        api._lock = Promise.resolve();
+        api._onProgress = null;
+        api._silenceSessions = {};
+        api._silenceSessionSeq = 0;
+        api._trimTailSeq = 0;
+        api._trimHeadSeq = 0;
+        api._poolWorkerIndex = workerIndex;
+        api._log = function (msg) {
+            if (typeof msg === "string" && msg.trim())
+                console.debug("[PageToMovieFfmpeg pool " + workerIndex + "]", msg);
+        };
+        return api;
+    }
+
+    function terminateIsolatedApi(api, base) {
+        if (!api || api === base) return;
+        try {
+            if (api._ffmpeg && typeof api._ffmpeg.terminate === "function")
+                api._ffmpeg.terminate();
+        } catch (err) {
+            console.debug("Cut: pool worker terminate", err);
+        }
+        api._ffmpeg = null;
+        api._loaded = false;
+        api._loading = null;
+    }
+
+    async function prepareScenesSerialAsync(api, clips, scenes, sceneUrls, rebuiltScenes, onProgress) {
+        for (let i = 0; i < scenes.length; i++) {
+            if (sceneUrls[i]) continue;
+            if (composeStopped())
+                return { success: false, error: "Stopped." };
+            const scene = scenes[i];
+            onProgress?.(Math.round((rebuiltScenes.length / Math.max(scenes.length, 1)) * 40), "Preparing scene…");
+            const built = await composeSceneClipsAsync(api, clips, scene, onProgress);
+            if (!built.success)
+                return built;
+            const seconds = await measuredSceneSecondsAsync(api, built.url, scene.seconds);
+            sceneUrls[i] = { id: scene.scene, url: built.url, seconds: seconds };
+            rebuiltScenes.push(scene.scene);
+        }
+        return { success: true };
+    }
+
+    async function prepareScenesWithPoolAsync(base, clips, scenes, onProgress, metrics) {
+        const sceneUrls = new Array(scenes.length);
+        const dirtyIndexes = [];
+        for (let i = 0; i < scenes.length; i++) {
+            const scene = scenes[i];
+            if (!scene.url) {
+                dirtyIndexes.push(i);
+                continue;
+            }
+            const seconds = await measuredSceneSecondsAsync(base, scene.url, scene.seconds);
+            sceneUrls[i] = { id: scene.scene, url: scene.url, seconds: seconds };
+        }
+
+        const requested = requestedWorkerCount();
+        const effective = Math.min(requested, Math.max(1, dirtyIndexes.length));
+        metrics.requestedWorkers = requested;
+        metrics.effectiveWorkers = effective;
+        metrics.dirtyScenes = dirtyIndexes.length;
+        if (dirtyIndexes.length === 0)
+            return { success: true, sceneUrls: sceneUrls, rebuiltScenes: [] };
+
+        if (effective === 1) {
+            const rebuiltScenes = [];
+            const started = performance.now();
+            const serial = await prepareScenesSerialAsync(base, clips, scenes, sceneUrls, rebuiltScenes, onProgress);
+            metrics.scenePrepareMs = Math.round(performance.now() - started);
+            return Object.assign(serial, { sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes });
+        }
+
+        const apis = [base];
+        for (let i = 1; i < effective; i++)
+            apis.push(isolatedFfmpegApi(base, i + 1));
+        let cursor = 0;
+        let completed = 0;
+        const rebuiltScenes = [];
+        const started = performance.now();
+        const runs = apis.map(async function (api) {
+            while (true) {
+                const position = cursor++;
+                if (position >= dirtyIndexes.length) return;
+                if (composeStopped()) throw new Error("Stopped.");
+                const index = dirtyIndexes[position];
+                const scene = scenes[index];
+                const built = await composeSceneClipsAsync(api, clips, scene, onProgress);
+                if (!built.success)
+                    throw new Error(built.error || "Scene could not be rendered.");
+                const seconds = await measuredSceneSecondsAsync(api, built.url, scene.seconds);
+                sceneUrls[index] = { id: scene.scene, url: built.url, seconds: seconds };
+                rebuiltScenes.push(scene.scene);
+                completed++;
+                onProgress?.(Math.round((completed / dirtyIndexes.length) * 40),
+                    "Preparing scenes with " + effective + " workers…");
+            }
+        });
+
+        const settled = await Promise.allSettled(runs);
+        metrics.scenePrepareMs = Math.round(performance.now() - started);
+        const rejected = settled.find(function (result) { return result.status === "rejected"; });
+        for (let i = 1; i < apis.length; i++)
+            terminateIsolatedApi(apis[i], base);
+        if (!rejected) {
+            rebuiltScenes.sort(function (a, b) { return Number(a) - Number(b); });
+            return { success: true, sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes };
+        }
+        if (composeStopped())
+            return { success: false, error: "Stopped.", sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes };
+
+        metrics.fellBackToOne = true;
+        metrics.fallbackReason = String(rejected.reason && rejected.reason.message || rejected.reason || "Worker failed");
+        console.warn("Cut: FFmpeg pool failed; retrying with one worker", metrics.fallbackReason);
+        for (const index of dirtyIndexes) {
+            if (sceneUrls[index] && sceneUrls[index].url)
+                releaseTempUrl(sceneUrls[index].url);
+            sceneUrls[index] = null;
+        }
+        rebuiltScenes.length = 0;
+        await resetFfmpegWorker(base);
+        onProgress?.(0, "Parallel render failed — retrying safely with 1 worker…");
+        const serial = await prepareScenesSerialAsync(base, clips, scenes, sceneUrls, rebuiltScenes, onProgress);
+        return Object.assign(serial, { sceneUrls: sceneUrls, rebuiltScenes: rebuiltScenes });
     }
 
     async function trimBodyAsync(url, seconds, inFade, outFade, onProgress) {
@@ -2034,7 +2427,7 @@
             : planned;
     }
 
-    async function ensureJoinUrlAsync(join, left, right, onProgress) {
+    async function ensureJoinUrlAsync(api, join, left, right, onProgress) {
         if (!join || !join.encodes)
             return { success: true, url: "" };
         if (join.url)
@@ -2042,7 +2435,7 @@
         const kind = String(join.kind || "cut").toLowerCase();
         if (kind === "cuttoblack") {
             const hold = Math.max(0.3, Number(join.hold) || CUT_TO_BLACK_HOLD_SEC);
-            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress);
+            const black = await stillVideoAsync(blackPngUrl(), hold, onProgress, 0, api);
             if (!black.success) return black;
             join.url = black.url;
             return { success: true, url: black.url };
@@ -2052,18 +2445,28 @@
         const fade = Math.max(CUT_XFADE_MIN_SEC, Number(join.fade) || CUT_XFADE_SEC);
         const leftSec = Number(left.seconds) || 0;
         const tailStart = Math.max(0, leftSec - fade);
-        const leftTail = await cut.trimRangeAsync(left.url, tailStart, leftSec > 0 ? leftSec : tailStart + fade, onProgress);
+        const leftTail = await trimRangeWithApiAsync(
+            api, left.url, tailStart, leftSec > 0 ? leftSec : tailStart + fade, onProgress);
         if (!leftTail.success) return leftTail;
-        const rightHead = await cut.trimRangeAsync(right.url, 0, fade, onProgress);
+        const rightHead = await trimRangeWithApiAsync(api, right.url, 0, fade, onProgress);
         if (!rightHead.success) {
             releaseTempUrl(leftTail.url);
             return rightHead;
         }
         try {
-            const faded = await xfadeAsync(leftTail.url, rightHead.url, kind, onProgress, fade);
-            if (!faded.success) return faded;
-            join.url = faded.url;
-            return faded;
+            const faded = await xfadeAsync(leftTail.url, rightHead.url, kind, onProgress, fade, api);
+            if (faded.success) {
+                join.url = faded.url;
+                return faded;
+            }
+            // A dissolve is optional presentation, never a reason to lose the
+            // movie. Preserve both edge windows as a hard cut when the browser
+            // FFmpeg build cannot complete xfade/acrossfade.
+            const hardCut = await concatPinned(api, [leftTail.url, rightHead.url], onProgress);
+            if (!hardCut.success)
+                return faded;
+            join.url = hardCut.url;
+            return hardCut;
         } finally {
             releaseTempUrl(leftTail.url);
             releaseTempUrl(rightHead.url);
@@ -2088,7 +2491,7 @@
             const next = sceneUrls[i + 1];
             if (!next)
                 continue;
-            const made = await ensureJoinUrlAsync(join, sceneUrls[i], next, onProgress);
+            const made = await ensureJoinUrlAsync(api, join, sceneUrls[i], next, onProgress);
             if (!made.success) return made;
             if (made.url)
                 pieces.push(made.url);
@@ -2096,7 +2499,48 @@
         onProgress?.(55, "Combining clips…");
         let combined = null;
         try {
+            let expectedSec = 0;
+            for (const url of pieces)
+                expectedSec += await measuredSceneSecondsAsync(api, url, 0);
+            // Scene preparation and xfade passes fragment ffmpeg.wasm's fixed
+            // heap. Start the largest concat in a fresh worker so it does not
+            // fail near completion with "memory access out of bounds".
+            await resetFfmpegWorker(api);
             combined = await concatPinned(api, pieces, onProgress);
+            if (!combined.success)
+                return combined;
+            const actualSec = await measuredSceneSecondsAsync(api, combined.url, 0);
+            if (expectedSec > 0.1 && actualSec + 0.25 < expectedSec) {
+                const lastScene = sceneUrls.length > 0 ? sceneUrls[sceneUrls.length - 1] : null;
+                const lastJoin = joins.length > 0 ? joins[joins.length - 1] : null;
+                const lastKind = String(lastJoin && lastJoin.kind || "").toLowerCase();
+                if (lastScene && lastScene.url && xfadeName(lastKind)) {
+                    await resetFfmpegWorker(api);
+                    const appended = await xfadeAsync(
+                        combined.url, lastScene.url, lastKind, onProgress,
+                        Math.max(CUT_XFADE_MIN_SEC, Number(lastJoin.fade) || CUT_XFADE_SEC));
+                    if (appended.success) {
+                        releaseTempUrl(combined.url);
+                        combined = appended;
+                        return combined;
+                    }
+                }
+                const nativeAudio = combined.url;
+                const video = await concatVideoRemuxAsync(api, pieces, onProgress);
+                if (!video.success)
+                    return video;
+                const repaired = await mixMovieAudioAsync(api, video.url, nativeAudio, onProgress, {
+                    start: 0, markIn: 0, markOut: 0, volume: 1,
+                    fadeIn: 0, fadeOut: 0, playbackRate: 1,
+                });
+                releaseTempUrl(video.url);
+                if (!repaired.success) {
+                    releaseTempUrl(nativeAudio);
+                    return repaired;
+                }
+                releaseTempUrl(nativeAudio);
+                combined = repaired;
+            }
             return combined;
         } finally {
             transientBodies.forEach(function (url) {
@@ -2109,6 +2553,18 @@
     async function composeWorkAsync(clipsOrPlan, audioUrl, dotNetRef, jit) {
         cut._aborted = false;
         const onProgress = asProgress(dotNetRef);
+        const composeStarted = performance.now();
+        const metrics = {
+            requestedWorkers: requestedWorkerCount(),
+            effectiveWorkers: 1,
+            dirtyScenes: 0,
+            forceFresh: queryFlag("ffmpegFresh"),
+            fellBackToOne: false,
+            fallbackReason: "",
+            scenePrepareMs: 0,
+            totalMs: 0,
+        };
+        cut._lastComposeMetrics = metrics;
         try {
             const api = window.PageToMovieFfmpeg;
             if (!api) return { success: false, error: "ffmpeg helper missing" };
@@ -2129,30 +2585,16 @@
             plan.joins.forEach(function (j) { if (j && j.url) sourceUrls.push(j.url); });
 
             return await withPinnedUrls(sourceUrls, async function () {
-                const rebuiltScenes = [];
+                let rebuiltScenes = [];
                 const rebuiltJoins = [];
-                const sceneUrls = [];
                 const scenes = plan.scenes.length > 0
                     ? plan.scenes
                     : [{ scene: 1, first: 0, count: clips.length, seconds: 0, url: "" }];
-
-                for (let i = 0; i < scenes.length; i++) {
-                    if (composeStopped())
-                        return { success: false, error: "Stopped." };
-                    const scene = scenes[i];
-                    if (scene.url) {
-                        const seconds = await measuredSceneSecondsAsync(api, scene.url, scene.seconds);
-                        sceneUrls.push({ id: scene.scene, url: scene.url, seconds: seconds });
-                        continue;
-                    }
-                    onProgress?.(Math.round((i / Math.max(scenes.length, 1)) * 40), "Preparing scene…");
-                    const built = await composeSceneClipsAsync(clips, scene, onProgress);
-                    if (!built.success)
-                        return built;
-                    const seconds = await measuredSceneSecondsAsync(api, built.url, scene.seconds);
-                    sceneUrls.push({ id: scene.scene, url: built.url, seconds: seconds });
-                    rebuiltScenes.push(scene.scene);
-                }
+                const prepared = await prepareScenesWithPoolAsync(api, clips, scenes, onProgress, metrics);
+                if (!prepared.success)
+                    return prepared;
+                const sceneUrls = prepared.sceneUrls;
+                rebuiltScenes = prepared.rebuiltScenes;
 
                 if (plan.jit) {
                     let firstDirty = scenes.length;
@@ -2215,6 +2657,11 @@
                 };
             });
         } finally {
+            metrics.totalMs = Math.round(performance.now() - composeStarted);
+            try {
+                document.documentElement.dataset.cutComposeMetrics = JSON.stringify(metrics);
+            } catch (_) { }
+            console.info("Cut: compose metrics", JSON.stringify(metrics));
             if (cut._progressRef === dotNetRef)
                 cut._progressRef = null;
         }

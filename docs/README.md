@@ -83,7 +83,7 @@ Ingest → Index → Write max Fountain → Auto-enrich
 | Shot plan / action timing | [Action timing](action-timing-plan.md) |
 | Estimate / $ / minutes | [Decision flow §2](studio-decision-flow.md#2-progressive-costing-model) |
 | Cast / plates / voice | Decision flow + [voice substitution](voice-substitution-design.md) |
-| Review / stitch / ffmpeg.wasm | [host README](../host/README.md) (browser media) |
+| Review / stitch / ffmpeg.wasm | [Media/timeline contract](media-timeline-contract.md) · [host README](../host/README.md) (browser media) |
 | What is on disk | [Project artifacts](project_artifacts.md) |
 | Models / providers / keys | [Supported models](supported-models.md) · catalog JSON is SSoT |
 

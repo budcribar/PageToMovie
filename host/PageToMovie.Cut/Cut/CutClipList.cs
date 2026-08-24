@@ -228,7 +228,7 @@ public static class CutClipList
             FileName = CutClipNaming.FileNameOnly(file.FileName),
             RelativePath = file.RelativePath,
             SizeBytes = file.SizeBytes,
-            Missing = !CutTake.IsPlayableFile(file.SizeBytes),
+            Missing = !CutTake.IsCandidateFile(file.SizeBytes),
             MissingReason = MissingReasonFor(file.SizeBytes),
         };
         if (hop.HasSlice)
@@ -242,7 +242,7 @@ public static class CutClipList
     {
         if (sizeBytes <= 0)
             return "Clip file is empty.";
-        if (CutTake.IsPlayableFile(sizeBytes))
+        if (CutTake.IsCandidateFile(sizeBytes))
             return null;
         return "Clip file is not a playable take.";
     }
@@ -256,7 +256,7 @@ public static class CutClipList
         FoundMediaFile? best = null;
         foreach (var file in PreferUniqueTakes(takes.ToList()))
         {
-            if (file.TakeHint <= 0 || !CutTake.IsPlayableFile(file.SizeBytes))
+            if (file.TakeHint <= 0 || !CutTake.IsCandidateFile(file.SizeBytes))
                 continue;
             if (best is null || file.TakeHint > best.Value.TakeHint)
                 best = file;

@@ -148,6 +148,7 @@ public class CutProjectFileTests
         track.SetFadeOut(2);
         track.SetPlaybackRate(1.25);
         track.SetNoiseSuppression(true);
+        track.SetIntroBlack(3.5);
 
         var json = CutProjectFile.Serialize([clip], "score.mp3", music: track);
         Assert.Contains("musicVolume", json, StringComparison.OrdinalIgnoreCase);
@@ -155,6 +156,7 @@ public class CutProjectFileTests
         Assert.Contains("musicFadeOut", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("musicSpeed", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("musicNoiseSuppression", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("musicIntroBlack", json, StringComparison.OrdinalIgnoreCase);
 
         var reload = NewClip(1, 1);
         reload.SetDuration(10);
@@ -164,6 +166,7 @@ public class CutProjectFileTests
         Assert.Equal(2, loaded.FadeOutSec);
         Assert.Equal(1.25, loaded.PlaybackRate);
         Assert.True(loaded.NoiseSuppression);
+        Assert.Equal(3.5, loaded.IntroBlackSec);
         Assert.Equal(4, loaded.StartSec);
     }
 

@@ -5,6 +5,18 @@ namespace PageToMovie.Cut.Tests;
 
 public sealed class CutDebugFolderTests
 {
+    [Fact]
+    public void MaryFixtureIncludesCompactCreditsTake()
+    {
+        var manifest = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..",
+            "PageToMovie.Cut", "wwwroot", CutDebugFolder.ManifestUrl));
+        var json = File.ReadAllText(manifest);
+
+        Assert.Contains("scene_04_clip_01_take_05.mp4", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("scene_04_clip_01_take_06.mp4", json, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1:5299/?debugMaryTest=1")]
     [InlineData("http://127.0.0.1:5299/?x=1&debugMaryTest=true")]

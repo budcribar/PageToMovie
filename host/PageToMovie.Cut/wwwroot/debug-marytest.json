@@ -38,7 +38,8 @@
     { "relativePath": "assets/video/scene_03_clip_07_take_04.mp4", "sizeBytes": 4477974 },
     { "relativePath": "assets/video/scene_03_clip_08.current.json", "text": true },
     { "relativePath": "assets/video/scene_03_clip_08_take_01.mp4", "sizeBytes": 1580420 },
-    { "relativePath": "assets/video/scene_04_clip_01_take_06.mp4", "sizeBytes": 1, "missing": true },
+    { "relativePath": "assets/video/scene_04_clip_01_take_05.clip.json", "text": true },
+    { "relativePath": "assets/video/scene_04_clip_01_take_05.mp4", "sizeBytes": 44780 },
     { "relativePath": "cut.project.json", "text": true },
     { "relativePath": "Mary Had A Little Lamb (vocal) - The Green Orbs.mp3", "sizeBytes": 5261310 }
   ]
