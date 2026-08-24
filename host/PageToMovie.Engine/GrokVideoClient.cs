@@ -152,7 +152,11 @@ public sealed class GrokVideoClient : IVideoClient
 
         ApplySubmitRefPriority(refs, ref hasContinue, ref hasStart, startFrameImagePath);
 
-        if (hasStart || refs.Count > 0 || hasContinue)
+        var catalogEntry = SupportedModelCatalog.Find(model, ModelCapability.Video);
+        if (hasContinue)
+            durationSeconds = ClipDurationEstimator.ResolveActualDurationForModel(
+                model, durationSeconds, isExtensionMode: true);
+        else if ((hasStart || refs.Count > 0) && catalogEntry is { SupportsVideoContinue: true })
             durationSeconds = ClipDurationEstimator.ResolveActualDurationForModel(
                 model, durationSeconds, isExtensionMode: true);
 

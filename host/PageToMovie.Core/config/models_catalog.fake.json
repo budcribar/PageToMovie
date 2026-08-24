@@ -335,6 +335,69 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "grok-imagine-video-1.5",
+      "displayName": "Grok Imagine Video 1.5",
+      "capability": "Video",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "videos/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 7,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 1,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 1,
+      "videoCostPerSecondByResolution": {
+        "1080p": 0.08
+      },
+      "supportedAspectRatios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Fake-catalog sibling of the real 1.5 row. Text/image to video; no continue/extend path.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "maxPromptLength": 4000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "Fake catalog mirror of 1.5 generation pricing. No separate published ref-image or extend line item.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
+    },
+    {
+      "id": "imagine-video-1.5-extend",
+      "displayName": "Imagine Video 1.5 + extend",
+      "capability": "Video",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "videos/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "virtual": true,
+      "supportsVideoContinue": false,
+      "roles": {
+        "generate": "grok-imagine-video-1.5",
+        "extend": "grok-imagine-video"
+      },
+      "notes": "Catalog role bundle. generate is grok-imagine-video-1.5; extend is grok-imagine-video. This virtual id is never sent to the provider as model. Extra role keys (for example voice) are legal and ignored until routed.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "lastVerifiedAt": "2026-08-24"
+    },
+    {
       "id": "grok-imagine-video-edit",
       "displayName": "Grok Imagine Video Edit",
       "capability": "VideoEdit",

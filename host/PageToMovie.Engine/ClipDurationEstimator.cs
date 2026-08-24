@@ -85,14 +85,7 @@ public static class ClipDurationEstimator
                 "Video model is required for clip duration bounds. " +
                 "Open Settings → Studio coverage and choose a video model.");
 
-        var entry = SupportedModelCatalog.Find(modelId.Trim(), ModelCapability.Video)
-            ?? throw new InvalidOperationException(
-                $"Video model '{modelId}' is not in models_catalog.json. " +
-                "Unknown models have no duration capabilities.");
-
-        if (!entry.Enabled)
-            throw new InvalidOperationException(
-                $"Video model '{entry.Id}' is disabled in the catalog.");
+        var entry = SupportedModelCatalog.ResolveVideoRoles(modelId).Generate;
 
         if (entry.MinClipDurationSeconds is not { } min
             || entry.MaxClipDurationSeconds is not { } max)
@@ -125,7 +118,12 @@ public static class ClipDurationEstimator
     {
         // ResolveBoundsForModel throws on unknown/empty/incomplete catalog rows.
         var (min, max, _) = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
+        var roles = SupportedModelCatalog.ResolveVideoRoles(modelId);
+        var entry = isExtensionMode
+            ? roles.Extend ?? throw new InvalidOperationException(
+                $"Video model '{roles.Selected.Id}' does not support video continue/extend " +
+                "(no extend role / supportsVideoContinue=false).")
+            : roles.Generate;
 
         int resolved;
         if (entry.AllowedDurationsSeconds is { Count: > 0 } allowed)
@@ -142,8 +140,8 @@ public static class ClipDurationEstimator
 
         if (isExtensionMode)
         {
-            // Primary gate: supportsVideoContinue. maxExtensionSeconds is only meaningful when
-            // continue is enabled — require a positive value then; do not invent a default.
+            // Primary gate: extend role / supportsVideoContinue. maxExtensionSeconds is only
+            // meaningful when continue is enabled — require a positive value then; do not invent.
             if (!entry.SupportsVideoContinue)
                 throw new InvalidOperationException(
                     $"Video model '{entry.Id}' does not support video continue/extend " +
@@ -168,11 +166,12 @@ public static class ClipDurationEstimator
     /// </summary>
     public static int ResolveExtensionMaxForModel(string? modelId, int fallbackMax)
     {
-        // Unknown/empty model throws. No continue → 0 (never read maxExtensionSeconds).
+        // Unknown/empty model throws. No extend role → 0 (never read maxExtensionSeconds).
         // Continue models must declare a positive maxExtensionSeconds in the catalog.
         _ = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
-        if (!entry.SupportsVideoContinue)
+        var roles = SupportedModelCatalog.ResolveVideoRoles(modelId);
+        var entry = roles.Extend;
+        if (entry is null)
             return 0;
         if (entry.MaxExtensionSeconds is not { } ext || ext <= 0)
             throw new InvalidOperationException(

@@ -5433,6 +5433,7 @@ public sealed class FilmJobService
         public bool HadVideoBefore { get; init; }
         public required string Model { get; init; }
         public required SupportedModelEntry ModelEntry { get; init; }
+        public required VideoModelRoles VideoRoles { get; init; }
         public string? PrevVisual { get; set; }
         public string? PrevVideoPath { get; set; }
         public string? ExtendSourceFileId { get; set; }
@@ -5468,10 +5469,11 @@ public sealed class FilmJobService
         var wantContinue = WantsVideoContinue(clipEl, clip);
 
         var model = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
-        var modelEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
+        var videoRoles = SupportedModelCatalog.ResolveVideoRoles(model);
+        var modelEntry = videoRoles.Generate;
 
         var (extendSourcePath, extendSourceFileId, extendInputDur) = wantContinue
-            ? await ResolveExtendInputAsync(projectDir, scene, clip, modelEntry, ct).ConfigureAwait(false)
+            ? await ResolveExtendInputAsync(projectDir, scene, clip, videoRoles, ct).ConfigureAwait(false)
             : (null, null, null);
 
         var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
@@ -5496,6 +5498,7 @@ public sealed class FilmJobService
             HadVideoBefore = hadVideoBefore,
             Model = model,
             ModelEntry = modelEntry,
+            VideoRoles = videoRoles,
             PrevVisual = prevVisual,
             PrevVideoPath = extendSourcePath,
             ExtendSourceFileId = extendSourceFileId,
@@ -5576,10 +5579,10 @@ public sealed class FilmJobService
             string projectDir,
             int scene,
             int clip,
-            SupportedModelEntry modelEntry,
+            VideoModelRoles videoRoles,
             CancellationToken ct)
     {
-        if (clip <= 1 || !modelEntry.SupportsVideoContinue)
+        if (clip <= 1 || !videoRoles.CanExtend)
             return (null, null, null);
 
         string? markerFileId = null;
@@ -5660,6 +5663,10 @@ public sealed class FilmJobService
         foreach (var f in lint)
             await AppendLogAsync($"  [Plan] ⚠ S{ctx.Scene:D2}C{ctx.Clip:D2} {f.Rule}: {f.Message}");
 
+        var isExtendHop = ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null;
+        var wireModel = ctx.VideoRoles.WireModelId(isExtendHop);
+        var wireEntry = isExtendHop ? ctx.VideoRoles.Extend! : ctx.VideoRoles.Generate;
+
         var built = ClipVideoPromptBuilder.Build(
             ctx.ClipEl,
             ctx.ProjectDir,
@@ -5667,11 +5674,11 @@ public sealed class FilmJobService
             previousClipVisualPrompt: ctx.PrevVisual,
             previousClipVideoPath: ctx.PrevVideoPath,
             startFrameImagePath: null,
-            maxRefs: ctx.ModelEntry.MaxReferenceImages
+            maxRefs: ctx.VideoRoles.Generate.MaxReferenceImages
                 ?? throw new InvalidOperationException(
-                    $"Video model '{ctx.ModelEntry.Id}' has no maxReferenceImages in models_catalog.json."),
+                    $"Video model '{ctx.VideoRoles.Generate.Id}' has no maxReferenceImages in models_catalog.json."),
             styleHead: styleHead,
-            videoModel: ctx.Model,
+            videoModel: wireModel,
             fallbackLocationKey: sceneLocationKey,
             previousClipExtendFileId: ctx.ExtendSourceFileId,
             correction: ctx.Correction);
@@ -5685,18 +5692,18 @@ public sealed class FilmJobService
         if (string.IsNullOrWhiteSpace(ctx.Resolution))
             ctx.Resolution = await ResolveVideoResolutionAsync(ctx.ProjectId, null, ctx.Ct);
 
-        built = await ApplyPromptBudgetAsync(built, ctx.ModelEntry).ConfigureAwait(false);
+        built = await ApplyPromptBudgetAsync(built, wireEntry).ConfigureAwait(false);
         await WriteAndLogPromptAsync(ctx.ProjectId, ctx.ProjectDir, ctx.Scene, ctx.Clip, built, ctx.Ct)
             .ConfigureAwait(false);
         await LogPromptRefsAsync(built, ctx.PrevVideoPath, ctx.ExtendSourceFileId).ConfigureAwait(false);
 
-        var supportsContinue = SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).SupportsVideoContinue;
+        var supportsContinue = ctx.VideoRoles.CanExtend;
         var duration = await ResolveClipDurationAsync(ctx, built, supportsContinue).ConfigureAwait(false);
 
-        var modeLabel = (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null) ? "video-extend" : built.Mode;
+        var modeLabel = isExtendHop ? "video-extend" : built.Mode;
         await AppendLogAsync(
             $"  [Grok] Submit S{ctx.Scene:D2}C{ctx.Clip} duration={duration}s res={ctx.Resolution} " +
-            $"model={ctx.Model} mode={modeLabel} {built.PromptLogSummary}");
+            $"model={wireModel} mode={modeLabel} {built.PromptLogSummary}");
 
         var targetAspectRatio = await ResolveTargetAspectRatioAsync(ctx.ProjectId, ctx.BlueprintRoot, ctx.Ct).ConfigureAwait(false);
 
@@ -5704,7 +5711,7 @@ public sealed class FilmJobService
             built.Prompt,
             duration,
             ctx.Resolution,
-            ctx.Model,
+            wireModel,
             ctx.Ct,
             referenceImagePaths: ClipReferenceImagesForSubmit(ctx.PrevVideoPath, ctx.ExtendSourceFileId, built),
             startFrameImagePath: null,
@@ -5945,7 +5952,8 @@ public sealed class FilmJobService
         // Dialogue-aware duration (tight for short lines — billed per second), clamped to the
         // actually-selected model's own duration caps (SupportedModelCatalog) instead of a
         // hardcoded provider assumption.
-        var (durMin, durMax, durAbsMax) = ClipDurationEstimator.ResolveBoundsForModel(ctx.Model);
+        var generateId = ctx.VideoRoles.Generate.Id;
+        var (durMin, durMax, durAbsMax) = ClipDurationEstimator.ResolveBoundsForModel(generateId);
         var duration = ClipDurationEstimator.EstimateForClip(ctx.ClipEl, durMin, durMax, durAbsMax);
         if (supportsContinue && ctx.IncomingDurationPaddingSec >= MinCarryoverPaddingSec)
         {
@@ -5954,7 +5962,7 @@ public sealed class FilmJobService
                 $"  [Duration] +{ctx.IncomingDurationPaddingSec:F1}s carried from previous clip's overrun -> {duration}s to {padded}s");
             duration = padded;
         }
-        await AppendLogAsync($"  [Duration] estimated {duration}s (dialogue-aware, max {durMax}s, model={ctx.Model})");
+        await AppendLogAsync($"  [Duration] estimated {duration}s (dialogue-aware, max {durMax}s, model={generateId})");
         if (ctx.Correction is { ExtraDurationSec: > 0 } corr)
         {
             // QA retry after a cut-off line: the previous take was too short for the words.
@@ -5962,11 +5970,12 @@ public sealed class FilmJobService
             await AppendLogAsync($"  [Duration] +{corr.ExtraDurationSec}s (QA: line was cut off) -> {duration}s to {longer}s");
             duration = longer;
         }
-        // Reference-conditioned / continuation generation is bounded by the model's own
-        // tighter extension cap (catalog MaxExtensionSeconds), not a bare hardcoded 10 — keeps
-        // this correct if a future model's real ref-conditioned max differs from Grok's ~10s.
-        if (ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null || built.ReferenceImagePaths.Count > 0)
-            duration = ClipDurationEstimator.ResolveActualDurationForModel(ctx.Model, duration, isExtensionMode: true);
+        // Extend hops use the extend-role cap (catalog MaxExtensionSeconds). First-clip /
+        // reference-image gens stay on generate-role bounds — do not treat refs as continue.
+        var isExtendHop = ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null;
+        if (isExtendHop)
+            duration = ClipDurationEstimator.ResolveActualDurationForModel(
+                ctx.VideoRoles.WireModelId(isExtendHop: true), duration, isExtensionMode: true);
         return duration;
     }
 
@@ -6018,7 +6027,7 @@ public sealed class FilmJobService
         // return a local fixture scheme that DownloadToFileAsync resolves on disk.
         try
         {
-            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Model, ctx.Ct).ConfigureAwait(false);
+            await _grok.DownloadToFileAsync(url, mp4Path, ClipWireModelId(ctx), ctx.Ct).ConfigureAwait(false);
             var bytesLength = File.Exists(mp4Path) ? new FileInfo(mp4Path).Length : 0;
             if (bytesLength > 0)
             {
@@ -6201,7 +6210,7 @@ public sealed class FilmJobService
             return;
         var scene = ctx.Scene;
         var clip = ctx.Clip;
-        var model = ctx.Model;
+        var model = ClipWireModelId(ctx);
         _ = Task.Run(async () =>
         {
             try
@@ -6273,15 +6282,15 @@ public sealed class FilmJobService
                 ctx.Clip,
                 prompt: built.Prompt ?? "",
                 scriptText: "",
-                model: ctx.Model,
+                model: ClipWireModelId(ctx),
                 resolution: ctx.Resolution,
                 durationSeconds: savedSlice,
                 sha256: "",
                 sizeBytes: 0,
                 // Prefer file_output.public_url (durable) over the poll video.url (vidgen expires).
-                // Provider is resolved from the model via the catalog (SSoT) rather than hardcoded.
+                // Provider is resolved from the wire model via the catalog (SSoT) rather than hardcoded.
                 sourceUrl: stored.DurableSourceUrl(url),
-                sourceProvider: SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).ProviderId,
+                sourceProvider: SupportedModelCatalog.ResolveOrDefault(ClipWireModelId(ctx), ModelCapability.Video).ProviderId,
                 sourceFileId: stored.FileId,
                 sourceFileExpiresAtUnixSeconds: stored.ExpiresAtUnixSeconds,
                 providerLeadInSeconds: providerLeadInSeconds,
@@ -6339,7 +6348,7 @@ public sealed class FilmJobService
                 ctx.Clip,
                 costDurationSec,
                 ctx.Resolution,
-                ctx.Model,
+                ClipWireModelId(ctx),
                 hasRefImage: built.ReferenceImagePaths.Count > 0 || ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null,
                 isExtend: ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null,
                 requestId: requestId,
@@ -6917,15 +6926,14 @@ public sealed class FilmJobService
             return;
 
         var modelId = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
-        var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
+        var generate = SupportedModelCatalog.ResolveVideoRoles(modelId).Generate;
 
-        if (!entry.SupportsReferenceImages)
+        if (!generate.SupportsReferenceImages)
         {
             throw new InvalidOperationException(
-                $"Video model '{entry.Id}' cannot attach locked character reference plates. " +
-                "Switch project video model to grok-imagine-video, or disable the cast lock gate " +
-                "only if you accept identity drift. " +
-                (string.IsNullOrWhiteSpace(entry.Notes) ? "" : entry.Notes));
+                "The selected video model cannot attach locked character reference pictures. " +
+                "Choose a video model that supports reference images, or disable the cast lock gate " +
+                "only if you accept identity drift.");
         }
     }
 
@@ -6999,8 +7007,20 @@ public sealed class FilmJobService
             return;
 
         var modelId = await ResolveVideoModelAsync(projectId, ct).ConfigureAwait(false);
-        var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
+        var roles = SupportedModelCatalog.ResolveVideoRoles(modelId);
+        EnsureVideoRoleConfigured(roles.Generate);
+        if (roles.Extend is { } extend
+            && !SameVideoRoleEnvKeys(roles.Generate, extend))
+            EnsureVideoRoleConfigured(extend);
+    }
 
+    private static bool SameVideoRoleEnvKeys(SupportedModelEntry a, SupportedModelEntry b) =>
+        a.Provider == b.Provider
+        && a.RequiredEnvKeys.Count == b.RequiredEnvKeys.Count
+        && a.RequiredEnvKeys.All(k => b.RequiredEnvKeys.Contains(k, StringComparer.OrdinalIgnoreCase));
+
+    private static void EnsureVideoRoleConfigured(SupportedModelEntry entry)
+    {
         // Ambient per-user keys count as configured (personal BYOK or server env via scope).
         var ambient = entry.Provider switch
         {
@@ -7021,6 +7041,12 @@ public sealed class FilmJobService
         throw new InvalidOperationException(
             $"{keys} is not set (required for video model '{entry.Id}' / {entry.ProviderId}). " +
             "Add a personal key in Configuration, or set the server environment variable.");
+    }
+
+    private static string ClipWireModelId(ClipGenContext ctx)
+    {
+        var isExtendHop = ctx.PrevVideoPath is not null || ctx.ExtendSourceFileId is not null;
+        return ctx.VideoRoles.WireModelId(isExtendHop);
     }
 
     /// <summary>

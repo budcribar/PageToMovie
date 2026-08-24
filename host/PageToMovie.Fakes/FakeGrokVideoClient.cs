@@ -203,6 +203,8 @@ public sealed class FakeGrokVideoClient : IVideoClient
             throw new InvalidOperationException(
                 $"Fake video: model '{entry.Id}' is disabled in the catalog.");
 
+        SupportedModelCatalog.EnsureNotVirtualWireModel(entry.Id);
+
         if (!string.IsNullOrWhiteSpace(continueFromVideoPath) && !entry.SupportsVideoContinue)
         {
             throw new InvalidOperationException(
