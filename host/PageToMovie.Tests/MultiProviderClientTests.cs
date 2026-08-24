@@ -365,7 +365,8 @@ public class MultiProviderClientTests
         public Task<string> SubmitGenerationAsync(
             string prompt, int durationSeconds, string resolution, string model, CancellationToken ct,
             IReadOnlyList<string>? referenceImagePaths = null, string? startFrameImagePath = null,
-            string? continueFromVideoPath = null, string? aspectRatio = null, string? extendSourceFileId = null)
+            string? continueFromVideoPath = null, string? aspectRatio = null, string? extendSourceFileId = null,
+            IReadOnlyList<string>? referenceAudioVoiceIds = null)
             => Task.FromResult(SubmitId);
 
         public Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct)

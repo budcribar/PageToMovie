@@ -5,12 +5,16 @@
 
         @* Simple path (home → library book → your voice): only the clone card.
            Full cast keeps label/profile + film voice preview for prompt style. *@
-        @if (!SimpleMode)
+        @if (!SimpleMode || PresetVoices.Count > 0)
         {
             <CharacterVoicePanel VoiceLabel="@EditVoiceLabel"
                                  VoiceLabelChanged="VoiceLabelChanged"
                                  VoiceProfile="@EditVoiceProfile"
                                  VoiceProfileChanged="VoiceProfileChanged"
+                                 ImagineVoiceId="@EditImagineVoiceId"
+                                 ImagineVoiceIdChanged="ImagineVoiceIdChanged"
+                                 PresetVoices="PresetVoices"
+                                 ShowProfileFields="!SimpleMode"
                                  Busy="@(Busy || VoicePreviewBusy || VoiceJobRunning)"
                                  Hint="@(VoiceSaveHint ?? "Profile saves automatically")"
                                  Error="@VoicePreviewError"

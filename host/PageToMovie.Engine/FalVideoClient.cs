@@ -46,7 +46,8 @@ public sealed class FalVideoClient : IVideoClient
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
         string? aspectRatio = null,
-        string? extendSourceFileId = null)
+        string? extendSourceFileId = null,
+        IReadOnlyList<string>? referenceAudioVoiceIds = null)
     {
         var apiKey = ResolveApiKey()
             ?? throw new InvalidOperationException($"Fal.ai API key is missing. Set {SupportedModelCatalog.FalApiKeyEnv} in environment or Configuration.");

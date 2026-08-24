@@ -312,6 +312,12 @@ public sealed class SupportedModelEntry
     public int MaxSpeakersPerClipOrDefault => MaxSpeakersPerClip is > 0 ? MaxSpeakersPerClip.Value : 1;
 
     /// <summary>
+    /// Highest resolution allowed when the request is reference-to-video (image refs and/or
+    /// preset voices attached). Null means no extra cap beyond the requested resolution.
+    /// </summary>
+    public string? MaxResolutionWithReferences { get; init; }
+
+    /// <summary>
     /// Discrete set of durations this model accepts (Video only) — e.g. Veo 3.1 documents exactly
     /// 4, 6, or 8 seconds, not an arbitrary continuous range. When set, generation-time duration
     /// resolution must snap to the nearest value here rather than a plain min/max clamp (a clamped
@@ -934,6 +940,27 @@ public static class SupportedModelCatalog
     /// <summary>
     /// Reject a virtual catalog id on the provider wire. Call before <c>IVideoClient</c> submit.
     /// </summary>
+    /// <summary>
+    /// Preset voices on the generate-role sibling. Empty when the project video model
+    /// has no generate role or that role does not support reference audios.
+    /// </summary>
+    public static IReadOnlyList<PresetVoiceEntry> GenerateRolePresetVoices(string? videoModelId)
+    {
+        if (string.IsNullOrWhiteSpace(videoModelId))
+            return Array.Empty<PresetVoiceEntry>();
+        try
+        {
+            var generate = ResolveVideoRoles(videoModelId).Generate;
+            return generate.SupportsReferenceAudios
+                ? generate.PresetVoices ?? Array.Empty<PresetVoiceEntry>()
+                : Array.Empty<PresetVoiceEntry>();
+        }
+        catch (InvalidOperationException)
+        {
+            return Array.Empty<PresetVoiceEntry>();
+        }
+    }
+
     public static void EnsureNotVirtualWireModel(string? modelId)
     {
         if (string.IsNullOrWhiteSpace(modelId))
@@ -1584,6 +1611,7 @@ public static class SupportedModelCatalog
         MaxClipDurationSeconds = e.MaxClipDurationSeconds,
         AbsMaxClipDurationSeconds = e.AbsMaxClipDurationSeconds,
         MaxSpeakersPerClip = e.MaxSpeakersPerClip,
+        MaxResolutionWithReferences = e.MaxResolutionWithReferences,
         AllowedDurationsSeconds = e.AllowedDurationsSeconds is { } ad ? new List<int>(ad) : null,
         MaxExtensionSeconds = e.MaxExtensionSeconds,
         MaxEditInputDurationSeconds = e.MaxEditInputDurationSeconds,
@@ -1650,6 +1678,7 @@ public static class SupportedModelCatalog
         MaxClipDurationSeconds = d.MaxClipDurationSeconds,
         AbsMaxClipDurationSeconds = d.AbsMaxClipDurationSeconds,
         MaxSpeakersPerClip = d.MaxSpeakersPerClip,
+        MaxResolutionWithReferences = d.MaxResolutionWithReferences,
         AllowedDurationsSeconds = d.AllowedDurationsSeconds,
         MaxExtensionSeconds = d.MaxExtensionSeconds,
         MaxEditInputDurationSeconds = d.MaxEditInputDurationSeconds,
@@ -1790,6 +1819,7 @@ public string? Notes { get; set; }
     public int? MaxClipDurationSeconds { get; set; }
     public int? AbsMaxClipDurationSeconds { get; set; }
     public int? MaxSpeakersPerClip { get; set; }
+    public string? MaxResolutionWithReferences { get; set; }
     public List<int>? AllowedDurationsSeconds { get; set; }
     public int? MaxExtensionSeconds { get; set; }
     public double? MaxEditInputDurationSeconds { get; set; }

@@ -56,6 +56,7 @@ public sealed class Stage2PlannerService
         /// (that concatenates the line onto the previous one and the action-with-its-line is lost).</summary>
         public const string OwnClip = "own_clip";
         public const string SecondarySpeaker = "secondary_speaker";
+        public const string TertiarySpeaker = "tertiary_speaker";
         public const string SpokenOnCamera = "spoken_on_camera";
         public const string PrimarySubject = "primary_subject";
         public const string StoryBeats = "story_beats";
@@ -168,7 +169,8 @@ public sealed class Stage2PlannerService
         var durExtensionMaxSeconds = ClipDurationEstimator.ResolveExtensionMaxForModel(videoModelId, durMaxSeconds);
         // How many characters this video model can render speaking in one clip (catalog-driven).
         // 1 → keep one speaker per clip (shot-reverse-shot); >=2 → allow two-hander coalescing.
-        var maxSpeakersPerClip = ResolveMaxSpeakersPerClip(videoModelId);
+        var maxSpeakersPerClip = ResolveMaxSpeakersPerClip(videoModelId, isExtendHop: false);
+        var extendMaxSpeakersPerClip = ResolveMaxSpeakersPerClip(videoModelId, isExtendHop: true);
 
         // Fountain is the only screenplay source of truth.
         ScreenplayService.EnsureCanonicalDraft(_projects, projectId);
@@ -218,7 +220,7 @@ public sealed class Stage2PlannerService
         var planned = await PlanScenesInParallelAsync(
                 scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
-                planningModel, onProgress, ct)
+                extendMaxSpeakersPerClip, planningModel, onProgress, ct)
             .ConfigureAwait(false);
 
         if (planned.Count == 0)
@@ -319,6 +321,7 @@ public sealed class Stage2PlannerService
         int durAbsMaxSeconds,
         int durExtensionMaxSeconds,
         int maxSpeakersPerClip,
+        int extendMaxSpeakersPerClip,
         string planningModel,
         Action<string>? onProgress,
         CancellationToken ct)
@@ -336,7 +339,7 @@ public sealed class Stage2PlannerService
             var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
                     s, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
-                    planningModel, fanout, ct))
+                    extendMaxSpeakersPerClip, planningModel, fanout, ct))
                 .ToArray();
             await Task.WhenAll(sceneTasks).ConfigureAwait(false);
         }
@@ -359,6 +362,7 @@ public sealed class Stage2PlannerService
         int durAbsMaxSeconds,
         int durExtensionMaxSeconds,
         int maxSpeakersPerClip,
+        int extendMaxSpeakersPerClip,
         string planningModel,
         SceneFanoutState fanout,
         CancellationToken ct)
@@ -383,7 +387,8 @@ public sealed class Stage2PlannerService
                 s, locSeeds, charSeeds, styleLock,
                 tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
                 tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result,
-                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
+                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
+                extendMaxSpeakersPerClip);
             // Skip transition-only phantoms (e.g. FADE IN before first heading)
             if (plannedScene is null)
             {
@@ -860,7 +865,8 @@ public sealed class Stage2PlannerService
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds,
         int? extensionMaxSeconds = null,
-        int maxSpeakersPerClip = 1)
+        int maxSpeakersPerClip = 1,
+        int? extendMaxSpeakersPerClip = null)
     {
         var effectiveExtensionMax = extensionMaxSeconds ?? maxSeconds;
         var sceneInput = new Dictionary<string, object?>(scene);
@@ -877,7 +883,9 @@ public sealed class Stage2PlannerService
         var lids = CollectLocationIds(scene);
         var primary = ResolvePrimaryLocation(scene, lids);
 
-        beats = ApplyBeatCoalescing(beats, primary, lids, maxSeconds, effectiveExtensionMax, maxSpeakersPerClip);
+        beats = ApplyBeatCoalescing(
+            beats, primary, lids, maxSeconds, effectiveExtensionMax, maxSpeakersPerClip,
+            extendMaxSpeakersPerClip ?? maxSpeakersPerClip);
         var cast = UnionCharactersOnScreen(scene);
 
         // Entire scene was only FADE IN / CUT TO — omit (no empty clip)
@@ -962,7 +970,8 @@ public sealed class Stage2PlannerService
         List<string> lids,
         int maxSeconds,
         int effectiveExtensionMax,
-        int maxSpeakersPerClip)
+        int maxSpeakersPerClip,
+        int extendMaxSpeakersPerClip)
     {
         beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
         beats = CoalesceSilentPreludeBeats(beats);
@@ -971,7 +980,8 @@ public sealed class Stage2PlannerService
             beats, maxSeconds, effectiveExtensionMax, PrecomputeExtendsFromPrevious(beats, primary, lids));
         return ApplyCrossSpeakerCoalescing(
             beats, maxSpeakersPerClip, maxSeconds, effectiveExtensionMax,
-            PrecomputeExtendsFromPrevious(beats, primary, lids));
+            PrecomputeExtendsFromPrevious(beats, primary, lids),
+            extendMaxSpeakersPerClip);
     }
 
     private static void ApplyAiPacingOverrides(
@@ -1628,41 +1638,86 @@ public sealed class Stage2PlannerService
     /// (<see cref="SupportedModelEntry.MaxSpeakersPerClip"/>). Unknown/unset → 1 (the safe,
     /// always-renderable default). Raise per model in models_catalog.json as video models improve.
     /// </summary>
-    public static int ResolveMaxSpeakersPerClip(string? videoModelId) =>
-        SupportedModelCatalog.Find(videoModelId, ModelCapability.Video)?.MaxSpeakersPerClipOrDefault ?? 1;
+    public static int ResolveMaxSpeakersPerClip(string? videoModelId, bool isExtendHop = false)
+    {
+        if (string.IsNullOrWhiteSpace(videoModelId))
+            return 1;
+        var selected = SupportedModelCatalog.Find(videoModelId.Trim(), ModelCapability.Video);
+        if (selected is null)
+            return 1;
+        try
+        {
+            var roles = SupportedModelCatalog.ResolveVideoRoles(videoModelId);
+            if (!isExtendHop)
+                return roles.Generate.MaxSpeakersPerClipOrDefault;
+            // Hops use the extend sibling only. No extend role (1.5 alone) stays 1 speaker.
+            return roles.Extend?.MaxSpeakersPerClipOrDefault ?? 1;
+        }
+        catch (InvalidOperationException)
+        {
+            return selected.MaxSpeakersPerClipOrDefault;
+        }
+    }
 
     /// <summary>
-    /// Coalesce adjacent different-speaker dialogue beats into two-hander clips only when the model
-    /// allows two speakers per clip; otherwise leave each beat as its own single-speaker clip
-    /// (shot-reverse-shot). The seam the planner uses so the policy is one catalog value, not a
-    /// hard-coded assumption. (There is no three-hander — a third speaker is always its own clip.)
+    /// Coalesce adjacent different-speaker dialogue beats when the generate-role model allows
+    /// more than one speaker per clip. Extend-role hops use <paramref name="extendMaxSpeakersPerClip"/>
+    /// (1 for the v1 sibling) so hops stay single-speaker.
     /// </summary>
     public static List<Dictionary<string, object?>> ApplyCrossSpeakerCoalescing(
         List<Dictionary<string, object?>> beats,
         int maxSpeakersPerClip,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int? extensionMaxSeconds = null,
-        IReadOnlyList<bool>? extendsFromPrevious = null) =>
-        maxSpeakersPerClip >= 2
-            ? CoalesceCrossSpeakerDialogueBeats(beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious)
-            : beats ?? new List<Dictionary<string, object?>>();
+        IReadOnlyList<bool>? extendsFromPrevious = null,
+        int? extendMaxSpeakersPerClip = null)
+    {
+        var extendMax = extendMaxSpeakersPerClip ?? maxSpeakersPerClip;
+        if (maxSpeakersPerClip < 2 && extendMax < 2)
+            return beats ?? new List<Dictionary<string, object?>>();
+        return CoalesceCrossSpeakerDialogueBeats(
+            beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious, maxSpeakersPerClip, extendMax);
+    }
 
     public static List<Dictionary<string, object?>> CoalesceCrossSpeakerDialogueBeats(
         List<Dictionary<string, object?>> beats,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int? extensionMaxSeconds = null,
-        IReadOnlyList<bool>? extendsFromPrevious = null) =>
-        WalkCoalesceGroups(beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious, AbsorbCrossSpeakerGroup);
+        IReadOnlyList<bool>? extendsFromPrevious = null,
+        int maxSpeakersPerClip = 2,
+        int? extendMaxSpeakersPerClip = null) =>
+        WalkCoalesceGroups(
+            beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious,
+            (list, i, cur, effectiveMax) => AbsorbCrossSpeakerGroup(
+                list, i, cur, effectiveMax, SpeakerCapForBeat(extendsFromPrevious, i, maxSpeakersPerClip, extendMaxSpeakersPerClip ?? maxSpeakersPerClip)));
+
+    private static int SpeakerCapForBeat(
+        IReadOnlyList<bool>? extendsFromPrevious,
+        int index,
+        int generateMax,
+        int extendMax) =>
+        extendsFromPrevious is not null && index < extendsFromPrevious.Count && extendsFromPrevious[index]
+            ? extendMax
+            : generateMax;
 
     private static int AbsorbCrossSpeakerGroup(
         List<Dictionary<string, object?>> beats,
         int i,
         Dictionary<string, object?> cur,
-        int effectiveMax)
+        int effectiveMax,
+        int maxSpeakers)
     {
-        var perLineCap = effectiveMax / 2.0;
-        if (TryMergeCrossSpeakerPair(beats, i, cur, effectiveMax, perLineCap))
+        if (maxSpeakers < 2)
+            return i;
+        var speakers = 1;
+        var perLineCap = effectiveMax / (double)maxSpeakers;
+        while (speakers < maxSpeakers && i + 1 < beats.Count)
+        {
+            if (!TryMergeCrossSpeakerPair(beats, i, cur, effectiveMax, perLineCap, speakers + 1))
+                break;
             i++;
+            speakers++;
+        }
         return i;
     }
 
@@ -1694,18 +1749,28 @@ public sealed class Stage2PlannerService
         int i,
         Dictionary<string, object?> cur,
         int effectiveMax,
-        double perLineCap)
+        double perLineCap,
+        int nextSpeakerSlot = 2)
     {
         if (!IsEligibleCrossSpeakerPrimary(beats, i, cur, out var d1, out var sp1, out var loc1))
             return false;
-        if (!IsEligibleCrossSpeakerNext(beats[i + 1], sp1, loc1, out var d2, out var sp2))
+        var already = SpeakersAlreadyOnClip(cur);
+        if (!IsEligibleCrossSpeakerNext(beats[i + 1], already, loc1, out var d2, out var sp2))
             return false;
         if (!CrossSpeakerPairFitsDuration(cur, beats[i + 1], d1, d2, effectiveMax, perLineCap))
             return false;
 
         var next = beats[i + 1];
-        cur[Keys.SecondarySpeaker] = sp2;
-        cur["secondary_dialogue"] = d2;
+        if (nextSpeakerSlot >= 3)
+        {
+            cur[Keys.TertiarySpeaker] = sp2;
+            cur["tertiary_dialogue"] = d2;
+        }
+        else
+        {
+            cur[Keys.SecondarySpeaker] = sp2;
+            cur["secondary_dialogue"] = d2;
+        }
 
         // Size the merged clip for BOTH lines (was left at the primary's estimate,
         // so the second speaker's line got cut). Read the spoken lines back through
@@ -1739,7 +1804,7 @@ public sealed class Stage2PlannerService
 
     private static bool IsEligibleCrossSpeakerNext(
         Dictionary<string, object?> next,
-        string? sp1,
+        IReadOnlyCollection<string> alreadyOnClip,
         string? loc1,
         out string? d2,
         out string? sp2)
@@ -1752,10 +1817,27 @@ public sealed class Stage2PlannerService
             string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase);
         return !string.IsNullOrWhiteSpace(d2) &&
                !string.IsNullOrWhiteSpace(sp2) &&
-               !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) &&
+               !alreadyOnClip.Contains(sp2, StringComparer.OrdinalIgnoreCase) &&
                sameLocationOrEmpty &&
                !IsOwnClip(next) &&
                !string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> SpeakersAlreadyOnClip(Dictionary<string, object?> cur)
+    {
+        var speakers = new List<string>();
+        foreach (var line in ClipSpokenLines.FromBeat(cur))
+        {
+            if (!string.IsNullOrWhiteSpace(line.Speaker))
+                speakers.Add(line.Speaker);
+        }
+        if (speakers.Count == 0)
+        {
+            var primary = ReadBeatString(cur, JsonKeys.Speaker);
+            if (!string.IsNullOrWhiteSpace(primary))
+                speakers.Add(primary);
+        }
+        return speakers;
     }
 
     private static bool CrossSpeakerPairFitsDuration(
@@ -2278,15 +2360,25 @@ public sealed class Stage2PlannerService
     private static void ApplySecondaryDialogue(
         Dictionary<string, object?> payload, Dictionary<string, object?> beat)
     {
-        // Cross-speaker two-hander clips (CoalesceCrossSpeakerDialogueBeats) carry a second
-        // speaker's line here. Additive only — existing single-speaker readers keep working
-        // unmodified since the flat speaker/dialogue keys above are untouched.
-        var secondarySpeaker = ReadBeatString(beat, Keys.SecondarySpeaker);
-        var secondaryDialogue = ReadBeatString(beat, "secondary_dialogue");
-        if (string.IsNullOrWhiteSpace(secondarySpeaker) || string.IsNullOrWhiteSpace(secondaryDialogue))
+        // Cross-speaker clips carry extra speaker lines here. Additive only — existing
+        // single-speaker readers keep working unmodified since the flat speaker/dialogue
+        // keys above are untouched.
+        CopySpokenSlot(payload, beat, Keys.SecondarySpeaker, "secondary_dialogue");
+        CopySpokenSlot(payload, beat, Keys.TertiarySpeaker, "tertiary_dialogue");
+    }
+
+    private static void CopySpokenSlot(
+        Dictionary<string, object?> payload,
+        Dictionary<string, object?> beat,
+        string speakerKey,
+        string dialogueKey)
+    {
+        var speaker = ReadBeatString(beat, speakerKey);
+        var dialogue = ReadBeatString(beat, dialogueKey);
+        if (string.IsNullOrWhiteSpace(speaker) || string.IsNullOrWhiteSpace(dialogue))
             return;
-        payload[Keys.SecondarySpeaker] = secondarySpeaker;
-        payload["secondary_dialogue"] = ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue);
+        payload[speakerKey] = speaker;
+        payload[dialogueKey] = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
     }
 
     private static void ApplySoundDesignLayers(

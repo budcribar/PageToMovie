@@ -212,6 +212,9 @@ public partial class Characters : IAsyncDisposable, IPageSliceHost
         builder.AddAttribute(3, "VoiceLabelChanged", EventCallback.Factory.Create<string>(this, Voice.OnVoiceLabelChanged));
         builder.AddAttribute(4, "EditVoiceProfile", Voice._editVoiceProfile);
         builder.AddAttribute(5, "VoiceProfileChanged", EventCallback.Factory.Create<string>(this, Voice.OnVoiceProfileChanged));
+        builder.AddAttribute(38, "EditImagineVoiceId", Voice._editImagineVoiceId);
+        builder.AddAttribute(39, "ImagineVoiceIdChanged", EventCallback.Factory.Create<string?>(this, Voice.OnImagineVoiceChanged));
+        builder.AddAttribute(40, "PresetVoices", Voice._presetVoices);
         builder.AddAttribute(6, "Busy", _busy);
         builder.AddAttribute(7, "VoicePreviewBusy", Voice._voicePreviewBusy);
         builder.AddAttribute(8, "VoiceJobRunning", Jobs.VoiceJobRunning);

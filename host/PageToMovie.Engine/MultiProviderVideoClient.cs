@@ -54,13 +54,15 @@ public sealed class MultiProviderVideoClient : IVideoClient
         string? startFrameImagePath = null,
         string? continueFromVideoPath = null,
         string? aspectRatio = null,
-        string? extendSourceFileId = null)
+        string? extendSourceFileId = null,
+        IReadOnlyList<string>? referenceAudioVoiceIds = null)
     {
         var entry = RequireVideoEntry(model);
         var client = ClientForProviderId(entry.ProviderId, model);
         var raw = await client.SubmitGenerationAsync(
             prompt, durationSeconds, resolution, model, ct,
-            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId)
+            referenceImagePaths, startFrameImagePath, continueFromVideoPath, aspectRatio, extendSourceFileId,
+            referenceAudioVoiceIds)
             .ConfigureAwait(false);
         return TagRequestId(entry.ProviderId, raw);
     }

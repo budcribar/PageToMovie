@@ -22,6 +22,10 @@ public partial class Characters
 
         internal string _editVoiceProfile = "";
 
+        internal string _editImagineVoiceId = "";
+
+        internal IReadOnlyList<PresetVoiceEntry> _presetVoices = Array.Empty<PresetVoiceEntry>();
+
         internal bool _forceShowVoice;
 
         internal bool _loadingMediaAudio;
@@ -81,6 +85,9 @@ public partial class Characters
             if (c.Speaks) return true;                      // any speaking role offers a voice
             if (HasVoiceProfile(c)) return true;
             if (!string.IsNullOrWhiteSpace(c.VoiceLabel)) return true;
+            if (!string.IsNullOrWhiteSpace(c.ImagineVoiceId) || !string.IsNullOrWhiteSpace(_editImagineVoiceId))
+                return true;
+            if (_presetVoices.Count > 0 && c.Speaks) return true;
             if (!string.IsNullOrWhiteSpace(_editVoiceProfile) || !string.IsNullOrWhiteSpace(_editVoiceLabel))
                 return true;
             return false;
@@ -106,7 +113,8 @@ public partial class Characters
                     S._projectId,
                     S.List._selected.Key,
                     voiceProfile: _editVoiceProfile,
-                    voiceLabel: _editVoiceLabel);
+                    voiceLabel: _editVoiceLabel,
+                    imagineVoiceId: string.IsNullOrWhiteSpace(_editImagineVoiceId) ? null : _editImagineVoiceId);
                 if (!silent)
                     S._message = $"Saved voice for {S.List._selected.DisplayName}";
                 await S.List.SoftReloadAsync();
@@ -114,6 +122,7 @@ public partial class Characters
                 {
                     _editVoiceLabel = S.List._selected.VoiceLabel ?? "";
                     _editVoiceProfile = S.List._selected.VoiceProfile ?? "";
+                    _editImagineVoiceId = S.List._selected.ImagineVoiceId ?? _editImagineVoiceId;
                 }
                 try { await S.ActiveProject.RefreshReadinessAsync(S.Engine); } catch { /* nav */ }
                 if (S.List.IsCastComplete && !silent)
@@ -170,6 +179,53 @@ public partial class Characters
             MarkVoiceStaleIfPlaying();
             ScheduleAutoSaveVoice();
             return Task.CompletedTask;
+        }
+
+        internal Task OnImagineVoiceChanged(string? value)
+        {
+            _editImagineVoiceId = value ?? "";
+            if (S.List._selected is not null)
+                S.List._selected.ImagineVoiceId = _editImagineVoiceId;
+            ScheduleAutoSaveVoice();
+            return Task.CompletedTask;
+        }
+
+        internal async Task LoadImagineVoicesAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S._projectId))
+            {
+                _presetVoices = Array.Empty<PresetVoiceEntry>();
+                return;
+            }
+            try
+            {
+                var dto = await S.Engine.GetVideoPresetVoicesAsync(S._projectId);
+                _presetVoices = dto?.Voices ?? new List<PresetVoiceEntry>();
+            }
+            catch
+            {
+                _presetVoices = Array.Empty<PresetVoiceEntry>();
+            }
+        }
+
+        internal async Task EnsureImagineVoiceForSelectedAsync()
+        {
+            if (S.List._selected is null || _presetVoices.Count == 0)
+                return;
+            if (!string.IsNullOrWhiteSpace(_editImagineVoiceId))
+                return;
+            try
+            {
+                var id = await S.Engine.EnsureImagineVoiceAsync(S._projectId, S.List._selected.Key);
+                if (string.IsNullOrWhiteSpace(id))
+                    return;
+                _editImagineVoiceId = id;
+                S.List._selected.ImagineVoiceId = id;
+            }
+            catch
+            {
+                /* first-need pick is best-effort; generate still assigns */
+            }
         }
 
 

@@ -59,6 +59,10 @@ public static class ClipVideoPromptBuilder
         public string VisualLock { get; init; } = "";
         public string VoiceProfile { get; init; } = "";
         public string VoiceLabel { get; init; } = "";
+        /// <summary>Saved Imagine / catalog preset voice id (same cast_seeds store).</summary>
+        public string ImagineVoiceId { get; init; } = "";
+        public string Gender { get; init; } = "";
+        public string AgeBand { get; init; } = "";
         public bool VoiceOnly { get; init; }
         /// <summary>Explicit cast_kind from the cast seed (group/chorus/ensemble/individual/…), if any.</summary>
         public string CastKind { get; init; } = "";
@@ -93,6 +97,8 @@ public static class ClipVideoPromptBuilder
         public bool LocationRefAttached { get; init; }
         /// <summary><IMAGE_n> tag for the location plate when attached.</summary>
         public string? LocationImageTag { get; init; }
+        /// <summary>Preset <c>voice_id</c> values for <c>reference_audios</c>, in <c>AUDIO_n</c> order.</summary>
+        public IReadOnlyList<string> ReferenceAudioVoiceIds { get; init; } = Array.Empty<string>();
 
         public PromptBuildResult WithPrompt(string prompt, string? summarySuffix = null) => new()
         {
@@ -113,6 +119,7 @@ public static class ClipVideoPromptBuilder
             LocationKey = LocationKey,
             LocationRefAttached = LocationRefAttached,
             LocationImageTag = LocationImageTag,
+            ReferenceAudioVoiceIds = ReferenceAudioVoiceIds,
             PromptLogSummary = string.IsNullOrWhiteSpace(summarySuffix)
                 ? PromptLogSummary
                 : PromptLogSummary + summarySuffix,
@@ -189,7 +196,9 @@ public static class ClipVideoPromptBuilder
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
-        var audioBlock = BuildAudioBlock(clipEl, characters, correction);
+        var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
+            videoModel, clipEl, characters, hasPrevVideo);
+        var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
         var castCountLine = FormatCastCountLine(onScreenKeys);
@@ -221,6 +230,7 @@ public static class ClipVideoPromptBuilder
             LocationKey = locationKey,
             LocationRefAttached = locationRefAttached,
             LocationImageTag = locationImageTag,
+            ReferenceAudioVoiceIds = referenceAudioVoiceIds,
             PromptLogSummary = FormatPromptLogSummary(
                 mode, allKeys.Count, onScreenKeys.Count, attached.Count,
                 locationRefAttached, locationKey, startFrameImagePath,
@@ -1475,10 +1485,47 @@ public static class ClipVideoPromptBuilder
         return characters.FirstOrDefault(kv => Stage2PlannerService.NormalizeCharacterKey(kv.Key) == norm).Value;
     }
 
+    internal static (IReadOnlyDictionary<string, string> Tags, IReadOnlyList<string> VoiceIds)
+        ResolveReferenceAudioTags(
+            string? videoModel,
+            JsonElement clipEl,
+            IReadOnlyDictionary<string, CharacterProfile>? characters,
+            bool isExtendHop)
+    {
+        if (isExtendHop)
+            return (new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Array.Empty<string>());
+        var entry = string.IsNullOrWhiteSpace(videoModel)
+            ? null
+            : SupportedModelCatalog.Find(videoModel, ModelCapability.Video);
+        if (entry is not { SupportsReferenceAudios: true })
+            return (new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Array.Empty<string>());
+        var max = entry.MaxReferenceAudios is > 0 ? entry.MaxReferenceAudios.Value : 0;
+        if (max <= 0)
+            return (new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Array.Empty<string>());
+
+        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var ids = new List<string>();
+        foreach (var line in ClipSpokenLines.FromClipElement(clipEl))
+        {
+            if (ids.Count >= max || string.IsNullOrWhiteSpace(line.Speaker))
+                continue;
+            if (tags.ContainsKey(line.Speaker))
+                continue;
+            var prof = GetCharacterProfile(characters, line.Speaker);
+            var voiceId = ImagineVoicePicker.NormalizeVoiceId(entry.PresetVoices, prof?.ImagineVoiceId);
+            if (voiceId is null)
+                continue;
+            tags[line.Speaker] = $"<AUDIO_{ids.Count}>";
+            ids.Add(voiceId);
+        }
+        return (tags, ids);
+    }
+
     private static string BuildAudioBlock(
         JsonElement clipEl,
         IReadOnlyDictionary<string, CharacterProfile>? characters,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        IReadOnlyDictionary<string, string>? audioTags = null)
     {
         if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var audio) ||
             audio.ValueKind != JsonValueKind.Object)
@@ -1493,11 +1540,11 @@ public static class ClipVideoPromptBuilder
         if (HasNoAudioContent(spoken.Dialogue, sfx, ambient, score))
             return "";
 
-        var voiceLock = BuildVoiceLock(characters, spoken.Speaker);
+        var voiceLock = BuildVoiceLock(characters, spoken.Speaker, audioTags);
 
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
-                audio, spoken, sfx, ambient, score, voiceLock, correction);
+                audio, spoken, sfx, ambient, score, voiceLock, correction, audioTags);
 
         if (HasAmbientLayers(ambient, sfx, score))
             return BuildAmbientOnlyAudio(ambient, sfx, score);
@@ -1551,8 +1598,13 @@ public static class ClipVideoPromptBuilder
 
     private static string BuildVoiceLock(
         IReadOnlyDictionary<string, CharacterProfile>? characters,
-        string speaker)
+        string speaker,
+        IReadOnlyDictionary<string, string>? audioTags = null)
     {
+        if (audioTags is not null &&
+            !string.IsNullOrWhiteSpace(speaker) &&
+            audioTags.ContainsKey(speaker))
+            return "";
         var prof = GetCharacterProfile(characters, speaker);
         if (string.IsNullOrWhiteSpace(speaker) ||
             prof is null ||
@@ -1562,6 +1614,13 @@ public static class ClipVideoPromptBuilder
         // identity. Say so, so the model does not re-cast the voice per clip.
         return " " + PromptTags.Wrap("VoiceLock",
             $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)} — exactly this one voice (same sex, age and timbre) as in every other clip of this film.");
+    }
+
+    private static string SpeakerCue(string who, IReadOnlyDictionary<string, string>? audioTags)
+    {
+        if (audioTags is not null && audioTags.TryGetValue(who, out var tag) && !string.IsNullOrWhiteSpace(tag))
+            return $"{who} {tag}";
+        return who;
     }
 
     private static List<string> CollectAudioLayers(string score, string ambient, string sfx)
@@ -1604,9 +1663,11 @@ public static class ClipVideoPromptBuilder
         string ambient,
         string score,
         string voiceLock,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        IReadOnlyDictionary<string, string>? audioTags = null)
     {
         var who = string.IsNullOrWhiteSpace(spoken.Speaker) ? "SPEAKER" : spoken.Speaker.Trim();
+        var whoCue = SpeakerCue(who, audioTags);
         var isVoiceover = IsVoiceoverDelivery(spoken.Delivery, who);
         // Full line, speech-safe punctuation (em-dash normalize, !- glue) — same words. Story
         // dialogue text, sanitized like every other leaf value before it can reach a tag.
@@ -1637,27 +1698,36 @@ public static class ClipVideoPromptBuilder
         if (isVoiceover)
         {
             return PromptTags.Wrap(AudioTag,
-                $"REQUIRED native Grok off-camera voiceover. {who} narrates " +
+                $"REQUIRED native Grok off-camera voiceover. {whoCue} narrates " +
                 $"exactly: \"{quote}\".{openCue}{endPause}{pronHint}{speakerLock} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
         }
 
-        // Two-hander: camera pans from {who} to {who2} mid-clip instead of cutting. Only
+        // Multi-hander: camera pans from speaker to speaker mid-clip instead of cutting. Only
         // applies to the on-camera case — voiceover has no second on-screen mouth to sync.
-        if (!string.IsNullOrWhiteSpace(spoken.SecondarySpeaker) &&
-            !string.IsNullOrWhiteSpace(spoken.SecondaryDialogue))
+        var extraLines = ClipSpokenLines.FromAudioPayload(audio)
+            .Skip(1)
+            .Where(l => !string.IsNullOrWhiteSpace(l.Dialogue))
+            .ToList();
+        if (extraLines.Count > 0)
         {
-            var who2 = spoken.SecondarySpeaker.Trim();
-            var quote2 = PromptTags.SanitizeValue(SanitizeSpokenDialogue(spoken.SecondaryDialogue));
-            var pronHint2 = BuildPronunciationHints(quote2);
+            var extras = new System.Text.StringBuilder();
+            var extraHints = new System.Text.StringBuilder();
+            extraHints.Append(pronHint);
+            foreach (var line in extraLines)
+            {
+                var whoN = line.Speaker.Trim();
+                var quoteN = PromptTags.SanitizeValue(SanitizeSpokenDialogue(line.Dialogue));
+                extras.Append($" Then {SpeakerCue(whoN, audioTags)} ON CAMERA lip-syncs exactly: \"{quoteN}\".");
+                extraHints.Append(BuildPronunciationHints(quoteN));
+            }
             return PromptTags.Wrap(AudioTag,
-                $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
-                $"exactly: \"{quote}\".{openCue} Then {who2} ON CAMERA lip-syncs " +
-                $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2}{speakerLock} Speech intelligible; never silent.{bed}{voiceLock}");
+                $"REQUIRED native Grok dialogue. {whoCue} ON CAMERA lip-syncs " +
+                $"exactly: \"{quote}\".{openCue}{extras}{endPause}{extraHints}{speakerLock} Speech intelligible; never silent.{bed}{voiceLock}");
         }
 
         // spoken_on_camera / on_camera (normalized)
         return PromptTags.Wrap(AudioTag,
-            $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
+            $"REQUIRED native Grok dialogue. {whoCue} ON CAMERA lip-syncs " +
             $"exactly: \"{quote}\".{openCue}{endPause}{pronHint}{speakerLock} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
     }
 

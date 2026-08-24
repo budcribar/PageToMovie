@@ -12,6 +12,9 @@ public partial class Characters_VoiceEditor
     [Parameter] public EventCallback<string> VoiceLabelChanged { get; set; }
     [Parameter] public string EditVoiceProfile { get; set; } = "";
     [Parameter] public EventCallback<string> VoiceProfileChanged { get; set; }
+    [Parameter] public string? EditImagineVoiceId { get; set; }
+    [Parameter] public EventCallback<string?> ImagineVoiceIdChanged { get; set; }
+    [Parameter] public IReadOnlyList<PresetVoiceEntry> PresetVoices { get; set; } = Array.Empty<PresetVoiceEntry>();
     [Parameter] public bool Busy { get; set; }
     [Parameter] public bool VoicePreviewBusy { get; set; }
     [Parameter] public bool VoiceJobRunning { get; set; }

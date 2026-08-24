@@ -374,8 +374,11 @@
       "minClipDurationSeconds": 1,
       "maxClipDurationSeconds": 15,
       "absMaxClipDurationSeconds": 15,
-      "maxSpeakersPerClip": 1,
+      "maxSpeakersPerClip": 3,
+      "maxResolutionWithReferences": "720p",
       "videoCostPerSecondByResolution": {
+        "480p": 0.08,
+        "720p": 0.08,
         "1080p": 0.08
       },
       "supportedAspectRatios": [
@@ -388,14 +391,14 @@
         "2:3"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap.",
+      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "docs.x.ai/developers/models/grok-imagine-video-1.5 2026-08-15: $0.080/sec. Native 1080p. No separate published ref-image or extend line item.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "docs.x.ai/developers/models and /developers/pricing 2026-08-24: official list price is a single $0.080/sec. No official 480p/720p/1080p split is published \u2014 catalog mirrors that flat rate on each requested tier. Do not invent 0.14/0.25. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
+      "lastVerifiedAt": "2026-08-24",
+      "pricingLastReviewedAt": "2026-08-24"
     },
     {
       "id": "imagine-video-1.5-extend",

@@ -4104,6 +4104,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string charKey,
         string? voiceProfile,
         string? voiceLabel = null,
+        string? imagineVoiceId = null,
         CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
@@ -4114,10 +4115,35 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 CharKey = charKey,
                 VoiceProfile = voiceProfile,
                 VoiceLabel = voiceLabel,
+                ImagineVoiceId = imagineVoiceId,
             },
             JsonOpts,
             ct);
         await EnsureOkAsync(resp, ct);
+    }
+
+    public async Task<VideoPresetVoicesDto?> GetVideoPresetVoicesAsync(
+        string projectId, CancellationToken ct = default)
+    {
+        using var resp = await _http.GetAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/video-preset-voices", ct);
+        if (!resp.IsSuccessStatusCode)
+            return null;
+        return await resp.Content.ReadFromJsonAsync<VideoPresetVoicesDto>(JsonOpts, ct);
+    }
+
+    public async Task<string?> EnsureImagineVoiceAsync(
+        string projectId, string charKey, CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/ensure-imagine",
+            new { },
+            JsonOpts,
+            ct);
+        if (!resp.IsSuccessStatusCode)
+            return null;
+        var dto = await resp.Content.ReadFromJsonAsync<EnsureImagineVoiceDto>(JsonOpts, ct);
+        return string.IsNullOrWhiteSpace(dto?.ImagineVoiceId) ? null : dto.ImagineVoiceId;
     }
 
     /// <summary>
@@ -5046,6 +5072,21 @@ public sealed class ConfigDto
     public string? ProjectId { get; set; }
     public string? ProjectDir { get; set; }
     public Dictionary<string, JsonElement>? Config { get; set; }
+}
+
+public sealed class VideoPresetVoicesDto
+{
+    public bool Ok { get; set; }
+    public string? VideoModelId { get; set; }
+    public string? GenerateModelId { get; set; }
+    public List<PresetVoiceEntry> Voices { get; set; } = new();
+}
+
+public sealed class EnsureImagineVoiceDto
+{
+    public bool Ok { get; set; }
+    public string? ImagineVoiceId { get; set; }
+    public bool Picked { get; set; }
 }
 
 public sealed class ExtractCastResultDto

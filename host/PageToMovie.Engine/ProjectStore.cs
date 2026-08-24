@@ -71,6 +71,7 @@ public sealed partial class ProjectStore
         public const string Operator = "Operator";
         public const string VoiceLabel = "voice_label";
         public const string VoiceProfile = "voice_profile";
+        public const string ImagineVoiceId = "imagine_voice_id";
         public const string IsoDateTime = "yyyy-MM-ddTHH:mm:ss";
     }
 
@@ -2736,6 +2737,24 @@ public sealed partial class ProjectStore
         return Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null;
     }
 
+    private static VoiceGender ReadGender(JsonElement info)
+    {
+        var raw = JsonStr(info, "gender");
+        if (raw.Length == 0)
+            raw = JsonStr(info, "sex");
+        if (Enum.TryParse<VoiceGender>(raw, true, out var parsed))
+            return parsed;
+        if (raw.Contains("female", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("woman", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("girl", StringComparison.OrdinalIgnoreCase))
+            return VoiceGender.Female;
+        if (raw.Contains("male", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("man", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("boy", StringComparison.OrdinalIgnoreCase))
+            return VoiceGender.Male;
+        return VoiceGender.Neutral;
+    }
+
     private static string CastKindLabel(bool voiceOnly, bool isGroup)
     {
         if (voiceOnly)
@@ -2788,6 +2807,7 @@ public sealed partial class ProjectStore
             VoiceCloneUrl = hasClone ? $"{charUrl}/voice/clone-sample" : null,
             VoiceProvider = JsonStrOrNull(info, StoreLit.VoiceProvider),
             VoiceProviderVoiceId = JsonStrOrNull(info, StoreLit.VoiceProviderVoiceId),
+            ImagineVoiceId = JsonStrOrNull(info, StoreLit.ImagineVoiceId),
             VoiceOnly = voiceOnly,
             IsGroup = isGroup,
             CastKind = CastKindLabel(voiceOnly, isGroup),
@@ -2802,6 +2822,7 @@ public sealed partial class ProjectStore
             BookRefs = voiceOnly ? new List<CharacterImageRef>() : CollectBookRefImages(projectId, projectDir, key, bookRefs),
             Variants = voiceOnly ? new List<CharacterImageRef>() : CollectCharacterVariants(projectId, projectDir, key),
             AgeBand = ReadAgeBand(info),
+            Gender = ReadGender(info),
             VariantOf = JsonStrOrNull(info, "variant_of"),
             UsedInPlan = true, // filled below from shot plan
         };
@@ -3889,11 +3910,13 @@ public sealed partial class ProjectStore
         string? voiceCloneSample = null,
         string? voiceProvider = null,
         string? voiceProviderVoiceId = null,
-        string? voiceCloneProviderId = null)
+        string? voiceCloneProviderId = null,
+        string? imagineVoiceId = null)
     {
         var patch = new CharacterSeedTextPatch(
             charKey, description, visualLock, voiceProfile, voiceLabel,
-            voiceCloneSample, voiceProvider, voiceProviderVoiceId, voiceCloneProviderId);
+            voiceCloneSample, voiceProvider, voiceProviderVoiceId, voiceCloneProviderId,
+            imagineVoiceId);
         PatchCharacterSeedFile(ScreenplayService.GetCastSeedsPath(this, projectId), patch, createCastShape: true);
         var bp = FindBlueprintPathSync(projectId);
         if (bp is not null)
@@ -3913,7 +3936,8 @@ public sealed partial class ProjectStore
         string? VoiceCloneSample,
         string? VoiceProvider,
         string? VoiceProviderVoiceId,
-        string? VoiceCloneProviderId);
+        string? VoiceCloneProviderId,
+        string? ImagineVoiceId);
 
     private static void ApplyCharacterSeedTextPatch(
         System.Text.Json.Nodes.JsonObject seeds,
@@ -3938,6 +3962,7 @@ public sealed partial class ProjectStore
         SetOrRemoveJsonString(seed, StoreLit.VoiceProvider, patch.VoiceProvider);
         SetOrRemoveJsonString(seed, StoreLit.VoiceProviderVoiceId, patch.VoiceProviderVoiceId);
         SetOrRemoveJsonString(seed, "voice_clone_provider_id", patch.VoiceCloneProviderId);
+        SetOrRemoveJsonString(seed, StoreLit.ImagineVoiceId, patch.ImagineVoiceId);
         seeds[foundKey] = seed;
     }
 
@@ -4189,7 +4214,12 @@ public sealed partial class ProjectStore
         var vlock = JsonStr(info, StoreLit.VisualLock).Trim();
         var profile = JsonStr(info, StoreLit.VoiceProfile).Trim();
         var label = JsonStr(info, StoreLit.VoiceLabel).Trim();
-        if (desc.Length == 0 && vlock.Length == 0 && profile.Length == 0 && label.Length == 0)
+        var imagineVoiceId = JsonStr(info, StoreLit.ImagineVoiceId).Trim();
+        var gender = JsonStr(info, "gender").Trim();
+        if (gender.Length == 0)
+            gender = JsonStr(info, "sex").Trim();
+        var ageBand = JsonStr(info, "age_band").Trim();
+        if (desc.Length == 0 && vlock.Length == 0 && profile.Length == 0 && label.Length == 0 && imagineVoiceId.Length == 0)
             return null;
         var display = JsonStr(info, "canonical_given_name").Trim();
         if (display.Length == 0)
@@ -4205,6 +4235,9 @@ public sealed partial class ProjectStore
             VisualLock = vlock,
             VoiceProfile = profile,
             VoiceLabel = label,
+            ImagineVoiceId = imagineVoiceId,
+            Gender = gender,
+            AgeBand = ageBand,
             VoiceOnly = info.TryGetProperty("display_name_policy", out var pol) &&
                         CastKindClassifier.IsVoiceOnlyPolicy(pol.GetString()),
             CastKind = JsonStr(info, "cast_kind").Trim(),
