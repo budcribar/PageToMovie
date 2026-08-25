@@ -48,6 +48,23 @@ public class ReviewClipReviewCardTests
     }
 
     [Fact]
+    public void DecideClipIsPlayable_enables_when_size_unknown_or_local_take_exists()
+    {
+        Assert.True(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: 0, missingServerVideo: new[] { 2 }, clip: 2, hasLocalVideo: false));
+        Assert.True(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: 120, missingServerVideo: new[] { 2 }, clip: 2, hasLocalVideo: true));
+        Assert.False(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: 120, missingServerVideo: new[] { 2 }, clip: 2, hasLocalVideo: false));
+        Assert.True(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: null, missingServerVideo: new[] { 2 }, clip: 2, hasLocalVideo: true));
+        Assert.False(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: null, missingServerVideo: new[] { 2 }, clip: 2, hasLocalVideo: false));
+        Assert.True(Review.ReviewListState.DecideClipIsPlayable(
+            detailSizeBytes: 80_000, missingServerVideo: new[] { 3 }, clip: 2, hasLocalVideo: false));
+    }
+
+    [Fact]
     public void ReviewReviewTab_clip_play_does_not_use_scene_completeness()
     {
         var razor = File.ReadAllText(ReviewReviewTabPath());

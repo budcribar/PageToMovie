@@ -96,24 +96,36 @@ public partial class Scenes
 
     internal async Task LoadClipVideoAndTakesCountAsync(int scene, int clip)
     {
-        if (S.MediaFolder.IsConnected)
+        try
         {
-            try
+            if (S.MediaFolder.IsConnected)
             {
-                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
-                var localBlob = await S.MediaFolder.GetCurrentTakeBlobUrlAsync(
-                    S._projectId, scene, clip, expectedSize);
-                if (!string.IsNullOrWhiteSpace(localBlob))
+                try
                 {
-                    _clipVideoUrl = localBlob;
+                    var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
+                    var localBlob = await S.MediaFolder.GetCurrentTakeBlobUrlAsync(
+                        S._projectId, scene, clip, expectedSize);
+                    if (!string.IsNullOrWhiteSpace(localBlob))
+                        _clipVideoUrl = localBlob;
+                }
+                catch { /* fallback to server URL */ }
+            }
+
+            if (string.IsNullOrWhiteSpace(_clipVideoUrl))
+            {
+                var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == clip);
+                if (row is { ProviderLeadInSeconds: > 0.1 })
+                {
+                    // Provider copy is combined (previous clip at the head). Slice this
+                    // clip's own hop — do not play C-1's file or the raw combined URL.
+                    _clipServerVideoUrl = await S.Stitch.ResolveServerClipUrlAsync(S._projectId, scene, row);
                 }
             }
-            catch { /* fallback to server URL */ }
-            finally
-            {
-                _clipVideoLoading = false;
-                S.StateHasChanged();
-            }
+        }
+        finally
+        {
+            _clipVideoLoading = false;
+            S.StateHasChanged();
         }
 
         // Proactive, lightweight fetch so the "Takes (N)" button shows a real count without
@@ -196,8 +208,11 @@ public partial class Scenes
         {
             var row = detail.Clips.FirstOrDefault(c => c.ClipNumber == clip);
             if (row is not null)
-                return ScenePlayGate.DecideOneClipPlay(
-                    scene, clip, ScenePlayGate.HasServerVideo(row.SizeBytes), hasLocal);
+            {
+                if (ScenePlayGate.IsClipPlayable(row.SizeBytes, hasLocal))
+                    return (true, null);
+                return ScenePlayGate.DecideOneClipPlay(scene, clip, hasServerVideo: false);
+            }
         }
 
         var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == scene);
@@ -259,14 +274,7 @@ public partial class Scenes
 
         foreach (var (scene, clip) in needed.Where(k => !_localVideoReady.TryGetValue(k, out var ready) || !ready))
         {
-            var rel = await S.MediaFolder.ResolveCurrentTakeRelativePathAsync(S._projectId, scene, clip);
-            if (string.IsNullOrWhiteSpace(rel))
-            {
-                _localVideoReady[(scene, clip)] = false;
-                continue;
-            }
-            var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
-            _localVideoReady[(scene, clip)] = found && size >= ScenePlayGate.MinPlayableVideoBytes;
+            _localVideoReady[(scene, clip)] = await S.MediaFolder.HasCurrentTakeFileAsync(S._projectId, scene, clip);
         }
     }
 

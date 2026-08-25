@@ -149,6 +149,29 @@ public class ScenePlayGateTests
     }
 
     [Fact]
+    public void IsClipPlayable_unknown_size_does_not_disable()
+    {
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 0));
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 0, hasLocalVideo: true));
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 120, hasLocalVideo: true));
+        Assert.False(ScenePlayGate.IsClipPlayable(sizeBytes: 120));
+    }
+
+    [Fact]
+    public void SceneMediaPresenceIndex_current_take_pointer_is_present_not_server_mp4()
+    {
+        var index = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["scene_01_clip_02.current.json"] = 20,
+            ["scene_01_clip_02_take_01.clip.json"] = 400,
+        };
+
+        var presence = new SceneMediaPresenceIndex(index);
+        Assert.True(presence.IsPresent(1, 2));
+        Assert.False(presence.HasServerMp4(1, 2));
+    }
+
+    [Fact]
     public void IsClipPlayableFromSceneMissingList_does_not_require_the_rest_of_the_scene()
     {
         var missing = (IReadOnlyList<int>)new[] { 3 };

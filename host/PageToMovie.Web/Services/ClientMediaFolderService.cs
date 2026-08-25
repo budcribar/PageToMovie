@@ -643,6 +643,20 @@ public sealed class ClientMediaFolderService
             : await GetLocalBlobUrlAsync(projectId, rel);
     }
 
+    /// <summary>
+    /// True when the local folder has this clip's current take file
+    /// (<c>.current.json</c> → <c>_take_NN.mp4</c>). Size is not a validity
+    /// guess — a nonempty file is enough to enable Play.
+    /// </summary>
+    public async Task<bool> HasCurrentTakeFileAsync(string projectId, int scene, int clip)
+    {
+        var rel = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip);
+        if (string.IsNullOrWhiteSpace(rel))
+            return false;
+        var (found, size) = await StatLocalFileAsync(projectId, rel);
+        return found && size > 0;
+    }
+
     private static string MediaKind(bool isCredits, bool isMusic, bool isSpeakBatch)
     {
         if (isCredits) return "credits";

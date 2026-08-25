@@ -486,6 +486,42 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
+    public async Task CollectClipUrlsAsync_RequestedClip2_DoesNotIncludeClip1()
+    {
+        var (stitch, _) = CreateStitchWithMixedVideoStatus(scene: 1, playable: new[] { 1, 2 }, missing: Array.Empty<int>());
+
+        var urls = await stitch.CollectClipUrlsAsync("test-project", 1, clipNumbers: new[] { 2 });
+
+        Assert.Single(urls);
+        Assert.Contains("/clips/2/", urls[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(urls, u => u.Contains("/clips/1/", StringComparison.Ordinal));
+        Assert.Empty(stitch.LastSkippedClipLabels);
+    }
+
+    [Fact]
+    public async Task ResolveServerClipUrlAsync_slices_this_clip_hop_not_previous_clip_url()
+    {
+        var js = new StitchJsRuntime(identifier => identifier switch
+        {
+            "PageToMovieFfmpeg.probeDurationAsync" =>
+                """{"success":true,"seconds":10.0}""",
+            "PageToMovieFfmpeg.keepLastSecondsAsync" =>
+                """{"success":true,"url":"blob:s01-c02-sliced"}""",
+            _ => throw new InvalidOperationException($"Unexpected JS call: {identifier}"),
+        });
+        var engine = new EngineApiClient(new HttpClient(new FakeHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.OK))) { BaseAddress = new Uri("http://localhost") });
+        var stitch = new ClientVideoStitchService(js, engine);
+        var clip = new ClipSummary { ClipNumber = 2, ProviderLeadInSeconds = 4.9 };
+
+        var url = await stitch.ResolveServerClipUrlAsync("test-project", 1, clip);
+
+        Assert.Equal("blob:s01-c02-sliced", url);
+        Assert.Contains("PageToMovieFfmpeg.keepLastSecondsAsync", js.Calls);
+        Assert.DoesNotContain(js.Calls, c => c.Contains("/clips/1/", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task CollectClipUrlsAsync_RequestedMissingClip_StaysEmpty_AndNamesThatClip()
     {
         var (stitch, _) = CreateStitchWithMixedVideoStatus(scene: 2, playable: new[] { 1, 2, 4 }, missing: new[] { 3 });

@@ -47,13 +47,18 @@ public partial class Scenes
                 // calling it inline re-evaluates on every render (any SignalR/job-poll re-render
                 // elsewhere on the page) and gives the <video> a new src each time, which makes the
                 // browser reload the resource and restart playback — looks like looping.
-                S.Playback._clipServerVideoUrl = S.List._detail is not null
+                var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == cnv);
+                var needsOwnHop = row is { ProviderLeadInSeconds: > 0.1 };
+                // Combined provider copies start with the previous clip. Do not point
+                // <video> at the raw clip URL until LoadClipVideoAndTakesCountAsync
+                // slices this clip's own hop (or finds a local current take).
+                S.Playback._clipServerVideoUrl = S.List._detail is not null && !needsOwnHop
                     ? Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, S.List._detail.SceneNumber, cnv))
                     : null;
                 // Gate the <video> behind a loading spinner while we check for a newer local copy —
                 // otherwise it renders immediately with the (possibly stale) server fallback src and
                 // autoplays that before swapping to the fresh one once the check resolves.
-                S.Playback._clipVideoLoading = S.MediaFolder.IsConnected;
+                S.Playback._clipVideoLoading = S.MediaFolder.IsConnected || needsOwnHop;
                 // Stop full-scene autoplay panel if open
                 if (S.Playback._showScenePlayer && S.Playback._playingScene == S.List._detail?.SceneNumber)
                 {
