@@ -21,8 +21,22 @@ public sealed record ClipProviderSource(
     double? ClipStartSeconds = null,
     double? ClipStopSeconds = null,
     string? Model = null,
-    string? SourceProvider = null)
+    string? SourceProvider = null,
+    double? MeasuredDurationSeconds = null)
 {
+    /// <summary>
+    /// The clip's real length, preferring what was measured off the saved MP4 over what was asked
+    /// for.
+    /// </summary>
+    /// <remarks>
+    /// <c>duration_seconds</c> is the REQUESTED length and is always a whole number; a real encode
+    /// essentially never is. Using it as the seam in a combined video means slicing a little past
+    /// where the new footage actually starts, which silently ate the first spoken word of every
+    /// extended clip (Mary19 S02C02, 2026-08-25). Whatever the difference is, it comes off the
+    /// front of the take, so it is exactly the part that must not be lost.
+    /// </remarks>
+    public double? EffectiveDurationSeconds => MeasuredDurationSeconds ?? DurationSeconds;
+
     public bool HasProviderCopy => !string.IsNullOrWhiteSpace(SourceUrl) || !string.IsNullOrWhiteSpace(SourceFileId);
     public bool IsCombined => LeadInSeconds > 0.1;
 
@@ -36,6 +50,8 @@ public sealed record ClipProviderSource(
     public const string LeadInProperty = "provider_lead_in_seconds";
     public const string ClipStartProperty = "provider_clip_start_seconds";
     public const string ClipStopProperty = "provider_clip_stop_seconds";
+    /// <summary>Length measured off the saved MP4 — see <see cref="EffectiveDurationSeconds"/>.</summary>
+    public const string MeasuredDurationProperty = "measured_duration_seconds";
 
     private static readonly Regex ClipNameRx = new(@"scene_(\d{2})_clip_(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
@@ -62,6 +78,40 @@ public sealed record ClipProviderSource(
         return FindLatestSidecarPath(Path.GetDirectoryName(mp4Path) ?? "", int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
     }
 
+    /// <summary>
+    /// Stamp the clip's measured length onto its newest sidecar. No-op when there is no sidecar
+    /// or the value is not usable.
+    /// </summary>
+    /// <remarks>
+    /// Only the browser can measure this — it holds the bytes; the API host never keeps the MP4.
+    /// So the measurement arrives later than the sidecar was written, and is merged in rather than
+    /// written with it. Merging into the existing JSON (rather than rewriting a known shape) keeps
+    /// any field this type does not model.
+    /// </remarks>
+    public static bool TryStampMeasuredDuration(string videoDir, int scene, int clip, double seconds)
+    {
+        if (seconds <= 0.1 || double.IsNaN(seconds) || double.IsInfinity(seconds))
+            return false;
+        var path = FindLatestSidecarPath(videoDir, scene, clip);
+        if (path is null || !File.Exists(path))
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+            var merged = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                merged[prop.Name] = prop.Value.Clone();
+            merged[MeasuredDurationProperty] =
+                JsonSerializer.SerializeToElement(Math.Round(seconds, 3));
+            File.WriteAllText(path, JsonSerializer.Serialize(
+                merged, new JsonSerializerOptions { WriteIndented = true }));
+            return true;
+        }
+        catch { return false; }
+    }
+
     public static ClipProviderSource? Read(string? sidecarPath)
     {
         if (string.IsNullOrWhiteSpace(sidecarPath) || !File.Exists(sidecarPath)) return null;
@@ -85,7 +135,8 @@ public sealed record ClipProviderSource(
             Num(ClipStartProperty),
             Num(ClipStopProperty),
             Str("model"),
-            Str("source_provider"));
+            Str("source_provider"),
+            Num(MeasuredDurationProperty));
     }
 
     /// <summary>

@@ -326,6 +326,7 @@ window.PageToMovieMedia = {
 
             report(60, "Hashing…");
             const sha = await this._sha256Hex(buf);
+            const durationSeconds = await this._probeDurationSecondsAsync(buf, relativePath);
             report(85, "Writing folder…");
             const key = await this._writeFileAndRevokeBlobAsync(relativePath, buf);
             report(100, "Saved");
@@ -333,6 +334,7 @@ window.PageToMovieMedia = {
                 success: true,
                 sha256: sha,
                 sizeBytes: buf.byteLength,
+                durationSeconds: durationSeconds,
                 relativePath: key,
                 folderName: this._root.name,
                 fileIdError: fileIdError,
@@ -713,6 +715,42 @@ window.PageToMovieMedia = {
      * Write bytes into the media folder and drop any cached blob URL for that path.
      * @returns {Promise<string>} normalized relative path
      */
+    /**
+     * Real playback length of a clip we just saved, or null if it cannot be determined.
+     *
+     * The recorded duration_seconds is what was REQUESTED and is always a whole number; an actual
+     * encode essentially never is. When the next clip extends this one, the provider returns
+     * [this clip + new footage] combined and the seam sits at this clip's true length — so slicing
+     * at the requested length cuts a fraction of a second off the FRONT of the new footage, which
+     * is where the first spoken word lives (Mary19 S02C02, 2026-08-25).
+     *
+     * Metadata-only: preload="metadata" reads the header, not the stream. Null on any failure,
+     * since the requested duration remains a usable fallback and a save must never fail over this.
+     */
+    _probeDurationSecondsAsync: async function (buf, relativePath) {
+        if (!/\.mp4$/i.test(relativePath || "")) return null;
+        let url = null;
+        try {
+            url = URL.createObjectURL(new Blob([buf], { type: "video/mp4" }));
+            const v = document.createElement("video");
+            v.preload = "metadata";
+            const seconds = await new Promise((resolve) => {
+                let settled = false;
+                const done = (val) => { if (!settled) { settled = true; resolve(val); } };
+                v.onloadedmetadata = () => done(v.duration);
+                v.onerror = () => done(null);
+                // A codec the browser cannot parse would otherwise hang the save forever.
+                setTimeout(() => done(null), 8000);
+                v.src = url;
+            });
+            return (typeof seconds === "number" && isFinite(seconds) && seconds > 0) ? seconds : null;
+        } catch (_) {
+            return null;
+        } finally {
+            if (url) { try { URL.revokeObjectURL(url); } catch (_) { /* */ } }
+        }
+    },
+
     _writeFileAndRevokeBlobAsync: async function (relativePath, buf) {
         const { dir, fileName } = await this._ensurePathAsync(relativePath);
         const fh = await dir.getFileHandle(fileName, { create: true });

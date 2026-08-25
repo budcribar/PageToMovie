@@ -436,6 +436,31 @@ public static class MediaEndpoints
     private static string ClaimScope(IUserContext user, string projectId, MediaSaveClaimRequest body) =>
         $"{user.UserId}/{projectId}/{(string.IsNullOrWhiteSpace(body.FolderKey) ? "?" : body.FolderKey.Trim().ToLowerInvariant())}";
 
+    /// <summary>
+    /// Record the clip's real length on its sidecar, so the NEXT clip's video-extend slices the
+    /// combined provider video at the true seam.
+    /// </summary>
+    /// <remarks>
+    /// Only the browser can measure it — it holds the bytes, and the API host never keeps the MP4
+    /// — so it arrives here rather than at sidecar-write time. Best effort throughout: without it
+    /// the extend falls back to the requested duration, which is what it always used.
+    /// </remarks>
+    private static async Task StampMeasuredClipDurationAsync(
+        string projectId, MediaRegisterRequest body, ProjectStore store, CancellationToken ct)
+    {
+        if (body.DurationSeconds is not { } seconds || seconds <= 0.1)
+            return;
+        if (body.Scene is not { } scene || body.Clip is not { } clip || scene <= 0 || clip <= 0)
+            return;
+        try
+        {
+            var projectDir = await store.GetProjectDirAsync(projectId, ct);
+            var videoDir = Path.Combine(projectDir, "assets", "video");
+            ClipProviderSource.TryStampMeasuredDuration(videoDir, scene, clip, seconds);
+        }
+        catch { /* the requested duration remains the fallback */ }
+    }
+
     private static async Task<IResult> PostProjectsIdMediaRegister(string id,
     MediaRegisterRequest body,
     IUserContext user,
@@ -463,6 +488,7 @@ public static class MediaEndpoints
             user.UserId,
             ct);
 
+        await StampMeasuredClipDurationAsync(id, body, store, ct);
         await MaybeOffloadServerMediaAsync(id, dto, user.UserId, store, ct);
         return Results.Ok(new { ok = true, media = dto });
     }

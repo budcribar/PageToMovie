@@ -21,7 +21,8 @@ public static class ClipExtendSource
         double? DurationSeconds,
         double? ClipStopSeconds = null,
         string? LocalPath = null,
-        double? LocalDuration = null);
+        double? LocalDuration = null,
+        double? MeasuredDurationSeconds = null);
 
     public readonly record struct FallbackOffer(
         string? MarkerFileId = null,
@@ -35,8 +36,18 @@ public static class ClipExtendSource
     /// stop = end of the file). Standalone: the clip duration. No edit-input cap.
     /// </summary>
     public static double ProviderInputDurationSeconds(
-        double leadInSeconds, double? durationSeconds, double? clipStopSeconds = null)
+        double leadInSeconds,
+        double? durationSeconds,
+        double? clipStopSeconds = null,
+        double? measuredDurationSeconds = null)
     {
+        // A measured length beats a recorded stop. Both describe the same end of the same file,
+        // but the recorded stop was computed from the REQUESTED duration, so it inherits exactly
+        // the rounding this parameter exists to correct — and it is the value that put the seam
+        // past the start of the new footage, clipping the first word off every extended clip.
+        if (measuredDurationSeconds is { } measured && measured > 0.1)
+            return leadInSeconds > 0.1 ? leadInSeconds + measured : measured;
+
         if (clipStopSeconds is { } stop && stop > 0.1)
             return stop;
         var slice = durationSeconds ?? 0;
@@ -46,7 +57,8 @@ public static class ClipExtendSource
     }
 
     public static double ProviderInputDurationSeconds(ClipProviderSource src) =>
-        ProviderInputDurationSeconds(src.LeadInSeconds, src.DurationSeconds, src.ClipStopSeconds);
+        ProviderInputDurationSeconds(
+            src.LeadInSeconds, src.DurationSeconds, src.ClipStopSeconds, src.MeasuredDurationSeconds);
 
     /// <summary>
     /// Prefer the predecessor's provider <c>file_id</c> (combined is OK). Marker / local upload
@@ -57,7 +69,8 @@ public static class ClipExtendSource
         if (!string.IsNullOrWhiteSpace(predecessor.FileId))
         {
             var input = ProviderInputDurationSeconds(
-                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds);
+                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds,
+                predecessor.MeasuredDurationSeconds);
             return new Choice(predecessor.FileId, null, input > 0.1 ? input : predecessor.DurationSeconds);
         }
 
@@ -86,7 +99,8 @@ public static class ClipExtendSource
         if (!string.IsNullOrWhiteSpace(predecessor.FileId))
         {
             var input = ProviderInputDurationSeconds(
-                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds);
+                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds,
+                predecessor.MeasuredDurationSeconds);
             return new Choice(predecessor.FileId, null, input > 0.1 ? input : predecessor.DurationSeconds);
         }
 
@@ -103,7 +117,8 @@ public static class ClipExtendSource
                 src.SourceFileId,
                 src.LeadInSeconds,
                 src.DurationSeconds,
-                src.ClipStopSeconds));
+                src.ClipStopSeconds,
+                MeasuredDurationSeconds: src.MeasuredDurationSeconds));
 
     /// <summary>Lead-in written on the new clip: how much of THIS provider file is previous.</summary>
     public static double? NewClipLeadInSeconds(double? previousInputDurationSeconds) =>

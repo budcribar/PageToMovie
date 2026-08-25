@@ -1376,6 +1376,17 @@ public sealed class MediaRegisterRequest
     public string RelativePath { get; set; } = "";
     public string Sha256 { get; set; } = "";
     public long SizeBytes { get; set; }
+
+    /// <summary>
+    /// Playback length measured off the saved file, when the browser could read it.
+    /// </summary>
+    /// <remarks>
+    /// Recorded so the NEXT clip's video-extend knows where this one really ends. The provider
+    /// returns [this clip + new footage] combined, and the seam sits at this clip's true length —
+    /// the requested duration is a whole number and an encode is not, so slicing at the requested
+    /// value cuts the front off the new footage, taking the first spoken word with it.
+    /// </remarks>
+    public double? DurationSeconds { get; set; }
     public string Kind { get; set; } = "clip";
     public int? Scene { get; set; }
     public int? Clip { get; set; }

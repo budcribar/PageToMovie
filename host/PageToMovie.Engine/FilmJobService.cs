@@ -5631,7 +5631,8 @@ public sealed class FilmJobService
         string? SourceUrl,
         double? DurationSeconds,
         double LeadInSeconds = 0,
-        double? ClipStopSeconds = null);
+        double? ClipStopSeconds = null,
+        double? MeasuredDurationSeconds = null);
 
     private static PredecessorClipDetails? TryReadPredecessorClipDetails(string projectDir, int scene, int clip)
     {
@@ -5658,7 +5659,8 @@ public sealed class FilmJobService
                 SourceUrl: src?.SourceUrl,
                 DurationSeconds: src?.DurationSeconds,
                 LeadInSeconds: src?.LeadInSeconds ?? 0,
-                ClipStopSeconds: src?.ClipStopSeconds);
+                ClipStopSeconds: src?.ClipStopSeconds,
+                MeasuredDurationSeconds: src?.MeasuredDurationSeconds);
         }
         catch
         {
@@ -5743,7 +5745,8 @@ public sealed class FilmJobService
                 prev?.DurationSeconds,
                 prev?.ClipStopSeconds,
                 prev?.LocalMp4Path,
-                prev?.DurationSeconds),
+                prev?.DurationSeconds,
+                prev?.MeasuredDurationSeconds),
             new ClipExtendSource.FallbackOffer(markerFileId, markerSeconds, explicitSrc, explicitDur));
 
         if (!choice.HasInput)
@@ -5778,7 +5781,8 @@ public sealed class FilmJobService
                 prev?.DurationSeconds,
                 prev?.ClipStopSeconds,
                 prev?.LocalMp4Path,
-                prev?.DurationSeconds));
+                prev?.DurationSeconds,
+                prev?.MeasuredDurationSeconds));
 
         if (!choice.HasInput)
         {
@@ -5813,7 +5817,8 @@ public sealed class FilmJobService
                 SourceUrl: src?.SourceUrl,
                 DurationSeconds: src?.DurationSeconds,
                 LeadInSeconds: src?.LeadInSeconds ?? 0,
-                ClipStopSeconds: src?.ClipStopSeconds);
+                ClipStopSeconds: src?.ClipStopSeconds,
+                MeasuredDurationSeconds: src?.MeasuredDurationSeconds);
         }
         catch
         {

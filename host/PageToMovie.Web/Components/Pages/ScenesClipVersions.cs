@@ -106,19 +106,46 @@ public partial class Scenes
         /// from the local <c>.current.json</c>, so without this the promoted take is invisible to it
         /// until a media sync happens to run.
         /// </summary>
+        /// <remarks>
+        /// Every failure here used to be silent — three early returns and a bare catch — while the
+        /// caller still reported the server-side promote as a success. The result was a take that
+        /// the UI said was selected and the player would not play, with nothing anywhere saying
+        /// why (2026-08-25). The player reads the local pointer, so if this does not land, the
+        /// selection did not happen no matter what the server says. Say so instead.
+        /// </remarks>
         private async Task PublishPromotedTakeAsync(int sceneNumber, int clipNumber)
         {
             if (!S.MediaFolder.IsConnected)
+            {
+                _clipCompareMessage =
+                    "Promoted on the server, but your media folder is not connected — the player " +
+                    "will keep showing the previous take until you connect it.";
                 return;
+            }
+
             var current = _clipVersions?.FirstOrDefault(v => v.IsCurrent);
             var take = current?.Take ?? 0;
             if (take <= 0)
+            {
+                _clipCompareMessage =
+                    "Promoted on the server, but it did not report which take is now current, so " +
+                    "the player cannot be pointed at it. Reload the clip and try again.";
                 return;
+            }
+
             try
             {
-                await S.MediaFolder.WriteCurrentTakeAsync(S._projectId, sceneNumber, clipNumber, take);
+                if (!await S.MediaFolder.WriteCurrentTakeAsync(S._projectId, sceneNumber, clipNumber, take))
+                    _clipCompareMessage =
+                        $"Promoted take {take} on the server, but writing the pointer to your " +
+                        "media folder failed, so the player still has the previous take.";
             }
-            catch { /* server copy still holds; a later sync brings the folder in line */ }
+            catch (Exception ex)
+            {
+                _clipCompareMessage =
+                    $"Promoted take {take} on the server, but the media folder rejected the " +
+                    $"pointer write ({ex.Message}), so the player still has the previous take.";
+            }
         }
 
         internal async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)

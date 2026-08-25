@@ -707,6 +707,7 @@ public sealed class ClientMediaFolderService
             Kind = MediaKind(isCredits, isMusic, isSpeakBatch),
             Scene = snap.Scene,
             Clip = snap.Clip,
+            DurationSeconds = saved.DurationSeconds,
         });
 
         var sil = string.IsNullOrWhiteSpace(silenceMessage)
@@ -1626,6 +1627,8 @@ public sealed class ClientMediaFolderService
         public bool Success { get; set; } = false;
         public string? Sha256 { get; set; } = null;
         public long SizeBytes { get; set; } = 0;
+        /// <summary>Measured playback length; null when the browser could not read it.</summary>
+        public double? DurationSeconds { get; set; } = null;
         public string? RelativePath { get; set; } = null;
         public string? Error { get; set; } = null;
         public string? FileIdError { get; set; } = null;
