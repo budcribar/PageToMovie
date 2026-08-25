@@ -727,6 +727,44 @@ window.PageToMovieMedia = {
         return key;
     },
 
+    /**
+     * Stable identity of the connected folder, stored as a marker file inside the folder itself.
+     *
+     * Used to decide which windows contend for the right to write a generated clip. Only windows
+     * pointed at the SAME directory may block each other; two machines with their own folders must
+     * both download, or the second folder silently ends up missing takes. Neither of the obvious
+     * identifiers can decide that: the File System Access API does not guarantee a real path, and
+     * the folder NAME collides constantly (two machines both picking "PageToMovie" is the normal
+     * case, not a corner one). A marker inside the directory is read identically by every browser
+     * on every machine that opens it, and differs for any other directory.
+     *
+     * @returns {Promise<{success: boolean, folderId?: string, error?: string}>}
+     */
+    folderIdAsync: async function () {
+        const denied = await this._ensureRootConnectedAsync();
+        if (denied) return denied;
+        const NAME = ".pagetomovie-folder-id";
+        try {
+            try {
+                const fh = await this._root.getFileHandle(NAME, { create: false });
+                const text = (await (await fh.getFile()).text()).trim();
+                if (text) return { success: true, folderId: text };
+            } catch (_) { /* absent or unreadable — mint one below */ }
+
+            const id = (crypto.randomUUID && crypto.randomUUID()) ||
+                Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                    .map(b => b.toString(16).padStart(2, "0")).join("");
+            const fh = await this._root.getFileHandle(NAME, { create: true });
+            const w = await fh.createWritable();
+            await w.write(id);
+            await w.close();
+            return { success: true, folderId: id };
+        } catch (err) {
+            // A read-only folder still works for everything else, so this must not be fatal.
+            return { success: false, error: err.message || String(err) };
+        }
+    },
+
     _ensureRootConnectedAsync: async function () {
         if (!this._root) {
             const c = await this.connectFolderAsync();

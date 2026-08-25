@@ -2871,6 +2871,64 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await SendJsonAsync<object>(req, ct);
     }
 
+    /// <summary>
+    /// Ask to be the window that writes <paramref name="relativePath"/> into the media folder.
+    /// </summary>
+    /// <remarks>
+    /// Every window signed in as this user receives the same JobUpdated, and the save
+    /// de-duplication in ClientMediaFolderService is per-window, so without this they all write
+    /// the same file — and the writer truncates on open, so the later write destroys the earlier
+    /// one. Returns false when another window already holds the claim; returns TRUE when the
+    /// server cannot be reached, because refusing to save on a network blip would lose the clip
+    /// outright, while an extra writer only risks the collision this exists to avoid.
+    /// </remarks>
+    public async Task<bool> TryClaimMediaSaveAsync(
+        string projectId, string relativePath, string clientId, string folderKey,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{ProjectIdRouting.ProjectApi(projectId)}/media/claim")
+            {
+                Content = JsonContent.Create(
+                    new MediaSaveClaimRequest
+                    {
+                        RelativePath = relativePath, ClientId = clientId, FolderKey = folderKey,
+                    },
+                    options: JsonOpts),
+            };
+            var res = await SendJsonAsync<MediaSaveClaimResponse>(req, ct);
+            return res?.Granted ?? true;   // see MediaSaveClaimResponse.Granted: absent means yes
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <inheritdoc cref="TryClaimMediaSaveAsync"/>
+    public async Task ReleaseMediaSaveClaimAsync(
+        string projectId, string relativePath, string clientId, string folderKey,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{ProjectIdRouting.ProjectApi(projectId)}/media/claim/release")
+            {
+                Content = JsonContent.Create(
+                    new MediaSaveClaimRequest
+                    {
+                        RelativePath = relativePath, ClientId = clientId, FolderKey = folderKey,
+                    },
+                    options: JsonOpts),
+            };
+            await SendJsonAsync<object>(req, ct);
+        }
+        catch { /* the lease expires on its own; a failed release costs a retry delay, not the file */ }
+    }
+
     /// <returns>Queued job snapshot (includes JobId for polling).</returns>
     public async Task<JobSnapshot?> StartClipAutoReviewAsync(
         string projectId,

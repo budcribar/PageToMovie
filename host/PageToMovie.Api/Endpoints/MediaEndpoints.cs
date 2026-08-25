@@ -27,6 +27,10 @@ public static class MediaEndpoints
         app.MapGet("/api/projects/{id}/media/file", GetProjectsIdMediaFile);
         // <summary>Register client-side media hash (clips/exports) so the server need not store MP4s.</summary>
         app.MapPost("/api/projects/{id}/media/register", PostProjectsIdMediaRegister);
+        // <summary>Claim/release the right to write one generated file, so that only one of a
+        // user's open windows saves it into the shared media folder.</summary>
+        app.MapPost("/api/projects/{id}/media/claim", PostProjectsIdMediaClaim);
+        app.MapPost("/api/projects/{id}/media/claim/release", PostProjectsIdMediaClaimRelease);
         app.MapGet("/api/projects/{id}/media", GetProjectsIdMedia);
         app.MapGet("/api/media/proxy/{token}", GetMediaProxyToken);
         return app;
@@ -381,6 +385,56 @@ public static class MediaEndpoints
             _ => SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString()
         };
     }
+
+    /// <summary>
+    /// Grant one client the right to write <c>relativePath</c>. Every window signed in as this
+    /// user gets the same JobUpdated and would otherwise each download and write the same file;
+    /// the media writer truncates on open, so the second write destroys the first.
+    /// </summary>
+    private static async Task<IResult> PostProjectsIdMediaClaim(string id,
+    MediaSaveClaimRequest body,
+    IUserContext user,
+    IOptions<PageToMovieOptions> opts,
+    MediaSaveClaims claims,
+    ProjectStore store,
+    CancellationToken ct)
+    {
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    if (body is null || string.IsNullOrWhiteSpace(body.RelativePath) || string.IsNullOrWhiteSpace(body.ClientId))
+        return Results.BadRequest(new { ok = false, error = "relativePath and clientId required" });
+    await store.RequireProjectAsync(id, ct);
+    var granted = claims.TryClaim(ClaimScope(user, id, body), body.RelativePath, body.ClientId);
+    return Results.Ok(new { ok = true, granted });
+    }
+
+    /// <inheritdoc cref="PostProjectsIdMediaClaim"/>
+    private static async Task<IResult> PostProjectsIdMediaClaimRelease(string id,
+    MediaSaveClaimRequest body,
+    IUserContext user,
+    IOptions<PageToMovieOptions> opts,
+    MediaSaveClaims claims,
+    ProjectStore store,
+    CancellationToken ct)
+    {
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    if (body is null || string.IsNullOrWhiteSpace(body.RelativePath) || string.IsNullOrWhiteSpace(body.ClientId))
+        return Results.BadRequest(new { ok = false, error = "relativePath and clientId required" });
+    await store.RequireProjectAsync(id, ct);
+    claims.Release(ClaimScope(user, id, body), body.RelativePath, body.ClientId);
+    return Results.Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// Who contends with whom. Scoped by user (two accounts on a shared project write to their
+    /// own folders), by project, and by folder — two windows on DIFFERENT folders both need to
+    /// write, so only windows pointed at the same folder may block each other. An unknown folder
+    /// key contends with other unknowns under the same account, which is the safe way round: the
+    /// common case by far is one person with two windows on one folder.
+    /// </summary>
+    private static string ClaimScope(IUserContext user, string projectId, MediaSaveClaimRequest body) =>
+        $"{user.UserId}/{projectId}/{(string.IsNullOrWhiteSpace(body.FolderKey) ? "?" : body.FolderKey.Trim().ToLowerInvariant())}";
 
     private static async Task<IResult> PostProjectsIdMediaRegister(string id,
     MediaRegisterRequest body,

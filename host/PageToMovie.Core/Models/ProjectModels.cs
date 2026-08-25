@@ -1381,6 +1381,42 @@ public sealed class MediaRegisterRequest
     public int? Clip { get; set; }
 }
 
+/// <summary>
+/// Ask for (or give up) the exclusive right to write one generated file into the media folder.
+/// <see cref="ClientId"/> identifies the browser window, not the account — the whole point is to
+/// separate two windows of the SAME user, since both receive the same job events.
+/// </summary>
+public sealed class MediaSaveClaimRequest
+{
+    public string RelativePath { get; set; } = "";
+    public string ClientId { get; set; } = "";
+
+    /// <summary>
+    /// Identifies the media folder being written to, so contention is scoped to windows that
+    /// actually collide on disk. Two windows sharing one folder must not both write it; two
+    /// windows on different folders (a second machine) must BOTH write, or the second folder
+    /// silently ends up missing takes. Best-effort — the File System Access API does not
+    /// guarantee a real path, so this is the full path when the browser exposes one and the
+    /// folder name otherwise. Getting it wrong costs a duplicate write or a skipped one, never
+    /// the wrong bytes, since the claim only decides who writes and not what.
+    /// </summary>
+    public string FolderKey { get; set; } = "";
+}
+
+/// <summary>Reply to a media-save claim.</summary>
+public sealed class MediaSaveClaimResponse
+{
+    public bool Ok { get; set; }
+
+    /// <summary>
+    /// False means another window owns the write. Nullable so that a MISSING field reads as
+    /// permission rather than refusal — a server too old to know this endpoint must not silently
+    /// stop every client from saving, and "no answer" has to mean the same thing as "no server",
+    /// which is: go ahead. An extra writer risks a collision; a universal refusal loses the clip.
+    /// </summary>
+    public bool? Granted { get; set; }
+}
+
 public sealed class EditLogEntry
 {
     public string Id { get; set; } = "";

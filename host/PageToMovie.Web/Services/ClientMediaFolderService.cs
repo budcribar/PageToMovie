@@ -176,6 +176,7 @@ public sealed class ClientMediaFolderService
     private async Task ApplyConnectedFolderAsync(JsResult r)
     {
         FolderName = r.FolderName;
+        _folderId = null; // may be a different directory than the last one — re-read its marker
         // Prefer path returned from JS (or previously stored full path if still valid).
         if (!string.IsNullOrWhiteSpace(r.FullPath))
             FullPath = r.FullPath.Trim();
@@ -363,6 +364,49 @@ public sealed class ClientMediaFolderService
         return true;
     }
 
+    /// <summary>
+    /// Identifies this browser window for the duration of the session. Deliberately per-instance
+    /// and not persisted: two windows must get different ids even though they share an account,
+    /// a login, and local storage — telling them apart is the entire point.
+    /// </summary>
+    private readonly string _windowId = Guid.NewGuid().ToString("n");
+
+    /// <summary>Cached <c>.pagetomovie-folder-id</c> marker for the connected folder.</summary>
+    private string? _folderId;
+
+    /// <summary>
+    /// Identity of the folder being written to. Only windows pointed at the SAME directory should
+    /// contend for a save; two machines with their own folders must BOTH download, or the second
+    /// one silently ends up missing takes.
+    /// </summary>
+    /// <remarks>
+    /// Read from a marker file inside the folder rather than from the path or the folder name.
+    /// The File System Access API does not guarantee a real path, and folder names collide as a
+    /// matter of course — two machines both choosing "PageToMovie" is the normal case, and that
+    /// would serialize downloads that ought to run at once. The marker is identical for every
+    /// browser on every machine that opens the same directory, and different for any other.
+    /// Falls back to the path or name if the folder cannot be written to; that is only a
+    /// performance risk, since a wrongly-shared key still ends with the losing window verifying
+    /// its own folder and saving when the file did not appear.
+    /// </remarks>
+    private async Task<string> FolderKeyAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_folderId))
+            return _folderId!;
+        try
+        {
+            var r = await _js.InvokeAsync<JsFolderIdResult>("PageToMovieMedia.folderIdAsync");
+            if (r is { Success: true, FolderId: { Length: > 0 } id })
+            {
+                _folderId = id;
+                return id;
+            }
+        }
+        catch { /* fall through to the best-effort key below */ }
+
+        return (!string.IsNullOrWhiteSpace(FullPath) ? FullPath : FolderName ?? "").Trim();
+    }
+
     private async Task SaveJobMediaCoreAsync(JobSnapshot snap, string pid, string url0, string rel, string key)
     {
         if (!IsConnected)
@@ -376,6 +420,76 @@ public sealed class ClientMediaFolderService
             }
         }
 
+        // Every window signed in as this user got this same JobUpdated, and _savedKeys is
+        // per-window, so without a claim they all download and write this path. The writer opens
+        // with createWritable() and no keepExistingData — it truncates on open — so a second
+        // writer destroys what the first just wrote, and a file left under 1 KB is skipped by the
+        // folder's take resolver, which then falls back to the newest surviving take. That is how
+        // three distinct takes came back as one video (Mary19 S02C02 takes 6-8).
+        var folderKey = await FolderKeyAsync();
+        if (!await _api.TryClaimMediaSaveAsync(pid, rel, _windowId, folderKey))
+        {
+            LastStatus = $"Another window is saving {Path.GetFileName(rel)} — waiting";
+            Changed?.Invoke();
+            if (await AnotherWindowFinishedTheSaveAsync(pid, rel))
+            {
+                lock (_savingKeys)
+                    _savedKeys.Add(key);
+                LastStatus = $"Saved by another window: {Path.GetFileName(rel)}";
+                Changed?.Invoke();
+                return;
+            }
+            // The holder failed, or closed mid-save. Fall through and save it here — losing the
+            // claim must not mean assuming the file arrived.
+            LastStatus = $"Other window did not save {Path.GetFileName(rel)} — saving here";
+            Changed?.Invoke();
+        }
+
+        try
+        {
+            await SaveClaimedJobMediaAsync(snap, pid, url0, rel, key);
+        }
+        finally
+        {
+            await _api.ReleaseMediaSaveClaimAsync(pid, rel, _windowId, folderKey);
+        }
+    }
+
+    /// <summary>
+    /// Poll the shared folder until the window holding the claim has actually written the file.
+    /// </summary>
+    /// <remarks>
+    /// Which window wins the claim is arbitrary — whichever handled its JobUpdated first — and
+    /// that is fine ONLY because both write to the same folder, so the bytes land where every
+    /// window can read them. What is not fine is assuming the winner succeeded: it can hit a
+    /// download error, lose its folder permission, or be closed mid-save, and the clip would then
+    /// be lost with every other window believing it was handled. So the loser verifies the
+    /// outcome rather than trusting it, and saves the file itself if it never appeared.
+    ///
+    /// Checking the file rather than asking the server is deliberate: the folder is the thing
+    /// that has to end up correct, and a claim released after a failed write would look identical
+    /// to one released after a good one.
+    /// </remarks>
+    private async Task<bool> AnotherWindowFinishedTheSaveAsync(string pid, string rel)
+    {
+        // Long enough to cover a normal download-and-write, short enough that a dead holder does
+        // not strand the clip. Under the lease duration on purpose — waiting the full lease out
+        // would stall every clip in a batch behind a single failure.
+        var deadline = 12;
+        for (var i = 0; i < deadline; i++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var (found, size) = await StatLocalFileAsync(pid, rel);
+            // Same 1 KB floor the folder's take resolver uses — a file below it is a torn write,
+            // not a saved clip, and treating it as success is what made three takes read as one.
+            if (found && size >= 1024)
+                return true;
+        }
+        return false;
+    }
+
+    private async Task SaveClaimedJobMediaAsync(JobSnapshot snap, string pid, string url0, string rel, string key)
+    {
         LastStatus = $"Saving {rel}…";
         Changed?.Invoke();
 
@@ -1669,6 +1783,14 @@ public sealed class ClientMediaFolderService
         public string? Url { get; set; } = null;
         public long SizeBytes { get; set; } = 0;
         public string? Error { get; set; } = null;
+    }
+
+    /// <summary>Reply from <c>PageToMovieMedia.folderIdAsync</c> — the folder's marker file.</summary>
+    private sealed class JsFolderIdResult
+    {
+        public bool Success { get; set; }
+        public string? FolderId { get; set; }
+        public string? Error { get; set; }
     }
 
     private sealed class JsStatResult

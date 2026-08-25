@@ -92,6 +92,7 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<IAutoProjectMerger, AutoProjectMerger>();
         builder.Services.AddSignalR();
         builder.Services.AddSingleton<HubGroupRegistry>();
+        builder.Services.AddSingleton<MediaSaveClaims>();
         builder.Services.AddSingleton<IJobStore, JobStore>();
         builder.Services.AddSingleton<ILockService, InMemoryLockService>();
         builder.Services.AddSingleton<IServerMetricsService, ServerMetricsService>();
