@@ -41,12 +41,16 @@ public class ScenesJobAdoptionTests
     /// re-rendered and stopped there, never closing the modal or reloading the scene list.
     /// </summary>
     [Fact]
-    public void Poll_runs_the_same_terminal_handling_as_the_hub()
+    public void Poll_republishes_snapshots_through_the_hub_event()
     {
         var src = ReadPage("ScenesGeneration.cs");
-        var loop = src[src.IndexOf("PollLostJobLoopAsync(CancellationToken", StringComparison.Ordinal)..];
-        var body = loop[..loop.IndexOf("private void ReplaceMyJob", StringComparison.Ordinal)];
-        Assert.Contains("HandleTerminalJobAsync(", body, StringComparison.Ordinal);
+        // The poll republishes each fetched snapshot through Hub.JobUpdated, so the finish work,
+        // the media save and every other subscriber run through the same path as a socket
+        // delivery. ClientMediaFolderService saves generated clips on JobUpdated and nowhere
+        // else, so a poll that only updated this page would still lose the media.
+        var view = src[src.IndexOf("internal void ApplyServerJobView", StringComparison.Ordinal)..];
+        var body = view[..view.IndexOf("private void ReplaceMyJob", StringComparison.Ordinal)];
+        Assert.Contains("RaiseJobUpdated(", body, StringComparison.Ordinal);
     }
 
     private static string ReadPage(string fileName)

@@ -206,6 +206,24 @@ public sealed class JobHubClient : IAsyncDisposable
     /// <summary>Hub reconnect / health-recovery seam. Subscribers re-fetch the current job.</summary>
     public void RaiseReconnected() => Reconnected?.Invoke();
 
+    /// <summary>
+    /// Feed a snapshot fetched over REST through the same pipeline the socket uses, so a poll
+    /// fallback reaches EVERY subscriber, not just the page that polled.
+    /// </summary>
+    /// <remarks>
+    /// ClientMediaFolderService saves each generated clip to the user's folder on JobUpdated and
+    /// nowhere else, while the API host deletes its own copy the moment it publishes
+    /// ClientMediaUrl. So a run where the socket delivered nothing did not merely look stuck — the
+    /// clips were generated, paid for, released server-side and never saved anywhere durable but
+    /// the provider URL in the sidecar (Mary19 S02C02 takes 6-8, 2026-08-25). Correcting only the
+    /// polling page would have left that hole open.
+    /// </remarks>
+    public void RaiseJobUpdated(JobSnapshot? snapshot)
+    {
+        if (snapshot is not null)
+            JobUpdated?.Invoke(snapshot);
+    }
+
     public async Task StopAsync()
     {
         if (_disposed)

@@ -91,6 +91,7 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<IProjectPresenceService, ProjectPresenceService>();
         builder.Services.AddSingleton<IAutoProjectMerger, AutoProjectMerger>();
         builder.Services.AddSignalR();
+        builder.Services.AddSingleton<HubGroupRegistry>();
         builder.Services.AddSingleton<IJobStore, JobStore>();
         builder.Services.AddSingleton<ILockService, InMemoryLockService>();
         builder.Services.AddSingleton<IServerMetricsService, ServerMetricsService>();
@@ -256,7 +257,6 @@ internal static class ApiServiceConfiguration
         });
         builder.Services.AddSingleton<GlobalTimingCalibrationService>();
 
-        builder.Services.AddSignalR();
         builder.Services.AddCors(o =>
         {
             o.AddDefaultPolicy(p =>

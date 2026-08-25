@@ -3,6 +3,7 @@ using PageToMovie.Api.Hubs;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 // JobHubEvents lives in PageToMovie.Core.Models
 
 namespace PageToMovie.Api.Services;
@@ -12,8 +13,16 @@ public sealed class SignalRJobProgressSink : IJobProgressSink
     private static readonly TimeSpan MinUpdateInterval = TimeSpan.FromMilliseconds(250);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastBroadcast = new(StringComparer.OrdinalIgnoreCase);
     private readonly IHubContext<JobHub> _hub;
+    private readonly HubGroupRegistry _groups;
+    private readonly ILogger<SignalRJobProgressSink> _log;
 
-    public SignalRJobProgressSink(IHubContext<JobHub> hub) => _hub = hub;
+    public SignalRJobProgressSink(
+        IHubContext<JobHub> hub, HubGroupRegistry groups, ILogger<SignalRJobProgressSink> log)
+    {
+        _hub = hub;
+        _groups = groups;
+        _log = log;
+    }
 
     public async Task OnJobUpdatedAsync(JobSnapshot snapshot, CancellationToken ct = default)
     {
@@ -38,8 +47,41 @@ public sealed class SignalRJobProgressSink : IJobProgressSink
             .SendAsync(JobHubEvents.JobUpdated, snapshot, ct);
 
         if (!string.IsNullOrWhiteSpace(snapshot.UserId))
+        {
             await _hub.Clients.Group($"user:{snapshot.UserId}")
                 .SendAsync(JobHubEvents.JobUpdated, snapshot, ct);
+            WarnIfNobodyIsListening(snapshot, isTerminal);
+        }
+    }
+
+    /// <summary>
+    /// SendAsync to a group with no members succeeds and delivers nothing, so an undeliverable
+    /// job looks exactly like a healthy one in the server log. Say it out loud instead.
+    /// </summary>
+    /// <remarks>
+    /// Only the terminal update is worth warning about: a browser can legitimately be closed
+    /// mid-run, but a finished job whose owner has no connection on this instance means the
+    /// client never learned the clip exists. That is not cosmetic — ClientMediaFolderService
+    /// saves generated media on JobUpdated and nowhere else, and the API host drops its own copy
+    /// once ClientMediaUrl is published, so the bytes are simply lost.
+    ///
+    /// Two causes produce it. If <c>live groups</c> names other users but not this one, the
+    /// browser's socket is on a different instance — SignalR here has no backplane, so a
+    /// broadcast never crosses instances. If it names a group that looks like this user's under
+    /// different casing or shape, the client joined under an id that does not match the one
+    /// stamped on the job record (group matching is ordinal).
+    /// </remarks>
+    private void WarnIfNobodyIsListening(JobSnapshot snapshot, bool isTerminal)
+    {
+        if (!isTerminal || _groups.Count(snapshot.UserId) > 0)
+            return;
+
+        _log.LogWarning(
+            "Job {JobId} ({Kind}) finished as {Status} but user:{UserId} has no live hub connection " +
+            "on this instance, so the client was never told. Live groups: {Groups}. " +
+            "ClientMediaUrl={HasMedia} — generated media is not saved without a JobUpdated.",
+            snapshot.JobId, snapshot.Kind, snapshot.Status, snapshot.UserId, _groups.Describe(),
+            !string.IsNullOrWhiteSpace(snapshot.ClientMediaUrl));
     }
 
     private bool ShouldThrottleNonTerminal(string jobId)

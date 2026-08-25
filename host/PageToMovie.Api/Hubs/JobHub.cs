@@ -12,22 +12,55 @@ public sealed class JobHub : Hub
 
     private readonly FilmJobService _jobs;
     private readonly IUserContext _user;
+    private readonly HubGroupRegistry _groups;
+    private readonly ILogger<JobHub> _log;
 
-    public JobHub(FilmJobService jobs, IUserContext user)
+    private const string ConnectedUserItemKey = "__JobHubUserId";
+
+    public JobHub(FilmJobService jobs, IUserContext user, HubGroupRegistry groups, ILogger<JobHub> log)
     {
         _jobs = jobs;
         _user = user;
+        _groups = groups;
+        _log = log;
     }
 
     public override async Task OnConnectedAsync()
     {
         var userId = ResolveUserId();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}");
+        Context.Items[ConnectedUserItemKey] = userId;
+        _groups.Add(userId);
+        _log.LogInformation(
+            "JobHub connected {ConnectionId} joined user:{UserId} via {Transport}; live groups: {Groups}",
+            Context.ConnectionId, userId, DescribeTransport(), _groups.Describe());
 
         if (IsAdmin())
             await Groups.AddToGroupAsync(Context.ConnectionId, AdminOpsGroup);
 
         await base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        // Remove by the id we actually joined with, not a re-resolve: ResolveUserId reads the
+        // HttpContext, which is already gone by the time a socket drops, so re-resolving would
+        // decrement the wrong group and leave a phantom connection in the count forever.
+        if (Context.Items.TryGetValue(ConnectedUserItemKey, out var joined) && joined is string userId)
+            _groups.Remove(userId);
+        _log.LogInformation(
+            exception, "JobHub disconnected {ConnectionId}; live groups: {Groups}",
+            Context.ConnectionId, _groups.Describe());
+        return base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>WebSockets vs long-polling — a proxy that strips the upgrade shows up here.</summary>
+    private string DescribeTransport()
+    {
+        var http = Context.GetHttpContext();
+        if (http is null)
+            return "unknown";
+        return http.WebSockets.IsWebSocketRequest ? "websocket" : http.Request.Path.Value ?? "http";
     }
 
     public Task JoinJob(string jobId)

@@ -679,8 +679,44 @@ public partial class Scenes
         var next = JobLostOnRestart.ApplyServerView(local, byId, byIdNotFound, current, currentKnown);
         _job = next;
         ReplaceMyJob(next);
+
+        if (!ReferenceEquals(next, local))
+        {
+            NoteSocketDeliveredNothing(next);
+            // Push it through the hub's own event so every subscriber sees it, not just this page.
+            // ClientMediaFolderService saves the generated clip on JobUpdated and nowhere else, and
+            // the API host deletes its copy as soon as it publishes ClientMediaUrl — so a socket
+            // that delivers nothing silently costs the media, not just the progress bar.
+            S.Hub?.RaiseJobUpdated(next);
+        }
+
         if (JobLostOnRestart.IsFinishedStatus(next.Status))
             DisposePolling();
+    }
+
+    /// <summary>
+    /// The poll found news the socket should have carried. Say so, rather than quietly filling
+    /// the gap: a poll that silently supplies what the hub owes turns a broken transport into a
+    /// slow-but-working one, and the next thing it costs is not visible at all
+    /// (ClientMediaFolderService saves generated media on a hub event, so a socket that never
+    /// delivers loses the clip while the page still ends up looking correct).
+    /// </summary>
+    /// <remarks>
+    /// A connected socket that delivers nothing is the interesting case and the one worth
+    /// separating out — a disconnected one is already reported by ServerHealthState, and the
+    /// poll is doing exactly the job it exists for. Connected-but-silent means the group this
+    /// client joined is not the group the job publishes to, which no amount of client-side
+    /// polling can fix.
+    /// </remarks>
+    private void NoteSocketDeliveredNothing(JobSnapshot next)
+    {
+        if (S?.Hub is not { IsConnected: true })
+            return;
+
+        Console.WriteLine(
+            $"[jobs] hub is connected but delivered no update for job {next.JobId} " +
+            $"({next.Kind}, now {next.Status}) — the poll had to fetch it. Live job events are " +
+            "not reaching this client; generated media will not save until that is fixed.");
     }
 
     /// <summary>
@@ -742,18 +778,11 @@ public partial class Scenes
                 if (ct.IsCancellationRequested)
                     return;
                 await ReconcileJobWithServerAsync();
-                if (_job is { } live && JobLostOnRestart.IsFinishedStatus(live.Status))
-                {
-                    // Run the SAME finish work the hub path does — close the modal, reload the
-                    // scene list, apply the per-kind side effects. Correcting the status text was
-                    // not enough: on a run where SignalR delivered nothing (Mary19 S02C02,
-                    // 2026-08-25) the clip was generated, verified and committed server-side while
-                    // the modal sat on "Queued batch gen…" and the page never picked up the take.
-                    // Re-running this if the hub later delivers the same terminal event is
-                    // harmless — it re-reads the list and re-closes an already-closed modal.
-                    await S.InvokeAsync(() => HandleTerminalJobAsync(live));
+                // ApplyServerJobView republishes each fetched snapshot through Hub.JobUpdated, so
+                // the finish work, the media save and every other subscriber run through exactly
+                // the same path as a socket delivery. Nothing extra to do here but stop.
+                if (JobLostOnRestart.IsFinishedStatus(_job?.Status))
                     return;
-                }
             }
         }
         catch (OperationCanceledException) { /* expected */ }
