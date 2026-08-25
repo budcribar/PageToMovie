@@ -63,7 +63,12 @@ public static class ClipTakeNaming
     public static string? CurrentTakeFileName(int scene, int clip, int take) =>
         take > 0 ? TakeMp4FileName(scene, clip, take) : null;
 
-    /// <summary>Parse <c>{"take":N}</c> from a current-take pointer. 0 when absent or invalid.</summary>
+    /// <summary>
+    /// Parse <c>{"take":N}</c> from a current-take pointer. 0 when absent or invalid.
+    /// A clip sidecar also carries a <c>take</c> field, so one handed here by mistake would
+    /// read as a valid pointer and silently override the promoted take with its own. Sidecars
+    /// are rejected on their <c>schema_version</c>.
+    /// </summary>
     public static int ParseCurrentTakePointer(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -71,12 +76,23 @@ public static class ClipTakeNaming
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
+            var root = doc.RootElement;
+            if (IsClipSidecarDocument(root))
+                return 0;
+            if (root.TryGetProperty("take", out var t) && t.TryGetInt32(out var n) && n > 0)
                 return n;
         }
         catch { /* best-effort pointer */ }
         return 0;
     }
+
+    /// <summary>Sidecar manifests declare <c>clip_sidecar.*</c>; a pointer never does.</summary>
+    private static bool IsClipSidecarDocument(System.Text.Json.JsonElement root) =>
+        root.ValueKind == System.Text.Json.JsonValueKind.Object
+        && root.TryGetProperty("schema_version", out var sv)
+        && sv.ValueKind == System.Text.Json.JsonValueKind.String
+        && sv.GetString() is { } v
+        && v.StartsWith("clip_sidecar", StringComparison.OrdinalIgnoreCase);
 
     public static string TakeStem(int scene, int clip, int take) =>
         $"{SceneClipPrefix(scene, clip)}_take_{take:D2}";

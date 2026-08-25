@@ -93,6 +93,24 @@ public partial class Scenes
 
 
 
+    /// <summary>
+    /// Re-resolve the editor's clip player after the current take changed (promote / restore).
+    /// <see cref="LoadClipVideoAndTakesCountAsync"/> only ever assigns <c>_clipVideoUrl</c>, so the
+    /// old take's blob has to be dropped first — and the key bumped — or the &lt;video&gt; keeps
+    /// playing the previous take until the clip is reselected.
+    /// </summary>
+    internal async Task ReloadCurrentTakeVideoAsync(int scene, int clip)
+    {
+        if (scene <= 0 || clip <= 0)
+            return;
+        _clipVideoUrl = null;
+        _clipServerVideoUrl = null;
+        _clipVideoLoading = true;
+        _clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        S.StateHasChanged();
+        await LoadClipVideoAndTakesCountAsync(scene, clip);
+    }
+
     internal async Task LoadClipVideoAndTakesCountAsync(int scene, int clip)
     {
         try

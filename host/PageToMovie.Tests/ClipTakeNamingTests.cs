@@ -96,4 +96,47 @@ public class ClipTakeNamingTests
         Assert.Equal(0, ClipTakeNaming.ParseCurrentTakePointer("""{"scene":1,"clip":2}"""));
         Assert.Equal("assets/video/scene_01_clip_02.current.json", ClipTakeNaming.CurrentTakePointerRelativePath(1, 2));
     }
+
+    /// <summary>
+    /// A take sidecar carries its own "take" field, so one reaching the pointer parser reads as a
+    /// perfectly valid pointer and silently overrides the promoted take with the sidecar's own.
+    /// That is how selecting a take marked it active but played a different one.
+    /// </summary>
+    [Fact]
+    public void Clip_sidecar_is_not_accepted_as_a_current_take_pointer()
+    {
+        const string sidecar = """
+            {"schema_version":"clip_sidecar.v1","project_id":"Demo","scene":1,"clip":2,"take":7,
+             "script_text":"","visual_prompt":"","model":"m","resolution":"720p"}
+            """;
+        Assert.Equal(0, ClipTakeNaming.ParseCurrentTakePointer(sidecar));
+        Assert.Equal(7, ClipTakeNaming.ParseCurrentTakePointer("""{"scene":1,"clip":2,"take":7}"""));
+    }
+
+    /// <summary>
+    /// The pointer is always named exactly, so the media-folder prefix search must not answer a
+    /// <c>.current.json</c> lookup — the take sidecars share its prefix and its .json extension.
+    /// </summary>
+    [Fact]
+    public void Media_js_never_prefix_falls_back_for_the_current_take_pointer()
+    {
+        var js = ReadWebJs("pagetomovie-media.js");
+        var guard = js.IndexOf(@"/\.current\.json$/i.test(fileName)", StringComparison.Ordinal);
+        var fallback = js.IndexOf("_bestPrefixFileHandleAsync(dir, fileName)", StringComparison.Ordinal);
+        Assert.True(guard >= 0, "current-take pointer guard is missing from _resolveFileHandleAsync");
+        Assert.True(guard < fallback, "the guard must run before the prefix fallback");
+    }
+
+    private static string ReadWebJs(string fileName)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "PageToMovie.Web", "wwwroot", "js", fileName);
+            if (File.Exists(candidate))
+                return File.ReadAllText(candidate);
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException($"Could not locate {fileName} above {AppContext.BaseDirectory}");
+    }
 }

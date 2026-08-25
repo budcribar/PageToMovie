@@ -75,6 +75,9 @@ public class MediaWipeResyncTests : IClassFixture<PageToMovieApiFactory>
         AssertListed(files, locRel);
         AssertListed(files, locVariantRel);
         AssertListed(files, sidecarRel);
+        // The pointer decides which take the browser plays. Promote writes it server-side, so if
+        // media-sync does not offer it, a promoted take never reaches the player on a fresh folder.
+        AssertListed(files, "assets/video/scene_01_clip_01.current.json");
 
         var leftoverDisk = FindFile(files, e =>
             RelOf(e).Equals(leftoverAliasRel, StringComparison.OrdinalIgnoreCase));

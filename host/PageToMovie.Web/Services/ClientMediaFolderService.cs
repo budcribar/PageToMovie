@@ -633,6 +633,28 @@ public sealed class ClientMediaFolderService
         }
     }
 
+    /// <summary>
+    /// Write this clip's current-take pointer into the media folder, so a promote switches the
+    /// player immediately instead of waiting on a media-sync round trip. The server writes its own
+    /// copy in <c>PromoteClipVersionAsync</c> and sync keeps a fresh folder / second machine in
+    /// step — this is the local half of the same fact, not a second source of truth.
+    /// </summary>
+    public async Task<bool> WriteCurrentTakeAsync(string projectId, int scene, int clip, int take)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(projectId) || scene <= 0 || clip <= 0 || take <= 0)
+            return false;
+        var payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["scene"] = scene,
+            ["clip"] = clip,
+            ["take"] = take,
+        });
+        var rel = ClipTakeNaming.CurrentTakePointerRelativePath(scene, clip);
+        var (ok, _, _, _, _) = await SaveBytesAsync(
+            projectId, rel, System.Text.Encoding.UTF8.GetBytes(payload)).ConfigureAwait(false);
+        return ok;
+    }
+
     public async Task<string?> GetCurrentTakeBlobUrlAsync(string projectId, int scene, int clip, long? expectedSizeBytes = null)
     {
         var rel = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip);

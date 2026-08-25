@@ -101,6 +101,26 @@ public partial class Scenes
             _clipCompareMessage = null;
         }
 
+        /// <summary>
+        /// Mirror the server's promote into the media folder. The player resolves the current take
+        /// from the local <c>.current.json</c>, so without this the promoted take is invisible to it
+        /// until a media sync happens to run.
+        /// </summary>
+        private async Task PublishPromotedTakeAsync(int sceneNumber, int clipNumber)
+        {
+            if (!S.MediaFolder.IsConnected)
+                return;
+            var current = _clipVersions?.FirstOrDefault(v => v.IsCurrent);
+            var take = current?.Take ?? 0;
+            if (take <= 0)
+                return;
+            try
+            {
+                await S.MediaFolder.WriteCurrentTakeAsync(S._projectId, sceneNumber, clipNumber, take);
+            }
+            catch { /* server copy still holds; a later sync brings the folder in line */ }
+        }
+
         internal async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
         {
             _promotingVersion = true;
@@ -116,11 +136,13 @@ public partial class Scenes
                     var resV = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                     _clipVersions = resV?.Versions;
                     _selectedCompareVersionId = _clipVersions?.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? _clipVersions?.FirstOrDefault()?.VersionId;
+                    await PublishPromotedTakeAsync(sceneNumber, clipNumber);
                     await S.Playback.RefreshCompareVideoUrlsAsync();
                     if (S.List._detail is not null && S.List._detail.SceneNumber == sceneNumber)
                     {
                         S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
                     }
+                    await S.Playback.ReloadCurrentTakeVideoAsync(sceneNumber, clipNumber);
                     await S.RefreshUncommittedStatusAsync();
                 }
                 else
@@ -178,6 +200,10 @@ public partial class Scenes
                     _clipVersions = resV?.Versions;
                     var resT = await S.Engine.GetTrashClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                     _trashVersions = resT?.Versions;
+                    // Deleting or restoring a take can move the current one, so the local pointer
+                    // and the editor player need the same refresh promote gets.
+                    await PublishPromotedTakeAsync(sceneNumber, clipNumber);
+                    await S.Playback.ReloadCurrentTakeVideoAsync(sceneNumber, clipNumber);
                 }
                 else
                 {

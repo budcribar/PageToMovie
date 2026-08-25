@@ -214,7 +214,12 @@ public static class MediaEndpoints
             return null;
         var ext = Path.GetExtension(file);
         var isClipJson = name.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
-        if (!isClipJson && !MediaSyncExtensions.Contains(ext))
+        // The current-take pointer decides which take the browser plays. Promote writes it here on
+        // the server, so it has to reach the media folder like any other clip artifact — otherwise
+        // a promoted take is invisible to the player on a fresh folder or a second machine.
+        var isCurrentTakePointer = name.EndsWith(
+            ClipTakeNaming.CurrentTakePointerSuffix, StringComparison.OrdinalIgnoreCase);
+        if (!isClipJson && !isCurrentTakePointer && !MediaSyncExtensions.Contains(ext))
             return null;
 
         var relPath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');

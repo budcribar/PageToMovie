@@ -454,6 +454,12 @@ window.PageToMovieMedia = {
         try {
             return await dir.getFileHandle(fileName, { create: false });
         } catch (_) {
+            // The current-take pointer is always named exactly, so the prefix search has no
+            // legitimate job here — and it is actively harmful: "scene_SS_clip_CC.current.json"
+            // shares its prefix and .json extension with the take sidecars, which carry their own
+            // "take" field. Falling back returned the newest sidecar and the caller happily parsed
+            // it as a pointer, so a promoted take was silently overridden by the newest one.
+            if (/\.current\.json$/i.test(fileName)) return null;
             return await this._bestPrefixFileHandleAsync(dir, fileName);
         }
     },
