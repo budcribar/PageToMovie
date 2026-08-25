@@ -4406,6 +4406,48 @@ public sealed partial class ProjectStore
     private static string? SceneSetting(System.Text.Json.Nodes.JsonObject? scene) =>
         scene?[StoreLit.Setting]?.ToString();
 
+    /// <summary>Clip number → the Stage 1 beat ids it was planned from, in clip order.</summary>
+    /// <remarks>
+    /// A clip carries <c>stage1_beat_ids</c> when Stage 2 coalesced several beats into it, and a
+    /// single <c>stage1_beat_id</c> otherwise. Both are returned as a list so callers never have to
+    /// care which shape a given plan used.
+    /// </remarks>
+    public IReadOnlyList<SceneClipBeatIds> ReadSceneClipBeatIds(string projectId, int sceneNumber)
+    {
+        var result = new List<SceneClipBeatIds>();
+        var bpPath = FindBlueprintPathSync(projectId);
+        if (bpPath is null || !File.Exists(bpPath))
+            return result;
+        var (_, scenes) = ParseBlueprintScenes(bpPath);
+        var scene = FindSceneNode(scenes, sceneNumber);
+        var clips = scene?[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                    ?? scene?[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+        if (clips is null)
+            return result;
+        foreach (var node in clips)
+        {
+            if (node is not System.Text.Json.Nodes.JsonObject c)
+                continue;
+            var number = ClipKeying.ClipNumber(c);
+            if (number <= 0)
+                continue;
+            var ids = new List<string>();
+            if (c["stage1_beat_ids"] is System.Text.Json.Nodes.JsonArray arr)
+            {
+                foreach (var id in arr)
+                {
+                    var value = id?.ToString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        ids.Add(value);
+                }
+            }
+            if (ids.Count == 0 && c[StoreLit.Stage1BeatId]?.ToString() is { Length: > 0 } single)
+                ids.Add(single);
+            result.Add(new SceneClipBeatIds(number, ids));
+        }
+        return result;
+    }
+
     private static System.Text.Json.Nodes.JsonObject? FindSceneNode(
         System.Text.Json.Nodes.JsonArray scenes, int scene)
     {

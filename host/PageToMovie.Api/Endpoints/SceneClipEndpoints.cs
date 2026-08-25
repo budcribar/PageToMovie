@@ -24,6 +24,7 @@ public static partial class SceneClipEndpoints
         app.MapGet("/api/projects/{id}/edit-log", GetProjectsIdEditLog);
         app.MapPost("/api/projects/{id}/clips/review", PostProjectsIdClipsReview);
         app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips", PostProjectsIdScenesSceneClips);
+        app.MapGet("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/delete-preview", GetProjectsIdScenesSceneClipsClipDeletePreview);
         app.MapPut("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}", PutProjectsIdScenesSceneClipsClip);
         app.MapDelete("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}", DeleteProjectsIdScenesSceneClipsClip);
         // <summary>Delete a whole scene from the shot plan (persisted — removes it from the blueprint and
@@ -155,14 +156,29 @@ public static partial class SceneClipEndpoints
     }
 }
 
-    private static IResult PostProjectsIdScenesSceneClips(string id, int scene, ClipEditRequest body, ProjectStore store)
+    /// <param name="screenplay">
+    /// When true the new clip also becomes a line in the screenplay, so a later replan of this
+    /// scene keeps it instead of dropping it.
+    /// </param>
+    private static IResult PostProjectsIdScenesSceneClips(
+        string id, int scene, bool screenplay, ClipEditRequest body, ProjectStore store, ScreenplayClipWriteBackService writeBack)
     {
     try
     {
         body.ProjectId = id;
         body.Scene = scene;
         store.AddClip(id, scene, body);
-        return Results.Ok(new { ok = true, projectId = id, scene, clip = body.Clip, added = true });
+        var written = screenplay ? writeBack.AddBeatForClip(id, scene, body) : null;
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            scene,
+            clip = body.Clip,
+            added = true,
+            screenplayLines = written?.Removed ?? 0,
+            screenplayError = written?.Error,
+        });
     }
     catch (Exception ex)
     {
@@ -186,14 +202,83 @@ public static partial class SceneClipEndpoints
     }
 }
 
-    private static async Task<IResult> DeleteProjectsIdScenesSceneClipsClip(string id, int scene, int clip, ProjectStore store, ReviewIndexService reviewIndex,
-    EditLogService logs, CancellationToken ct)
+    /// <summary>
+    /// What deleting this clip would take with it — the numbers the confirmation prompt needs.
+    /// </summary>
+    /// <remarks>
+    /// A clip is not always one line of screenplay. A long speech is planned as several clips that
+    /// share one line, so removing that line removes its siblings too; a coalesced clip covers
+    /// several lines at once. Either way the user has to be told before it happens, and when the
+    /// group is the whole scene the delete is really a scene delete.
+    /// </remarks>
+    private static IResult GetProjectsIdScenesSceneClipsClipDeletePreview(
+        string id, int scene, int clip, ScreenplayClipWriteBackService writeBack)
+    {
+        try
+        {
+            var preview = writeBack.PreviewDelete(id, scene, new[] { clip });
+            return Results.Ok(new
+            {
+                ok = true,
+                projectId = id,
+                scene,
+                clip,
+                clips = preview.ClipNumbers,
+                screenplayLines = preview.Paragraphs,
+                emptiesScene = preview.EmptiesScene,
+                unresolved = preview.Unresolved.Count,
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
+
+    /// <param name="screenplay">
+    /// When true the clip's line is removed from the screenplay too, so a later replan of this
+    /// scene cannot bring the clip back. Default false keeps the old blueprint-only behaviour,
+    /// which is the only option for a clip whose line cannot be resolved.
+    /// </param>
+    private static async Task<IResult> DeleteProjectsIdScenesSceneClipsClip(string id, int scene, int clip, bool screenplay, ProjectStore store, ReviewIndexService reviewIndex,
+    EditLogService logs, ScreenplayClipWriteBackService writeBack, CancellationToken ct)
     {
     try
     {
-        var wasInBlueprint = store.DeleteClip(id, scene, clip);
-        await reviewIndex.RemoveClipAsync(id, scene, clip, ct);
-        await logs.RemoveClipReviewStateAsync(id, scene, clip, ct);
+        var group = new List<int> { clip };
+        var emptiesScene = false;
+        var screenplayLines = 0;
+        string? screenplayError = null;
+        if (screenplay)
+        {
+            var preview = writeBack.PreviewDelete(id, scene, new[] { clip });
+            group = preview.ClipNumbers.ToList();
+            emptiesScene = preview.EmptiesScene;
+            // Removing every clip in the scene is a scene delete; the scene must not be left empty,
+            // which would fail the shot plan's own "every scene has a clip" rule on the next replan.
+            var result = emptiesScene
+                ? writeBack.RemoveScene(id, scene)
+                : writeBack.RemoveBeatsForClips(id, scene, group);
+            screenplayLines = result.Removed;
+            screenplayError = result.Error;
+        }
+
+        var wasInBlueprint = false;
+        if (emptiesScene)
+        {
+            wasInBlueprint = store.DeleteScene(id, scene);
+        }
+        else
+        {
+            foreach (var n in group)
+            {
+                wasInBlueprint |= store.DeleteClip(id, scene, n);
+                await reviewIndex.RemoveClipAsync(id, scene, n, ct);
+                await logs.RemoveClipReviewStateAsync(id, scene, n, ct);
+            }
+        }
+
+        var what = emptiesScene ? $"scene {scene}" : $"S{scene:D2}C{clip:D2}";
         return Results.Ok(new
         {
             ok = true,
@@ -202,7 +287,11 @@ public static partial class SceneClipEndpoints
             clip,
             deleted = true,
             wasInBlueprint,
-            message = $"Deleted S{scene:D2}C{clip:D2} — Play scene / Play WIP to refresh the assembled cut",
+            clips = group,
+            emptiesScene,
+            screenplayLines,
+            screenplayError,
+            message = $"Deleted {what} — Play scene / Play WIP to refresh the assembled cut",
         });
     }
     catch (Exception ex)
@@ -211,8 +300,13 @@ public static partial class SceneClipEndpoints
     }
 }
 
-    private static async Task<IResult> DeleteProjectsIdScenesScene(string id, int scene, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
+    /// <param name="screenplay">
+    /// When true the scene is removed from the screenplay too, and every surviving scene's number
+    /// is pinned in the Fountain so a later replan cannot land one scene's plan on another's clips.
+    /// </param>
+    private static async Task<IResult> DeleteProjectsIdScenesScene(string id, int scene, bool screenplay, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
     ILockService locks, PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    ScreenplayClipWriteBackService writeBack,
     CancellationToken ct)
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
@@ -239,8 +333,13 @@ public static partial class SceneClipEndpoints
         }, statusCode: StatusCodes.Status423Locked);
     try
     {
+        // Screenplay first: it pins every surviving scene's number in the Fountain, without which
+        // deleting a scene shifts the ones after it while the blueprint keeps their old numbers,
+        // and the next replan merges one scene's plan onto another's clips.
+        var written = screenplay ? writeBack.RemoveScene(id, scene) : null;
         var removed = store.DeleteScene(id, scene);
         return Results.Ok(new { ok = true, projectId = id, scene, deleted = removed,
+            screenplayError = written?.Error,
             message = $"Deleted Scene {scene:D2}" });
     }
     catch (Exception ex)
@@ -249,7 +348,11 @@ public static partial class SceneClipEndpoints
     }
 }
 
-    private static async Task<IResult> PostProjectsIdScenes(string id, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct)
+    /// <param name="screenplay">
+    /// When true the new scene also gets a heading in the screenplay, pinned to the number the shot
+    /// plan gave it, so a later replan keeps the scene instead of dropping it.
+    /// </param>
+    private static async Task<IResult> PostProjectsIdScenes(string id, bool screenplay, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, ScreenplayClipWriteBackService writeBack, CancellationToken ct)
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -258,7 +361,10 @@ public static partial class SceneClipEndpoints
     try
     {
         var sceneNo = store.AddScene(id);
-        return Results.Ok(new { ok = true, projectId = id, scene = sceneNo, message = $"Added Scene {sceneNo:D2}" });
+        var written = screenplay ? writeBack.AddScene(id, sceneNo, setting: null) : null;
+        return Results.Ok(new { ok = true, projectId = id, scene = sceneNo,
+            screenplayError = written?.Error,
+            message = $"Added Scene {sceneNo:D2}" });
     }
     catch (Exception ex)
     {
