@@ -4375,6 +4375,59 @@ public sealed partial class ProjectStore
         return null;
     }
 
+    private static System.Text.Json.Nodes.JsonObject? FindSceneNode(
+        System.Text.Json.Nodes.JsonArray scenes, int scene)
+    {
+        foreach (var sNode in scenes)
+        {
+            if (sNode is System.Text.Json.Nodes.JsonObject s
+                && ReadJsonNodeInt(s[JsonKeys.SceneNumber]) == scene)
+                return s;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Bring a scene's <c>stage1_beat_map</c> back in step with its clips after an editor-side add
+    /// or delete. Only the planner ever wrote that array, so before this a deleted clip left its
+    /// beat id behind and the next Stage 2 replan failed aggregate validation
+    /// (<c>beat_clip_mismatch</c>) for a scene nobody had asked to replan - Mary19 scene 3 sat at 7
+    /// clips against 8 beats until a replan that happened to cover scene 3 rebuilt it, which
+    /// brought the deleted clip back with it. Adding a clip broke it the same way in reverse.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt from the clips rather than patched by index. The map is by construction the clips'
+    /// own <c>stage1_beat_id</c> values in clip order - <see cref="Stage2PlannerService"/> appends
+    /// to both from the same beat - so this is exact, and it cannot drift the way index bookkeeping
+    /// can. It also heals a scene that is already mismatched.
+    ///
+    /// <para>No-op when the scene carries no map (a credits card has none) or when any clip is
+    /// missing a beat id: writing a short map there would trade one mismatch for another, and a
+    /// replan of that scene is the fix.</para>
+    /// </remarks>
+    private static void SyncBeatMapToClips(System.Text.Json.Nodes.JsonObject scene)
+    {
+        if (scene["stage1_beat_map"] is not System.Text.Json.Nodes.JsonArray beatMap)
+            return;
+        var clips = scene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                    ?? scene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+        if (clips is null)
+            return;
+
+        var ids = new List<string>(clips.Count);
+        foreach (var node in clips)
+        {
+            var id = (node as System.Text.Json.Nodes.JsonObject)?["stage1_beat_id"]?.ToString();
+            if (string.IsNullOrWhiteSpace(id))
+                return;
+            ids.Add(id);
+        }
+
+        beatMap.Clear();
+        foreach (var id in ids)
+            beatMap.Add(id);
+    }
+
     private static System.Text.Json.Nodes.JsonObject? FindClipNode(
         System.Text.Json.Nodes.JsonArray clips, int clip)
     {
@@ -4754,7 +4807,10 @@ public sealed partial class ProjectStore
 
         var (root, scenes) = ParseBlueprintScenes(bpPath);
 
-        var clips = FindSceneClipsArray(scenes, scene)
+        var sceneNode = FindSceneNode(scenes, scene)
+                        ?? throw new InvalidOperationException($"Scene {scene} not found in shot plan.");
+        var clips = (sceneNode[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                     ?? sceneNode[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray)
                     ?? throw new InvalidOperationException($"Scene {scene} not found in shot plan.");
         if (FindClipNode(clips, fields.Clip) is not null)
             throw new InvalidOperationException($"Clip S{scene:D2}C{fields.Clip:D2} already exists.");
@@ -4775,6 +4831,9 @@ public sealed partial class ProjectStore
             insertAt++;
         }
         clips.Insert(insertAt, clipObj);
+        // ApplyClipFields -> EnsureStage1BeatId has already minted this clip's beat id, so the
+        // rebuilt map gets a real entry rather than a placeholder.
+        SyncBeatMapToClips(sceneNode);
 
         File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
         InvalidateSceneListCache(projectId);
@@ -4830,6 +4889,7 @@ public sealed partial class ProjectStore
                 if (clips[i] is not System.Text.Json.Nodes.JsonObject c) continue;
                 if (ClipKeying.ClipNumber(c) != clip) continue;
                 clips.RemoveAt(i);
+                SyncBeatMapToClips(s);
                 return true;
             }
             return false;

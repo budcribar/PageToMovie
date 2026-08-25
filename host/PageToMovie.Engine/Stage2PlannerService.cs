@@ -200,19 +200,23 @@ public sealed class Stage2PlannerService
         // Overlay plate/voice edits from cast_seeds.json when present
         MergeCastSeedsOverlay(_projects, projectId, stage1);
 
-        var (classifyMeta, enrichMeta) = await RunStage1EnrichmentsAsync(stage1, onProgress, ct, planningModel)
+        // Resolved before enrichment, not after: the Stage 1 classifiers only need the scenes about
+        // to be replanned, and running them over the whole screenplay to plan one scene is pure
+        // spend. Mary19 logged "extend vs hard-cut for 22 beat(s)" while planning a single scene.
+        var want = ParseSceneRange(scenes);
+        var scenesIn = FilterScenesToRange(GetScenes(stage1), want);
+
+        if (scenesIn.Count == 0)
+            throw new InvalidOperationException("Screenplay has no scenes to plan.");
+
+        var (classifyMeta, enrichMeta) = await RunStage1EnrichmentsAsync(
+                stage1, scenesIn, onProgress, ct, planningModel)
             .ConfigureAwait(false);
 
         var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
         var locSeeds = GetDict(gpv, "location_seed_tokens");
         var charSeeds = GetDict(gpv, Keys.CharacterSeedTokens);
         NormalizeCharPlaceholders(charSeeds);
-
-        var want = ParseSceneRange(scenes);
-        var scenesIn = FilterScenesToRange(GetScenes(stage1), want);
-
-        if (scenesIn.Count == 0)
-            throw new InvalidOperationException("Screenplay has no scenes to plan.");
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
@@ -250,14 +254,31 @@ public sealed class Stage2PlannerService
     /// AI enrichments (each: chat preferred → retry → heuristic fallback).
     /// All use the Settings Script & planning model — no host option invent defaults.
     /// </summary>
+    /// <param name="scenesToEnrich">
+    /// The scenes about to be replanned. Each classifier walks <c>scenes[]</c> and mutates the beat
+    /// dictionaries in place, so they get a shallow view of <paramref name="stage1"/> whose scene
+    /// list is narrowed to these — every other key (global production variables, cast seeds) is the
+    /// same object, and the scene dictionaries are the same references, so the real beats still get
+    /// the labels. Only the enrichment is scoped; <paramref name="stage1"/> itself stays whole,
+    /// because dialogue coverage later checks the full screenplay against the merged plan.
+    /// </param>
+    /// <remarks>
+    /// The counts in the returned meta describe the scenes enriched, not the whole screenplay —
+    /// which is what a partial replan actually did.
+    /// </remarks>
     private async Task<(SilentBeatClassifyResult? ClassifyMeta, Dictionary<string, object?> EnrichMeta)> RunStage1EnrichmentsAsync(
         Dictionary<string, object?> stage1,
+        List<Dictionary<string, object?>> scenesToEnrich,
         Action<string>? onProgress,
         CancellationToken ct,
         string planningModel)
     {
         SilentBeatClassifyResult? classifyMeta = null;
         var enrichMeta = new Dictionary<string, object?>();
+        stage1 = new Dictionary<string, object?>(stage1)
+        {
+            [Keys.Scenes] = scenesToEnrich.Cast<object?>().ToList(),
+        };
         if (_silentBeatClassifier is not null)
         {
             classifyMeta = await _silentBeatClassifier
