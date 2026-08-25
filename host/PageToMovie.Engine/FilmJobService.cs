@@ -579,8 +579,65 @@ public sealed class FilmJobService
         _ = PublishSnapshotAsync(run.Snapshot);
 
         _ = Task.Run(() => ExecuteQueuedJobAsync(work, meta, run, userId, kind), CancellationToken.None);
+        _ = Task.Run(() => WatchZombieQueuedAsync(rec.JobId, meta.Message, cts.Token), CancellationToken.None);
 
         return rec.ToSnapshot();
+    }
+
+    /// <summary>
+    /// Grace before a queued job that never left the enqueue line is failed.
+    /// <see cref="ExecuteQueuedJobAsync"/> updates to lock-wait immediately when it starts.
+    /// </summary>
+    internal static readonly TimeSpan ZombieQueuedGrace = TimeSpan.FromSeconds(20);
+
+    private async Task WatchZombieQueuedAsync(string jobId, string initialMessage, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(ZombieQueuedGrace, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        var job = _jobs.Get(jobId);
+        if (job is null || !JobLostOnRestart.IsStuckOnInitialEnqueue(job, initialMessage))
+            return;
+
+        FailJobById(jobId, JobLostOnRestart.Message);
+    }
+
+    /// <summary>Process recycle: fail every in-flight job so clients do not hang on a dead snapshot.</summary>
+    public void FailInFlightJobsOnShutdown()
+    {
+        foreach (var rec in _jobs.List(take: 200))
+        {
+            if (!JobLostOnRestart.IsInFlight(rec.Status))
+                continue;
+            FailJobById(rec.JobId, JobLostOnRestart.Message);
+        }
+    }
+
+    private void FailJobById(string jobId, string message)
+    {
+        _jobs.Update(jobId, rec =>
+        {
+            if (!JobLostOnRestart.IsInFlight(rec.Status))
+                return;
+            JobLostOnRestart.MarkProgressLost(rec);
+            if (!string.Equals(rec.Error, message, StringComparison.Ordinal))
+                rec.Error = message;
+        });
+        if (_jobCts.TryRemove(jobId, out var cts))
+        {
+            try { cts.Cancel(); } catch { /* ignore */ }
+            cts.Dispose();
+        }
+        _locks.ReleaseAllForJob(jobId);
+        var snap = _jobs.Get(jobId)?.ToSnapshot();
+        if (snap is not null)
+            _ = PublishSnapshotAsync(snap);
     }
 
     /// <summary>
@@ -745,8 +802,7 @@ public sealed class FilmJobService
         try
         {
             if (CurrentRun.Value?.Snapshot is { } s &&
-                !string.Equals(s.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(s.Status, StatusDone, StringComparison.OrdinalIgnoreCase))
+                !JobLostOnRestart.IsFinishedStatus(s.Status))
             {
                 await FinishAsync(StatusCancelled, CancelledByUser);
             }
@@ -851,8 +907,7 @@ public sealed class FilmJobService
     private void ThrowIfQueuedJobCancelled(JobRunState run)
     {
         var job = !string.IsNullOrEmpty(run.ActiveJobId) ? _jobs.Get(run.ActiveJobId) : null;
-        if (job is not null &&
-            string.Equals(job.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
+        if (job is not null && JobLostOnRestart.IsFinishedStatus(job.Status))
         {
             throw new OperationCanceledException("Job cancelled");
         }
@@ -882,7 +937,8 @@ public sealed class FilmJobService
     private bool TryAcquireOnePendingLock(JobRunState run, string res, List<string> acquired, out string? holderUserId)
     {
         holderUserId = null;
-        if (_locks.TryAcquire(res, run.UserId, DefaultLockTtl, run.LockReason, run.ActiveJobId))
+        if (OrphanJobLock.TryAcquireOrSteal(
+                _locks, _jobs, res, run.UserId, DefaultLockTtl, run.LockReason, run.ActiveJobId))
         {
             acquired.Add(res);
             return true;
@@ -925,7 +981,7 @@ public sealed class FilmJobService
         }
         _jobs.Update(run.ActiveJobId, rec =>
         {
-            if (string.Equals(rec.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
+            if (JobLostOnRestart.IsFinishedStatus(rec.Status))
                 return;
             rec.Status = StatusQueued;
             rec.Message = message;

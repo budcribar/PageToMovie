@@ -13,6 +13,8 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes : IAsyncDisposable, IPageSliceHost
 {
+    [Inject] internal ServerHealthState Health { get; set; } = default!;
+
     private CancellationTokenSource? _mediaFolderChangedDebounce;
     /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Scenes_* pieces are slices.</summary>
     public event Action? Rendered;
@@ -189,6 +191,8 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
         await ActiveProject.EnsureLoadedAsync(Engine);
         Hub.JobUpdated += Gen.OnJobUpdated;
         Hub.JobLog += Gen.OnJobLog;
+        Hub.Reconnected += OnHubReconnected;
+        Health.Recovered += OnServerRecoveredAsync;
         MediaFolder.Changed += OnMediaFolderChanged;
         try
         {
@@ -217,6 +221,8 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
             Gen._job = jobs?.Job;
             if (Session.IsAdmin)
                 await Gen.RefreshMyJobsAsync();
+            if (Gen.JobRunning)
+                Gen.StartJobPolling();
 
             await List.ReloadListAsync();
             // Folder connected and the server is missing clips it once had: push the sidecars back.
@@ -481,10 +487,30 @@ public partial class Scenes : IAsyncDisposable, IPageSliceHost
 
 
 
+    private void OnHubReconnected()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await Gen.ReconcileJobWithServerAsync();
+            StateHasChanged();
+        });
+    }
+
+    private Task OnServerRecoveredAsync() =>
+        InvokeAsync(async () =>
+        {
+            await Gen.ReconcileJobWithServerAsync();
+            await Hub.EnsureStartedAsync();
+            StateHasChanged();
+        });
+
     public async ValueTask DisposeAsync()
     {
         Hub.JobUpdated -= Gen.OnJobUpdated;
         Hub.JobLog -= Gen.OnJobLog;
+        Hub.Reconnected -= OnHubReconnected;
+        Health.Recovered -= OnServerRecoveredAsync;
+        Gen.DisposePolling();
         MediaFolder.Changed -= OnMediaFolderChanged;
         if (_mediaFolderChangedDebounce is { } debounce)
         {

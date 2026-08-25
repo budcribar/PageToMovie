@@ -21,6 +21,12 @@ public sealed class JobHubClient : IAsyncDisposable
     public event Action<JobSnapshot>? JobUpdated;
     public event Action<string>? JobLog;
     public event Action<object?>? AdminState;
+    /// <summary>
+    /// Hub finished a reconnect (or a test raises it). Pages that hold a local
+    /// in-flight snapshot must re-fetch — the job store is in-memory and a
+    /// restart drops it without a JobUpdated.
+    /// </summary>
+    public event Action? Reconnected;
 
     public bool IsConnected =>
         _connection?.State == HubConnectionState.Connected;
@@ -125,21 +131,25 @@ public sealed class JobHubClient : IAsyncDisposable
         _connection.On<object>(JobHubEvents.AdminState, payload => AdminState?.Invoke(payload));
         // Hub lifecycle is a second outage signal (server restarts drop the socket before any
         // REST call notices). Reconnected proves the server is back; a Closed with no error is a
-        // deliberate StopAsync, not an outage.
-        if (_health is not null)
+        // deliberate StopAsync, not an outage. Pages must re-fetch the current job on
+        // Reconnected — ReportSuccess alone does not refresh a stale snapshot.
+        _connection.Reconnecting += ex =>
         {
-            var health = _health;
-            _connection.Reconnecting += ex => { health.ReportFailure(ex?.Message ?? "hub reconnecting"); return Task.CompletedTask; };
-            _connection.Reconnected += _ => { health.ReportSuccess(); return Task.CompletedTask; };
-            _connection.Closed += ex =>
-            {
-                if (ex is not null)
-                {
-                    health.ReportFailure(ex);
-                }
-                return Task.CompletedTask;
-            };
-        }
+            _health?.ReportFailure(ex?.Message ?? "hub reconnecting");
+            return Task.CompletedTask;
+        };
+        _connection.Reconnected += _ =>
+        {
+            _health?.ReportSuccess();
+            RaiseReconnected();
+            return Task.CompletedTask;
+        };
+        _connection.Closed += ex =>
+        {
+            if (ex is not null)
+                _health?.ReportFailure(ex);
+            return Task.CompletedTask;
+        };
 
         try
         {
@@ -188,6 +198,9 @@ public sealed class JobHubClient : IAsyncDisposable
     }
 
     private const string AuthHeaderUserId = "X-User-Id";
+
+    /// <summary>Hub reconnect / health-recovery seam. Subscribers re-fetch the current job.</summary>
+    public void RaiseReconnected() => Reconnected?.Invoke();
 
     public async Task StopAsync()
     {
