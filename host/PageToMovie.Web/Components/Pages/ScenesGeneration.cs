@@ -60,6 +60,8 @@ public partial class Scenes
 
     internal bool _listRefreshInFlight;
 
+    private CancellationTokenSource? _jobPollCts;
+
 
 
     /// <summary>
@@ -388,6 +390,10 @@ public partial class Scenes
     internal void OnJobUpdated(JobSnapshot snap)
     {
         _job = snap;
+        if (JobLostOnRestart.IsInFlight(snap.Status) && !string.IsNullOrWhiteSpace(snap.JobId))
+            StartJobPolling();
+        else
+            DisposePolling();
         _ = S.InvokeAsync(async () =>
         {
             if (S.Session.IsAdmin)
@@ -589,27 +595,103 @@ public partial class Scenes
     /// <summary>
     /// A job the page still shows as queued/running may no longer exist on the server (the job store
     /// is in-memory; a redeploy drops it). Left alone, the page shows "Waiting…" forever with a Cancel
-    /// that 404s (Mary19 S04 credits, 2026-08-19). Ask the server; if the job is gone, say so.
+    /// that 404s. Ask the server; if the job is gone, fail the snapshot so the modal can Close.
     /// </summary>
     internal async Task ReconcileJobWithServerAsync()
     {
         var j = _job;
         if (j is null || string.IsNullOrWhiteSpace(j.JobId)) return;
-        if (!(string.Equals(j.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) || string.Equals(j.Status, StatusQueued, StringComparison.OrdinalIgnoreCase)))
+        if (!JobLostOnRestart.IsInFlight(j.Status))
             return;
-        JobSnapshot? live;
-        try { live = await S.Engine.TryGetJobAsync(j.JobId); }
-        catch { return; /* network blip — keep what we have */ }
-        if (live is not null)
+
+        var lookup = await S.Engine.LookupJobAsync(j.JobId);
+        JobsDto? list = null;
+        var listOk = false;
+        try
         {
-            _job = live;
-            return;
+            list = await S.Engine.GetJobAsync();
+            listOk = true;
         }
-        j.Status = StatusError;
-        j.FinishedAt = DateTimeOffset.UtcNow;
-        j.Message = "Lost track of this job — the server restarted while it was queued (deploy). Nothing was generated; start it again.";
-        j.Error = j.Message;
-        _showJobModal = false;
+        catch { /* network — do not treat as gone unless by-id was 404 */ }
+
+        if (lookup.Status == JobLookupStatus.Unreachable && !listOk)
+            return;
+
+        ApplyServerJobView(
+            lookup.Status == JobLookupStatus.Found ? lookup.Job : null,
+            byIdNotFound: lookup.Status == JobLookupStatus.NotFound,
+            current: listOk ? list?.Job : null,
+            currentKnown: listOk);
+    }
+
+    /// <summary>
+    /// Apply a current-job / job-by-id poll. 404, empty, or a different job fails a stale
+    /// queued snapshot and clears <see cref="JobRunning"/> so the Generating modal can Close.
+    /// Keeps the modal open so the operator sees the error instead of a silent hide.
+    /// </summary>
+    internal void ApplyServerJobView(
+        JobSnapshot? byId,
+        bool byIdNotFound,
+        JobSnapshot? current,
+        bool currentKnown)
+    {
+        var local = _job;
+        if (local is null)
+            return;
+        var next = JobLostOnRestart.ApplyServerView(local, byId, byIdNotFound, current, currentKnown);
+        _job = next;
+        ReplaceMyJob(next);
+        if (JobLostOnRestart.IsFinishedStatus(next.Status))
+            DisposePolling();
+    }
+
+    internal void StartJobPolling()
+    {
+        if (!JobLostOnRestart.IsInFlight(_job?.Status) || string.IsNullOrWhiteSpace(_job?.JobId))
+            return;
+        DisposePolling();
+        _jobPollCts = new CancellationTokenSource();
+        var ct = _jobPollCts.Token;
+        _ = Task.Run(() => PollLostJobLoopAsync(ct), CancellationToken.None);
+    }
+
+    internal void DisposePolling()
+    {
+        _jobPollCts?.Cancel();
+        _jobPollCts?.Dispose();
+        _jobPollCts = null;
+    }
+
+    private async Task PollLostJobLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && JobLostOnRestart.IsInFlight(_job?.Status))
+            {
+                await Task.Delay(1500, ct);
+                if (ct.IsCancellationRequested)
+                    return;
+                await ReconcileJobWithServerAsync();
+                if (_job is { } live && JobLostOnRestart.IsFinishedStatus(live.Status))
+                {
+                    await S.InvokeAsync(S.StateHasChanged);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* expected */ }
+        catch { /* ignore poll errors */ }
+    }
+
+    private void ReplaceMyJob(JobSnapshot next)
+    {
+        if (string.IsNullOrWhiteSpace(next.JobId))
+            return;
+        for (var i = 0; i < _myJobs.Count; i++)
+        {
+            if (string.Equals(_myJobs[i].JobId, next.JobId, StringComparison.OrdinalIgnoreCase))
+                _myJobs[i] = next;
+        }
     }
 
     internal async Task SoftReloadAsync()

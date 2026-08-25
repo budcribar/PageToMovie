@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using PageToMovie.Api.Auth;
+using PageToMovie.Api.Hosting;
 using PageToMovie.Api.Services;
 using PageToMovie.Core.Auth;
 using PageToMovie.Core.Localization;
@@ -213,6 +214,7 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<IEmailSender>(CreateEmailSender);
         builder.Services.AddSingleton<IAdminAuthService, AdminAuthService>();
         builder.Services.AddSingleton<FilmJobService>();
+        builder.Services.AddHostedService<JobShutdownService>();
         builder.Services.AddSingleton<IJobProgressSink, SignalRJobProgressSink>();
         builder.Services.AddSingleton<AdminMetricsPushService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<AdminMetricsPushService>());

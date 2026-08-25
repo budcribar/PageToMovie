@@ -1933,20 +1933,30 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// <summary>Like <see cref="GetJobByIdAsync"/> but returns null on 404 (job gone after restart).</summary>
     public async Task<JobSnapshot?> TryGetJobAsync(string jobId, CancellationToken ct = default)
     {
+        var lookup = await LookupJobAsync(jobId, ct);
+        return lookup.Job;
+    }
+
+    /// <summary>
+    /// Distinguishes job-by-id 404 (restart dropped the in-memory store) from a network blip.
+    /// Auto-review / composite 404 paths are unchanged — they do not use this.
+    /// </summary>
+    public async Task<JobLookupResult> LookupJobAsync(string jobId, CancellationToken ct = default)
+    {
         try
         {
             using var resp = await _http.GetAsync(
                 $"/api/jobs/{Uri.EscapeDataString(jobId)}", ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return null;
+                return new JobLookupResult(JobLookupStatus.NotFound, null);
             if (!resp.IsSuccessStatusCode)
-                return null;
+                return new JobLookupResult(JobLookupStatus.Unreachable, null);
             var dto = await resp.Content.ReadFromJsonAsync<JobDetailDto>(JsonOpts, ct);
-            return dto?.Job;
+            return new JobLookupResult(JobLookupStatus.Found, dto?.Job);
         }
         catch
         {
-            return null; // network / 502 — caller distinguishes via separate list poll
+            return new JobLookupResult(JobLookupStatus.Unreachable, null);
         }
     }
 
@@ -4884,6 +4894,15 @@ public sealed class JobDetailDto
     public bool Ok { get; set; }
     public JobSnapshot? Job { get; set; }
 }
+
+public enum JobLookupStatus
+{
+    Found,
+    NotFound,
+    Unreachable,
+}
+
+public readonly record struct JobLookupResult(JobLookupStatus Status, JobSnapshot? Job);
 
 public sealed class CapacityDto
 {
