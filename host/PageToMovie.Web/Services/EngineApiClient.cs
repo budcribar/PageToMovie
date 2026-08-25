@@ -1746,17 +1746,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// Primary job for the current user (Phase F: uses list <c>?mine=1</c>, not bare GET).
     /// Prefers a running job, else most recent.
     /// </summary>
-    public async Task<JobsDto?> GetJobAsync(CancellationToken ct = default)
-    {
-        var list = await GetJobsAsync(mine: true, ct: ct);
-        if (list is null) return null;
-        return new JobsDto
-        {
-            Ok = list.Ok,
-            Running = list.Running,
-            Job = JobListHelpers.PickPrimary(list.Jobs),
-        };
-    }
+    public async Task<JobsDto?> GetJobAsync(CancellationToken ct = default) =>
+        ToCurrentJobsDto(await GetJobsAsync(mine: true, ct: ct));
 
     /// <summary>Multi-job list. Requires mine, projectId, or userId (Phase F).</summary>
 
@@ -1912,16 +1903,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        var q = new List<string>();
-        if (mine) q.Add("mine=1");
-        if (!string.IsNullOrWhiteSpace(projectId))
-            q.Add("projectId=" + Uri.EscapeDataString(projectId));
-        if (!string.IsNullOrWhiteSpace(userId))
-            q.Add("userId=" + Uri.EscapeDataString(userId));
-        if (q.Count == 0)
-            q.Add("mine=1"); // never call bare /api/jobs
-        var url = "/api/jobs?" + string.Join("&", q);
-        return await _http.GetFromJsonAsync<JobsListDto>(url, JsonOpts, ct);
+        return await _http.GetFromJsonAsync<JobsListDto>(
+            BuildJobsListUrl(mine, projectId, userId), JsonOpts, ct);
     }
 
     public async Task<JobDetailDto?> GetJobByIdAsync(string jobId, CancellationToken ct = default) =>
@@ -1958,6 +1941,52 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         {
             return new JobLookupResult(JobLookupStatus.Unreachable, null);
         }
+    }
+
+    /// <summary>
+    /// Current-job list poll with a real reachability status (HTTP 2xx vs non-success / transport).
+    /// Empty 2xx is Found + null job — not a blip. List 404 is Unreachable, not NotFound;
+    /// only <see cref="LookupJobAsync"/> treats 404 as the in-memory store dropping that id.
+    /// </summary>
+    public async Task<JobLookupResult> LookupCurrentJobAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            SyncIdentityHeaders();
+            using var resp = await _http.GetAsync(BuildJobsListUrl(mine: true), ct);
+            if (!resp.IsSuccessStatusCode)
+                return new JobLookupResult(JobLookupStatus.Unreachable, null);
+            var list = await resp.Content.ReadFromJsonAsync<JobsListDto>(JsonOpts, ct);
+            return new JobLookupResult(JobLookupStatus.Found, ToCurrentJobsDto(list)?.Job);
+        }
+        catch
+        {
+            return new JobLookupResult(JobLookupStatus.Unreachable, null);
+        }
+    }
+
+    private static string BuildJobsListUrl(bool mine = false, string? projectId = null, string? userId = null)
+    {
+        var q = new List<string>();
+        if (mine) q.Add("mine=1");
+        if (!string.IsNullOrWhiteSpace(projectId))
+            q.Add("projectId=" + Uri.EscapeDataString(projectId));
+        if (!string.IsNullOrWhiteSpace(userId))
+            q.Add("userId=" + Uri.EscapeDataString(userId));
+        if (q.Count == 0)
+            q.Add("mine=1"); // never call bare /api/jobs
+        return "/api/jobs?" + string.Join("&", q);
+    }
+
+    private static JobsDto? ToCurrentJobsDto(JobsListDto? list)
+    {
+        if (list is null) return null;
+        return new JobsDto
+        {
+            Ok = list.Ok,
+            Running = list.Running,
+            Job = JobListHelpers.PickPrimary(list.Jobs),
+        };
     }
 
     public async Task<CapacityDto?> GetCapacityAsync(CancellationToken ct = default) =>
