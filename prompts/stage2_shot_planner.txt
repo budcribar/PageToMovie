@@ -87,6 +87,14 @@ VIDEO PROVIDER PROFILES
 - Stage 1 continuity is new_setup or return_to_present
 - **VO after on-camera speech** (e.g. Mom just spoke → next is Narrator VO): none
   so you do not freeze a talking face into the VO shot
+- **The staging is not where the previous clip left it.** An extend continues the previous
+  clip's LAST FRAME, so nobody can be repositioned before this clip starts. If a subject is
+  somewhere the previous clip never showed it reach, or the frame has to be rearranged before
+  this action can happen, that is a cut — an extend cannot teleport anyone or skip a journey.
+  Check every subject the beat names, not only the one doing something: a beat's verbs often
+  belong to one character while another is merely described standing or sitting somewhere new,
+  and that description moves them just as surely.
+  Do not invent the journey either: film the new arrangement as its own shot.
 
 extend_previous when Stage 1 continuity is continuous_from_previous_beat
 AND action_class is hold | dialogue | small_motion

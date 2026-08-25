@@ -12,7 +12,12 @@ namespace PageToMovie.Engine;
 /// </summary>
 public static class ShotPlanLint
 {
-    public sealed record Finding(string Rule, string Message);
+    /// <param name="Advisory">
+    /// True for a finding that says the plan was built by an older rule rather than that this
+    /// clip's text is wrong. Both go in the job log; only a non-advisory finding marks a rendered
+    /// clip stale, because staling a clip asks the user to spend money regenerating it.
+    /// </param>
+    public sealed record Finding(string Rule, string Message, bool Advisory = false);
 
     /// <summary>Lint a blueprint clip against cast facts. Empty when the plan text is consistent.</summary>
     /// <param name="currentStyleHead">
@@ -27,6 +32,7 @@ public static class ShotPlanLint
         var findings = new List<Finding>();
         var visual = clipEl.TryGetProperty("visual_prompt", out var vp) && vp.ValueKind == JsonValueKind.String ? vp.GetString() ?? "" : "";
         AddStyleLockDrift(findings, visual, currentStyleHead);
+        AddUncheckedContinuation(findings, clipEl);
         // Rule 1: a voice-only role (never_on_screen) placed on screen or dressed.
         foreach (var key in voiceOnlyKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
         {
@@ -52,6 +58,39 @@ public static class ShotPlanLint
         }
         return findings;
     }
+
+    /// <summary>
+    /// Rule 3: this clip continues the previous one, but the plan does not record which rule
+    /// decided that. Stage 2 stamps <c>continuity_rule</c> on every clip it plans, so a missing
+    /// stamp means the plan predates the staging test — the check that an extend's action opens
+    /// where the previous clip's action left the cast. Those plans are where a continuation clip
+    /// gets an <c>&lt;Action&gt;</c> restaging the room beside a <c>&lt;Continuity&gt;</c> block
+    /// telling the model to pick up from the previous last frame; the model resolves the
+    /// contradiction in favour of the Action and the subject jumps across the set.
+    ///
+    /// <para>Advisory, not staling: most extends in an old plan are genuinely continuous, and this
+    /// rule cannot tell which ones are not — only a rebuild can. It says "rebuild the shot plan",
+    /// it does not condemn the clip.</para>
+    /// </summary>
+    private static void AddUncheckedContinuation(List<Finding> findings, JsonElement clipEl)
+    {
+        if (!IsExtendPrevious(clipEl) || HasContinuityRule(clipEl))
+            return;
+        findings.Add(new Finding("continuation_unchecked",
+            "this clip continues the previous one, but the plan predates the check that its action "
+            + "starts where the previous clip left the cast — rebuild the shot plan",
+            Advisory: true));
+    }
+
+    private static bool IsExtendPrevious(JsonElement clipEl) =>
+        clipEl.TryGetProperty("veo_continuation_source", out var cs)
+        && cs.ValueKind == JsonValueKind.String
+        && string.Equals(cs.GetString(), "extend_previous", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasContinuityRule(JsonElement clipEl) =>
+        clipEl.TryGetProperty("continuity_rule", out var cr)
+        && cr.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(cr.GetString());
 
     /// <summary>
     /// Rule 2: the clip's baked-in STYLE LOCK disagrees with the project's current one. Changing

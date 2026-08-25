@@ -18,6 +18,9 @@ public sealed class ShotPlanRefiningClassifier
     public const string PromptVersion = "v1_product";
 
     private const string KeyVisualPrompt = "visual_prompt";
+    private const string KeyContinuation = "veo_continuation_source";
+    private const string KeyContinuityRule = "continuity_rule";
+    private const string ExtendPrevious = "extend_previous";
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Cache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -146,13 +149,31 @@ public sealed class ShotPlanRefiningClassifier
             if (refDict.TryGetValue(key, out var refTuple))
             {
                 clip[KeyVisualPrompt] = refTuple.VisualPrompt;
-                clip["veo_continuation_source"] = refTuple.Continuation;
+                DropContinuityRuleIfNewlyExtending(clip, refTuple.Continuation);
+                clip[KeyContinuation] = refTuple.Continuation;
             }
         }
 
         _log.LogInformation("AI Shot Refiner applied dynamic camera framings to {Count} clips in scene {Scene}",
             refDict.Count, plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
         return true;
+    }
+
+    /// <summary>
+    /// This refiner picks continuation from camera framing alone — it never asks whether the clip's
+    /// action opens where the previous clip's action left the cast, which is the check Stage 2 runs
+    /// (and stamps as <c>continuity_rule</c>) when it decides a beat's cut_decision. So when the
+    /// refiner turns a clip INTO a continuation, the stamp it inherited no longer describes the
+    /// decision that stands, and leaving it would let ShotPlanLint report a checked continuation
+    /// that nothing checked. Dropping it is the honest answer: the lint says "unchecked".
+    /// </summary>
+    private static void DropContinuityRuleIfNewlyExtending(Dictionary<string, object?> clip, string continuation)
+    {
+        var wasExtending = string.Equals(
+            clip.GetValueOrDefault(KeyContinuation)?.ToString(), ExtendPrevious, StringComparison.OrdinalIgnoreCase);
+        var nowExtending = string.Equals(continuation, ExtendPrevious, StringComparison.OrdinalIgnoreCase);
+        if (nowExtending && !wasExtending)
+            clip.Remove(KeyContinuityRule);
     }
 
     private static List<Dictionary<string, object?>>? TryGetStagnantClips(Dictionary<string, object?> plannedScene)

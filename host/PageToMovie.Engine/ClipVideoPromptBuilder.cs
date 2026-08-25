@@ -340,15 +340,28 @@ public static class ClipVideoPromptBuilder
         bool useReferenceImages,
         string? previousClipVisualPrompt)
     {
+        // "Positions come from that frame" is the tie-breaker, and it is here because the two tags
+        // can disagree: the plan writes <Action> from a story beat, so a continuation clip whose
+        // beat restages the room hands the model an Action that contradicts this block. Mary19
+        // S02C02 was told to pick up from a last frame with the animal at the door and to film it
+        // among the desks at the other end of the room; it followed the Action and teleported.
+        // Stage 2 is where that is prevented (the extend/cut staging test, and ShotPlanLint's
+        // continuation_unchecked). This only decides which way the model leans when a plan built
+        // before that test still contradicts itself — holding position beats teleporting.
         var continuityBlock = mode switch
         {
             ModeVideoExtend => PromptTags.Wrap("Continuity",
                 "This is a seamless EXTENSION of the provided previous video. " +
                 "Pick up from its last frame. Same character identity, wardrobe, lighting, and location. " +
+                "Positions come from that frame: everyone and everything starts exactly where the previous " +
+                "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — do not invent a new establishing shot or redesign faces/outfits."),
             ModeContinue => PromptTags.Wrap("Continuity",
                 "Continue seamlessly from the provided starting frame (end of previous clip). " +
-                "Same character identity, wardrobe, lighting, and location. Natural progressive motion only — " +
+                "Same character identity, wardrobe, lighting, and location. " +
+                "Positions come from that frame: everyone and everything starts exactly where the previous " +
+                "clip left them, and the action below is what happens next from there — not a new arrangement. " +
+                "Natural progressive motion only — " +
                 "do not invent a new establishing shot or redesign faces/outfits."),
             _ =>
                 "Follow the camera framing and location in this prompt exactly. " +

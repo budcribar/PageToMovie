@@ -1,0 +1,6 @@
+{
+  "id": "v4_staging",
+  "task": "extend_cut",
+  "label": "Product ExtendCutClassifier prompt (shipped v4 - adds the staging test)",
+  "notes": "Matches PageToMovie.Engine ExtendCutClassifier.SystemPrompt. From the Mary19 S02C02 continuation defect: C01 left the animal at the door at the back of the room, C02's beat put it at the front among the desks, and extend/cut labelled the pair 'extend' because the shipped v1 prompt only asked about place and energy ('same place continuous business'). The clip then carried a <Continuity> block saying 'pick up from the last frame' beside an <Action> describing a different arrangement, and the model followed the Action. v4 adds the staging test: an extend continues the previous clip's last frame, so a beat whose subjects are somewhere the previous beat never showed them reach is a hard_cut. It also spells out the described-subject case, which is what the real beat looked like - every verb in it belonged to the children (twist, point, laugh, clap, all continuous) while the animal was only described standing somewhere new, so a staging test that reads only the acting subject still labels it extend. Shipped alongside a payload fix - prev_visual/visual_event were truncated to 40/50 tokens in the product path (160/200 here), which cut off the end of the previous action the staging test depends on."
+}
