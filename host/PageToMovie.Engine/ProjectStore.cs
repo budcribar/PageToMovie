@@ -704,7 +704,7 @@ public sealed partial class ProjectStore
     {
         var targetMp4Path = ResolveLocalTakeMp4Path(videoDir, target.Mp4FileName);
         var hasLocalTakeMp4 = File.Exists(targetMp4Path);
-        if (!hasLocalTakeMp4 && !HasProviderCopy(target))
+        if (!hasLocalTakeMp4 && !HasProviderCopy(target) && !HasClientCopy(videoDir, target.Mp4FileName))
             return false;
 
         ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, Math.Max(1, target.Take));
@@ -723,6 +723,21 @@ public sealed partial class ProjectStore
     private static bool HasProviderCopy(ClipVersionItem target)
         => !string.IsNullOrWhiteSpace(target.SourceUrl)
             || !string.IsNullOrWhiteSpace(target.SourceFileId);
+
+    /// <summary>
+    /// True when the browser holds this take, even though the server does not.
+    /// </summary>
+    /// <remarks>
+    /// Promoting a take writes a pointer; it never needs the bytes. The existence check is only
+    /// there so a take nobody can play cannot be made current — and a client-synced take IS
+    /// playable, by the one machine that matters. Without this, the server pruning its copy of a
+    /// take with no provider file id made that take unpromotable forever: Mary19 S01C02 take 7 is
+    /// the only take of that clip whose narration says the opening word, and selecting it answered
+    /// 400 and silently kept the take that drops it.
+    /// </remarks>
+    private static bool HasClientCopy(string videoDir, string fileName) =>
+        File.Exists(Path.Combine(videoDir, fileName + ClientMarkerExtension))
+        || File.Exists(Path.Combine(videoDir, StoreLit.History, fileName + ClientMarkerExtension));
 
     private void TryRestorePromotedVisualPrompt(string projectId, int scene, int clip, string visualPrompt)
     {
