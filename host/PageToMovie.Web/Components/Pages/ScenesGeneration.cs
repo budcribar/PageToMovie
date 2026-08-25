@@ -737,7 +737,14 @@ public partial class Scenes
                 await ReconcileJobWithServerAsync();
                 if (_job is { } live && JobLostOnRestart.IsFinishedStatus(live.Status))
                 {
-                    await S.InvokeAsync(S.StateHasChanged);
+                    // Run the SAME finish work the hub path does — close the modal, reload the
+                    // scene list, apply the per-kind side effects. Correcting the status text was
+                    // not enough: on a run where SignalR delivered nothing (Mary19 S02C02,
+                    // 2026-08-25) the clip was generated, verified and committed server-side while
+                    // the modal sat on "Queued batch gen…" and the page never picked up the take.
+                    // Re-running this if the hub later delivers the same terminal event is
+                    // harmless — it re-reads the list and re-closes an already-closed modal.
+                    await S.InvokeAsync(() => HandleTerminalJobAsync(live));
                     return;
                 }
             }

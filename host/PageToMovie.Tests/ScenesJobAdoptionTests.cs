@@ -34,6 +34,21 @@ public class ScenesJobAdoptionTests
         Assert.Contains("StartJobPolling();", body[..end], StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The poll is the fallback for a job whose events never arrive, so it has to complete the
+    /// job lifecycle, not just correct the status text. Mary19 S02C02 generated, verified and
+    /// committed server-side while the client sat on "Queued batch gen…" — because the poll
+    /// re-rendered and stopped there, never closing the modal or reloading the scene list.
+    /// </summary>
+    [Fact]
+    public void Poll_runs_the_same_terminal_handling_as_the_hub()
+    {
+        var src = ReadPage("ScenesGeneration.cs");
+        var loop = src[src.IndexOf("PollLostJobLoopAsync(CancellationToken", StringComparison.Ordinal)..];
+        var body = loop[..loop.IndexOf("private void ReplaceMyJob", StringComparison.Ordinal)];
+        Assert.Contains("HandleTerminalJobAsync(", body, StringComparison.Ordinal);
+    }
+
     private static string ReadPage(string fileName)
     {
         var d = new DirectoryInfo(Directory.GetCurrentDirectory());
