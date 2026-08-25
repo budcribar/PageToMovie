@@ -109,6 +109,7 @@ public class PipelineNavGatingTests
             await checklist.WaitForAsync(new() { Timeout = 60_000 });
             var reviewScenes = int.Parse(await checklist.GetAttributeAsync("data-scene-count") ?? "0");
             Assert.True(reviewScenes >= 1, $"expected >=1 scene in the review checklist, got {reviewScenes}");
+            await page.GetByTestId("review-tab-review").ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-scene-row").First).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             // ── 6. Home reflects the project: Film is now the "next" step on the process strip. ──

@@ -50,9 +50,8 @@ public class PageDepthTests
         try
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
-            // The tab strip renders (Play may be disabled without clips — assert presence, don't click).
+            await Assertions.Expect(page.GetByTestId("review-tab-finish")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("review-tab-review")).ToBeVisibleAsync();
-            await Assertions.Expect(page.GetByTestId("review-tab-play")).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByTestId("review-tab-share")).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }

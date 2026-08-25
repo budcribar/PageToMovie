@@ -5,7 +5,7 @@ namespace PageToMovie.UiTests;
 /// <summary>
 /// Final campaign items: picking a character voice through the real panel controls, the remaining
 /// Configuration fields (theme + external editor), the simple-revoice page's main card, and the
-/// full in-browser movie stitch (ffmpeg.wasm) on the Review Play tab.
+/// Review Finish tab hosting the cut editor.
 /// </summary>
 [Collection("ui-pipeline")]
 public class RemainingCoverageTests
@@ -117,41 +117,22 @@ public class RemainingCoverageTests
     }
 
     [Fact]
-    public async Task Play_tab_stitches_the_full_movie_in_the_browser()
+    public async Task Finish_tab_hosts_the_cut_editor()
     {
         var (ctx, page) = await _fx.NewPageAsync();
         try
         {
-            // Stop BEFORE the Generate-Batch finish step: that path renders credits AND builds a
-            // fresh server WIP, and a fresh server WIP short-circuits the in-browser stitch we
-            // are here to prove (PlayWipAsync: HasFreshServerWip → stream, else ffmpeg.wasm).
             await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl,
-                "Stitch_" + Guid.NewGuid().ToString("N")[..6], "mary_had_a_lamb.fountain");
+                "Finish_" + Guid.NewGuid().ToString("N")[..6], "mary_had_a_lamb.fountain");
             await PipelineFlow.MakeCastReadyForShotsAsync(page);
             await PipelineFlow.BuildShotPlanAsync(page);
             await PipelineFlow.GenerateClipsAsync(page);
 
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
-            var playTab = page.GetByTestId("review-tab-play");
-            await Assertions.Expect(playTab).ToBeEnabledAsync(new() { Timeout = 30_000 });
-            await playTab.ClickAsync();
-
-            // The full cut is combined IN THE BROWSER (ffmpeg.wasm) from the locally saved fake
-            // clips — wait for a playable blob-backed <video>. Generous timeout: wasm init + mux.
-            var blobVideo = page.Locator("video[src^='blob:']");
-            try
-            {
-                await Assertions.Expect(blobVideo.First).ToBeVisibleAsync(new() { Timeout = 180_000 });
-            }
-            catch (PlaywrightException)
-            {
-                var diag = await page.EvaluateAsync<string>(@"() => JSON.stringify({
-                    videos: [...document.querySelectorAll('video')].map(v => (v.currentSrc || v.src || '').slice(0, 60)),
-                    errs: [...document.querySelectorAll('.alert-danger')].map(e => e.innerText.trim()),
-                    text: (document.body.innerText.match(/Combining[^\n]*/) || [''])[0],
-                }).slice(0, 900)");
-                Assert.Fail("No blob-backed stitched video appeared on the Play tab. " + diag);
-            }
+            var finishTab = page.GetByTestId("review-tab-finish");
+            await Assertions.Expect(finishTab).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await finishTab.ClickAsync();
+            await Assertions.Expect(page.GetByTestId("cut-timeline")).ToBeVisibleAsync(new() { Timeout = 30_000 });
         }
         finally { await ctx.CloseAsync(); }
     }

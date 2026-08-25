@@ -8,7 +8,6 @@
 @inject IJSRuntime JS
 @inject ClientVideoStitchService Stitch
 @inject ClientMediaFolderService MediaFolder
-@inject ClientVoiceSubstitutionService VoiceSub
 @inject StudioCapabilityState Caps
 @inject IAppLocalizer L
 @using PageToMovie.Core.Models
@@ -54,28 +53,6 @@ else
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 p-2.5 rounded border border-secondary" style="background-color: #0f172a;">
     <div class="btn-group" role="group" aria-label="Review page views">
-        <button type="button" 
-                class="btn @(List._activeTab == ReviewTab.Review ? "btn-primary fw-bold" : "btn-outline-secondary text-white-50") px-3"
-                data-testid="review-tab-review"
-                @onclick='() => List.ToggleTabAsync(ReviewTab.Review)'>
-            🤖 @L["ReviewPage.ReviewAndApprove"]
-        </button>
-        <button type="button" 
-                class="btn @(List._activeTab == ReviewTab.Play ? "btn-success fw-bold" : "btn-outline-secondary text-white-50") px-3"
-                data-testid="review-tab-play"
-                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
-                @onclick='() => List.ToggleTabAsync(ReviewTab.Play)'
-                title="@(Playback.HasGeneratedClips ? Playback.WipPlayTitle : "Generate clips first")">
-            ▶ @L["ReviewPage.Play"]
-        </button>
-        <button type="button" 
-                class="btn @(List._activeTab == ReviewTab.Share ? "btn-info text-white fw-bold" : "btn-outline-secondary text-white-50") px-3"
-                data-testid="review-tab-share"
-                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
-                @onclick='() => List.ToggleTabAsync(ReviewTab.Share)'
-                title="@(Playback.HasGeneratedClips ? null : "Generate clips first")">
-            📤 @L["ReviewPage.ShareAndExport"]
-        </button>
         <button type="button"
                 class="btn @(List._activeTab == ReviewTab.Finish ? "btn-warning fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-finish"
@@ -83,25 +60,19 @@ else
             ✂️ @L["ReviewPage.Finish"]
         </button>
         <button type="button"
-                class="btn btn-outline-info text-info px-3"
-                data-testid="review-open-editor"
-                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
-                @onclick="Playback.OpenInExternalEditorAsync"
-                title="@(Playback.HasGeneratedClips ? $"Open full cut video in {Playback._preferredVideoEditor}" : "Generate clips first")">
-            🎬 @L.Format("ReviewPage.OpenInEditor", Playback._preferredVideoEditor)
+                class="btn @(List._activeTab == ReviewTab.Review ? "btn-primary fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                data-testid="review-tab-review"
+                @onclick='() => List.ToggleTabAsync(ReviewTab.Review)'>
+            🤖 @L["ReviewPage.ReviewAndApprove"]
         </button>
         <button type="button"
-                class="btn btn-outline-primary px-3"
-                data-testid="review-dub-my-voice"
-                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips || Playback._dubbing)"
-                @onclick="Playback.DubInMyVoiceAsync"
-                title="@(Playback.HasGeneratedClips ? "Replace the narrator with your recorded voice, then download" : "Generate clips first")">
-            🎙️ @(Playback._dubbing ? "Making your version…" : L["ReviewPage.MakeInMyVoice"])
+                class="btn @(List._activeTab == ReviewTab.Share ? "btn-info text-white fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                data-testid="review-tab-share"
+                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
+                @onclick='() => List.ToggleTabAsync(ReviewTab.Share)'
+                title="@(Playback.HasGeneratedClips ? null : "Generate clips first")">
+            📤 @L["ReviewPage.ShareAndExport"]
         </button>
-        @if (Playback._dubbing && !string.IsNullOrWhiteSpace(Playback._dubStatus))
-        {
-            <span class="small text-info align-self-center" data-testid="review-dub-status">@Playback._dubStatus</span>
-        }
     </div>
 
     <div class="d-flex align-items-center gap-2">
@@ -220,10 +191,6 @@ else
             </div>
         }
     </div>
-}
-else if (List._activeTab == ReviewTab.Play)
-{
-    <ReviewPlayTab />
 }
 else if (List._activeTab == ReviewTab.Share)
 {

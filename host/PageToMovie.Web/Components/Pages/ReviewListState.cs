@@ -14,7 +14,6 @@ namespace PageToMovie.Web.Components.Pages;
 public enum ReviewTab
 {
     Review,
-    Play,
     Share,
     Finish
 }
@@ -27,7 +26,7 @@ public partial class Review
         private readonly Review S;
         public ReviewListState(Review host) => S = host;
 
-        internal ReviewTab? _activeTab = ReviewTab.Review;
+        internal ReviewTab? _activeTab = ReviewTab.Finish;
 
         internal readonly HashSet<string> _expandedSceneGroups = new(StringComparer.OrdinalIgnoreCase);
 
@@ -67,7 +66,18 @@ public partial class Review
             tab = default;
             if (string.IsNullOrWhiteSpace(raw) || int.TryParse(raw, out _))
                 return false;
-            return Enum.TryParse(raw, ignoreCase: true, out tab) && Enum.IsDefined(tab);
+            var key = raw.Trim();
+            if (key.Equals("play", StringComparison.OrdinalIgnoreCase))
+            {
+                tab = ReviewTab.Finish;
+                return true;
+            }
+            if (key.Equals("approve", StringComparison.OrdinalIgnoreCase))
+            {
+                tab = ReviewTab.Review;
+                return true;
+            }
+            return Enum.TryParse(key, ignoreCase: true, out tab) && Enum.IsDefined(tab);
         }
 
         internal async Task ApplyQueryTabAsync()
@@ -85,11 +95,7 @@ public partial class Review
             if (_activeTab == tab)
                 return;
             _activeTab = tab;
-            if (tab == ReviewTab.Play)
-            {
-                await S.Playback.PlayWipAsync();
-            }
-            else if (tab == ReviewTab.Share)
+            if (tab == ReviewTab.Share)
             {
                 S.Share.PrepopulateDemoFields();
                 await S.Share.RefreshYouTubeStatusAsync();
@@ -100,11 +106,6 @@ public partial class Review
         {
             if (_activeTab == tab)
             {
-                if (tab == ReviewTab.Play)
-                {
-                    await S.Playback.PlayWipAsync();
-                    return;
-                }
                 _activeTab = null; // Toggle off / collapse card
             }
             else
@@ -146,7 +147,6 @@ public partial class Review
             S._error = null;
             try
             {
-                await S.Playback.LoadPreferredVideoEditorAsync();
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
                 var log = await S.Engine.GetEditLogAsync(S._projectId);
