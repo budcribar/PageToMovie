@@ -420,9 +420,8 @@
   },
   "ReviewPage": {
     "Subtitle": "Szenen genehmigen, Schnitt abspielen, veröffentlichen. Das Ziel ist die automatische Generierung — hier verfeinern Sie.",
-    "ReviewAndApprove": "Prüfen & Genehmigen",
-    "Play": "Abspielen",
-    "ShareAndExport": "Teilen & Exportieren",
+    "ReviewAndApprove": "Prüfen und Genehmigen",
+    "ShareAndExport": "Teilen und Exportieren",
     "Finish": "Fertigstellen",
     "AiVisualContinuityTitle": "KI-Visuelle & Kontinuitätsprüfung",
     "AiVisualContinuityDesc": "Führen Sie eine automatische visuelle Prüfung über Kontinuität, Garderobe, Beleuchtung und Audio aus.",

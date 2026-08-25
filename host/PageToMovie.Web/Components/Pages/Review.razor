@@ -53,33 +53,25 @@ else
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 p-2.5 rounded border border-secondary" style="background-color: #0f172a;">
     <div class="btn-group" role="group" aria-label="Review page views">
-        <button type="button" 
+        <button type="button"
+                class="btn @(List._activeTab == ReviewTab.Finish ? "btn-warning fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                data-testid="review-tab-finish"
+                @onclick='() => List.ToggleTabAsync(ReviewTab.Finish)'>
+            ✂️ @L["ReviewPage.Finish"]
+        </button>
+        <button type="button"
                 class="btn @(List._activeTab == ReviewTab.Review ? "btn-primary fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-review"
                 @onclick='() => List.ToggleTabAsync(ReviewTab.Review)'>
             🤖 @L["ReviewPage.ReviewAndApprove"]
         </button>
-        <button type="button" 
-                class="btn @(List._activeTab == ReviewTab.Play ? "btn-success fw-bold" : "btn-outline-secondary text-white-50") px-3"
-                data-testid="review-tab-play"
-                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
-                @onclick='() => List.ToggleTabAsync(ReviewTab.Play)'
-                title="@(Playback.HasGeneratedClips ? Playback.WipPlayTitle : "Generate clips first")">
-            ▶ @L["ReviewPage.Play"]
-        </button>
-        <button type="button" 
+        <button type="button"
                 class="btn @(List._activeTab == ReviewTab.Share ? "btn-info text-white fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-share"
                 disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
                 @onclick='() => List.ToggleTabAsync(ReviewTab.Share)'
                 title="@(Playback.HasGeneratedClips ? null : "Generate clips first")">
             📤 @L["ReviewPage.ShareAndExport"]
-        </button>
-        <button type="button"
-                class="btn @(List._activeTab == ReviewTab.Finish ? "btn-warning fw-bold" : "btn-outline-secondary text-white-50") px-3"
-                data-testid="review-tab-finish"
-                @onclick='() => List.ToggleTabAsync(ReviewTab.Finish)'>
-            ✂️ @L["ReviewPage.Finish"]
         </button>
     </div>
 
@@ -199,10 +191,6 @@ else
             </div>
         }
     </div>
-}
-else if (List._activeTab == ReviewTab.Play)
-{
-    <ReviewPlayTab />
 }
 else if (List._activeTab == ReviewTab.Share)
 {

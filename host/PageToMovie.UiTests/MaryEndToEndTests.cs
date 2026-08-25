@@ -80,6 +80,7 @@ public class MaryEndToEndTests
 
             // ---- Review: approve clip + scene, then Play & Share are live ----
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+            await page.GetByTestId("review-tab-review").ClickAsync();
             var checklist = page.GetByTestId("review-checklist");
             await Assertions.Expect(checklist).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
@@ -92,11 +93,9 @@ public class MaryEndToEndTests
             await pass.ClickAsync();
             await Assertions.Expect(pass).ToBeEnabledAsync(new() { Timeout = 15_000 });
 
-            var playTab = page.GetByTestId("review-tab-play");
-            await Assertions.Expect(playTab).ToBeEnabledAsync(new() { Timeout = 15_000 });
-            await playTab.ClickAsync();
-            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Back to Review" }).First)
-                .ToBeVisibleAsync(new() { Timeout = 15_000 });
+            var finishTab = page.GetByTestId("review-tab-finish");
+            await Assertions.Expect(finishTab).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await finishTab.ClickAsync();
 
             var shareTab = page.GetByTestId("review-tab-share");
             await Assertions.Expect(shareTab).ToBeEnabledAsync(new() { Timeout = 15_000 });

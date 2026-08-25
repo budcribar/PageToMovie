@@ -202,7 +202,7 @@ public partial class Review
             try
             {
                 _clipPlayError = null;
-                S.List._activeTab = ReviewTab.Play;
+                S.List._activeTab = ReviewTab.Finish;
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
 
@@ -426,7 +426,6 @@ public partial class Review
             {
                 _clipPlayError = null;
                 _showClipPlayer = false;
-                S.List._activeTab = ReviewTab.Play;
                 await RefreshWipMetaAsync();
                 var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
                 var stale = (await S.Engine.GetWipMovieMetaAsync(S._projectId))?.StaleScenes?.Contains(scene) ?? false;

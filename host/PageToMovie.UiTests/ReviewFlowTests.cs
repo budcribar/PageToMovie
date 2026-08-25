@@ -31,7 +31,8 @@ public class ReviewFlowTests
 
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
 
-            // No scene approved yet.
+            // No scene approved yet. Default landing is Finish; scene rows live on Review and Approve.
+            await page.GetByTestId("review-tab-review").ClickAsync();
             var checklist = page.GetByTestId("review-checklist");
             await Assertions.Expect(checklist).ToBeVisibleAsync(new() { Timeout = 30_000 });
             Assert.Equal("0", await checklist.GetAttributeAsync("data-approved-count"));
@@ -88,7 +89,7 @@ public class ReviewFlowTests
     }
 
     [Fact]
-    public async Task Play_and_share_tabs_are_reachable_once_clips_exist()
+    public async Task Finish_review_and_share_tabs_are_reachable_once_clips_exist()
     {
         var (ctx, page) = await _fx.NewPageAsync();
         try
@@ -99,21 +100,14 @@ public class ReviewFlowTests
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
             await Assertions.Expect(page.GetByTestId("review-checklist")).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
-            // Both tabs are disabled until clips exist elsewhere in the app (CapabilityGatingTests) —
-            // here clips DO exist, so both must be enabled and switch the active view.
-            var playTab = page.GetByTestId("review-tab-play");
-            await Assertions.Expect(playTab).ToBeEnabledAsync(new() { Timeout = 15_000 });
-            await playTab.ClickAsync();
-            await Assertions.Expect(playTab).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("btn-success"), new() { Timeout = 15_000 });
-
-            // Play view: the full-movie player replaces the review body; "Back to Review" returns.
-            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Back to Review" }).First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            var finishTab = page.GetByTestId("review-tab-finish");
+            await Assertions.Expect(finishTab).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(finishTab).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("btn-warning"), new() { Timeout = 15_000 });
 
             var shareTab = page.GetByTestId("review-tab-share");
             await Assertions.Expect(shareTab).ToBeEnabledAsync(new() { Timeout = 15_000 });
             await shareTab.ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-share-card")).ToBeVisibleAsync(new() { Timeout = 15_000 });
-            // Back to the review body: the scene rows are there again.
             await page.GetByTestId("review-tab-review").ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-scene-row").First).ToBeVisibleAsync(new() { Timeout = 15_000 });
         }

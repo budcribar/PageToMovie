@@ -421,7 +421,6 @@
   "ReviewPage": {
     "Subtitle": "Aprueba escenas, reproduce el corte, publica. La meta es la generación automática — aquí la mejoras.",
     "ReviewAndApprove": "Revisar y aprobar",
-    "Play": "Reproducir",
     "ShareAndExport": "Compartir y exportar",
     "Finish": "Finalizar",
     "AiVisualContinuityTitle": "Revisión visual y de continuidad por IA",

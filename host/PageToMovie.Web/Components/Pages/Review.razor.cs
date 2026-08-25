@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review : IAsyncDisposable, IPageSliceHost
 {
-    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Review/Play/Share/Finish tabs are slices.</summary>
+    /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Finish/Review/Share tabs are slices.</summary>
     public event Action? Rendered;
 
     public void RenderRequestedBySlice() => StateHasChanged();
