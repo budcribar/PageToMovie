@@ -185,6 +185,8 @@ public sealed partial class ClipDialogueVerificationService
 
         try
         {
+            foreach (var mediaPath in media.MediaToPass.Where(IsVideoMediaPath))
+                ClipInlineMedia.EnsureFitsInline(mediaPath);
             var responseJson = await RunDialogueModelCallAsync(projectId, prompt, media.MediaToPass, ct).ConfigureAwait(false);
             var result = await ParseAndNormalizeResultAsync(
                 responseJson, sceneNumber, clipNumber, expectedSpeaker, media.ExpectedSpeakerDisplayName,

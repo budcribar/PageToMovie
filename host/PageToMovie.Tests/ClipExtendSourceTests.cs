@@ -191,4 +191,55 @@ public class ClipExtendSourceTests : IDisposable
         Assert.Equal(6.0, start);
         Assert.Equal(11.0, stop);
     }
+
+    [Fact]
+    public void Same_job_C1_regen_uses_new_file_id_and_ignores_leftover_local()
+    {
+        var choice = ClipExtendSource.SelectAfterPredecessorRegen(
+            new ClipExtendSource.PredecessorOffer(
+                FileId: "file_c1_new",
+                LeadInSeconds: 0,
+                DurationSeconds: 6.0,
+                LocalPath: "/tmp/leftover_combined_c1c2.mp4",
+                LocalDuration: 40.0));
+
+        Assert.Equal("file_c1_new", choice.FileId);
+        Assert.Null(choice.LocalPath);
+        Assert.Equal(6.0, choice.InputDurationSeconds);
+    }
+
+    [Fact]
+    public void Same_job_C1_regen_without_file_id_uses_current_take_mp4_only()
+    {
+        var choice = ClipExtendSource.SelectAfterPredecessorRegen(
+            new ClipExtendSource.PredecessorOffer(
+                FileId: null,
+                LeadInSeconds: 0,
+                DurationSeconds: 6.0,
+                LocalPath: "/tmp/scene_02_clip_01_take_03.mp4",
+                LocalDuration: 6.0));
+
+        Assert.Null(choice.FileId);
+        Assert.Equal("/tmp/scene_02_clip_01_take_03.mp4", choice.LocalPath);
+        Assert.Equal(6.0, choice.InputDurationSeconds);
+    }
+
+    [Fact]
+    public void Same_job_C1_regen_without_handle_does_not_chain_stale_leftovers()
+    {
+        var leftover = ClipExtendSource.Select(
+            new ClipExtendSource.PredecessorOffer(null, 0, 8.0, LocalPath: "/tmp/old_c1.mp4", LocalDuration: 80.0),
+            new ClipExtendSource.FallbackOffer(
+                MarkerFileId: "file_old_marker",
+                MarkerSeconds: 80.0,
+                ExplicitLocalPath: "/tmp/_extend_src_s02c02.mp4",
+                ExplicitLocalDuration: 80.0));
+        Assert.True(leftover.HasInput, "the normal selector still sees leftovers — that is the crash path");
+
+        var sameJob = ClipExtendSource.SelectAfterPredecessorRegen(
+            new ClipExtendSource.PredecessorOffer(null, 0, null));
+        Assert.False(sameJob.HasInput);
+        Assert.Null(sameJob.FileId);
+        Assert.Null(sameJob.LocalPath);
+    }
 }

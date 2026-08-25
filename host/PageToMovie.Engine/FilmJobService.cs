@@ -4706,6 +4706,7 @@ public sealed class FilmJobService
         // Per-scene (LastGeneratedClip, CarryoverPaddingSec) — batch work can interleave scenes,
         // so the padding nudge from one scene's overrun must never leak into a different scene.
         var sceneCarryover = new Dictionary<int, (int LastClip, double PaddingSec)>();
+        var generatedThisJob = new HashSet<(int Scene, int Clip)>();
         for (var i = 0; i < work.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -4723,7 +4724,10 @@ public sealed class FilmJobService
             {
                 await GenerateOneBatchClipAsync(
                     projectId, projectDir, sn, cn, clip, resolution, ct,
-                    bp, sceneCarryover, videoModel).ConfigureAwait(false);
+                    bp, sceneCarryover, videoModel,
+                    predecessorRegeneratedThisJob: generatedThisJob.Contains((sn, cn - 1)))
+                    .ConfigureAwait(false);
+                generatedThisJob.Add((sn, cn));
                 done++;
             }
             catch (OperationCanceledException)
@@ -4752,7 +4756,8 @@ public sealed class FilmJobService
         CancellationToken ct,
         JsonDocument bp,
         Dictionary<int, (int LastClip, double PaddingSec)> sceneCarryover,
-        string? videoModel)
+        string? videoModel,
+        bool predecessorRegeneratedThisJob = false)
     {
         // Previous clip element in same scene (for prompt context)
         var prevClipEl = FindPreviousClipElement(bp.RootElement, sn, cn);
@@ -4763,7 +4768,8 @@ public sealed class FilmJobService
             previousClipEl: prevClipEl,
             blueprintRoot: bp.RootElement,
             incomingDurationPaddingSec: incomingPadding,
-            modelOverride: videoModel);
+            modelOverride: videoModel,
+            predecessorRegeneratedThisJob: predecessorRegeneratedThisJob);
         sceneCarryover[sn] = (cn, overrun);
         // Fresh clips x/y + status pills while batch is still running.
         _projects.InvalidateSceneListCache(projectId);
@@ -5006,6 +5012,7 @@ public sealed class FilmJobService
         var failed = 0;
         var lastGeneratedClipNum = 0;
         var carryoverPaddingSec = 0.0;
+        var generatedThisJob = new HashSet<int>();
         for (var i = 0; i < todo.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -5023,8 +5030,10 @@ public sealed class FilmJobService
                 carryoverPaddingSec = await GenerateOneSceneClipWithQaAsync(
                     req, projectId, projectDir, sceneEl, blueprintRoot, todo,
                     cn, clip, resolution, lastGeneratedClipNum, carryoverPaddingSec,
-                    adminQaRetry, qaMaxRetries, dialogueQa, ct).ConfigureAwait(false);
+                    adminQaRetry, qaMaxRetries, dialogueQa, ct,
+                    predecessorRegeneratedThisJob: generatedThisJob.Contains(cn - 1)).ConfigureAwait(false);
                 lastGeneratedClipNum = cn;
+                generatedThisJob.Add(cn);
                 done++;
                 // Fresh clips x/y + status pills while scene gen is still running.
                 _projects.InvalidateSceneListCache(projectId);
@@ -5072,7 +5081,8 @@ public sealed class FilmJobService
         bool adminQaRetry,
         int qaMaxRetries,
         ClipDialogueVerificationService? dialogueQa,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool predecessorRegeneratedThisJob = false)
     {
         var prevClipEl = FindPreviousClipForSceneGen(cn, todo, sceneEl);
         var incomingPadding = ResolveIncomingDurationPadding(cn, lastGeneratedClipNum, carryoverPaddingSec);
@@ -5080,14 +5090,16 @@ public sealed class FilmJobService
             projectId, projectDir, req.Scene, cn, clip, resolution, ct,
             previousClipEl: prevClipEl,
             blueprintRoot: blueprintRoot,
-            incomingDurationPaddingSec: incomingPadding);
+            incomingDurationPaddingSec: incomingPadding,
+            predecessorRegeneratedThisJob: predecessorRegeneratedThisJob);
 
         if (adminQaRetry && ClipHasSpokenAudio(clip))
         {
             carryoverPaddingSec = await RunDialogueQaRetryLoopAsync(
                 req, projectId, projectDir, cn, clip, resolution, ct,
                 prevClipEl, blueprintRoot, incomingPadding, qaMaxRetries, dialogueQa,
-                carryoverPaddingSec).ConfigureAwait(false);
+                carryoverPaddingSec,
+                predecessorRegeneratedThisJob).ConfigureAwait(false);
         }
         return carryoverPaddingSec;
     }
@@ -5126,7 +5138,8 @@ public sealed class FilmJobService
         double incomingPadding,
         int qaMaxRetries,
         ClipDialogueVerificationService? dialogueQa,
-        double carryoverPaddingSec)
+        double carryoverPaddingSec,
+        bool predecessorRegeneratedThisJob = false)
     {
         for (var qaAttempt = 1; qaAttempt <= qaMaxRetries; qaAttempt++)
         {
@@ -5147,7 +5160,8 @@ public sealed class FilmJobService
                 blueprintRoot: blueprintRoot,
                 incomingDurationPaddingSec: incomingPadding,
                 takeKindOverride: VideoTakeKinds.QaAuto,
-                correction: correction.IsEmpty ? null : correction);
+                correction: correction.IsEmpty ? null : correction,
+                predecessorRegeneratedThisJob: predecessorRegeneratedThisJob);
             if (qaAttempt == qaMaxRetries)
                 await VerifyFinalQaAttemptAsync(dialogueQa, projectId, req.Scene, cn, qaMaxRetries, ct)
                     .ConfigureAwait(false);
@@ -5410,12 +5424,14 @@ public sealed class FilmJobService
         double incomingDurationPaddingSec = 0.0,
         string? modelOverride = null,
         string? takeKindOverride = null,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        bool predecessorRegeneratedThisJob = false)
     {
         var ctx = await CreateClipGenContextAsync(
             projectId, projectDir, scene, clip, clipEl, resolution, ct,
             previousClipEl, blueprintRoot, incomingDurationPaddingSec,
-            modelOverride, takeKindOverride, correction).ConfigureAwait(false);
+            modelOverride, takeKindOverride, correction,
+            predecessorRegeneratedThisJob).ConfigureAwait(false);
         return await ExecuteClipGenerationAsync(ctx).ConfigureAwait(false);
     }
 
@@ -5462,7 +5478,8 @@ public sealed class FilmJobService
         double incomingDurationPaddingSec,
         string? modelOverride,
         string? takeKindOverride,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        bool predecessorRegeneratedThisJob = false)
     {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
         var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
@@ -5480,7 +5497,9 @@ public sealed class FilmJobService
         var modelEntry = videoRoles.Generate;
 
         var (extendSourcePath, extendSourceFileId, extendInputDur) = wantContinue
-            ? await ResolveExtendInputAsync(projectDir, scene, clip, videoRoles, ct).ConfigureAwait(false)
+            ? await ResolveExtendInputAsync(
+                projectDir, scene, clip, videoRoles, ct, predecessorRegeneratedThisJob)
+                .ConfigureAwait(false)
             : (null, null, null);
 
         var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
@@ -5587,10 +5606,14 @@ public sealed class FilmJobService
             int scene,
             int clip,
             VideoModelRoles videoRoles,
-            CancellationToken ct)
+            CancellationToken ct,
+            bool predecessorRegeneratedThisJob = false)
     {
         if (clip <= 1 || !videoRoles.CanExtend)
             return (null, null, null);
+
+        if (predecessorRegeneratedThisJob)
+            return ResolveSameJobPredecessorExtend(projectDir, scene, clip);
 
         string? markerFileId = null;
         double? markerSeconds = null;
@@ -5634,6 +5657,65 @@ public sealed class FilmJobService
         }
 
         return (choice.LocalPath, choice.FileId, choice.InputDurationSeconds);
+    }
+
+    /// <summary>
+    /// C1 was just regenerated in this job: chain C2 only from C1's new take
+    /// (provider file_id, or current-take MP4 still on disk under fakes). Ignore
+    /// leftover local takes and browser extend-source markers.
+    /// </summary>
+    private (string? ExtendSourcePath, string? ExtendSourceFileId, double? PredecessorDurationSec)
+        ResolveSameJobPredecessorExtend(string projectDir, int scene, int clip)
+    {
+        var prev = TryReadCurrentTakePredecessor(projectDir, scene, clip - 1);
+        var choice = ClipExtendSource.SelectAfterPredecessorRegen(
+            new ClipExtendSource.PredecessorOffer(
+                prev?.SourceFileId,
+                prev?.LeadInSeconds ?? 0,
+                prev?.DurationSeconds,
+                prev?.ClipStopSeconds,
+                prev?.LocalMp4Path,
+                prev?.DurationSeconds));
+
+        if (!choice.HasInput)
+        {
+            _log.LogInformation(
+                "Predecessor S{Scene:D2}C{PrevClip} was regenerated in this job with no new provider handle; generating S{NextScene:D2}C{Clip} fresh",
+                scene, clip - 1, scene, clip);
+            return (null, null, null);
+        }
+
+        return (choice.LocalPath, choice.FileId, choice.InputDurationSeconds);
+    }
+
+    private static PredecessorClipDetails? TryReadCurrentTakePredecessor(string projectDir, int scene, int clip)
+    {
+        try
+        {
+            var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
+            if (!Directory.Exists(videoDir)) return null;
+
+            var src = ClipProviderSource.ReadForClip(videoDir, scene, clip);
+            var currentPath = ClipSidecarService.CurrentTakePath(videoDir, scene, clip);
+            var currentOk = currentPath is not null
+                && File.Exists(currentPath)
+                && new FileInfo(currentPath).Length >= 1024;
+
+            if (src is null && !currentOk)
+                return null;
+
+            return new PredecessorClipDetails(
+                LocalMp4Path: currentOk ? currentPath : null,
+                SourceFileId: src?.SourceFileId,
+                SourceUrl: src?.SourceUrl,
+                DurationSeconds: src?.DurationSeconds,
+                LeadInSeconds: src?.LeadInSeconds ?? 0,
+                ClipStopSeconds: src?.ClipStopSeconds);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? ResolvePreviousClipVisual(
@@ -6149,10 +6231,9 @@ public sealed class FilmJobService
         int duration,
         bool supportsContinue)
     {
-        // Trigger 100% automated background clip dialogue & speaker verification.
-        // Telemetry recording below awaits this (if started) so DialogueTruncated
-        // reflects the real Expected-vs-Heard result instead of staying hardcoded false.
-        var dialogueVerificationTask = StartDialogueVerificationIfConfigured(ctx);
+        // Verify against the just-downloaded take (not a leftover combined hop) and
+        // finish before this method returns so C2 cannot overlap C1's in-memory inline.
+        var dialogueVerificationTask = StartDialogueVerificationIfConfigured(ctx, mp4Path);
         // Probe the real rendered duration once — used both to carry a same-scene
         // continuation-chain padding nudge into the next clip (below) and, if timing
         // calibration is configured, for telemetry.
@@ -6160,10 +6241,19 @@ public sealed class FilmJobService
         var overrunSec = ComputeCarryoverOverrunSec(supportsContinue, probedSec, duration);
         await RecordTimingTelemetryIfConfiguredAsync(
             ctx, built, duration, probedSec, dialogueVerificationTask).ConfigureAwait(false);
+        try
+        {
+            await dialogueVerificationTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Dialogue verification did not finish for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
+        }
         return overrunSec;
     }
 
-    private Task<ClipDialogueVerificationResult?> StartDialogueVerificationIfConfigured(ClipGenContext ctx)
+    private Task<ClipDialogueVerificationResult?> StartDialogueVerificationIfConfigured(
+        ClipGenContext ctx, string? clipVideoPath = null)
     {
         var verifier = _dialogueVerification;
         if (verifier is null || !verifier.IsConfigured)
@@ -6175,7 +6265,9 @@ public sealed class FilmJobService
         {
             try
             {
-                return await verifier.VerifyClipDialogueAsync(projId, scene, clip, force: true, ct: CancellationToken.None).ConfigureAwait(false);
+                return await verifier.VerifyClipDialogueAsync(
+                    projId, scene, clip, force: true, overrideVideoPath: clipVideoPath, ct: CancellationToken.None)
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
