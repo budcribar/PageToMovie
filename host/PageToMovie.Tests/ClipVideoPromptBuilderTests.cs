@@ -1384,13 +1384,29 @@ public class PromptCompressionKeepsVoiceLockTests
 
 public class PreviousClipQuoteRedactionTests
 {
+    /// <summary>
+    /// Mary19 S03C02 re-spoke S03C01's narration because the previous clip's quoted line rode into
+    /// the next prompt. That used to be handled by redacting the quote; it is now structurally
+    /// impossible — no previous-clip speech reaches a prompt by any path, so there is nothing to
+    /// redact. This asserts the structure rather than the old workaround.
+    /// </summary>
     [Fact]
-    public void Previous_clip_context_keeps_the_speaker_but_not_the_words()
+    public void Previous_clip_speech_cannot_reach_the_next_prompt()
     {
-        var prev = "MARY walks. OFF-CAMERA VOICEOVER Character_Narrator says \"But still he lingered near, And waited patiently about.\". Soft light.";
-        var redacted = PageToMovie.Engine.ClipVideoPromptBuilder.RedactSpokenQuotes(prev);
-        Assert.DoesNotContain("lingered near", redacted);
-        Assert.Contains("OFF-CAMERA VOICEOVER Character_Narrator says [a line already spoken in the previous clip", redacted);
+        const string prev =
+            "<Setting>EXT. LANE - DAY</Setting> <Action>MARY walks</Action> " +
+            "<Speech>Character_Narrator says \"But still he lingered near.\"</Speech> " +
+            "<Lighting>Soft light.</Lighting>";
+
+        // Fresh reseed: look survives, speech does not.
+        var look = ClipVideoPromptBuilder.PreviousClipLookOnly(prev, Array.Empty<string>());
+        Assert.Contains("<Lighting>", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("lingered near", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("<Speech>", look, StringComparison.Ordinal);
+
+        // Extend / continue: no previous-clip prose at all.
+        foreach (var mode in new[] { "video-extend", "continue" })
+            Assert.DoesNotContain("lingered near", InvokeContinuityBlock(mode, prev), StringComparison.Ordinal);
     }
 
     private const string PrevClipPrompt =

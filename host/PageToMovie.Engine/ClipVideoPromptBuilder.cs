@@ -781,17 +781,12 @@ public static class ClipVideoPromptBuilder
             RegexOptions.IgnoreCase);
     }
 
-    /// <summary>Replace quoted spoken lines after lip-syncs / says / narrates with a marker — used for
-    /// the PREVIOUS clip's context so its dialogue is never re-spoken in the new clip.</summary>
-    internal static string RedactSpokenQuotes(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return text ?? "";
-        return CommonRegex.Replace(
-            text,
-            @"(?<=(?:lip-syncs|says|narrates(?:\s+exactly)?)\s+)""[^""]*""",
-            "[a line already spoken in the previous clip - do NOT repeat it]",
-            RegexOptions.IgnoreCase);
-    }
+    // RedactSpokenQuotes lived here: it blanked the PREVIOUS clip's quoted lines so the new clip
+    // could not re-speak them (Mary19 S03C02 repeated S03C01's narration). It has no callers left
+    // and is deleted rather than kept as a guard, because the thing it guarded is now structurally
+    // impossible: extend and continue send no previous-clip prose at all, and the fresh reseed
+    // path emits only <Setting>, <Lighting> and <Grade>, so a <Speech> block cannot reach the next
+    // prompt to be redacted. Unreachable code is not a guard that never fires.
 
     /// <summary>First word/token of a spoken line (for gen cues that protect the opening).</summary>
     public static string FirstSpokenToken(string? dialogue)
