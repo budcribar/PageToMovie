@@ -84,6 +84,14 @@ public partial class Review
 
         internal long _wipVideoKey;
 
+        internal readonly LocalClipPlayableCache LocalPlayable = new();
+
+        internal bool HasCachedLocalVideo(int scene, int clip) =>
+            LocalPlayable.Has(scene, clip);
+
+        internal Task RefreshLocalPlayableAsync() =>
+            LocalPlayable.RefreshAsync(S.MediaFolder, S._projectId, S.List._scenes, S.List._selectedDetail);
+
 
         internal bool CanPlayMovie =>
             _wipExists || _wipCanBuild || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
@@ -122,7 +130,7 @@ public partial class Review
                     .Select(c => c.ClipNumber)
                     .ToList();
                 return ScenePlayGate.DecideScenePlay(
-                    scene, detail.ClipCount, missing, hasLocalVideo: null,
+                    scene, detail.ClipCount, missing, cn => HasCachedLocalVideo(scene, cn),
                     detail.CompositeExists, syncing, syncReason);
             }
 
@@ -133,7 +141,7 @@ public partial class Review
                 scene,
                 summary.ClipCount,
                 summary.ClipsMissingServerVideo,
-                hasLocalVideo: null,
+                cn => HasCachedLocalVideo(scene, cn),
                 summary.CompositeExists,
                 syncing,
                 syncReason);

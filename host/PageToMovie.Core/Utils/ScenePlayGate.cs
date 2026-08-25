@@ -15,7 +15,8 @@ public sealed class SceneMediaPresenceIndex
             var isMp4 = name.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
             var isClipSidecar = name.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
             var isVideoMarker = name.EndsWith(".mp4.client.json", StringComparison.OrdinalIgnoreCase);
-            if (isMp4 || isClipSidecar || isVideoMarker)
+            var isCurrentTakePointer = name.EndsWith(ClipTakeNaming.CurrentTakePointerSuffix, StringComparison.OrdinalIgnoreCase);
+            if (isMp4 || isClipSidecar || isVideoMarker || isCurrentTakePointer)
                 _present.Add(key);
             if (isMp4 && size >= ScenePlayGate.MinPlayableVideoBytes)
                 _serverMp4.Add(key);
@@ -120,12 +121,16 @@ public static class ScenePlayGate
     /// Per-clip Play: only THIS clip's media. A sibling hole must not disable
     /// a clip that has a real MP4 or a confirmed local file. Sidecar /
     /// <c>.client.json</c> markers are not playable on their own.
+    /// <c>SizeBytes</c> 0 / unknown is not a disable — file size is not a
+    /// media validator (media-timeline-contract).
     /// </summary>
     public static bool IsClipPlayable(bool hasServerVideo, bool hasLocalVideo = false) =>
         hasServerVideo || hasLocalVideo;
 
     public static bool IsClipPlayable(long sizeBytes, bool hasLocalVideo = false) =>
-        IsClipPlayable(HasServerVideo(sizeBytes), hasLocalVideo);
+        hasLocalVideo
+        || sizeBytes <= 0
+        || HasServerVideo(sizeBytes);
 
     public static (bool CanPlay, string? DisabledReason) DecideOneClipPlay(
         int sceneNumber,

@@ -62,8 +62,7 @@ public partial class Scenes
     internal string? _clientStitchStatus;
 
     /// <summary>Local MP4 confirmed via media-folder stat (not just a connected folder).</summary>
-    internal readonly Dictionary<(int Scene, int Clip), bool> _localVideoReady = new();
-    private readonly SemaphoreSlim _localPlayableRefreshGate = new(1, 1);
+    internal readonly LocalClipPlayableCache LocalPlayable = new();
 
 
 
@@ -96,24 +95,36 @@ public partial class Scenes
 
     internal async Task LoadClipVideoAndTakesCountAsync(int scene, int clip)
     {
-        if (S.MediaFolder.IsConnected)
+        try
         {
-            try
+            if (S.MediaFolder.IsConnected)
             {
-                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
-                var localBlob = await S.MediaFolder.GetCurrentTakeBlobUrlAsync(
-                    S._projectId, scene, clip, expectedSize);
-                if (!string.IsNullOrWhiteSpace(localBlob))
+                try
                 {
-                    _clipVideoUrl = localBlob;
+                    var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
+                    var localBlob = await S.MediaFolder.GetCurrentTakeBlobUrlAsync(
+                        S._projectId, scene, clip, expectedSize);
+                    if (!string.IsNullOrWhiteSpace(localBlob))
+                        _clipVideoUrl = localBlob;
+                }
+                catch { /* fallback to server URL */ }
+            }
+
+            if (string.IsNullOrWhiteSpace(_clipVideoUrl))
+            {
+                var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == clip);
+                if (row is { ProviderLeadInSeconds: > 0.1 })
+                {
+                    // Provider copy is combined (previous clip at the head). Slice this
+                    // clip's own hop — do not play C-1's file or the raw combined URL.
+                    _clipServerVideoUrl = await S.Stitch.ResolveServerClipUrlAsync(S._projectId, scene, row);
                 }
             }
-            catch { /* fallback to server URL */ }
-            finally
-            {
-                _clipVideoLoading = false;
-                S.StateHasChanged();
-            }
+        }
+        finally
+        {
+            _clipVideoLoading = false;
+            S.StateHasChanged();
         }
 
         // Proactive, lightweight fetch so the "Takes (N)" button shows a real count without
@@ -131,7 +142,7 @@ public partial class Scenes
 
 
     internal bool HasCachedLocalVideo(int scene, int clip) =>
-        _localVideoReady.TryGetValue((scene, clip), out var ok) && ok;
+        LocalPlayable.Has(scene, clip);
 
     internal bool MediaSyncingActiveProject =>
         S.MediaFolder.IsSyncingProject(S._projectId);
@@ -196,8 +207,11 @@ public partial class Scenes
         {
             var row = detail.Clips.FirstOrDefault(c => c.ClipNumber == clip);
             if (row is not null)
-                return ScenePlayGate.DecideOneClipPlay(
-                    scene, clip, ScenePlayGate.HasServerVideo(row.SizeBytes), hasLocal);
+            {
+                if (ScenePlayGate.IsClipPlayable(row.SizeBytes, hasLocal))
+                    return (true, null);
+                return ScenePlayGate.DecideOneClipPlay(scene, clip, hasServerVideo: false);
+            }
         }
 
         var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == scene);
@@ -227,68 +241,8 @@ public partial class Scenes
         }
     }
 
-    internal async Task RefreshLocalPlayableAsync()
-    {
-        await _localPlayableRefreshGate.WaitAsync();
-        try
-        {
-            await RefreshLocalPlayableCoreAsync();
-        }
-        finally
-        {
-            _localPlayableRefreshGate.Release();
-        }
-    }
-
-    private async Task RefreshLocalPlayableCoreAsync()
-    {
-        // A folder sync raises Changed for every saved file. Wait for its final event, then
-        // update only missing/negative entries rather than clearing and re-statting every clip.
-        if (S.MediaFolder.IsSyncing)
-            return;
-        if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
-        {
-            _localVideoReady.Clear();
-            return;
-        }
-
-        var needed = CollectNeededLocalPlayableClips();
-
-        foreach (var stale in _localVideoReady.Keys.Where(k => !needed.Contains(k)).ToList())
-            _localVideoReady.Remove(stale);
-
-        foreach (var (scene, clip) in needed.Where(k => !_localVideoReady.TryGetValue(k, out var ready) || !ready))
-        {
-            var rel = await S.MediaFolder.ResolveCurrentTakeRelativePathAsync(S._projectId, scene, clip);
-            if (string.IsNullOrWhiteSpace(rel))
-            {
-                _localVideoReady[(scene, clip)] = false;
-                continue;
-            }
-            var (found, size) = await S.MediaFolder.StatLocalFileAsync(S._projectId, rel);
-            _localVideoReady[(scene, clip)] = found && size >= ScenePlayGate.MinPlayableVideoBytes;
-        }
-    }
-
-    private HashSet<(int Scene, int Clip)> CollectNeededLocalPlayableClips()
-    {
-        var needed = new HashSet<(int Scene, int Clip)>();
-        if (S.List._scenes is { Count: > 0 })
-        {
-            foreach (var s in S.List._scenes)
-            {
-                foreach (var cn in s.ClipsMissingServerVideo)
-                    needed.Add((s.SceneNumber, cn));
-            }
-        }
-        if (S.List._detail?.Clips is { Count: > 0 } clips)
-        {
-            var sn = S.List._detail.SceneNumber;
-            foreach (var c in clips.Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes)))
-                needed.Add((sn, c.ClipNumber));
-        }
-        return needed;
-    }
+    internal Task RefreshLocalPlayableAsync() =>
+        LocalPlayable.RefreshAsync(S.MediaFolder, S._projectId, S.List._scenes, S.List._detail);
 
     internal async Task PlaySceneCompositeAsync(int sn)
     {

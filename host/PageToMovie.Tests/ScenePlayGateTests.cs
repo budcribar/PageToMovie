@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Utils;
 using PageToMovie.Web.Components.Pages;
 using PageToMovie.Web.Services;
@@ -146,6 +147,53 @@ public class ScenePlayGateTests
         var (canPlay, reason) = ScenePlayGate.DecideOneClipPlay(2, 3, hasServerVideo: false);
         Assert.False(canPlay);
         Assert.Contains("S02 C03", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IsClipPlayable_unknown_size_does_not_disable()
+    {
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 0));
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 0, hasLocalVideo: true));
+        Assert.True(ScenePlayGate.IsClipPlayable(sizeBytes: 120, hasLocalVideo: true));
+        Assert.False(ScenePlayGate.IsClipPlayable(sizeBytes: 120));
+    }
+
+    [Fact]
+    public void LocalClipPlayableCache_collects_missing_server_and_unknown_size_clips()
+    {
+        var scenes = new[]
+        {
+            new SceneSummary { SceneNumber = 1, ClipsMissingServerVideo = [2] },
+            new SceneSummary { SceneNumber = 2, ClipsMissingServerVideo = [] },
+        };
+        var detail = new SceneDetail
+        {
+            SceneNumber = 1,
+            Clips =
+            [
+                new ClipSummary { ClipNumber = 1, SizeBytes = 80_000 },
+                new ClipSummary { ClipNumber = 2, SizeBytes = 0 },
+            ],
+        };
+
+        var needed = LocalClipPlayableCache.CollectNeeded(scenes, detail);
+        Assert.Contains((1, 2), needed);
+        Assert.DoesNotContain((1, 1), needed);
+        Assert.DoesNotContain((2, 1), needed);
+    }
+
+    [Fact]
+    public void SceneMediaPresenceIndex_current_take_pointer_is_present_not_server_mp4()
+    {
+        var index = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["scene_01_clip_02.current.json"] = 20,
+            ["scene_01_clip_02_take_01.clip.json"] = 400,
+        };
+
+        var presence = new SceneMediaPresenceIndex(index);
+        Assert.True(presence.IsPresent(1, 2));
+        Assert.False(presence.HasServerMp4(1, 2));
     }
 
     [Fact]

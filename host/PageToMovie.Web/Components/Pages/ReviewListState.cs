@@ -161,6 +161,7 @@ public partial class Review
                 S.AutoReview._movieReport = movieRes?.Report;
                 if (_selectedScene is int sn)
                     await LoadSelectedDetailAsync(sn);
+                await S.Playback.RefreshLocalPlayableAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
@@ -182,6 +183,7 @@ public partial class Review
                     await TryLoadDraftsForSceneAsync(snSelected);
                 if (_selectedScene is int sn)
                     await LoadSelectedDetailAsync(sn);
+                await S.Playback.RefreshLocalPlayableAsync();
             }
             catch { /* ignore */ }
         }
@@ -270,21 +272,36 @@ public partial class Review
         }
 
         /// <summary>
-        /// Per-clip Play enablement: real MP4 (or confirmed local file), not a sidecar marker
-        /// and not "the rest of the scene is complete."
+        /// Per-clip Play enablement: current take (local folder or server MP4 /
+        /// <c>.current.json</c>), not a sidecar marker and not "the rest of the
+        /// scene is complete." <c>SizeBytes</c> 0 / unknown does not disable.
         /// </summary>
+        internal static bool DecideClipIsPlayable(
+            long? detailSizeBytes,
+            IReadOnlyList<int>? missingServerVideo,
+            int clip,
+            bool hasLocalVideo)
+        {
+            if (hasLocalVideo)
+                return true;
+            if (detailSizeBytes is long size)
+                return ScenePlayGate.IsClipPlayable(size);
+            return ScenePlayGate.IsClipPlayableFromSceneMissingList(clip, missingServerVideo);
+        }
+
         internal bool ClipIsPlayable(int scene, int clip)
         {
+            var hasLocal = S.Playback.HasCachedLocalVideo(scene, clip);
             if (_selectedDetail is { } d && d.SceneNumber == scene)
             {
                 var c = d.Clips.FirstOrDefault(x => x.ClipNumber == clip);
                 if (c is not null)
-                    return ScenePlayGate.IsClipPlayable(c.SizeBytes);
+                    return DecideClipIsPlayable(c.SizeBytes, null, clip, hasLocal);
             }
 
             var s = _scenes.FirstOrDefault(x => x.SceneNumber == scene);
-            if (s is null) return false;
-            return ScenePlayGate.IsClipPlayableFromSceneMissingList(clip, s.ClipsMissingServerVideo);
+            if (s is null) return hasLocal;
+            return DecideClipIsPlayable(null, s.ClipsMissingServerVideo, clip, hasLocal);
         }
 
 

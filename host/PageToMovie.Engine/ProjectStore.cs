@@ -6207,7 +6207,7 @@ public sealed partial class ProjectStore
             OnDisk = onDisk,
             SizeBytes = size,
             FileName = onDisk ? resolvedFileName : null,
-            ProviderLeadInSeconds = ResolveProviderLeadInSeconds(onDisk, clipPath, projectDir, sceneNumber, cn),
+            ProviderLeadInSeconds = ResolveProviderLeadInSeconds(projectDir, sceneNumber, cn),
             VideoUrl = onDisk
                 ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                 : null,
@@ -6221,10 +6221,11 @@ public sealed partial class ProjectStore
     }
 
     private static double? ResolveProviderLeadInSeconds(
-        bool onDisk, string? clipPath, string projectDir, int sceneNumber, int cn)
+        string projectDir, int sceneNumber, int cn)
     {
-        if (!onDisk || clipPath is not null)
-            return null;
+        // Lead-in describes THIS clip's provider copy (previous clip at the head),
+        // not whether an MP4 happens to sit on this machine. Play must still slice
+        // the hop when streaming the provider/server URL.
         var ps = ClipProviderSource.ReadForClip(
             Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video), sceneNumber, cn);
         if (ps is { IsCombined: true })
@@ -8066,6 +8067,7 @@ public sealed partial class ProjectStore
             k.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase) &&
             (k.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
              k.EndsWith(StoreLit.ClipJsonSuffix, StringComparison.OrdinalIgnoreCase) ||
+             k.EndsWith(ClipTakeNaming.CurrentTakePointerSuffix, StringComparison.OrdinalIgnoreCase) ||
              k.EndsWith(".mp4" + ClientMarkerExtension, StringComparison.OrdinalIgnoreCase)));
     }
 

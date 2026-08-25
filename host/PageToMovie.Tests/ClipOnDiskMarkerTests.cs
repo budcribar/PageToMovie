@@ -26,5 +26,6 @@ public class ClipOnDiskMarkerTests
         Assert.True(ProjectStore.ClipOnDisk(new(StringComparer.OrdinalIgnoreCase) { ["scene_01_clip_02.mp4.client.json"] = 120 }, 1, 2));
         Assert.True(ProjectStore.ClipOnDisk(new(StringComparer.OrdinalIgnoreCase) { ["scene_01_clip_02_take_01.clip.json"] = 4000 }, 1, 2));
         Assert.True(ProjectStore.ClipOnDisk(new(StringComparer.OrdinalIgnoreCase) { ["scene_01_clip_02.mp4"] = 500_000 }, 1, 2));
+        Assert.True(ProjectStore.ClipOnDisk(new(StringComparer.OrdinalIgnoreCase) { ["scene_01_clip_02.current.json"] = 20 }, 1, 2));
     }
 }
