@@ -1960,6 +1960,26 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         }
     }
 
+    /// <summary>
+    /// Current-job poll that never throws: Found (primary), NotFound (empty list),
+    /// or Unreachable (network / gateway). Used with <see cref="LookupJobAsync"/> to
+    /// decide whether a stale Film snapshot is lost.
+    /// </summary>
+    public async Task<JobLookupResult> LookupPrimaryJobAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var list = await GetJobAsync(ct);
+            return list?.Job is { } job
+                ? new JobLookupResult(JobLookupStatus.Found, job)
+                : new JobLookupResult(JobLookupStatus.NotFound, null);
+        }
+        catch
+        {
+            return new JobLookupResult(JobLookupStatus.Unreachable, null);
+        }
+    }
+
     public async Task<CapacityDto?> GetCapacityAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<CapacityDto>("/api/capacity", JsonOpts, ct);
 

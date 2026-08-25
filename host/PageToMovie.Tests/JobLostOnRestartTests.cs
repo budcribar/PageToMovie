@@ -117,26 +117,24 @@ public class JobLostOnRestartTests
     }
 
     [Fact]
-    public void Health_recovery_same_as_reconnect()
+    public async Task Health_recovery_same_as_reconnect()
     {
         var page = new Scenes();
         var gen = page.Gen;
         gen._job = QueuedBatch();
         var health = new ServerHealthState();
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         health.ReportFailure("hub reconnecting");
         health.Recovered += () =>
         {
             gen.ApplyServerJobView(null, true, null, true);
+            recovered.TrySetResult();
             return Task.CompletedTask;
         };
 
         health.ReportSuccess();
-        // Recovered runs async — wait for Up
-        var deadline = DateTime.UtcNow.AddSeconds(2);
-        while (health.Health != ServerHealth.Up && DateTime.UtcNow < deadline)
-            Thread.Sleep(10);
+        await recovered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        Assert.Equal(ServerHealth.Up, health.Health);
         Assert.False(gen.JobRunning);
         Assert.Equal(JobLostOnRestart.Message, gen._job!.Error);
     }

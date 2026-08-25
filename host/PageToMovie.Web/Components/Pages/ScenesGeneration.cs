@@ -604,24 +604,17 @@ public partial class Scenes
         if (!JobLostOnRestart.IsInFlight(j.Status))
             return;
 
-        var lookup = await S.Engine.LookupJobAsync(j.JobId);
-        JobsDto? list = null;
-        var listOk = false;
-        try
-        {
-            list = await S.Engine.GetJobAsync();
-            listOk = true;
-        }
-        catch { /* network — do not treat as gone unless by-id was 404 */ }
-
-        if (lookup.Status == JobLookupStatus.Unreachable && !listOk)
+        var byId = await S.Engine.LookupJobAsync(j.JobId);
+        var primary = await S.Engine.LookupPrimaryJobAsync();
+        if (byId.Status == JobLookupStatus.Unreachable &&
+            primary.Status == JobLookupStatus.Unreachable)
             return;
 
         ApplyServerJobView(
-            lookup.Status == JobLookupStatus.Found ? lookup.Job : null,
-            byIdNotFound: lookup.Status == JobLookupStatus.NotFound,
-            current: listOk ? list?.Job : null,
-            currentKnown: listOk);
+            byId.Status == JobLookupStatus.Found ? byId.Job : null,
+            byIdNotFound: byId.Status == JobLookupStatus.NotFound,
+            current: primary.Status == JobLookupStatus.Found ? primary.Job : null,
+            currentKnown: primary.Status != JobLookupStatus.Unreachable);
     }
 
     /// <summary>
