@@ -355,6 +355,50 @@ public class MediaSyncProviderRecoveryTests : IDisposable
             MediaProxyHeaders.RecoveredViaSourceUrlStatus(warning));
     }
 
+    /// <summary>
+    /// The file_id message carries a raw provider response body. Kestrel rejects control
+    /// characters and non-ASCII in a header value, so an unsanitized value would throw and
+    /// turn this successful source_url recovery into a 500.
+    /// </summary>
+    [Fact]
+    public async Task StreamProviderCopy_file_id_error_header_is_always_header_safe()
+    {
+        var ctx = new DefaultHttpContext();
+        var result = await MediaEndpoints.StreamProviderCopyAsync(
+            "https://files.x.ai/p/public.mp4",
+            "file_dead",
+            (_, _) => Task.FromResult<IResult?>(Results.Bytes(new byte[] { 1, 2, 3, 4 }, "video/mp4")),
+            (_, _) => throw new InvalidOperationException(
+                "xAI file content HTTP 500: {\r\n  \"error\": \"cacheé miss\",\n  \"detail\": \"— gone\"\n}"),
+            CancellationToken.None,
+            new MediaEndpoints.StreamProviderCopyOptions(HttpContext: ctx));
+
+        Assert.Equal(StatusCodes.Status200OK, StatusOf(result));
+        var warning = ctx.Response.Headers[MediaProxyHeaders.FileIdError].ToString();
+        Assert.All(warning, ch => Assert.InRange(ch, ' ', '~'));
+        Assert.Equal(500, MediaProxyHeaders.TryHttpStatus(warning));
+    }
+
+    [Theory]
+    [InlineData("plain text", "plain text")]
+    [InlineData("line\r\nbreak", "line break")]
+    [InlineData("  padded\t\tvalue  ", "padded value")]
+    [InlineData("café — dash", "caf dash")]
+    [InlineData("\r\n\t", "")]
+    [InlineData(null, "")]
+    public void SanitizeHeaderValue_keeps_only_printable_ascii(string? input, string expected) =>
+        Assert.Equal(expected, MediaProxyHeaders.SanitizeHeaderValue(input));
+
+    /// <summary>Truncation is on whole chars, and surrogates never survive to be split.</summary>
+    [Fact]
+    public void SanitizeHeaderValue_truncates_and_drops_surrogates()
+    {
+        var value = MediaProxyHeaders.SanitizeHeaderValue(new string('x', 5000));
+        Assert.Equal(MediaProxyHeaders.MaxHeaderValueLength, value.Length);
+        Assert.All(value, ch => Assert.InRange(ch, ' ', '~'));
+        Assert.Equal("", MediaProxyHeaders.SanitizeHeaderValue("🎬🎬"));
+    }
+
     [Fact]
     public async Task StreamProviderCopy_file_id_500_and_url_fail_mentions_both()
     {

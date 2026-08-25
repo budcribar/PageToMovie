@@ -39,8 +39,10 @@ internal static class ProviderMediaHelpers
         }
         catch (OutOfMemoryException ex)
         {
+            // The size check above is the actual guard. Rethrowing as a job-level error keeps this
+            // one call from looking like a provider fault; it does NOT make the process healthy.
             throw new InvalidOperationException(
-                $"Ran out of memory inlining {Path.GetFileName(path)}. The clip was not loaded; the API stays up.",
+                $"Ran out of memory inlining {Path.GetFileName(path)}. The clip was not loaded.",
                 ex);
         }
     }

@@ -62,6 +62,10 @@ public partial class Scenes
 
     private CancellationTokenSource? _jobPollCts;
 
+    /// <summary>Job the live <see cref="PollLostJobLoopAsync"/> is watching, so repeat
+    /// JobUpdated ticks for the same job do not restart it.</summary>
+    private string? _polledJobId;
+
 
 
     /// <summary>
@@ -639,11 +643,25 @@ public partial class Scenes
             DisposePolling();
     }
 
+    /// <summary>
+    /// Slow backstop for "the server died and the hub never told us". The fast paths are
+    /// <c>Hub.Reconnected</c> and <c>ServerHealthState.Recovered</c>, which reconcile
+    /// immediately — this loop only has to catch a socket that never comes back at all.
+    /// Each tick costs two REST calls, so it must not run at UI-refresh cadence.
+    /// </summary>
+    internal static readonly TimeSpan LostJobPollInterval = TimeSpan.FromSeconds(15);
+
     internal void StartJobPolling()
     {
-        if (!JobLostOnRestart.IsInFlight(_job?.Status) || string.IsNullOrWhiteSpace(_job?.JobId))
+        var jobId = _job?.JobId;
+        if (!JobLostOnRestart.IsInFlight(_job?.Status) || string.IsNullOrWhiteSpace(jobId))
+            return;
+        // Idempotent: JobUpdated fires many times per job, and tearing the loop down and
+        // rebuilding it on every hub tick both churns allocations and keeps resetting the delay.
+        if (_jobPollCts is not null && string.Equals(_polledJobId, jobId, StringComparison.OrdinalIgnoreCase))
             return;
         DisposePolling();
+        _polledJobId = jobId;
         _jobPollCts = new CancellationTokenSource();
         var ct = _jobPollCts.Token;
         _ = Task.Run(() => PollLostJobLoopAsync(ct), CancellationToken.None);
@@ -654,6 +672,7 @@ public partial class Scenes
         _jobPollCts?.Cancel();
         _jobPollCts?.Dispose();
         _jobPollCts = null;
+        _polledJobId = null;
     }
 
     private async Task PollLostJobLoopAsync(CancellationToken ct)
@@ -662,7 +681,7 @@ public partial class Scenes
         {
             while (!ct.IsCancellationRequested && JobLostOnRestart.IsInFlight(_job?.Status))
             {
-                await Task.Delay(1500, ct);
+                await Task.Delay(LostJobPollInterval, ct);
                 if (ct.IsCancellationRequested)
                     return;
                 await ReconcileJobWithServerAsync();

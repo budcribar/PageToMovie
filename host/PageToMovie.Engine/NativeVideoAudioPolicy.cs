@@ -19,4 +19,24 @@ public static class NativeVideoAudioPolicy
 
     public static bool ShouldSkipVoiceOverlay(string? takeWireModelId) =>
         HasNativeAudioTrack(takeWireModelId);
+
+    /// <summary>
+    /// A role bundle can pair a generate model that bakes character voices into the video with an
+    /// extend model that cannot. Extending a SPEAKING clip across that pair gives the same
+    /// character a native voice on one clip and a dubbed voice on the next, and the native track
+    /// cannot be removed afterwards. Generate such a clip fresh instead — continuity is worth less
+    /// than one voice per character. Silent clips still extend normally.
+    /// </summary>
+    public static bool ExtendWouldDropNativeVoices(VideoModelRoles roles, bool clipHasSpokenLines)
+    {
+        if (!clipHasSpokenLines)
+            return false;
+        if (roles.Extend is null)
+            return false;
+        if (!roles.Generate.SupportsReferenceAudios)
+            return false;
+        if (roles.Generate.PresetVoices is not { Count: > 0 })
+            return false;
+        return !roles.Extend.SupportsReferenceAudios;
+    }
 }

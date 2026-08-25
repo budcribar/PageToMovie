@@ -26,14 +26,13 @@ public static class OrphanJobLock
         string? reason,
         string? jobId)
     {
+        // TryAcquire is re-entrant for the same user (it renews and re-stamps the job id), so a
+        // false here always means a DIFFERENT user holds the lock — there is no same-user case
+        // left to special-case below.
         if (locks.TryAcquire(resource, userId, ttl, reason, jobId))
             return true;
 
         var holder = locks.Get(resource);
-        if (holder is not null &&
-            string.Equals(holder.UserId, userId, StringComparison.OrdinalIgnoreCase))
-            return true;
-
         if (holder is null || !HolderJobIsGone(holder, jobs))
             return false;
 

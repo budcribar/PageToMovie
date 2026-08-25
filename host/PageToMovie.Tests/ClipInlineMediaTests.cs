@@ -40,6 +40,15 @@ public sealed class ClipInlineMediaTests : IDisposable
         Assert.Contains("cannot take down the host", ex.Message);
     }
 
+    /// <summary>
+    /// One inline ceiling, not two. The data-URI path (video-extend / video-edit) carried its own
+    /// larger cap, so the guard added for the two-clip regen OOM did not actually bound the route
+    /// that OOMed.
+    /// </summary>
+    [Fact]
+    public void Inline_cap_is_the_same_everywhere() =>
+        Assert.Equal(ClipInlineMedia.MaxInlineBytes, MediaDataUri.MaxBytes);
+
     [Fact]
     public async Task FileToDataUriAsync_does_not_buffer_an_oversize_video()
     {

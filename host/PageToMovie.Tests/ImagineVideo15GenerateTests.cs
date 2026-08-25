@@ -230,6 +230,30 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
         Assert.False(NativeVideoAudioPolicy.ShouldSkipVoiceOverlay(null));
     }
 
+    /// <summary>
+    /// A speaking clip must not extend across a role pair whose extend half cannot carry the
+    /// generate half's voices — that is what gives one character a native voice on clip 1 and a
+    /// dubbed voice on clip 2. Silent clips keep extending.
+    /// </summary>
+    [Fact]
+    public void Speaking_clip_does_not_extend_when_the_extend_role_drops_native_voices()
+    {
+        var bundle = SupportedModelCatalog.ResolveVideoRoles(VirtualId);
+        Assert.True(NativeVideoAudioPolicy.ExtendWouldDropNativeVoices(bundle, clipHasSpokenLines: true));
+        Assert.False(NativeVideoAudioPolicy.ExtendWouldDropNativeVoices(bundle, clipHasSpokenLines: false));
+    }
+
+    /// <summary>A single model that carries its own voices end to end still extends normally.</summary>
+    [Fact]
+    public void Single_model_roles_still_extend_a_speaking_clip()
+    {
+        var extendOnly = SupportedModelCatalog.ResolveVideoRoles(ExtendId);
+        Assert.False(NativeVideoAudioPolicy.ExtendWouldDropNativeVoices(extendOnly, clipHasSpokenLines: true));
+
+        var generateOnly = SupportedModelCatalog.ResolveVideoRoles(GenerateId);
+        Assert.False(NativeVideoAudioPolicy.ExtendWouldDropNativeVoices(generateOnly, clipHasSpokenLines: true));
+    }
+
     [Fact]
     public async Task Grok_submit_sends_reference_audios_and_caps_resolution()
     {

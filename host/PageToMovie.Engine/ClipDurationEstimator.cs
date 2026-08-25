@@ -68,6 +68,7 @@ public static class ClipDurationEstimator
     /// </summary>
     public const int SilentVisualWordCap = 20;
 
+    private const string ActionClass = "action";
     private const string BigActionClass = "big_action";
     private const string EstablishingClass = "establishing";
     private const string ActionClassKey = "action_class";
@@ -298,7 +299,7 @@ public static class ClipDurationEstimator
         };
 
     private static bool ActionClassCarriesSpokenAction(string actionClass) =>
-        actionClass is "action" or BigActionClass;
+        actionClass is ActionClass or BigActionClass;
 
     /// <summary>
     /// Adjusts duration based on strongly-typed <see cref="PacingMood"/>.

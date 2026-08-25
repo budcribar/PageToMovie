@@ -741,7 +741,10 @@ public static class MediaEndpoints
     {
         if (httpContext is null)
             return;
-        var detail = TrimForError(fileIdError.Message, 400);
+        // The message carries a raw provider response body. Sanitize before it becomes a header
+        // value — Kestrel throws on control characters / non-ASCII, and that throw would turn
+        // this successful source_url recovery into a 500.
+        var detail = MediaProxyHeaders.SanitizeHeaderValue(fileIdError.Message);
         if (string.IsNullOrWhiteSpace(detail))
             return;
         httpContext.Response.Headers[MediaProxyHeaders.FileIdError] = detail;

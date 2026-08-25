@@ -7,8 +7,13 @@ namespace PageToMovie.Engine;
 /// </summary>
 internal static class MediaDataUri
 {
-    /// <summary>Guard huge uploads — short clips are fine; multi-MB is ok for a 6-10s mp4.</summary>
-    public const int MaxBytes = 40 * 1024 * 1024;
+    /// <summary>
+    /// Same ceiling as every other in-process inline — <see cref="ClipInlineMedia.MaxInlineBytes"/>
+    /// is the single source of truth. A data URI costs ~5x the file on the heap (byte[] + base64
+    /// string + request body), so a separate, larger cap here is how the host still OOMs on the
+    /// video-extend path after the per-file guard was added.
+    /// </summary>
+    public const int MaxBytes = ClipInlineMedia.MaxInlineBytes;
 
     /// <summary>
     /// Checks if a media path exists as physical bytes, a candidate variant, or a client marker.
@@ -93,8 +98,10 @@ internal static class MediaDataUri
         }
         catch (OutOfMemoryException ex)
         {
+            // The size check above is the actual guard. Rethrowing as a job-level error keeps this
+            // one call from looking like a provider fault; it does NOT make the process healthy.
             throw new InvalidOperationException(
-                $"Ran out of memory inlining {Path.GetFileName(resolvedPath)}. The clip was not loaded; the API stays up.",
+                $"Ran out of memory inlining {Path.GetFileName(resolvedPath)}. The clip was not loaded.",
                 ex);
         }
     }

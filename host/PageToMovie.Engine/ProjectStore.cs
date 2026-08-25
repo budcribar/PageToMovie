@@ -3976,32 +3976,50 @@ public sealed partial class ProjectStore
             seed[key] = value.Trim();
     }
 
+    /// <summary>
+    /// Serializes the read-modify-write in <see cref="PatchCharacterSeedFile"/>. Clip generation
+    /// now patches seeds (preset voice assignment), so two jobs on one project can reach this
+    /// concurrently — unsynchronized, one patch overwrites the other, or the second write hits an
+    /// IOException that the catch-all silently swallows. Patches are small and rare, so one gate
+    /// for all seed files is cheap.
+    /// </summary>
+    private static readonly object CharacterSeedFileGate = new();
+
     private static void PatchCharacterSeedFile(string path, CharacterSeedTextPatch patch, bool createCastShape)
     {
         try
         {
-            if (!TryLoadCharacterSeedRoot(path, createCastShape, out var root, out var seeds, out var gpv))
-                return;
-
-            ApplyCharacterSeedTextPatch(seeds, patch);
-            // Bug fix (pre-existing, hit by any brand-new cast_seeds.json write — e.g. the
-            // first voice/clone call for a narration pseudo-character on a project with no
-            // cast_seeds.json yet): a JsonNode instance can only have one parent, so the same
-            // `seeds` object can't be assigned directly to both root and global_production_
-            // variables. Mirror a separate parsed copy instead of the same reference — root[
-            // "character_seed_tokens"] previously threw "node already has a parent" here,
-            // which this method's catch-all silently swallowed, so the whole write was
-            // dropped with no visible error.
-            if (createCastShape && gpv is not null)
-                root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
-            if (Path.GetDirectoryName(path) is { } dir)
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
+            lock (CharacterSeedFileGate)
+            {
+                PatchCharacterSeedFileLocked(path, patch, createCastShape);
+            }
         }
         catch
         {
             /* non-fatal */
         }
+    }
+
+    private static void PatchCharacterSeedFileLocked(
+        string path, CharacterSeedTextPatch patch, bool createCastShape)
+    {
+        if (!TryLoadCharacterSeedRoot(path, createCastShape, out var root, out var seeds, out var gpv))
+            return;
+
+        ApplyCharacterSeedTextPatch(seeds, patch);
+        // Bug fix (pre-existing, hit by any brand-new cast_seeds.json write — e.g. the
+        // first voice/clone call for a narration pseudo-character on a project with no
+        // cast_seeds.json yet): a JsonNode instance can only have one parent, so the same
+        // `seeds` object can't be assigned directly to both root and global_production_
+        // variables. Mirror a separate parsed copy instead of the same reference — root[
+        // "character_seed_tokens"] previously threw "node already has a parent" here,
+        // which this method's catch-all silently swallowed, so the whole write was
+        // dropped with no visible error.
+        if (createCastShape && gpv is not null)
+            root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
+        if (Path.GetDirectoryName(path) is { } dir)
+            Directory.CreateDirectory(dir);
+        File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
     }
 
     private static bool TryLoadCharacterSeedRoot(

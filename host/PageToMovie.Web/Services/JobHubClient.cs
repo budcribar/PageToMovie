@@ -67,6 +67,8 @@ public sealed class JobHubClient : IAsyncDisposable
     {
         try
         {
+            if (_disposed)
+                return;
             await _lifecycleGate.WaitAsync();
             try
             {
@@ -85,6 +87,8 @@ public sealed class JobHubClient : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken ct = default)
     {
+        if (_disposed)
+            return;
         await _lifecycleGate.WaitAsync(ct);
         try
         {
@@ -168,7 +172,7 @@ public sealed class JobHubClient : IAsyncDisposable
     {
         // A connection made under a stale identity (see OnSessionChanged) counts as not started:
         // it's in the wrong per-user group and hears none of this user's job events.
-        if (IsConnected && _connectedIdentity == CurrentIdentity()) return;
+        if (_disposed || (IsConnected && _connectedIdentity == CurrentIdentity())) return;
         try
         {
             await _lifecycleGate.WaitAsync();
@@ -204,6 +208,8 @@ public sealed class JobHubClient : IAsyncDisposable
 
     public async Task StopAsync()
     {
+        if (_disposed)
+            return;
         await _lifecycleGate.WaitAsync();
         try
         {
@@ -238,6 +244,11 @@ public sealed class JobHubClient : IAsyncDisposable
         }
         finally
         {
+            // _lifecycleGate is deliberately NOT disposed. SemaphoreSlim.Dispose only frees the
+            // lazily-created AvailableWaitHandle, which this class never touches — so it reclaims
+            // nothing here, while a caller already parked in WaitAsync would get an
+            // ObjectDisposedException instead of a clean no-op. The _disposed checks above are
+            // what stop post-teardown work.
             _lifecycleGate.Release();
         }
     }

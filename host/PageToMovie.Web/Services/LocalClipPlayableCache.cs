@@ -9,11 +9,19 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public sealed class LocalClipPlayableCache
 {
-    private readonly Dictionary<(int Scene, int Clip), bool> _ready = new();
+    /// <summary>
+    /// How long a "not local yet" answer is trusted before another folder stat. Without it,
+    /// a project whose clips are not in the folder re-stats every clip on every Changed event,
+    /// and Changed fires from ~30 places. Short enough that a clip saved from a job still
+    /// lights up its Play button within a beat.
+    /// </summary>
+    internal static readonly TimeSpan NegativeTtl = TimeSpan.FromSeconds(3);
+
+    private readonly Dictionary<(int Scene, int Clip), (bool Ready, DateTime CheckedUtc)> _ready = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public bool Has(int scene, int clip) =>
-        _ready.TryGetValue((scene, clip), out var ok) && ok;
+        _ready.TryGetValue((scene, clip), out var e) && e.Ready;
 
     public async Task RefreshAsync(
         ClientMediaFolderService media,
@@ -76,7 +84,21 @@ public sealed class LocalClipPlayableCache
         foreach (var stale in _ready.Keys.Where(k => !needed.Contains(k)).ToList())
             _ready.Remove(stale);
 
-        foreach (var (scene, clip) in needed.Where(k => !_ready.TryGetValue(k, out var ready) || !ready))
-            _ready[(scene, clip)] = await media.HasCurrentTakeFileAsync(projectId, scene, clip);
+        // Materialize before the loop: the predicate reads _ready, which the loop body writes.
+        var now = DateTime.UtcNow;
+        foreach (var key in needed.Where(k => NeedsStat(k, now)).ToList())
+        {
+            var ready = await media.HasCurrentTakeFileAsync(projectId, key.Scene, key.Clip);
+            _ready[key] = (ready, DateTime.UtcNow);
+        }
+    }
+
+    /// <summary>Unknown, or a negative answer that has aged past <see cref="NegativeTtl"/>.
+    /// A confirmed local file is never re-statted.</summary>
+    private bool NeedsStat((int Scene, int Clip) key, DateTime now)
+    {
+        if (!_ready.TryGetValue(key, out var e))
+            return true;
+        return !e.Ready && now - e.CheckedUtc >= NegativeTtl;
     }
 }

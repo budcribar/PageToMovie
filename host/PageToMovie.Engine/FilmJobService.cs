@@ -4331,10 +4331,19 @@ public sealed class FilmJobService
         var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
-        clipLines = clipLines
-            .Where(c => !NativeVideoAudioPolicy.ShouldSkipVoiceOverlay(
-                ClipSidecarService.ReadCurrentTakeModel(videoDir, c.Scene, c.Clip)))
-            .ToList();
+        // Per CLIP, not per line: ReadCurrentTakeModel is two file reads plus a JSON parse, and a
+        // clip usually carries several dialogue lines.
+        var overlayByClip = new Dictionary<(int Scene, int Clip), bool>();
+        bool NeedsOverlay(int scene, int clip)
+        {
+            if (overlayByClip.TryGetValue((scene, clip), out var cached))
+                return cached;
+            var needs = !NativeVideoAudioPolicy.ShouldSkipVoiceOverlay(
+                ClipSidecarService.ReadCurrentTakeModel(videoDir, scene, clip));
+            overlayByClip[(scene, clip)] = needs;
+            return needs;
+        }
+        clipLines = clipLines.Where(c => NeedsOverlay(c.Scene, c.Clip)).ToList();
         if (clipLines.Count == 0)
         {
             await FinishAsync(StatusDone, "No matching dialogue lines to substitute.").ConfigureAwait(false);
@@ -5552,6 +5561,18 @@ public sealed class FilmJobService
         var videoRoles = SupportedModelCatalog.ResolveVideoRoles(model);
         var modelEntry = videoRoles.Generate;
 
+        // Never hand a speaking clip to an extend role that cannot carry the generate role's
+        // character voices — that is what splits one character across two voices mid-scene, and
+        // the baked-in native track cannot be stripped later. Fresh-generate it instead.
+        if (wantContinue &&
+            NativeVideoAudioPolicy.ExtendWouldDropNativeVoices(videoRoles, ClipHasSpokenAudio(clipEl)))
+        {
+            await AppendLogAsync(
+                $"  [Voice] S{scene:D2}C{clip:D2} has dialogue and '{videoRoles.Extend!.Id}' cannot carry " +
+                $"'{videoRoles.Generate.Id}' voices — generating fresh so the character keeps one voice");
+            wantContinue = false;
+        }
+
         var (extendSourcePath, extendSourceFileId, extendInputDur) = wantContinue
             ? await ResolveExtendInputAsync(
                 projectDir, scene, clip, videoRoles, ct, predecessorRegeneratedThisJob)
@@ -5871,7 +5892,9 @@ public sealed class FilmJobService
         }
         var wireModel = wireEntry.Id;
 
-        var profiles = EnsureImagineVoicesForClip(ctx);
+        // Extend hops never send reference audios (see referenceAudioVoiceIds below), so resolving
+        // — and persisting — a preset voice on this path is pure write amplification on cast_seeds.
+        var profiles = isExtendHop ? ctx.Profiles : EnsureImagineVoicesForClip(ctx);
         var built = ClipVideoPromptBuilder.Build(
             ctx.ClipEl,
             ctx.ProjectDir,
