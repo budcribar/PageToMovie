@@ -1,9 +1,7 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
 using System.Text;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
@@ -37,10 +35,6 @@ public partial class Review
 
         internal long _clipVideoKey;
 
-        internal string? _dubStatus;
-
-        internal bool _dubbing;
-
         internal int? _playSceneAfterRemux;
 
         internal bool _playWipAfterRemux;
@@ -50,8 +44,6 @@ public partial class Review
         internal int? _playingClipScene;
 
         internal int? _playingScene;
-
-        internal string _preferredVideoEditor = "ClipChamp";
 
         internal string? _sceneServerSrcCached;
 
@@ -100,7 +92,7 @@ public partial class Review
         /// <summary>
         /// True only once real video actually exists — a browser or server cut, a scene composite, or clips
         /// on disk. Unlike <see cref="CanPlayMovie"/> this does NOT count a merely-connected media folder, so
-        /// clip-dependent actions (Play, Share, Open in editor, AI review) stay disabled until clips exist.
+        /// clip-dependent actions (Play, Share, AI review) stay disabled until clips exist.
         /// </summary>
         internal bool HasGeneratedClips =>
             _wipExists
@@ -169,144 +161,6 @@ public partial class Review
                     return "Play full movie (combine scenes in browser)";
                 return "Play full movie (up to date)";
             }
-        }
-
-
-        internal async Task LoadPreferredVideoEditorAsync()
-        {
-            try
-            {
-                var dto = await S.Engine.GetConfigAsync(S._projectId);
-                if (dto?.Config is { } cfg &&
-                    cfg.TryGetValue("preferred_video_editor", out var edEl) &&
-                    edEl.ValueKind == JsonValueKind.String &&
-                    edEl.GetString() is { Length: > 0 } pve)
-                {
-                    _preferredVideoEditor = pve.Trim();
-                }
-            }
-            catch { /* keep default */ }
-        }
-
-
-        /// <summary>Dub the whole movie in the user's cloned voice (narrator by default) and download it.
-        /// Server synthesizes the cloned voice per line; the browser overlays + stitches + downloads.</summary>
-        internal async Task DubInMyVoiceAsync()
-        {
-            if (string.IsNullOrWhiteSpace(S._projectId)) return;
-            // The clips + synthesized audio live in the browser media folder — it must be connected.
-            if (!S.MediaFolder.IsConnected)
-            {
-                var connected = await S.MediaFolder.ConnectFolderAsync();
-                if (!connected && !S.MediaFolder.IsConnected)
-                {
-                    S._message = "Connect your media folder first so your movie can be built in your voice.";
-                    return;
-                }
-            }
-            _dubbing = true;
-            S._busy = true;
-            S._error = null;
-            S._message = null;
-            _dubStatus = "Starting…";
-            try
-            {
-                var finishedMovieUrl = await TryResolveFinishedCutUrlAsync();
-                var res = await S.VoiceSub.DubMovieInMyVoiceAsync(
-                    S._projectId,
-                    charKey: null, // narrator by default (server default)
-                    onProgress: s => { _dubStatus = s; _ = S.InvokeAsync(S.StateHasChanged); },
-                    sourceMovieUrl: finishedMovieUrl);
-                if (res.Ok && !string.IsNullOrWhiteSpace(res.DownloadUrl))
-                {
-                    await S.VoiceSub.DownloadAsync(res.DownloadUrl, "movie-in-my-voice.mp4");
-                    S._message = $"Your movie is ready — {res.ClipsDubbed} clip(s) in your voice"
-                               + (res.ClipsFailed > 0 ? $" ({res.ClipsFailed} skipped)" : "") + ". Download started.";
-                }
-                else
-                {
-                    S._error = res.Error ?? "Could not make your version.";
-                }
-            }
-            catch (Exception ex)
-            {
-                S._error = ex.Message;
-            }
-            finally
-            {
-                _dubbing = false;
-                S._busy = false;
-                _dubStatus = null;
-            }
-        }
-
-
-        internal async Task OpenInExternalEditorAsync()
-        {
-            S._busy = true;
-            S._error = null;
-            S._message = null;
-            try
-            {
-                var finished = await TryResolveFinishedCutUrlAsync();
-                if (!string.IsNullOrWhiteSpace(finished))
-                {
-                    await TryLaunchClipchampAsync();
-                    await DownloadMovieForEditorAsync(finished, _preferredVideoEditor, missingMusic: false);
-                    return;
-                }
-
-                var res = await S.Engine.OpenInExternalEditorAsync(S._projectId, sceneNumber: null, clipNumber: null, _preferredVideoEditor);
-                await TryLaunchClipchampAsync();
-
-                if (res.Ok)
-                {
-                    S._message = $"🎬 Opened full cut in {res.Editor ?? "Clipchamp"}.";
-                }
-                else
-                {
-                    S._message = "Preparing movie for download…";
-                    S.StateHasChanged();
-                    var movieUrl = await S.Share.EnsureShareableMovieUrlAsync();
-                    if (!string.IsNullOrEmpty(movieUrl))
-                    {
-                        await DownloadMovieForEditorAsync(
-                            movieUrl, res.Editor ?? _preferredVideoEditor, S.Share._lastExportMissingMusic);
-                    }
-                    else
-                    {
-                        S._error = res.Error ?? "Could not prepare full movie. Ensure at least one scene clip exists.";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                S._error = ex.Message;
-            }
-            finally
-            {
-                S._busy = false;
-            }
-        }
-
-        private async Task TryLaunchClipchampAsync()
-        {
-            if (!string.Equals(_preferredVideoEditor, "Clipchamp", StringComparison.OrdinalIgnoreCase))
-                return;
-            try
-            {
-                await S.JS.InvokeVoidAsync("eval", "try { window.location.href = 'ms-clipchamp:'; } catch(_) {}");
-            }
-            catch { /* best-effort client protocol trigger */ }
-        }
-
-        private async Task DownloadMovieForEditorAsync(string movieUrl, string editorLabel, bool missingMusic)
-        {
-            var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
-            var fileName = $"{cleanPid}_full.mp4";
-            S._message = $"🎬 Downloaded movie to your PC — opening in {editorLabel}." +
-                (missingMusic ? " (No local media folder connected — background music not included.)" : "");
-            await S.JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='{movieUrl}';a.download='{fileName}';document.body.appendChild(a);a.click();document.body.removeChild(a);");
         }
 
 
@@ -418,7 +272,7 @@ public partial class Review
 
         /// <summary>
         /// Fresh Finish <c>movie.mp4</c> blob when <see cref="CutFinishedMovie.ShouldPlay"/>
-        /// is true. Play, Share, editor, and dub all call this — do not fork.
+        /// is true. Play and Share both call this — do not fork.
         /// </summary>
         internal async Task<string?> TryResolveFinishedCutUrlAsync()
         {

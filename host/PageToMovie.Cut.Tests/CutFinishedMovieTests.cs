@@ -66,11 +66,9 @@ public class CutFinishedMovieTests
     }
 
     [Fact]
-    public void Review_share_editor_and_dub_reuse_play_finished_cut_helper()
+    public void Review_share_reuses_play_finished_cut_helper()
     {
         var host = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        var playback = File.ReadAllText(Path.Combine(
-            host, "PageToMovie.Web", "Components", "Pages", "ReviewPlayback.cs"));
         var share = File.ReadAllText(Path.Combine(
             host, "PageToMovie.Web", "Components", "Pages", "ReviewShare.cs"));
 
@@ -79,17 +77,6 @@ public class CutFinishedMovieTests
         var choose = share.IndexOf("CutFinishedMovie.ChooseUrl", StringComparison.Ordinal);
         var resolve = share.IndexOf("TryResolveFinishedCutUrlAsync()", StringComparison.Ordinal);
         Assert.True(ensure >= 0 && resolve > ensure && choose > resolve && stitch > choose);
-
-        var open = playback.IndexOf("internal async Task OpenInExternalEditorAsync()", StringComparison.Ordinal);
-        var openResolve = playback.IndexOf("TryResolveFinishedCutUrlAsync()", open, StringComparison.Ordinal);
-        var serverOpen = playback.IndexOf("Engine.OpenInExternalEditorAsync(", open, StringComparison.Ordinal);
-        Assert.True(open >= 0 && openResolve > open && serverOpen > openResolve);
-
-        var dub = playback.IndexOf("internal async Task DubInMyVoiceAsync()", StringComparison.Ordinal);
-        var dubResolve = playback.IndexOf("TryResolveFinishedCutUrlAsync()", dub, StringComparison.Ordinal);
-        var dubCall = playback.IndexOf("DubMovieInMyVoiceAsync(", dub, StringComparison.Ordinal);
-        Assert.True(dub >= 0 && dubResolve > dub && dubCall > dubResolve);
-        Assert.Contains("sourceMovieUrl: finishedMovieUrl", playback, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -424,8 +424,6 @@
     "Play": "Abspielen",
     "ShareAndExport": "Teilen & Exportieren",
     "Finish": "Fertigstellen",
-    "OpenInEditor": "In {0} öffnen",
-    "MakeInMyVoice": "Mit meiner Stimme machen",
     "AiVisualContinuityTitle": "KI-Visuelle & Kontinuitätsprüfung",
     "AiVisualContinuityDesc": "Führen Sie eine automatische visuelle Prüfung über Kontinuität, Garderobe, Beleuchtung und Audio aus.",
     "RunAiContinuityReview": "KI-Kontinuitätsprüfung ausführen",

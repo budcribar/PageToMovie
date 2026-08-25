@@ -424,8 +424,6 @@
     "Play": "Reproducir",
     "ShareAndExport": "Compartir y exportar",
     "Finish": "Finalizar",
-    "OpenInEditor": "Abrir en {0}",
-    "MakeInMyVoice": "Hacerlo con mi voz",
     "AiVisualContinuityTitle": "Revisión visual y de continuidad por IA",
     "AiVisualContinuityDesc": "Ejecuta una revisión visual automática multicategoría sobre la continuidad, vestuario de personajes, iluminación y audio.",
     "RunAiContinuityReview": "Ejecutar revisión de continuidad por IA",

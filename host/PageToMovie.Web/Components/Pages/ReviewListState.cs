@@ -146,7 +146,6 @@ public partial class Review
             S._error = null;
             try
             {
-                await S.Playback.LoadPreferredVideoEditorAsync();
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
                 var log = await S.Engine.GetEditLogAsync(S._projectId);
