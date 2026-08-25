@@ -173,7 +173,16 @@ public partial class Home : IAsyncDisposable, IPageSliceHost
         Hub.JobUpdated -= Jobs.OnJobUpdated;
         Hub.JobLog -= Jobs.OnJobLog;
         Health.Recovered -= OnServerRecoveredAsync;
-        await Hub.DisposeAsync();
+        // Do NOT Hub.DisposeAsync() here — see the same note on Admin.razor.cs. JobHubClient is an
+        // app-wide singleton owned by DI, and disposing it latches _disposed, after which every
+        // StartAsync/EnsureStartedAsync returns immediately and the connection never comes back.
+        // ClientMediaFolderService.EnsureHubHookAsync latches _hubHooked on its first call and
+        // never retries, so from then on no job's generated media reaches the local folder — the
+        // API host drops its own copy once ClientMediaUrl is published, so those clips are simply
+        // lost. Home is the landing page, so navigating away from it killed live updates for the
+        // rest of the session on every visit (Mary19 S02C02 take 09, 2026-08-25). Unsubscribing
+        // above is all a page should ever do.
+        await Task.CompletedTask;
     }
 
 
