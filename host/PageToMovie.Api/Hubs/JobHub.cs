@@ -31,9 +31,11 @@ public sealed class JobHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}");
         Context.Items[ConnectedUserItemKey] = userId;
         _groups.Add(userId);
+        var transport = DescribeTransport();
         _log.LogInformation(
             "JobHub connected {ConnectionId} joined user:{UserId} via {Transport}; live groups: {Groups}",
-            Context.ConnectionId, userId, DescribeTransport(), _groups.Describe());
+            Context.ConnectionId, userId, transport, _groups.Describe());
+        _groups.Note("connected", $"user:{userId} via {transport}");
 
         if (IsAdmin())
             await Groups.AddToGroupAsync(Context.ConnectionId, AdminOpsGroup);
@@ -51,6 +53,7 @@ public sealed class JobHub : Hub
         _log.LogInformation(
             exception, "JobHub disconnected {ConnectionId}; live groups: {Groups}",
             Context.ConnectionId, _groups.Describe());
+        _groups.Note("disconnected", exception?.Message ?? "clean");
         return base.OnDisconnectedAsync(exception);
     }
 

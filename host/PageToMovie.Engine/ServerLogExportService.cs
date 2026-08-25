@@ -13,15 +13,18 @@ public sealed class ServerLogExportService
     private readonly ProjectStore _projects;
     private readonly FilmJobService _jobs;
     private readonly ILogger<ServerLogExportService> _logger;
+    private readonly HubGroupRegistry? _hubGroups;
 
     public ServerLogExportService(
         ProjectStore projects,
         FilmJobService jobs,
-        ILogger<ServerLogExportService> logger)
+        ILogger<ServerLogExportService> logger,
+        HubGroupRegistry? hubGroups = null)
     {
         _projects = projects;
         _jobs = jobs;
         _logger = logger;
+        _hubGroups = hubGroups;
     }
 
     public async Task<byte[]> ExportLogsZipAsync(CancellationToken ct = default)
@@ -45,7 +48,20 @@ public sealed class ServerLogExportService
             var activeJobs = _jobs.ListJobs(take: 100);
             AddZipJsonEntry(zip, "job_logs.json", activeJobs);
 
-            // 3. Project Edit Logs, Sidecars & Prompt Files
+            // 3. Live-update delivery: hub connects, disconnects, and any finished job that had
+            // nobody to tell. A job can complete perfectly server-side and still never reach the
+            // browser, which costs the generated media and not just the progress bar, so this
+            // belongs in the bundle someone actually downloads rather than only in stdout.
+            if (_hubGroups is not null)
+            {
+                AddZipJsonEntry(zip, "hub_delivery.json", new
+                {
+                    liveGroupsNow = _hubGroups.Describe(),
+                    events = _hubGroups.RecentEvents(),
+                });
+            }
+
+            // 4. Project Edit Logs, Sidecars & Prompt Files
             var projects = await _projects.ListProjectsAsync(ct).ConfigureAwait(false);
             foreach (var id in projects.Select(p => p.Id))
             {

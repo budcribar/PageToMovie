@@ -130,7 +130,16 @@ public sealed class JobHubClient : IAsyncDisposable
             .WithAutomaticReconnect()
             .Build();
 
-        _connection.On<JobSnapshot>(JobHubEvents.JobUpdated, snap => JobUpdated?.Invoke(snap));
+        _connection.On<JobSnapshot>(JobHubEvents.JobUpdated, snap =>
+        {
+            // One line per delivery, on a filterable prefix. Whether events arrive AT ALL is the
+            // first thing worth knowing when a job finishes server-side and the page never
+            // notices, and it is not answerable from the server: a send to a group that has
+            // members succeeds whether or not the browser ever processes it.
+            Log($"JobUpdated {snap?.JobId} {snap?.Status} {snap?.Index}/{snap?.Total} " +
+                $"media={(string.IsNullOrWhiteSpace(snap?.ClientMediaUrl) ? "no" : "yes")}");
+            JobUpdated?.Invoke(snap!);
+        });
         _connection.On<string>(JobHubEvents.JobLog, line => JobLog?.Invoke(line));
         _connection.On<object>(JobHubEvents.AdminState, payload => AdminState?.Invoke(payload));
         // Hub lifecycle is a second outage signal (server restarts drop the socket before any
@@ -139,17 +148,20 @@ public sealed class JobHubClient : IAsyncDisposable
         // Reconnected — ReportSuccess alone does not refresh a stale snapshot.
         _connection.Reconnecting += ex =>
         {
+            Log($"reconnecting: {ex?.Message ?? "(no error)"}");
             _health?.ReportFailure(ex?.Message ?? "hub reconnecting");
             return Task.CompletedTask;
         };
         _connection.Reconnected += _ =>
         {
+            Log("reconnected");
             _health?.ReportSuccess();
             RaiseReconnected();
             return Task.CompletedTask;
         };
         _connection.Closed += ex =>
         {
+            Log($"closed: {ex?.Message ?? "(clean)"}");
             if (ex is not null)
                 _health?.ReportFailure(ex);
             return Task.CompletedTask;
@@ -159,6 +171,9 @@ public sealed class JobHubClient : IAsyncDisposable
         {
             await _connection.StartAsync(ct);
             _connectedIdentity = identity;
+            // The group this socket joined is half of every delivery question: the server sends to
+            // user:{id} taken from the job record, and the two only match if this id does.
+            Log($"connected as user:{userId} (token={(identity.HasToken ? "yes" : "no")}) -> {baseUrl}");
         }
         catch (Exception ex) when (_health is not null && ServerHealthState.IsOutageException(ex, ct))
         {
@@ -202,6 +217,11 @@ public sealed class JobHubClient : IAsyncDisposable
     }
 
     private const string AuthHeaderUserId = "X-User-Id";
+
+    /// <summary>Browser-console trace on a filterable prefix. Deliberately plain Console.WriteLine
+    /// rather than ILogger: this has to show up in devtools with no configuration, in a build the
+    /// operator is already running, at the moment the fault happens.</summary>
+    private static void Log(string message) => Console.WriteLine($"[hub] {message}");
 
     /// <summary>Hub reconnect / health-recovery seam. Subscribers re-fetch the current job.</summary>
     public void RaiseReconnected() => Reconnected?.Invoke();

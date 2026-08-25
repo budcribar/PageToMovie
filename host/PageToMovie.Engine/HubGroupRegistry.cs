@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace PageToMovie.Api.Hubs;
+namespace PageToMovie.Engine;
 
 /// <summary>
 /// Counts live JobHub connections per user group, on THIS instance.
@@ -20,7 +20,13 @@ namespace PageToMovie.Api.Hubs;
 /// </remarks>
 public sealed class HubGroupRegistry
 {
+    /// <summary>Enough to cover a session's worth of connects and finished jobs without letting a
+    /// long-lived process grow unbounded.</summary>
+    private const int MaxEvents = 300;
+
     private readonly ConcurrentDictionary<string, int> _byUser = new(StringComparer.Ordinal);
+    private readonly Queue<HubDeliveryEvent> _events = new();
+    private readonly object _eventGate = new();
 
     public void Add(string userId) =>
         _byUser.AddOrUpdate(userId, 1, (_, n) => n + 1);
@@ -31,6 +37,28 @@ public sealed class HubGroupRegistry
     public int Count(string? userId) =>
         !string.IsNullOrWhiteSpace(userId) && _byUser.TryGetValue(userId, out var n) ? n : 0;
 
+    /// <summary>
+    /// Record something worth seeing later. These go into the server-log export zip rather than
+    /// only to stdout: the export is what actually reaches whoever is debugging, and a diagnostic
+    /// that only exists in container logs nobody pulls is not a diagnostic.
+    /// </summary>
+    public void Note(string kind, string detail)
+    {
+        lock (_eventGate)
+        {
+            _events.Enqueue(new HubDeliveryEvent(DateTimeOffset.UtcNow, kind, detail, Describe()));
+            while (_events.Count > MaxEvents)
+                _events.Dequeue();
+        }
+    }
+
+    /// <summary>Newest last, for the log export.</summary>
+    public IReadOnlyList<HubDeliveryEvent> RecentEvents()
+    {
+        lock (_eventGate)
+            return _events.ToArray();
+    }
+
     /// <summary>Groups with at least one live connection — deliberately ordinal, since SignalR
     /// group matching is ordinal too and a case difference is exactly the kind of mismatch worth
     /// seeing spelled out.</summary>
@@ -40,3 +68,10 @@ public sealed class HubGroupRegistry
         return live.Length == 0 ? "<none>" : string.Join(", ", live);
     }
 }
+
+/// <summary>One hub connect / disconnect / undelivered-job entry for the server-log export.</summary>
+/// <param name="LiveGroups">Group census at the moment it happened — an undelivered job next to a
+/// census naming the same user under different casing is an id mismatch; next to a census naming
+/// nobody it is a client that was simply not connected.</param>
+public sealed record HubDeliveryEvent(
+    DateTimeOffset At, string Kind, string Detail, string LiveGroups);

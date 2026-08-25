@@ -76,6 +76,10 @@ public sealed class SignalRJobProgressSink : IJobProgressSink
         if (!isTerminal || _groups.Count(snapshot.UserId) > 0)
             return;
 
+        _groups.Note(
+            "undelivered",
+            $"job {snapshot.JobId} ({snapshot.Kind}) finished {snapshot.Status} for user:{snapshot.UserId}; " +
+            $"clientMediaUrl={(string.IsNullOrWhiteSpace(snapshot.ClientMediaUrl) ? "no" : "yes")}");
         _log.LogWarning(
             "Job {JobId} ({Kind}) finished as {Status} but user:{UserId} has no live hub connection " +
             "on this instance, so the client was never told. Live groups: {Groups}. " +
