@@ -358,12 +358,23 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
 
 @if (List._deleteSceneTarget is int deleteSn)
 {
-    <ConfirmModal Visible="true" Title="@($"Delete Scene S{deleteSn:D2}?")"
-                  ConfirmLabel="Delete Scene" Busy="_busy"
+    <ConfirmModal Visible="true" Title="@($"Delete scene {deleteSn}?")"
+                  ConfirmLabel="Delete scene" Busy="_busy"
                   OnConfirm="List.ConfirmDeleteSceneAsync" OnCancel="() => { List._deleteSceneTarget = null; }">
-        Are you sure you want to delete <strong>Scene @deleteSn.ToString("D2")</strong> from the shot plan?
-        <div class="text-muted small mt-2">
-            Note: You can easily restore missing scenes anytime by clicking <strong>Regenerate Selected Scenes</strong> with nothing checked (rebuilds every scene from the screenplay).
+        <p>Delete <strong>scene @deleteSn</strong> and all of its shots?</p>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="scene-delete-screenplay"
+                   checked="@List._deleteSceneFromScreenplay"
+                   @onchange="e => List._deleteSceneFromScreenplay = (bool)(e.Value ?? false)" />
+            <label class="form-check-label" for="scene-delete-screenplay">
+                Take it out of the screenplay too
+                <span class="text-body-secondary">
+                    — otherwise the scene comes back next time you rebuild the shot list.
+                </span>
+            </label>
+        </div>
+        <div class="text-body-secondary small">
+            The videos are kept and can be restored from this scene's history.
         </div>
     </ConfirmModal>
 }
@@ -373,10 +384,53 @@ else if (Playback._showPreviewPlayer && Playback._clientStitching)
     <ConfirmModal Visible="true" Title="Delete clip?" ConfirmLabel="Delete clip"
                   ConfirmTestId="clip-delete-confirm" Busy="_busy" BodyClass="" BackdropOpacity=".45"
                   OnConfirm="ClipForm.ConfirmDeleteClipAsync" OnCancel="ClipForm.CancelDeleteClip">
-        <p class="mb-0">
-            Delete <code>S@(delTarget.Scene.ToString("D2"))C@(delTarget.Clip.ToString("D2"))</code>?
-            This removes the video file and its shot-plan entry — cannot be undone.
-            Play scene / Play WIP afterward to drop it from the assembled cut.
+        @{
+            var preview = ClipForm._deleteClipPreview;
+            var alsoClips = preview is null ? 1 : Math.Max(1, preview.Clips.Count);
+            var lines = preview?.ScreenplayLines ?? 0;
+        }
+        <p>
+            Delete clip @delTarget.Clip from scene @delTarget.Scene?
+        </p>
+        @if (preview is { EmptiesScene: true })
+        {
+            <p class="mb-2">
+                <strong>This is the last of scene @delTarget.Scene.</strong>
+                Deleting it deletes the whole scene — all @alsoClips clip@(alsoClips == 1 ? "" : "s")
+                and the scene itself.
+            </p>
+        }
+        else if (alsoClips > 1)
+        {
+            <p class="mb-2">
+                These shots come from the same part of the story, so they go together:
+                <strong>clips @string.Join(", ", preview!.Clips)</strong>.
+            </p>
+        }
+        @if (lines > 0)
+        {
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="clip-delete-screenplay"
+                       checked="@ClipForm._deleteClipFromScreenplay"
+                       @onchange="e => ClipForm._deleteClipFromScreenplay = (bool)(e.Value ?? false)" />
+                <label class="form-check-label" for="clip-delete-screenplay">
+                    Take it out of the screenplay too
+                    <span class="text-body-secondary">
+                        — otherwise it comes back next time you rebuild this scene's shot list.
+                    </span>
+                </label>
+            </div>
+        }
+        else if (preview is not null)
+        {
+            <p class="mb-2 text-body-secondary">
+                This clip has no matching line in the screenplay, so only the shot list changes —
+                rebuilding this scene's shot list will bring it back.
+            </p>
+        }
+        <p class="mb-0 text-body-secondary">
+            The video is kept and can be restored from this scene's history.
+            Play scene afterward to refresh the assembled cut.
         </p>
     </ConfirmModal>
 }

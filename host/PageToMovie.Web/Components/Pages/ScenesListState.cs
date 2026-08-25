@@ -440,6 +440,12 @@ public partial class Scenes
 
 
 
+    /// <summary>
+    /// Whether deleting the scene should take it out of the screenplay as well. Defaults on: a
+    /// shot-plan-only delete is undone the next time the shot list is rebuilt.
+    /// </summary>
+    internal bool _deleteSceneFromScreenplay = true;
+
     internal async Task ConfirmDeleteSceneAsync()
     {
         if (_deleteSceneTarget is not int sn) return;
@@ -450,7 +456,7 @@ public partial class Scenes
         try
         {
             // Persist: remove the scene from the shot plan (blueprint) so it doesn't reappear on reload.
-            var res = await S.Engine.DeleteSceneAsync(S._projectId, sn);
+            var res = await S.Engine.DeleteSceneAsync(S._projectId, sn, _deleteSceneFromScreenplay);
             if (!res.Ok)
             {
                 S._error = res.Error ?? "Could not delete the scene.";
@@ -460,7 +466,10 @@ public partial class Scenes
             // and drop stale detail if the open scene was the one deleted (SoftReload used to
             // 404 that detail and leave ClipCount / ClipsOnDisk on the old SceneDetail).
             ApplyDeletedSceneLocally(sn);
-            S._message = res.Message ?? $"Deleted Scene {sn:D2}";
+            S._message = (res.Message ?? $"Deleted scene {sn}")
+                         + (_deleteSceneFromScreenplay
+                             ? " and removed it from the screenplay."
+                             : " — it will come back if you rebuild the shot list.");
             await ReloadListAsync();
             // List cache can briefly lag; keep the dropped scene out of bound totals.
             ApplyDeletedSceneLocally(sn);
@@ -484,7 +493,7 @@ public partial class Scenes
         S._message = null;
         try
         {
-            var res = await S.Engine.AddSceneAsync(S._projectId, credits);
+            var res = await S.Engine.AddSceneAsync(S._projectId, credits, alsoAddToScreenplay: !credits);
             if (!res.Ok)
             {
                 S._error = res.Error ?? "Could not add the scene.";

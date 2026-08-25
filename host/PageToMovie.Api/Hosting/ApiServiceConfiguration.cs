@@ -72,6 +72,9 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<SceneListCache>();
         builder.Services.AddSingleton<ProjectReadCache>();
         builder.Services.AddSingleton<ProjectStore>();
+        // Propagates a clip/scene add or delete into the approved screenplay, so the edit is
+        // not undone by the next replan of that scene.
+        builder.Services.AddSingleton<ScreenplayClipWriteBackService>();
         // CostLedgerService takes a plain projects-root string, so it needs a factory rather than a bare
         // AddSingleton<T>() — and without ANY registration, Minimal API's parameter-source inference can't
         // recognize it as a service; it falls back to inferring [FromBody], which .NET disallows on GET

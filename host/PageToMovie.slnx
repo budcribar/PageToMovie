@@ -14,6 +14,7 @@
   <Project Path="PageToMovie.Core/PageToMovie.Core.csproj" />
   <Project Path="PageToMovie.Adaptation/PageToMovie.Adaptation.csproj" />
   <Project Path="PageToMovie.Fountain/PageToMovie.Fountain.csproj" />
+  <Project Path="PageToMovie.Screenplay/PageToMovie.Screenplay.csproj" />
   <Project Path="PageToMovie.Engine/PageToMovie.Engine.csproj" />
   <Project Path="PageToMovie.Fakes/PageToMovie.Fakes.csproj" />
   <Project Path="PageToMovie.LoadSim/PageToMovie.LoadSim.csproj" />
