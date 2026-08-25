@@ -316,7 +316,7 @@ public partial class Scenes
                 await S.Gen.OpenJobModalAndPaintAsync(Scenes.ScenesGeneration.PreparingDefaultMessage, scene: sn);
                 await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(targets);
-                S.Gen._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution);
+                S.Gen.AdoptStartedJob(await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution));
                 S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S.Gen._genResolution}…";
                 S.ClipSel._selectedClips.Clear();
                 S.StateHasChanged();
@@ -379,7 +379,7 @@ public partial class Scenes
                 S.Gen._pendingTakeReasonScene = sn;
                 S.Gen._pendingTakeReasonClip = cn;
                 var jobs = await S.Engine.GetJobAsync();
-                S.Gen._job = jobs?.Job;
+                S.Gen.AdoptStartedJob(jobs?.Job);
             }
             catch (Exception ex)
             {
@@ -421,7 +421,7 @@ public partial class Scenes
                 await S.Engine.StartVideoEditAsync(S._projectId, sn, cn, _videoEditPromptText.Trim());
                 S._message = $"Editing S{sn:D2}C{cn:D2}…";
                 var jobs = await S.Engine.GetJobAsync();
-                S.Gen._job = jobs?.Job;
+                S.Gen.AdoptStartedJob(jobs?.Job);
             }
             catch (Exception ex)
             {

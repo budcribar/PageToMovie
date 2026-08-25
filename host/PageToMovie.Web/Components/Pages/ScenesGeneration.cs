@@ -379,6 +379,7 @@ public partial class Scenes
                 waiting: string.Equals(job.Status, StatusQueued, StringComparison.OrdinalIgnoreCase),
                 jobRunning: true,
                 startedAt: job.StartedAt);
+            pct = EaseAcrossCurrentStep(pct, index, total);
         }
 
         // Monotonic while the same job runs — never bounce backward on mid-phase resets.
@@ -387,6 +388,38 @@ public partial class Scenes
         else
             _progressFloor = pct;
         return pct;
+    }
+
+    private int _easeStepIndex = -1;
+    private DateTimeOffset _easeStepAt = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Creep from the last completed step toward the next one so the bar keeps moving between
+    /// updates. Steps here are minutes apart — a shot plan reports once per scene and each scene
+    /// is roughly nine classifier calls — so a purely stepped bar sits frozen at its 5% floor for
+    /// the whole first scene and looks like nothing is happening at all.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling is the NEXT step, never beyond, so the bar can never claim more than one unit
+    /// of work it has not finished. Timed from when the index last moved rather than from job
+    /// start, or every step after the first would jump straight to its ceiling.
+    /// </remarks>
+    internal int EaseAcrossCurrentStep(int steppedPct, int index, int total)
+    {
+        if (total <= 0)
+            return steppedPct;
+        if (index != _easeStepIndex)
+        {
+            _easeStepIndex = index;
+            _easeStepAt = DateTimeOffset.UtcNow;
+            return steppedPct;
+        }
+        var next = (int)Math.Round(100.0 * Math.Clamp(index + 1, 0, total) / total);
+        if (next <= steppedPct)
+            return steppedPct;
+        var eased = AdaptationPageBase.AdaptationStepUi.SoftCrawlPercent(
+            _easeStepAt, floor: steppedPct, ceiling: next, tauSeconds: 60);
+        return Math.Max(steppedPct, eased);
     }
 
 
@@ -651,6 +684,23 @@ public partial class Scenes
     /// </summary>
     internal static readonly TimeSpan LostJobPollInterval = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Take ownership of a job this page just started: show it, and arm the lost-job watchdog.
+    /// </summary>
+    /// <remarks>
+    /// Every start site used to assign <c>_job</c> and stop there, leaving polling to be armed by
+    /// the first hub JobUpdated. When the hub said nothing — wrong per-user group, dropped socket,
+    /// a job that died before its first update — nothing ever reconciled and the Generating modal
+    /// sat on "Queued batch gen…" indefinitely while the server reported no active jobs at all.
+    /// Arming it here means the watchdog does not depend on the transport it is meant to backstop.
+    /// </remarks>
+    internal void AdoptStartedJob(JobSnapshot? started)
+    {
+        if (started is not null)
+            _job = started;
+        StartJobPolling();
+    }
+
     internal void StartJobPolling()
     {
         var jobId = _job?.JobId;
@@ -785,7 +835,7 @@ public partial class Scenes
             await EnsureHubAsync();
             await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, resolution: _genResolution);
-            _job = (await S.Engine.GetJobAsync())?.Job;
+            AdoptStartedJob((await S.Engine.GetJobAsync())?.Job);
         }
         catch (Exception ex)
         {
@@ -822,9 +872,9 @@ public partial class Scenes
             await EnsureHubAsync();
             var targets = stale.Select(cn => (sn, cn)).ToList();
             // force via clip batch
-            _job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: _genResolution);
+            AdoptStartedJob(await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: _genResolution));
             if (_job is null)
-                _job = (await S.Engine.GetJobAsync())?.Job;
+                AdoptStartedJob((await S.Engine.GetJobAsync())?.Job);
             S._message = $"Regenerating {stale.Count} stale clip(s) in S{sn:D2}…";
         }
         catch (Exception ex)
@@ -863,7 +913,7 @@ public partial class Scenes
             await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: true, resolution: _genResolution);
             // Live progress card only — no duplicate "started" banner.
             var jobs = await S.Engine.GetJobAsync();
-            _job = jobs?.Job;
+            AdoptStartedJob(jobs?.Job);
         }
         catch (Exception ex)
         {
@@ -941,7 +991,7 @@ public partial class Scenes
                 : null;
             await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
             var jobs = await S.Engine.GetJobAsync();
-            _job = jobs?.Job;
+            AdoptStartedJob(jobs?.Job);
         }
 
         foreach (var sn in creditsScenes)
@@ -1225,7 +1275,7 @@ public partial class Scenes
                     : null;
                 await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.StaleRegen);
                 var jobs = await S.Engine.GetJobAsync();
-                _job = jobs?.Job;
+                AdoptStartedJob(jobs?.Job);
             }
             foreach (var sn in creditsScenes)
                 await RenderCreditsSceneClientSideAsync(sn);

@@ -3306,7 +3306,13 @@ public sealed class FilmJobService
             ProjectId = projectId,
             Message = "Building shot plan…",
             Index = 0,
-            Total = 10,
+            // Unknown until the screenplay is read and the scene count is known. It used to be a
+            // placeholder 10, which the scene count then could not lower (see the Math.Max below):
+            // a 3-scene plan reported 1/10, 2/10, 3/10 and jumped to 10/10. Worse, the whole
+            // pre-planning phase — five batch classifier passes over every beat, the majority of
+            // the wall clock — left Index at 0, so the bar sat frozen at its 5% floor. Total = 0
+            // means "indeterminate", which drives the soft crawl until the real count arrives.
+            Total = 0,
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
         };
@@ -7363,7 +7369,7 @@ public sealed class FilmJobService
             line, @"Planning\s+(\d+)\s+scene", RegexOptions.IgnoreCase);
         if (!mPlan.Success || !int.TryParse(mPlan.Groups[1].Value, out var nScenes) || nScenes <= 0)
             return false;
-        s.Total = Math.Max(s.Total, nScenes);
+        s.Total = nScenes;
         s.Index = Math.Max(s.Index, 0);
         return true;
     }
@@ -7378,7 +7384,7 @@ public sealed class FilmJobService
             || !int.TryParse(mDone.Groups[2].Value, out var totN)
             || totN <= 0)
             return false;
-        s.Total = Math.Max(s.Total, totN);
+        s.Total = totN;
         s.Index = Math.Max(s.Index, Math.Min(doneN, totN));
         return true;
     }
@@ -7393,7 +7399,7 @@ public sealed class FilmJobService
             || !int.TryParse(mOf.Groups[2].Value, out var totOf)
             || totOf <= 0)
             return false;
-        s.Total = Math.Max(s.Total, totOf);
+        s.Total = totOf;
         // Don't jump Index past completed count — keep "of" as context in Message.
         if (s.Index < snOf - 1)
             s.Index = Math.Max(s.Index, Math.Min(snOf - 1, totOf));
@@ -7404,10 +7410,10 @@ public sealed class FilmJobService
     {
         if (!IsStage2MergedOrCompleteLine(line))
             return;
+        // Total is 0 until the scene count is known; the old "index 9 of a placeholder 10" branch
+        // is meaningless there, and ComputeProgressPercent ignores Index while total is 0 anyway.
         if (s.Total > 0)
             s.Index = s.Total;
-        else
-            s.Index = Math.Max(s.Index, 9);
     }
 
     private static bool IsStage2MergedOrCompleteLine(string line) =>
@@ -7590,8 +7596,16 @@ public sealed class FilmJobService
 
     private async Task FinishAsync(string status, string message, string? error = null)
     {
-        string? projectId = null;
+        string? projectId = CurrentRun.Value?.Snapshot.ProjectId;
         string? kind = null;
+
+        // Invalidate BEFORE the status publish, not after. UpdateAsync publishes to the hub, and
+        // the client reacts to Status=done by immediately re-fetching the scene list — that GET
+        // used to land while the cache still held the pre-job list, so a rebuilt shot plan did not
+        // show up until a full page reload. Invalidating twice is free; racing it is not.
+        if (status is StatusDone or StatusError or StatusCancelled)
+            _projects.InvalidateSceneListCache(projectId);
+
         await UpdateAsync(s =>
         {
             s.Status = status;
@@ -7605,7 +7619,9 @@ public sealed class FilmJobService
         });
         await AppendLogAsync(message);
 
-        // Scene list cache: clip/composite counts change on gen/remux/stage done
+        // Again, now that the snapshot has given us an authoritative project id — the pre-publish
+        // invalidation above only had whatever CurrentRun held. Cheap, and covers the case where
+        // the id was only populated inside the update.
         if (status is StatusDone or StatusError or StatusCancelled)
         {
             if (string.IsNullOrWhiteSpace(projectId))

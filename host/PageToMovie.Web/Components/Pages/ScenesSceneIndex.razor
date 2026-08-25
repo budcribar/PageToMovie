@@ -35,6 +35,22 @@
 }
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="scene-index">
+@* Live job progress belongs here whatever the plan looks like. This card used to sit inside the
+   "no scenes yet" branch only, so REBUILDING an existing shot plan showed no progress at all in
+   the sidebar — and the other copy lives in the scene detail pane, which is not rendered unless a
+   scene is open. A rebuild with a plan already present and nothing selected showed nothing. *@
+@if (Host.Gen.ShowLiveGenProgress && Host.Gen._job is not null)
+{
+    <div class="my-3">
+        <JobProgressCard Status="@Host.Gen._job.Status"
+                         Message="@Scenes.ScenesGeneration.LiveGenStatusLabel(Host.Gen._job)"
+                         Index="Host.Gen._job.Index"
+                         Total="Host.Gen._job.Total"
+                         Percent="Host.Gen.LiveGenProgressPercent(Host.Gen._job)"
+                         TestId="scenes-live-progress"
+                         CssClass="border-primary shadow-sm" />
+    </div>
+}
 @if (list._scenes is null)
 {
     @* ---- Loading / failed / no shot plan yet ---- *@
@@ -59,7 +75,8 @@
 }
 else if (list._scenes.Count == 0)
 {
-    @if (Host.Gen.JobRunning && Host.Gen._job is not null)
+    @* The running-job card is rendered once above, for every plan state. *@
+    @if (Host.Gen.JobRunning && Host.Gen._job is not null && !Host.Gen.ShowLiveGenProgress)
     {
         <div class="my-3">
             <JobProgressCard Status="@Host.Gen._job.Status"
@@ -67,7 +84,7 @@ else if (list._scenes.Count == 0)
                              Index="Host.Gen._job.Index"
                              Total="Host.Gen._job.Total"
                              Percent="Host.Gen.LiveGenProgressPercent(Host.Gen._job)"
-                             TestId="scenes-live-progress"
+                             TestId="scenes-live-progress-other"
                              CssClass="border-primary shadow-sm" />
         </div>
     }
