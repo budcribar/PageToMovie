@@ -1947,10 +1947,9 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         {
             using var resp = await _http.GetAsync(
                 $"/api/jobs/{Uri.EscapeDataString(jobId)}", ct);
-            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return new JobLookupResult(JobLookupStatus.NotFound, null);
-            if (!resp.IsSuccessStatusCode)
-                return new JobLookupResult(JobLookupStatus.Unreachable, null);
+            var status = ClassifyJobHttp(resp);
+            if (status != JobLookupStatus.Found)
+                return new JobLookupResult(status, null);
             var dto = await resp.Content.ReadFromJsonAsync<JobDetailDto>(JsonOpts, ct);
             return new JobLookupResult(JobLookupStatus.Found, dto?.Job);
         }
@@ -1959,6 +1958,35 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             return new JobLookupResult(JobLookupStatus.Unreachable, null);
         }
     }
+
+    /// <summary>
+    /// Primary current job for this user. Empty / 404 is a known miss (restart cleared
+    /// the in-memory store); HTTP failure is Unreachable so a blip does not look like death.
+    /// </summary>
+    public async Task<JobLookupResult> LookupCurrentJobAsync(CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            using var resp = await _http.GetAsync("/api/jobs?mine=1", ct);
+            var status = ClassifyJobHttp(resp);
+            if (status != JobLookupStatus.Found)
+                return new JobLookupResult(status, null);
+            var dto = await resp.Content.ReadFromJsonAsync<JobsListDto>(JsonOpts, ct);
+            return new JobLookupResult(JobLookupStatus.Found, JobListHelpers.PickPrimary(dto?.Jobs));
+        }
+        catch
+        {
+            return new JobLookupResult(JobLookupStatus.Unreachable, null);
+        }
+    }
+
+    private static JobLookupStatus ClassifyJobHttp(HttpResponseMessage resp) =>
+        resp.StatusCode == System.Net.HttpStatusCode.NotFound
+            ? JobLookupStatus.NotFound
+            : resp.IsSuccessStatusCode
+                ? JobLookupStatus.Found
+                : JobLookupStatus.Unreachable;
 
     public async Task<CapacityDto?> GetCapacityAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<CapacityDto>("/api/capacity", JsonOpts, ct);

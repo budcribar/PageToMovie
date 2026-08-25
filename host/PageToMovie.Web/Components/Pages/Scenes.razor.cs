@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes : IAsyncDisposable, IPageSliceHost
 {
-    [Inject] internal ServerHealthState Health { get; set; } = default!;
+    [Inject] internal ServerHealthState Health { get; set; } = default;
 
     private CancellationTokenSource? _mediaFolderChangedDebounce;
     /// <summary>Slice host (see <see cref="IPageSliceHost"/>): the Scenes_* pieces are slices.</summary>

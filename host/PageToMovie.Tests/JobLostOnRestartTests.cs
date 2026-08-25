@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
@@ -117,24 +119,27 @@ public class JobLostOnRestartTests
     }
 
     [Fact]
-    public void Health_recovery_same_as_reconnect()
+    public async Task Health_recovery_same_as_reconnect()
     {
         var page = new Scenes();
         var gen = page.Gen;
         gen._job = QueuedBatch();
         var health = new ServerHealthState();
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         health.ReportFailure("hub reconnecting");
         health.Recovered += () =>
         {
             gen.ApplyServerJobView(null, true, null, true);
+            recovered.TrySetResult();
             return Task.CompletedTask;
         };
 
         health.ReportSuccess();
-        // Recovered runs async — wait for Up
+        await recovered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        // Recovered runs while Health is Recovering; wait for the flip to Up.
         var deadline = DateTime.UtcNow.AddSeconds(2);
         while (health.Health != ServerHealth.Up && DateTime.UtcNow < deadline)
-            Thread.Sleep(10);
+            await Task.Delay(10);
 
         Assert.Equal(ServerHealth.Up, health.Health);
         Assert.False(gen.JobRunning);
@@ -155,6 +160,51 @@ public class JobLostOnRestartTests
         rec.Message = "Waiting for resource lock…";
         rec.Log.Add(rec.Message);
         Assert.False(JobLostOnRestart.IsStuckOnInitialEnqueue(rec, "Queued batch gen (2 clip(s))…"));
+    }
+
+    [Fact]
+    public async Task LookupCurrentJob_empty_list_is_known_empty_not_a_blip()
+    {
+        var engine = NewEngine(HttpStatusCode.OK, """{ "ok": true, "jobs": [] }""");
+        var result = await engine.LookupCurrentJobAsync();
+        Assert.Equal(JobLookupStatus.Found, result.Status);
+        Assert.Null(result.Job);
+        Assert.True(JobLostOnRestart.ShouldMarkLost(
+            QueuedBatch(), byId: null, byIdNotFound: false, current: result.Job, currentKnown: true));
+    }
+
+    [Fact]
+    public async Task LookupCurrentJob_http_error_is_unreachable()
+    {
+        var engine = NewEngine(HttpStatusCode.BadGateway, "{}");
+        var result = await engine.LookupCurrentJobAsync();
+        Assert.Equal(JobLookupStatus.Unreachable, result.Status);
+        Assert.False(JobLostOnRestart.ShouldMarkLost(
+            QueuedBatch(), byId: null, byIdNotFound: false, current: result.Job, currentKnown: false));
+    }
+
+    private static EngineApiClient NewEngine(HttpStatusCode status, string json)
+    {
+        var handler = new StubHandler(status, json);
+        return new EngineApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") });
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        private readonly HttpStatusCode _status;
+        private readonly string _json;
+        public StubHandler(HttpStatusCode status, string json)
+        {
+            _status = status;
+            _json = json;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(_status)
+            {
+                Content = new StringContent(_json, Encoding.UTF8, "application/json"),
+            });
     }
 }
 

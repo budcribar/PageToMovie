@@ -605,23 +605,18 @@ public partial class Scenes
             return;
 
         var lookup = await S.Engine.LookupJobAsync(j.JobId);
-        JobsDto? list = null;
-        var listOk = false;
-        try
-        {
-            list = await S.Engine.GetJobAsync();
-            listOk = true;
-        }
-        catch { /* network — do not treat as gone unless by-id was 404 */ }
+        var current = await S.Engine.LookupCurrentJobAsync();
 
-        if (lookup.Status == JobLookupStatus.Unreachable && !listOk)
+        // Both polls failed to reach the server — a blip, not a restart. Keep the snapshot.
+        if (lookup.Status == JobLookupStatus.Unreachable &&
+            current.Status == JobLookupStatus.Unreachable)
             return;
 
         ApplyServerJobView(
             lookup.Status == JobLookupStatus.Found ? lookup.Job : null,
             byIdNotFound: lookup.Status == JobLookupStatus.NotFound,
-            current: listOk ? list?.Job : null,
-            currentKnown: listOk);
+            current: current.Job,
+            currentKnown: current.Status != JobLookupStatus.Unreachable);
     }
 
     /// <summary>
