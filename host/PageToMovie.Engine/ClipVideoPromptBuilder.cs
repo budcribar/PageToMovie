@@ -90,7 +90,15 @@ public static class ClipVideoPromptBuilder
         public string CastCountLine { get; init; } = "";
         /// <summary>Whether locked refs were attached to the API payload for this build.</summary>
         public bool RefsAttachedToApi { get; init; }
-        public string PromptLogSummary { get; init; } = "";
+        /// <summary>Log-summary tail: everything after the leading <c>mode=</c> token.</summary>
+        public string PromptLogDetails { get; init; } = "";
+        /// <summary>
+        /// One-line log summary — the generation <see cref="Mode"/> plus
+        /// <see cref="PromptLogDetails"/>. Callers that already log the mode themselves use
+        /// <see cref="PromptLogDetails"/> instead, so the token is never printed twice.
+        /// </summary>
+        public string PromptLogSummary =>
+            PromptLogDetails.Length == 0 ? "" : $"mode={Mode} {PromptLogDetails}";
         /// <summary>Scene/clip location key when a set plate was considered.</summary>
         public string? LocationKey { get; init; }
         /// <summary>True when a locked location plate was attached as a reference image.</summary>
@@ -120,9 +128,9 @@ public static class ClipVideoPromptBuilder
             LocationRefAttached = LocationRefAttached,
             LocationImageTag = LocationImageTag,
             ReferenceAudioVoiceIds = ReferenceAudioVoiceIds,
-            PromptLogSummary = string.IsNullOrWhiteSpace(summarySuffix)
-                ? PromptLogSummary
-                : PromptLogSummary + summarySuffix,
+            PromptLogDetails = string.IsNullOrWhiteSpace(summarySuffix)
+                ? PromptLogDetails
+                : PromptLogDetails + summarySuffix,
         };
     }
 
@@ -231,8 +239,8 @@ public static class ClipVideoPromptBuilder
             LocationRefAttached = locationRefAttached,
             LocationImageTag = locationImageTag,
             ReferenceAudioVoiceIds = referenceAudioVoiceIds,
-            PromptLogSummary = FormatPromptLogSummary(
-                mode, allKeys.Count, onScreenKeys.Count, attached.Count,
+            PromptLogDetails = FormatPromptLogDetails(
+                allKeys.Count, onScreenKeys.Count, attached.Count,
                 locationRefAttached, locationKey, startFrameImagePath,
                 prompt.Length, previousClipVideoPath),
         };
@@ -449,8 +457,7 @@ public static class ClipVideoPromptBuilder
                 ". Do not invent extra people, duplicate faces, or crowd extras not listed.")
             : "";
 
-    private static string FormatPromptLogSummary(
-        string mode,
+    private static string FormatPromptLogDetails(
         int allKeysCount,
         int onScreenCount,
         int attachedCount,
@@ -465,7 +472,7 @@ public static class ClipVideoPromptBuilder
             locLabel = locationKey;
         else
             locLabel = locationKey is null ? "none" : "unlocked";
-        return $"mode={mode} chars={allKeysCount} onScreen={onScreenCount} " +
+        return $"chars={allKeysCount} onScreen={onScreenCount} " +
         $"refs={attachedCount} loc={locLabel} " +
         $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
         $"promptLen={promptLength}" +

@@ -5967,10 +5967,13 @@ public sealed class FilmJobService
         var supportsContinue = ctx.VideoRoles.CanExtend;
         var duration = await ResolveClipDurationAsync(ctx, supportsContinue).ConfigureAwait(false);
 
-        var modeLabel = isExtendHop ? "video-extend" : built.Mode;
+        // PromptLogDetails, not PromptLogSummary: the summary leads with its own mode= token, and
+        // printing both put "mode=video-extend mode=video-extend" in every extend-hop submit line.
+        // The wire mode is the authoritative one here — it is what picked the extend model above.
+        var modeLabel = isExtendHop ? ClipVideoPromptBuilder.ModeVideoExtend : built.Mode;
         await AppendLogAsync(
             $"  [Grok] Submit S{ctx.Scene:D2}C{ctx.Clip} duration={duration}s res={ctx.Resolution} " +
-            $"model={wireModel} mode={modeLabel} {built.PromptLogSummary}");
+            $"model={wireModel} mode={modeLabel} {built.PromptLogDetails}");
 
         var targetAspectRatio = await ResolveTargetAspectRatioAsync(ctx.ProjectId, ctx.BlueprintRoot, ctx.Ct).ConfigureAwait(false);
 
@@ -7591,19 +7594,26 @@ public sealed class FilmJobService
     private async Task AppendLogAsync(string message)
     {
         _logLines.Enqueue(message);
-        await UpdateAsync(s =>
-        {
-            // Avoid duplicate consecutive lines (AppendLog after Update that already set Message)
-            if (s.Log.Count == 0 || s.Log[^1] != message)
-            {
-                s.Log.Add(message);
-                if (s.Log.Count > 120)
-                    s.Log = s.Log.TakeLast(120).ToList();
-            }
-            s.Message = message;
-        });
+        await UpdateAsync(s => AppendLogLine(s, message));
         if (_sink is not null)
             await _sink.OnJobLogAsync(message);
+    }
+
+    /// <summary>
+    /// Append one line to a snapshot's log and make it the current message. Shared by
+    /// <see cref="AppendLogAsync"/> and the terminal update in <see cref="FinishAsync"/> so the
+    /// closing line rides the same snapshot mutation as the finished status (one publish, not two).
+    /// </summary>
+    internal static void AppendLogLine(JobSnapshot s, string message)
+    {
+        // Avoid duplicate consecutive lines (AppendLog after Update that already set Message)
+        if (s.Log.Count == 0 || s.Log[^1] != message)
+        {
+            s.Log.Add(message);
+            if (s.Log.Count > 120)
+                s.Log = s.Log.TakeLast(120).ToList();
+        }
+        s.Message = message;
     }
 
     private async Task UpdateAsync(Action<JobSnapshot> mutate)
@@ -7660,18 +7670,24 @@ public sealed class FilmJobService
         if (status is StatusDone or StatusError or StatusCancelled)
             _projects.InvalidateSceneListCache(projectId);
 
+        // One publish for the terminal snapshot. The closing log line is folded into the same
+        // UpdateAsync as the status flip — calling AppendLogAsync after it published the identical
+        // finished snapshot a second time microseconds later, and SignalRJobProgressSink
+        // deliberately does not throttle terminal updates, so every client saw both.
+        _logLines.Enqueue(message);
         await UpdateAsync(s =>
         {
             s.Status = status;
-            s.Message = message;
             s.Error = error;
             s.FinishedAt = DateTimeOffset.UtcNow;
             if (s.Total > 0 && status == StatusDone)
                 s.Index = s.Total;
+            AppendLogLine(s, message);
             projectId = s.ProjectId;
             kind = s.Kind;
         });
-        await AppendLogAsync(message);
+        if (_sink is not null)
+            await _sink.OnJobLogAsync(message);
 
         // Again, now that the snapshot has given us an authoritative project id — the pre-publish
         // invalidation above only had whatever CurrentRun held. Cheap, and covers the case where
