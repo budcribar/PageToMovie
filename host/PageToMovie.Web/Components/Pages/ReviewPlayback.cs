@@ -92,66 +92,13 @@ public partial class Review
 
         internal long _wipVideoKey;
 
-        /// <summary>Local current take confirmed via media-folder stat (not just a connected folder).</summary>
-        internal readonly Dictionary<(int Scene, int Clip), bool> _localVideoReady = new();
-        private readonly SemaphoreSlim _localPlayableRefreshGate = new(1, 1);
-
+        internal readonly LocalClipPlayableCache LocalPlayable = new();
 
         internal bool HasCachedLocalVideo(int scene, int clip) =>
-            _localVideoReady.TryGetValue((scene, clip), out var ok) && ok;
+            LocalPlayable.Has(scene, clip);
 
-        internal async Task RefreshLocalPlayableAsync()
-        {
-            await _localPlayableRefreshGate.WaitAsync();
-            try
-            {
-                await RefreshLocalPlayableCoreAsync();
-            }
-            finally
-            {
-                _localPlayableRefreshGate.Release();
-            }
-        }
-
-        private async Task RefreshLocalPlayableCoreAsync()
-        {
-            if (S.MediaFolder.IsSyncing)
-                return;
-            if (!S.MediaFolder.IsConnected || string.IsNullOrWhiteSpace(S._projectId))
-            {
-                _localVideoReady.Clear();
-                return;
-            }
-
-            var needed = CollectNeededLocalPlayableClips();
-            foreach (var stale in _localVideoReady.Keys.Where(k => !needed.Contains(k)).ToList())
-                _localVideoReady.Remove(stale);
-
-            foreach (var (scene, clip) in needed.Where(k => !_localVideoReady.TryGetValue(k, out var ready) || !ready))
-                _localVideoReady[(scene, clip)] = await S.MediaFolder.HasCurrentTakeFileAsync(S._projectId, scene, clip);
-        }
-
-        private HashSet<(int Scene, int Clip)> CollectNeededLocalPlayableClips()
-        {
-            var needed = new HashSet<(int Scene, int Clip)>();
-            if (S.List._scenes is { Count: > 0 })
-            {
-                foreach (var s in S.List._scenes)
-                {
-                    foreach (var cn in s.ClipsMissingServerVideo)
-                        needed.Add((s.SceneNumber, cn));
-                }
-            }
-
-            if (S.List._selectedDetail is { Clips.Count: > 0 } detail)
-            {
-                var sn = detail.SceneNumber;
-                foreach (var c in detail.Clips.Where(c => !ScenePlayGate.HasServerVideo(c.SizeBytes)))
-                    needed.Add((sn, c.ClipNumber));
-            }
-
-            return needed;
-        }
+        internal Task RefreshLocalPlayableAsync() =>
+            LocalPlayable.RefreshAsync(S.MediaFolder, S._projectId, S.List._scenes, S.List._selectedDetail);
 
 
         internal bool CanPlayMovie =>
