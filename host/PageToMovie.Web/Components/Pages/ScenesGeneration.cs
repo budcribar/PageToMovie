@@ -680,7 +680,9 @@ public partial class Scenes
         _job = next;
         ReplaceMyJob(next);
 
-        if (!ReferenceEquals(next, local))
+        // ReferenceEquals is not the question: ApplyServerView hands back a fresh object on every
+        // tick, so it is true whether or not anything actually happened. Ask whether the job MOVED.
+        if (JobProgressed(local, next))
         {
             NoteSocketDeliveredNothing(next);
             // Push it through the hub's own event so every subscriber sees it, not just this page.
@@ -707,17 +709,42 @@ public partial class Scenes
     /// poll is doing exactly the job it exists for. Connected-but-silent means the group this
     /// client joined is not the group the job publishes to, which no amount of client-side
     /// polling can fix.
+    ///
+    /// The socket must have been silent for LONGER than a poll interval before this means
+    /// anything. The poll and the hub race on every healthy job — the poll fires on its own timer
+    /// and often reads a step the hub is about to deliver a moment later — so warning on "the poll
+    /// saw it first" reports a working system as broken. It did exactly that on 2026-08-25, once
+    /// per tick, in a session where the hub was delivering every update normally. A diagnostic
+    /// that fires when nothing is wrong is worse than none: it trains you to ignore it.
     /// </remarks>
     private void NoteSocketDeliveredNothing(JobSnapshot next)
     {
-        if (S?.Hub is not { IsConnected: true })
+        if (S?.Hub is not { IsConnected: true } hub)
+            return;
+
+        // No socket update yet? Measure from when the job started, so a job that has been running
+        // a while with total hub silence still reports, while one that just started does not.
+        var since = hub.LastSocketUpdateAt ?? next.StartedAt ?? next.QueuedAt ?? DateTimeOffset.UtcNow;
+        var silentFor = DateTimeOffset.UtcNow - since;
+        if (silentFor <= LostJobPollInterval)
             return;
 
         Console.WriteLine(
-            $"[jobs] hub is connected but delivered no update for job {next.JobId} " +
-            $"({next.Kind}, now {next.Status}) — the poll had to fetch it. Live job events are " +
-            "not reaching this client; generated media will not save until that is fixed.");
+            $"[jobs] hub is connected but has delivered nothing for {silentFor.TotalSeconds:F0}s " +
+            $"while job {next.JobId} ({next.Kind}) moved to {next.Status} — the poll had to fetch " +
+            "it. Live job events are not reaching this client; generated media will not save " +
+            "until that is fixed.");
     }
+
+    /// <summary>
+    /// Did the job actually move? Compares what the UI and the media save care about — status,
+    /// step, and whether there is a clip to hand over — rather than object identity.
+    /// </summary>
+    internal static bool JobProgressed(JobSnapshot before, JobSnapshot after) =>
+        !string.Equals(before.Status, after.Status, StringComparison.OrdinalIgnoreCase) ||
+        before.Index != after.Index ||
+        before.Total != after.Total ||
+        !string.Equals(before.ClientMediaUrl ?? "", after.ClientMediaUrl ?? "", StringComparison.Ordinal);
 
     /// <summary>
     /// Slow backstop for "the server died and the hub never told us". The fast paths are

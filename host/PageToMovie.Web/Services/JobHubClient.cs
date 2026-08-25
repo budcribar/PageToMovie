@@ -138,6 +138,7 @@ public sealed class JobHubClient : IAsyncDisposable
             // members succeeds whether or not the browser ever processes it.
             Log($"JobUpdated {snap?.JobId} {snap?.Status} {snap?.Index}/{snap?.Total} " +
                 $"media={(string.IsNullOrWhiteSpace(snap?.ClientMediaUrl) ? "no" : "yes")}");
+            LastSocketUpdateAt = DateTimeOffset.UtcNow;
             JobUpdated?.Invoke(snap!);
         });
         _connection.On<string>(JobHubEvents.JobLog, line => JobLog?.Invoke(line));
@@ -222,6 +223,16 @@ public sealed class JobHubClient : IAsyncDisposable
     /// rather than ILogger: this has to show up in devtools with no configuration, in a build the
     /// operator is already running, at the moment the fault happens.</summary>
     private static void Log(string message) => Console.WriteLine($"[hub] {message}");
+
+    /// <summary>
+    /// When the socket last delivered a JobUpdated. Null until one arrives.
+    /// </summary>
+    /// <remarks>
+    /// Lets a caller tell a poll that merely re-read a healthy job from one that had to cover for a
+    /// silent socket. Without it the two are indistinguishable — the poll runs on its own timer
+    /// whether or not the hub is working, and every tick returns a fresh snapshot object.
+    /// </remarks>
+    public DateTimeOffset? LastSocketUpdateAt { get; private set; }
 
     /// <summary>Hub reconnect / health-recovery seam. Subscribers re-fetch the current job.</summary>
     public void RaiseReconnected() => Reconnected?.Invoke();
