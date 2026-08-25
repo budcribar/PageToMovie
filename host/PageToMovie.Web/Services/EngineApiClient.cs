@@ -854,12 +854,17 @@ public sealed class EngineApiClient
     }
 
     /// <summary>Persistently delete a whole scene from the shot plan (blueprint + on-disk media).</summary>
+    /// <param name="alsoRemoveFromScreenplay">
+    /// Remove the scene from the screenplay too, so rebuilding the shot plan cannot bring it back,
+    /// and pin the surviving scene numbers so nothing after it shifts.
+    /// </param>
     public async Task<(bool Ok, string? Message, string? Error)> DeleteSceneAsync(
-        string projectId, int scene, CancellationToken ct = default)
+        string projectId, int scene, bool alsoRemoveFromScreenplay = false, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
+        var query = alsoRemoveFromScreenplay ? "?screenplay=true" : "";
         using var req = new HttpRequestMessage(
-            HttpMethod.Delete, $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}");
+            HttpMethod.Delete, $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}{query}");
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
@@ -870,12 +875,14 @@ public sealed class EngineApiClient
     /// <summary>Add a scene to the shot plan — a blank scene, or a prefilled credits scene when
     /// <paramref name="credits"/> is true. Returns the new scene number.</summary>
     public async Task<(bool Ok, int Scene, string? Message, string? Error)> AddSceneAsync(
-        string projectId, bool credits = false, CancellationToken ct = default)
+        string projectId, bool credits = false, bool alsoAddToScreenplay = false, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
+        // The credits card is generated, not written — it has no screenplay line and needs none.
+        var query = alsoAddToScreenplay && !credits ? "?screenplay=true" : "";
         var path = credits
             ? $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/credits"
-            : $"{ProjectIdRouting.ProjectApi(projectId)}/scenes";
+            : $"{ProjectIdRouting.ProjectApi(projectId)}/scenes{query}";
         using var req = new HttpRequestMessage(HttpMethod.Post, path);
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -3397,16 +3404,46 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await EnsureOkAsync(resp, ct);
     }
 
+    /// <param name="alsoRemoveFromScreenplay">
+    /// Remove the clip's line from the screenplay too, so rebuilding the shot plan for this scene
+    /// cannot bring the clip back. Leave false to change only the shot plan.
+    /// </param>
     public async Task DeleteClipAsync(
+        string projectId,
+        int scene,
+        int clip,
+        bool alsoRemoveFromScreenplay = false,
+        CancellationToken ct = default)
+    {
+        var query = alsoRemoveFromScreenplay ? "?screenplay=true" : "";
+        using var resp = await _http.DeleteAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}{query}",
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
+    /// <summary>
+    /// What deleting this clip would take with it, before anything happens: the other clips bound
+    /// to the same lines, how many lines those are, and whether it is the whole scene.
+    /// </summary>
+    public async Task<ClipDeletePreview?> GetClipDeletePreviewAsync(
         string projectId,
         int scene,
         int clip,
         CancellationToken ct = default)
     {
-        using var resp = await _http.DeleteAsync(
-            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}",
-            ct);
-        await EnsureOkAsync(resp, ct);
+        try
+        {
+            return await _http.GetFromJsonAsync<ClipDeletePreview>(
+                $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/delete-preview",
+                JsonOpts,
+                ct);
+        }
+        catch
+        {
+            // The prompt still works without it — it just cannot say what else goes.
+            return null;
+        }
     }
 
     public async Task ApproveSceneAsync(
@@ -5818,3 +5855,21 @@ public sealed class BookCacheAdminArtifactDto
     public string CreatedAt { get; set; } = "";
     public int ContentBytes { get; set; }
 }
+
+/// <summary>
+/// What a clip delete would take with it. A clip is not always one line of screenplay: a long
+/// speech is planned as several clips sharing one line, and a coalesced clip covers several lines
+/// at once — so the prompt has to say what goes before the user commits.
+/// </summary>
+/// <param name="Clips">Every clip removed, including siblings bound to the same lines.</param>
+/// <param name="ScreenplayLines">How many screenplay lines would be removed.</param>
+/// <param name="EmptiesScene">True when that is the whole scene, making this a scene delete.</param>
+/// <param name="Unresolved">
+/// Clip beats with no line in the screenplay — usually a clip whose prompt was hand-edited since
+/// planning. Those can only be removed from the shot plan, and a rebuild brings them back.
+/// </param>
+public sealed record ClipDeletePreview(
+    List<int> Clips,
+    int ScreenplayLines,
+    bool EmptiesScene,
+    int Unresolved);

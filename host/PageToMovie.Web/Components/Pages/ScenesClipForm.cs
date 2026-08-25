@@ -208,9 +208,41 @@ public partial class Scenes
                 _clip = S.List._detail!.Clips.FirstOrDefault(c => c.ClipNumber == sel);
         }
 
-        internal void RequestDeleteClip(int scene, int clip) => _deleteClipTarget = (scene, clip);
+        /// <summary>
+        /// What deleting the pending clip would take with it, once the server has said. Null while
+        /// it is still being asked, or when it could not be worked out — the prompt then offers
+        /// only the shot-plan delete rather than promising something it cannot deliver.
+        /// </summary>
+        internal ClipDeletePreview? _deleteClipPreview;
 
-        internal void CancelDeleteClip() => _deleteClipTarget = null;
+        /// <summary>
+        /// Whether the confirm should also remove the clip's line from the screenplay. Defaults on
+        /// when there is a line to remove: without it the deletion is temporary, and rebuilding the
+        /// shot plan for the scene puts the clip straight back.
+        /// </summary>
+        internal bool _deleteClipFromScreenplay;
+
+        internal async Task RequestDeleteClipAsync(int scene, int clip)
+        {
+            _deleteClipTarget = (scene, clip);
+            _deleteClipPreview = null;
+            _deleteClipFromScreenplay = false;
+            var preview = await S.Engine.GetClipDeletePreviewAsync(S._projectId, scene, clip);
+            // Ignore a preview that arrives after the user moved on.
+            if (_deleteClipTarget is not { } still || still.Scene != scene || still.Clip != clip)
+                return;
+            _deleteClipPreview = preview;
+            _deleteClipFromScreenplay = preview is { ScreenplayLines: > 0 };
+            S.RenderRequestedBySlice();
+        }
+
+        internal void RequestDeleteClip(int scene, int clip) => _ = RequestDeleteClipAsync(scene, clip);
+
+        internal void CancelDeleteClip()
+        {
+            _deleteClipTarget = null;
+            _deleteClipPreview = null;
+        }
 
         /// <summary>Scene-menu "Delete (N) selected clips…" — one confirm for the whole checked set.</summary>
         internal (int Scene, List<int> Clips)? _deleteClipsTarget;
@@ -247,6 +279,24 @@ public partial class Scenes
             finally { S._busy = false; }
         }
 
+        /// <summary>
+        /// Outcome-only, and honest about the two things the user cannot see: how many clips went,
+        /// and whether the story changed with them or will come back on the next rebuild.
+        /// </summary>
+        private static string DeletedMessage(
+            int scene, int clip, IReadOnlyList<int> removed, bool wholeScene, bool alsoScreenplay)
+        {
+            var what = wholeScene
+                ? $"Deleted scene {scene}"
+                : removed.Count > 1
+                    ? $"Deleted {removed.Count} clips from scene {scene}"
+                    : $"Deleted clip {clip} from scene {scene}";
+            var story = alsoScreenplay
+                ? " and removed it from the screenplay"
+                : " — it will come back if you rebuild this scene's shot list";
+            return what + story + ". Play scene to refresh the assembled cut.";
+        }
+
         internal async Task ConfirmDeleteClipAsync()
         {
             if (_deleteClipTarget is not { } target) return;
@@ -254,14 +304,18 @@ public partial class Scenes
             S._error = null;
             try
             {
-                await S.Engine.DeleteClipAsync(S._projectId, target.Scene, target.Clip);
+                var alsoScreenplay = _deleteClipFromScreenplay && _deleteClipPreview is { ScreenplayLines: > 0 };
+                var removed = _deleteClipPreview?.Clips ?? new List<int> { target.Clip };
+                var wholeScene = alsoScreenplay && _deleteClipPreview is { EmptiesScene: true };
+                await S.Engine.DeleteClipAsync(S._projectId, target.Scene, target.Clip, alsoScreenplay);
                 _deleteClipTarget = null;
-                if (_selectedClip == target.Clip)
+                _deleteClipPreview = null;
+                if (_selectedClip is int chosen && (wholeScene || removed.Contains(chosen)))
                 {
                     _selectedClip = null;
                     _clip = null;
                 }
-                S._message = $"Deleted S{target.Scene:D2}C{target.Clip:D2} — Play scene / Play WIP to refresh the assembled cut";
+                S._message = DeletedMessage(target.Scene, target.Clip, removed, wholeScene, alsoScreenplay);
                 await S.List.ReloadListAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
