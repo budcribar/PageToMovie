@@ -75,7 +75,9 @@ public static class ClipPromptSections
     {
         ClipPromptField.StyleLock => "Style lock",
         ClipPromptField.Setting => "Setting",
-        ClipPromptField.Cast => "On screen",
+        // Stage 2 fills this from "others" — the visible cast MINUS the primary subject — so it
+        // reads empty-ish on a clip whose action is about the primary. Not "who is visible".
+        ClipPromptField.Cast => "Also on screen",
         ClipPromptField.Sound => "Sound",
         ClipPromptField.Speech => "Speech",
         ClipPromptField.MustNot => "Must not",

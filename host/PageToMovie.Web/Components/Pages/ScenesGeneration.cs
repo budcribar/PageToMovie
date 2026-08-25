@@ -477,7 +477,14 @@ public partial class Scenes
                  snap.Scene is int vesn)
             ApplyVideoEditDone(vecn, vesn);
         else if (string.Equals(snap.Kind, KindBatch, StringComparison.OrdinalIgnoreCase))
+        {
             S.List._selected.Clear();
+            // A batch is how per-clip Regen actually runs (one clip, kind=batch), so the open
+            // clip's video and Takes count have to be re-read here too. Only the KindScene branch
+            // used to do it, which left the inspector showing the pre-regen take count.
+            if (S.ClipForm._selectedClip is int openClip)
+                S.ClipForm.SelectClip(openClip);
+        }
     }
 
     private void ApplyRemuxDone()

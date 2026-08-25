@@ -5692,8 +5692,23 @@ public sealed class FilmJobService
             CancellationToken ct,
             bool predecessorRegeneratedThisJob = false)
     {
-        if (clip <= 1 || !videoRoles.CanExtend)
+        if (clip <= 1)
             return (null, null, null);
+
+        // Say WHY a continuation clip is being generated fresh. This bail-out used to be silent,
+        // and silence is expensive here: the browser still uploads an extend source and the job
+        // log still reads like a normal regen, so "the lamb walked through the door again" looked
+        // like a prompt fault for three rounds of debugging when the clip had simply never taken
+        // the extend path at all. The only honest signal was POST videos/generations instead of
+        // videos/extensions, buried in the provider HTTP log.
+        if (!videoRoles.CanExtend)
+        {
+            await AppendLogAsync(
+                $"  [Extend] S{scene:D2}C{clip:D2} generated FRESH, not continued — video model " +
+                $"'{videoRoles.Selected.Id}' has no extend role " +
+                "(supportsVideoContinue=false). Continuity from the previous clip is not available.");
+            return (null, null, null);
+        }
 
         if (predecessorRegeneratedThisJob)
             return ResolveSameJobPredecessorExtend(projectDir, scene, clip);
@@ -5733,6 +5748,11 @@ public sealed class FilmJobService
 
         if (!choice.HasInput)
         {
+            // Job log, not just stdout — this is the third way a continuation clip silently
+            // becomes a fresh one, and the operator reads the job log, not the container log.
+            await AppendLogAsync(
+                $"  [Extend] S{scene:D2}C{clip:D2} generated FRESH, not continued — the previous " +
+                "clip left no provider file, marker or local copy to continue from.");
             _log.LogInformation(
                 "No extend source for S{Scene:D2}C{Clip:D2}; generating fresh",
                 scene, clip);
