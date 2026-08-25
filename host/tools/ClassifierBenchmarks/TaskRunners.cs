@@ -839,7 +839,7 @@ public static class TaskRunners
     {
         AmbientSfxTask => "v2_grounded",
         OnscreenCastTask => "v2_grounded",
-        ExtendCutTask => "v2_grounded",
+        ExtendCutTask => "v4_staging",
         SilentBeatActionTask => "v2_product",
         SpeciesKindTask => "v1_product",
         PlateRankTask => "v2_picture_book",

@@ -1493,6 +1493,29 @@ public class PreviousClipQuoteRedactionTests
         return n;
     }
 
+    /// <summary>
+    /// The plan writes &lt;Action&gt; from a story beat, so a continuation clip whose beat restages
+    /// the room contradicts this block. Stage 2 is where that is prevented; this only settles which
+    /// way the model leans when a plan built before the staging test still contradicts itself —
+    /// holding position beats teleporting across the set.
+    /// </summary>
+    [Theory]
+    [InlineData("video-extend")]
+    [InlineData("continue")]
+    public void Continuing_clip_takes_positions_from_the_previous_last_frame(string mode)
+    {
+        var block = InvokeContinuityBlock(mode, PrevClipPrompt);
+        Assert.Contains("Positions come from that frame", block, StringComparison.Ordinal);
+        Assert.Contains("not a new arrangement", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fresh_clip_is_not_told_to_hold_a_previous_frame()
+    {
+        var block = InvokeContinuityBlock("fresh", null!);
+        Assert.DoesNotContain("Positions come from that frame", block, StringComparison.Ordinal);
+    }
+
     private static string InvokeContinuityBlock(string mode, string previousClipVisualPrompt)
     {
         var m = typeof(ClipVideoPromptBuilder).GetMethod(

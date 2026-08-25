@@ -6195,10 +6195,13 @@ public sealed partial class ProjectStore
         // Plan lint: the plan text contradicts cast facts (e.g. a voice-only role on screen). Surfaced,
         // not patched — the fix is the planner rule + a rebuild, and the clip says so.
         var lint = ShotPlanLint.Check(c, ShotPlanLint.VoiceOnlyKeys(LoadCharacterSeeds(projectId)));
-        if (lint.Count > 0 && !isStale)
+        // Advisory findings say the plan was built by an older rule, not that this clip is wrong —
+        // they belong in the job log, not on a rendered clip the user would then pay to redo.
+        var staling = lint.Where(f => !f.Advisory).ToList();
+        if (staling.Count > 0 && !isStale)
         {
             isStale = onDisk;
-            staleReason = "plan_lint: " + string.Join("; ", lint.Select(f => f.Message));
+            staleReason = "plan_lint: " + string.Join("; ", staling.Select(f => f.Message));
         }
 
         return new ClipSummary

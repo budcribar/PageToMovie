@@ -49,6 +49,8 @@ public sealed class Stage2PlannerService
         public const string VeoClips = "veo_clips";
         public const string VideoProviderProfile = "video_provider_profile";
         public const string LocationId = "location_id";
+        /// <summary>Which rule decided this clip's continuation — see <see cref="ExtendCutClassifier.CutDecisionRuleKey"/>.</summary>
+        public const string ContinuityRule = "continuity_rule";
         public const string ActionClass = "action_class";
         public const string BigAction = "big_action";
         /// <summary>Marker set by beat coalescing: this beat is an action with a line spoken over it and must
@@ -1113,6 +1115,12 @@ public sealed class Stage2PlannerService
             [JsonKeys.ClipNumber] = i + 1,
             ["timestamp"] = FormatTs(t, t + dur),
             ["veo_continuation_source"] = cont,
+            // Which rule decided that continuation. Carried onto the clip so ShotPlanLint can tell
+            // a plan whose extends were checked against the previous clip's staging from one built
+            // before that test existed — the latter is what put a subject on the far side of the
+            // room in an extend that was told to pick up from the previous last frame.
+            [Keys.ContinuityRule] = ReadBeatString(beat, ExtendCutClassifier.CutDecisionRuleKey)
+                                    ?? ExtendCutClassifier.HeuristicRule,
             [Keys.LocationId] = lid,
             ["visual_prompt"] = vp,
             ["negative_prompt"] = neg,
