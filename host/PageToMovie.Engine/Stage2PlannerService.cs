@@ -1932,6 +1932,7 @@ public sealed class Stage2PlannerService
         if (IsNeverOnScreenCharacter(primary, charSeeds))
             primary = visualCast.Count > 0 ? visualCast[0] : "";
         ve = AttachSubjectIfMissing(ve, primary, charSeeds);
+        ve = NormalizeCastMentionsToKeys(ve, visualCast, charSeeds);
 
         var others = visualCast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
         var othersBit = others.Count > 0 ? $"also on screen: {string.Join(", ", others)}" : "";
@@ -1972,6 +1973,76 @@ public sealed class Stage2PlannerService
             (9, PromptFieldTags.Wardrobe, ward),
         };
         return JoinVisualPromptParts(parts);
+    }
+
+    /// <summary>
+    /// Rewrite screenplay-cased cast mentions in action prose to their <c>Character_*</c> keys —
+    /// "THE CHILDREN twist in their seats" becomes "Character_The_Children twist in their seats".
+    /// </summary>
+    /// <remarks>
+    /// Every structured block in a clip prompt names cast by key (and CompressPromptText aliases
+    /// those to C1/C2), while the action named them in screenplay caps. One prompt therefore
+    /// carried two naming schemes for the same person with nothing linking them — measured on real
+    /// Mary19 traffic: &lt;Characters&gt;, &lt;CastCount&gt; and "On-screen:" all said C1/C2 while
+    /// the action said MARY and THE LAMB. It also made SanitizeActionText's "{key} is on screen."
+    /// fallback fire on every single clip, because Contains(key) could never match a caps mention.
+    ///
+    /// <para>Only ALL-CAPS mentions are rewritten. That is the screenplay convention the planner
+    /// and the fountain both use for a character, and it is what keeps a generic lowercase noun
+    /// out of it — "to see a lamb at school" is not THE LAMB.</para>
+    ///
+    /// <para>This does NOT retire ClipVideoPromptBuilder.InferKeysFromProse. That maps Stage 1
+    /// fountain prose to keys and has consumers in the on-screen-cast classifier, Stage 2 cast
+    /// resolution and the eval tools; the fountain is authored in screenplay case and always
+    /// will be.</para>
+    /// </remarks>
+    internal static string NormalizeCastMentionsToKeys(
+        string? actionText,
+        IReadOnlyList<string> cast,
+        Dictionary<string, object?> charSeeds)
+    {
+        var text = actionText ?? "";
+        if (text.Length == 0 || cast is not { Count: > 0 })
+            return text;
+
+        // Longest form first, so "THE OLD MAN" is not half-consumed by "MAN".
+        var candidates = cast
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .SelectMany(key => CastMentionForms(key, charSeeds).Select(name => (Key: key, Name: name)))
+            .Where(c => c.Name.Length >= 3)
+            .OrderByDescending(c => c.Name.Length)
+            .ToList();
+
+        foreach (var (key, name) in candidates)
+        {
+            // Case-SENSITIVE against the upper form: lowercase use is generic prose, not a cue.
+            // The lookarounds keep it off word fragments and off an already-written key.
+            var pattern =
+                $@"(?<![A-Za-z_]){System.Text.RegularExpressions.Regex.Escape(name.ToUpperInvariant())}(?![A-Za-z_])";
+            text = CommonRegex.Replace(text, pattern, key);
+        }
+        return text;
+    }
+
+    /// <summary>Ways a screenplay might name this cast key: "The Lamb", "Lamb", its given name.</summary>
+    private static IEnumerable<string> CastMentionForms(string key, Dictionary<string, object?> charSeeds)
+    {
+        var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
+            .Replace('_', ' ').Trim();
+        if (suffix.Length > 0)
+        {
+            yield return suffix;
+            // A key can carry an article the prose leaves off (Character_The_Lamb / "THE LAMB"
+            // in one beat, plain "LAMB" in the next).
+            var bare = CommonRegex.Replace(suffix, @"^(?:the|a|an)\s+", "", RegexOptions.IgnoreCase).Trim();
+            if (bare.Length > 0 && !string.Equals(bare, suffix, StringComparison.OrdinalIgnoreCase))
+                yield return bare;
+        }
+
+        if (charSeeds.TryGetValue(key, out var raw) && raw is Dictionary<string, object?> seed
+            && seed.TryGetValue("canonical_given_name", out var gn)
+            && CoerceString(gn) is { Length: > 0 } given)
+            yield return given.Trim();
     }
 
     /// <summary>Pull every <c>(SOUND: …)</c> cue out of the action prose. Returns (action, cues).</summary>

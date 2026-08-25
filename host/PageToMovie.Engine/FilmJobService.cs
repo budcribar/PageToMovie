@@ -6035,9 +6035,28 @@ public sealed class FilmJobService
             : new List<string>();
         if (prevKeys.Count == 0 || OnScreenSetsEqual(curKeys, prevKeys))
             return;
+
+        // Only a NEWCOMER justifies giving up the extend. The reason this rule exists is that
+        // /videos/extensions cannot attach reference images, so a face that was not already in
+        // the previous clip has no identity anchor and drifts. When the cast merely SHRINKS —
+        // this clip's set is a subset of the previous clip's — everyone still in frame was
+        // already in the video being extended from, so that video is their identity anchor and
+        // no locked ref is needed. Reseeding there buys nothing and costs the continuity:
+        // Mary19 S02C01 [Mary, Teacher, Children, Lamb] → S02C02 [Children, Lamb] reseeded
+        // fresh, and the lamb walked in through the door a second time.
+        var newcomers = CastNewcomers(curKeys, prevKeys);
+        if (newcomers.Count == 0)
+        {
+            await AppendLogAsync(
+                "  [Identity] Cast set shrank to a subset of the previous clip " +
+                $"[{string.Join(", ", prevKeys)}] → [{string.Join(", ", curKeys)}] — " +
+                "continuing from the previous clip (no new face needs a locked reference)");
+            return;
+        }
+
         ctx.ReseedFresh = true;
         await AppendLogAsync(
-            $"  [Identity] Cast set changed " +
+            $"  [Identity] Cast set gained [{string.Join(", ", newcomers)}] " +
             $"[{string.Join(", ", prevKeys)}] → [{string.Join(", ", curKeys)}] — " +
             "fresh gen with locked refs (not video-extend)");
         ctx.PrevVideoPath = null; // API: attach refs
@@ -6819,6 +6838,16 @@ public sealed class FilmJobService
 
         return null;
     }
+
+    /// <summary>
+    /// On-screen cast in this clip that was NOT on screen in the previous one. Empty means the
+    /// set only shrank, so the previous video already anchors every remaining face and the
+    /// extend can be kept — see <see cref="ApplyIdentityReseedIfNeededAsync"/>.
+    /// </summary>
+    internal static List<string> CastNewcomers(IReadOnlyList<string> curKeys, IReadOnlyList<string> prevKeys) =>
+        (curKeys ?? Array.Empty<string>())
+            .Where(k => !(prevKeys ?? Array.Empty<string>()).Contains(k, StringComparer.OrdinalIgnoreCase))
+            .ToList();
 
     private static bool OnScreenSetsEqual(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
