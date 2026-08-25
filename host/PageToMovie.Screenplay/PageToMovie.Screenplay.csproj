@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PageToMovie.ScreenplayEditor</RootNamespace>
+    <Description>
+      Structured screenplay model and its Fountain round-trip (parse to scenes/beats, serialize
+      back). Sits above PageToMovie.Fountain, which is a leaf and may not reference Core. Lives in
+      its own project so BOTH the Blazor editor and server-side code can use one round-trip: the
+      editor library is a Razor class library the Engine cannot reference, so a copy that lived
+      there was unreachable from the API.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PageToMovie.Core\PageToMovie.Core.csproj" />
+    <ProjectReference Include="..\PageToMovie.Fountain\PageToMovie.Fountain.csproj" />
+  </ItemGroup>
+
+</Project>

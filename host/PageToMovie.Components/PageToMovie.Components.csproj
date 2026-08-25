@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PageToMovie.Core\PageToMovie.Core.csproj" />
     <ProjectReference Include="..\PageToMovie.Fountain\PageToMovie.Fountain.csproj" />
+    <ProjectReference Include="..\PageToMovie.Screenplay\PageToMovie.Screenplay.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -121,7 +121,7 @@ public static class FountainStage1Importer
         private readonly StringBuilder actionBuf = new();
         private readonly StringBuilder dialogueBuf = new();
         // Disambiguate identical content within a scene for stable ids (0-based).
-        private readonly Dictionary<string, int> contentOccurrence = new(StringComparer.Ordinal);
+        private readonly BeatIdSequencer beatIds = new();
 
         private Dictionary<string, object?>? curScene;
         private List<object?>? beats;
@@ -165,7 +165,7 @@ public static class FountainStage1Importer
             AddClosedScene(CloseScene());
 
             if (scenes.Count == 0)
-                ImportHeadinglessFileAsSingleScene(parsed, actionBuf, OpenScene, CloseScene, scenes);
+                ImportHeadinglessFileAsSingleScene(parsed, actionBuf, h => OpenScene(h), CloseScene, scenes);
 
             EnsureNarratorDefault();
             return BuildResult(title, author);
@@ -184,7 +184,7 @@ public static class FountainStage1Importer
             switch (el.Type)
             {
                 case FountainParser.ElementType.SceneHeading:
-                    curScene = OpenScene(el.Text);
+                    curScene = OpenScene(el.Text, el.Meta);
                     break;
                 case FountainParser.ElementType.Action:
                 case FountainParser.ElementType.Lyric:
@@ -274,17 +274,11 @@ public static class FountainStage1Importer
             return sceneNum > 0 ? $"scene:{sceneNum}" : "scene:0";
         }
 
-        private string NextStableBeatId(string kind, string? speaker, string? body)
-        {
-            var key = string.Join(
-                '\u001f',
-                StableBeatId.Normalize(kind),
-                StableBeatId.Normalize(speaker),
-                StableBeatId.Normalize(body));
-            contentOccurrence.TryGetValue(key, out var n);
-            contentOccurrence[key] = n + 1;
-            return StableBeatId.ForContent(SceneKey(), kind, speaker, body, n);
-        }
+        // One derivation, shared with anything that maps a planned clip back to the screenplay
+        // paragraph that produced it. A second copy that drifted by a single normalization
+        // detail would hash to ids matching nothing, and the mapping would silently find none.
+        private string NextStableBeatId(string kind, string? speaker, string? body) =>
+            beatIds.Next(SceneKey(), kind, speaker, body);
 
         private void FlushAction()
         {
@@ -547,18 +541,42 @@ public static class FountainStage1Importer
 
         private static bool HasText(string? s) => !string.IsNullOrWhiteSpace(s);
 
+        /// <summary>
+        /// An explicit <c>#N#</c> wins and becomes the new high-water mark; anything else is the
+        /// next ordinal. Only a plain positive integer counts — Fountain allows any text between
+        /// the hashes (<c>#4A#</c>, <c>#A#</c>), and a scene number that is not a number cannot key
+        /// the blueprint.
+        /// </summary>
+        private static int ResolveSceneNumber(string? explicitSceneNumber, int previous) =>
+            int.TryParse((explicitSceneNumber ?? "").Trim(), out var parsed) && parsed > 0
+                ? parsed
+                : previous + 1;
+
         private void ResetOpenScene()
         {
             curScene = null;
             beats = null;
             beatIndex = 0;
-            contentOccurrence.Clear();
+            beatIds.Reset();
         }
 
-        private Dictionary<string, object?> OpenScene(string heading)
+        /// <summary>
+        /// Opens a scene, honouring an explicit Fountain scene number (<c>INT. ROOM - DAY #4#</c>)
+        /// when the heading carries one.
+        /// </summary>
+        /// <remarks>
+        /// Numbering used to be purely ordinal, which meant deleting a scene from the screenplay
+        /// silently renumbered every scene after it — while the blueprint deliberately does NOT
+        /// renumber (that would mean renaming every later scene's video files). The next replan then
+        /// merges by scene number and lands one scene's plan on another's clips. An explicit number
+        /// pins identity across a deletion; the ordinal counter still advances so an unnumbered
+        /// screenplay behaves exactly as before, and a mix of the two keeps counting from whichever
+        /// number was last used.
+        /// </remarks>
+        private Dictionary<string, object?> OpenScene(string heading, string? explicitSceneNumber = null)
         {
             AddClosedScene(CloseScene());
-            sceneNum++;
+            sceneNum = ResolveSceneNumber(explicitSceneNumber, sceneNum);
             var (locType, locName, setting) = ParseHeading(heading);
             var locId = EnsureLocation(locSeeds, locName, locType, setting);
             lastPictureVisual = null;

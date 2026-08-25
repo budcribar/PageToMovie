@@ -2,6 +2,7 @@ using System.ComponentModel;
 
 using PageToMovie.Core.Models;
 
+
 namespace PageToMovie.ScreenplayEditor.Models;
 
 public enum BeatType
