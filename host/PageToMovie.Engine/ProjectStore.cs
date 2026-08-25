@@ -331,6 +331,10 @@ public sealed partial class ProjectStore
                 return false;
 
             await File.WriteAllTextAsync(bpPath, currentRoot.ToJsonString(JsonOpts)).ConfigureAwait(false);
+            // A reverted clip row whose video was deleted would point at nothing and read as never
+            // generated — *.mp4 is gitignored, so git can restore the row but never the bytes.
+            // Clip delete parks them in .trash/ for exactly this moment.
+            RestoreTrashedClipMedia(dir, ClipNumbersInScene(currentRoot, sceneNumber), sceneNumber);
             InvalidateSceneListCache(projectId);
 
             var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
@@ -1295,6 +1299,24 @@ public sealed partial class ProjectStore
             scenes[i] = node;
         else
             scenes.Add(node);
+    }
+
+    private static List<int> ClipNumbersInScene(System.Text.Json.Nodes.JsonObject root, int sceneNumber)
+    {
+        var numbers = new List<int>();
+        if (root[StoreLit.Scenes] is not System.Text.Json.Nodes.JsonArray scenes)
+            return numbers;
+        var scene = FindSceneNode(scenes, sceneNumber);
+        var clips = scene?[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                    ?? scene?[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+        if (clips is null)
+            return numbers;
+        foreach (var node in clips)
+        {
+            if (node is System.Text.Json.Nodes.JsonObject c && ClipKeying.ClipNumber(c) is > 0 and var n)
+                numbers.Add(n);
+        }
+        return numbers;
     }
 
     private static bool TryApplyHistoricalSceneToBlueprint(
@@ -4897,26 +4919,86 @@ public sealed partial class ProjectStore
         return false;
     }
 
+    /// <summary>
+    /// Moves the clip's assembled video aside into <c>assets/video/.trash/</c> rather than unlinking
+    /// it, so deleting a clip stays undoable. The blueprint is versioned and <c>*.mp4</c> is
+    /// gitignored, so Scene History → revert brings the clip row back but could never bring its
+    /// video back — the row would point at nothing and the clip would read as never generated.
+    /// With the bytes parked in the same trash the take versions already use,
+    /// <see cref="RestoreTrashedClipMedia"/> can put them back when the row returns.
+    /// </summary>
+    /// <remarks>
+    /// The dialogue verification file is still deleted outright, not trashed: it is small state
+    /// rather than something worth recovering, and leaving it behind would leak the deleted clip's
+    /// QA status onto whatever new clip lands on this number next (Add-clip reuses
+    /// max(existing) + 1).
+    /// </remarks>
     private static bool DeleteClipMediaFiles(string projectDir, int scene, int clip)
     {
-        var videoPath = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-        var deletedVideo = false;
-        if (File.Exists(videoPath))
-        {
-            File.Delete(videoPath);
-            deletedVideo = true;
-        }
-        var nativePath = videoPath + ".native";
-        if (File.Exists(nativePath))
-            File.Delete(nativePath);
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
+        var videoPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        var deletedVideo = File.Exists(videoPath);
+        TrashClipMediaFile(videoDir, videoPath);
+        TrashClipMediaFile(videoDir, videoPath + ".native");
+        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, StoreLit.ClipJsonSuffix));
+        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, ".meta.json"));
 
-        // A later Add-clip reuses this clip number (max(existing) + 1) once it's the highest —
-        // leaving this file behind would leak the deleted clip's verification status onto
-        // whatever brand-new clip happens to land on the same number next.
         var verificationPath = ClipDialogueVerificationService.BuildVerificationPath(projectDir, scene, clip);
         if (File.Exists(verificationPath))
             File.Delete(verificationPath);
         return deletedVideo;
+    }
+
+    private static void TrashClipMediaFile(string videoDir, string path)
+    {
+        if (!File.Exists(path))
+            return;
+        var trashDir = Path.Combine(videoDir, StoreLit.TrashDir);
+        Directory.CreateDirectory(trashDir);
+        try
+        {
+            File.Move(path, Path.Combine(trashDir, Path.GetFileName(path)), overwrite: true);
+        }
+        catch (IOException)
+        {
+            // Losing the undo copy must never fail the delete the user asked for.
+            try { File.Delete(path); } catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>
+    /// Puts a clip's trashed video back when its blueprint row returns (Scene History → revert).
+    /// Skips any clip number that already has an active file: a clip deleted, replaced by a newly
+    /// generated one on the same number, and then reverted must keep the new video, not have the
+    /// old one moved over the top of it.
+    /// </summary>
+    private static void RestoreTrashedClipMedia(string projectDir, IEnumerable<int> sceneAndClipNumbers, int scene)
+    {
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
+        var trashDir = Path.Combine(videoDir, StoreLit.TrashDir);
+        if (!Directory.Exists(trashDir))
+            return;
+        foreach (var clip in sceneAndClipNumbers)
+        {
+            var name = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
+            var active = Path.Combine(videoDir, name);
+            if (File.Exists(active))
+                continue;
+            foreach (var suffix in new[] { "", ".native", StoreLit.ClipJsonSuffix, ".meta.json" })
+            {
+                var fileName = suffix switch
+                {
+                    "" => name,
+                    ".native" => name + ".native",
+                    _ => Path.ChangeExtension(name, suffix),
+                };
+                var trashed = Path.Combine(trashDir, fileName);
+                if (!File.Exists(trashed))
+                    continue;
+                try { File.Move(trashed, Path.Combine(videoDir, fileName), overwrite: false); }
+                catch (IOException) { /* leave it in the trash rather than clobber */ }
+            }
+        }
     }
 
     /// <summary>
