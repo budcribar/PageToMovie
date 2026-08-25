@@ -361,35 +361,63 @@ public static class ClipVideoPromptBuilder
         if (mode is ModeVideoExtend or ModeContinue)
             continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages);
 
-        if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) &&
-            mode is ModeContinue or ModeVideoExtend)
-        {
-            // The previous clip's spoken line must not ride into this clip: quoting it verbatim in the
-            // context ("OFF-CAMERA VOICEOVER C3 says \"…\"") is an invitation to speak it again
-            // (Mary19 S03C02 repeated S03C01's narration). Keep who spoke, drop the words.
-            var prevClean = RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys));
-            var note = mode == ModeVideoExtend
-                ? "already provided as video input — continue from its last frame"
-                : "context — match look and continue motion from its end";
-            // prevClean is a re-embedded previous clip's own action text — it may itself already
-            // contain Camera/Performance/Optics tags from that clip's construction, so this is a
-            // structural wrap (no additional SanitizeValue here; see PromptTags' class doc).
-            return PromptTags.WrapWithNote("PreviousClip", note, "\n" + prevClean + "\n") + "\n\n" + continuityBlock;
-        }
+        // Video-extend and continue both hand the model the previous clip as VISUAL input (whole
+        // video, or its last frame). Re-describing that clip in prose adds nothing it cannot
+        // already see — and it actively restages: Mary19 S02C02 replayed S01's "Mary comes through
+        // the door, the lamb follows at her heel" because that sentence rode in here as
+        // instruction text. It was worse than a wash. The block ran ~37% of the 4000-char budget,
+        // its own "already provided as video input" note is the first thing CompressPromptText
+        // drops, and HeadCap then truncated the clip's OWN camera direction off the end. The
+        // <Continuity> block above already carries the only part that mattered: same identity,
+        // wardrobe, lighting and location, pick up from the last frame.
+        if (mode is ModeContinue or ModeVideoExtend)
+            return continuityBlock;
 
         if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) && mode == "fresh")
         {
-            // Cast-change reseed: no video input, but keep prior clip prose for location/lighting only.
-            // Same redaction as the extend path: the previous line is history, not a cue (Mary19 S03C02
-            // fresh take re-spoke C01's verse from this block).
-            var prevClean = RedactSpokenQuotes(SanitizeActionText(previousClipVisualPrompt, onScreenKeys));
+            // Cast-change reseed: no video input at all, so the prior clip's LOOK is the only way to
+            // hold location/lighting across the cut. Its ACTION is not — re-describing what already
+            // happened is what makes the model replay it (Mary19 S03C02 fresh take re-spoke C01's
+            // verse from this block). Keep the look, drop the action.
+            var look = PreviousClipLookOnly(previousClipVisualPrompt, onScreenKeys);
+            if (string.IsNullOrWhiteSpace(look))
+                return continuityBlock;
             return PromptTags.WrapWithNote("Context",
-                "prior clip in scene — new cast plate refs attached; match location/lighting if still " +
-                "valid; identity from Characters + locked plates only",
-                "\n" + prevClean + "\n") + "\n\n" + continuityBlock;
+                "prior clip's look only — match location/lighting if still valid; " +
+                "identity from Characters + locked plates only; its action already happened",
+                "\n" + look + "\n") + "\n\n" + continuityBlock;
         }
 
         return continuityBlock;
+    }
+
+    /// <summary>
+    /// Location/lighting/grade from a previous clip's prompt, with the action prose, camera and
+    /// performance direction, and dialogue dropped. Used only where there is no visual input to
+    /// carry the look — anything with the previous video (or its last frame) attached needs none
+    /// of this. Empty when the prior prompt has no look to salvage.
+    /// </summary>
+    internal static string PreviousClipLookOnly(string? previousClipVisualPrompt, IReadOnlyList<string> onScreenKeys)
+    {
+        if (string.IsNullOrWhiteSpace(previousClipVisualPrompt))
+            return "";
+        var clean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
+        var parts = new List<string>();
+
+        // Scene slug (INT./EXT. … - DAY) names the location in the model's own vocabulary.
+        var slug = CommonRegex.Match(clean, @"\b(?:INT|EXT)[./][^.]{0,80}\.", RegexOptions.IgnoreCase);
+        if (slug.Success)
+            parts.Add(slug.Value.Trim());
+
+        var lighting = CommonRegex.Match(clean, @"<Lighting>.*?</Lighting>", RegexOptions.Singleline);
+        if (lighting.Success)
+            parts.Add(lighting.Value.Trim());
+
+        var grade = CommonRegex.Match(clean, @"(?:Color grading|Grade):[^<\n]{0,160}", RegexOptions.IgnoreCase);
+        if (grade.Success)
+            parts.Add(grade.Value.Trim());
+
+        return string.Join(" ", parts);
     }
 
     private static string TagActionWithImageRefs(
@@ -877,9 +905,24 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Fit a finished prompt under the video API hard cap before the first request.
-    /// Drops HOUSE RULES / project-rule addenda first, then head-caps if still over.
+    /// Descriptive blocks dropped whole, cheapest first, when squeezing is not enough. Ordered by
+    /// what a viewer loses: lens character, then colour, then a negative list the model mostly
+    /// infers, then acting notes. Framing (<c>Camera</c>) and identity are never in this list.
     /// </summary>
+    private static readonly string[] SacrificialTags = { "Optics", "Negative", "Performance" };
+
+    /// <summary>
+    /// Fit a finished prompt under the video API hard cap before the first request, cheapest loss
+    /// first: learning addenda, mechanical compression, section notes, then whole descriptive
+    /// blocks. A raw character cut is the last resort and lands on a tag boundary.
+    /// </summary>
+    /// <remarks>
+    /// The old ladder ended at a bare <see cref="HeadCap"/>, which cuts at a character offset — on
+    /// real Mary19 traffic three of four prompts ended mid-tag, one at "&lt;Camera&gt;Medium
+    /// tracking". A half-written directive is worse than a missing one: the model still tries to
+    /// honour it, and what got cut was always the CURRENT clip's own framing, because that is
+    /// built last.
+    /// </remarks>
     public static string FitPromptToVideoBudget(
         string prompt,
         int hardCapChars = VideoPromptHardCapChars)
@@ -897,7 +940,43 @@ public static class ClipVideoPromptBuilder
         if (p.Length <= hardCapChars)
             return p;
 
-        return HeadCap(p, hardCapChars);
+        // Section notes explain their block; losing one costs less than losing content.
+        p = PromptTags.StripNotes(p);
+        if (p.Length <= hardCapChars)
+            return p;
+
+        foreach (var tag in SacrificialTags)
+        {
+            p = PromptTags.Strip(p, tag);
+            p = CommonRegex.Replace(p, @"[ \t]{2,}", " ").Trim();
+            if (p.Length <= hardCapChars)
+                return p;
+        }
+
+        return TagSafeHeadCap(p, hardCapChars);
+    }
+
+    /// <summary>
+    /// Head-cap, then walk back off any tag left unclosed by the cut so the model never receives a
+    /// dangling directive. Falls back to the plain cap when no tag boundary is available.
+    /// </summary>
+    internal static string TagSafeHeadCap(string prompt, int maxChars)
+    {
+        var capped = HeadCap(prompt, maxChars);
+        var open = capped.LastIndexOf('<');
+        if (open < 0)
+            return capped;
+        var close = capped.IndexOf('>', open);
+        // An unterminated tag, or an opening tag whose matching close was cut away.
+        if (close < 0)
+            return capped[..open].TrimEnd();
+        var name = CommonRegex.Match(capped[open..], @"^<(/?)([A-Za-z][A-Za-z0-9]*)");
+        if (!name.Success || name.Groups[1].Value == "/")
+            return capped;
+        var tag = name.Groups[2].Value;
+        return capped.Contains($"</{tag}>", StringComparison.OrdinalIgnoreCase)
+            ? capped
+            : capped[..open].TrimEnd();
     }
 
     /// <summary>
@@ -911,11 +990,11 @@ public static class ClipVideoPromptBuilder
         if (string.IsNullOrWhiteSpace(prompt)) return prompt ?? "";
         var p = prompt;
 
-        // 1. Simplify verbose section headers & repetitive directives. Section tags
-        // (<Characters>, <Context>, <PreviousClip>) carry a "note" attribute with the full
-        // instructional wording for the uncompressed prompt — drop it here, the bare tag name is
-        // enough once the prompt is already tight on budget.
-        p = PromptTags.StripNotes(p);
+        // 1. Simplify verbose section headers & repetitive directives.
+        // Section "note" attributes are NOT dropped here any more. They are instructions — the
+        // <Context> note is what tells the model the prior clip's look is history, not a cue — and
+        // stripping them first meant the one line explaining a block died before any redundant
+        // prose did. FitPromptToVideoBudget now drops them only when squeezing is not enough.
         p = p.Replace("REQUIRED native Grok dialogue.", "");
         p = p.Replace("Do not invent extra people, duplicate faces, or crowd extras not listed.", "");
         p = p.Replace("Follow the camera framing and location in this prompt exactly. Prioritize the PRIMARY subject and ONE clear action with visible motion; background characters may stay mostly still.", "");
@@ -947,7 +1026,13 @@ public static class ClipVideoPromptBuilder
         // string building like the others — converting it means editing what the model is shown,
         // a different/riskier kind of change than a label rename, so it's left as plain text and
         // still needs the rename here.
-        p = p.Replace("Kodak Vision3 500T 5219 film stock", "Kodak 500T film");
+        // The "Kodak Vision3 500T 5219 film stock" -> "Kodak 500T film" rule used to live here and
+        // has been deleted, not generalized. Every other replacement in this method rewrites text
+        // THIS class built, so the literal is exact by construction. That one rewrote free prose
+        // from ColorPaletteGradingClassifier, i.e. a guess about what a model would write: Mary19
+        // grades to "Kodak Vision3 250D 5207 film stock" (15 clips) and "hand-tinted watercolor
+        // print stock" (4), so it fired on none of them. Worth ~20 of 4000 chars when it did hit.
+        // The label rename below stays — the classifier is told to emit that exact prefix.
         p = p.Replace("Color grading:", "Grade:");
         p = p.Replace("ON CAMERA lip-syncs", "lip-syncs");
 
@@ -978,12 +1063,53 @@ public static class ClipVideoPromptBuilder
         p = p.Replace(" — do not skip, delay, or swallow the opening word. After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring. Other mouths closed. Speech intelligible; never silent.", ".");
         p = p.Replace("End cleanly when the spoken line and primary action finish — do not hold a frozen pose or empty silence after dialogue.", "");
 
-        // 5. Collapse multiple blank lines & consecutive spaces
+        // 5. Drop repeats. Saying the same thing twice costs budget and buys nothing; on a real
+        // Mary19 extend prompt this was a byte-identical <Lighting> block plus the same STYLE LOCK
+        // sentence three times — ~380 of 4000 chars.
+        p = DropRepeatedDirectives(p);
+
+        // 6. Collapse multiple blank lines & consecutive spaces
         p = CommonRegex.Replace(p, @"\n\s*\n+", "\n");
         p = CommonRegex.Replace(p, @"[ \t]+", " ");
 
         return p.Trim();
     }
+
+    /// <summary>Tag blocks safe to de-duplicate: descriptive, and identical copies say nothing new.</summary>
+    private static readonly string[] DedupableTags =
+        { "Lighting", "Optics", "Negative", "CastCount", "Audio", "Score", "Foley" };
+
+    /// <summary>
+    /// Keep the first occurrence of each byte-identical STYLE LOCK sentence and descriptive tag
+    /// block; drop later copies. Only exact repeats go — two different <c>&lt;Lighting&gt;</c>
+    /// blocks are a real (if odd) instruction, and are left alone rather than silently merged.
+    /// </summary>
+    internal static string DropRepeatedDirectives(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+            return prompt ?? "";
+        var p = prompt;
+
+        foreach (var tag in DedupableTags)
+            p = DropLaterDuplicates(p, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
+
+        // STYLE LOCK is deliberately NOT de-duplicated. Repeats came from the re-embedded previous
+        // clip, which no longer ships on extend/continue. What can still appear twice is the live
+        // style head next to a stale one baked into the plan — and those two disagree. Collapsing
+        // them would hide exactly the contradiction ShotPlanLint's style_lock_drift rule exists to
+        // report, and hiding it is worse than the ~130 chars it would save.
+        return p;
+    }
+
+    private static string DropLaterDuplicates(string text, string pattern, RegexOptions options)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return CommonRegex.Replace(text, pattern, m =>
+            seen.Add(NormalizeForDedupe(m.Value)) ? m.Value : "", options);
+    }
+
+    private static string NormalizeForDedupe(string value) =>
+        CommonRegex.Replace(value.Trim(), @"\s+", " ");
 
     /// <summary>Clip gen house rules from <c>prompts/clip_gen_rules.txt</c> (embed or override dir).</summary>
     public static string? TryLoadClipGenRules()

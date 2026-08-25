@@ -273,9 +273,12 @@ public class ClipVideoPromptBuilderTests
             maxRefs: 3);
 
         Assert.Equal("video-extend", built.Mode);
-        Assert.Contains("PREVIOUS CLIP", built.Prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("rockets across the grass", built.Prompt);
         Assert.Contains("EXTENSION", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        // The previous clip is attached as VIDEO. Re-describing it in prose is what made the model
+        // replay it (Mary19 S02C02 restaged S02C01's door entrance), so it must not be here.
+        // The tag, not the words — <Continuity> prose legitimately says "the previous clip".
+        Assert.DoesNotContain("<PreviousClip", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("rockets across the grass", built.Prompt, StringComparison.Ordinal);
         Assert.Empty(built.ReferenceImagePaths);
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
@@ -367,7 +370,9 @@ public class ClipVideoPromptBuilderTests
 
         var compressed = ClipVideoPromptBuilder.CompressPromptText(input);
 
-        Assert.Contains("<Characters>", compressed);
+        // Notes survive mechanical compression now — FitPromptToVideoBudget drops them only when
+        // squeezing is not enough, so a block's one line of explanation outlives redundant prose.
+        Assert.Contains("<Characters note=", compressed);
         Assert.DoesNotContain("Character_The_Narrator", compressed);
         Assert.DoesNotContain("Character_Old_Man", compressed);
         Assert.DoesNotContain("<IMAGE_1>", compressed);
@@ -397,12 +402,16 @@ public class ClipVideoPromptBuilderTests
 
         var compressed = ClipVideoPromptBuilder.CompressPromptText(original);
 
-        Assert.True(compressed.Length < 2500, $"Compressed {compressed.Length} vs Original {original.Length}");
+        // Compression alone cuts roughly a third. The hard contract is the budget ladder below:
+        // whatever compression leaves, FitPromptToVideoBudget still gets under the cap.
+        Assert.True(compressed.Length < original.Length * 3 / 4,
+            $"Compressed {compressed.Length} vs Original {original.Length}");
+        Assert.True(ClipVideoPromptBuilder.FitPromptToVideoBudget(original, 2500).Length <= 2500);
         Assert.DoesNotContain("Character_The_Narrator", compressed);
         Assert.DoesNotContain("<IMAGE_1>", compressed);
-        Assert.DoesNotContain("Kodak Vision3 500T 5219 film stock", compressed);
         Assert.DoesNotContain("/ 480p, 24fps", compressed);
-        Assert.Contains("Kodak 500T film", compressed);
+        // No film-stock rewrite is asserted: that rule rewrote free prose from the grading
+        // classifier rather than text this class builds, so it missed every stock but one.
         Assert.Contains("C1 I1", compressed);
         // Regression: this instruction used to be deleted outright rather than shortened, leaving
         // the focus character's reference image attached (I1) with no instruction to match it.
@@ -851,7 +860,10 @@ public class ClipVideoPromptBuilderTests
         Assert.Equal(3, built.CastCount);
         Assert.DoesNotContain("<Identity>Match locked plate", built.Prompt, StringComparison.Ordinal);
         Assert.Contains("<IMAGE_1>", built.Prompt);
-        Assert.Contains("new cast plate refs attached", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        // Reseed carries the prior clip's LOOK when there is one. This prior prompt is pure action
+        // with no slug, lighting or grade, so there is nothing to carry — and the action itself
+        // must not ride in, or the reseed replays it.
+        Assert.DoesNotContain("sleeps", built.Prompt, StringComparison.OrdinalIgnoreCase);
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
     }
@@ -1378,5 +1390,101 @@ public class PreviousClipQuoteRedactionTests
         var redacted = PageToMovie.Engine.ClipVideoPromptBuilder.RedactSpokenQuotes(prev);
         Assert.DoesNotContain("lingered near", redacted);
         Assert.Contains("OFF-CAMERA VOICEOVER Character_Narrator says [a line already spoken in the previous clip", redacted);
+    }
+
+    private const string PrevClipPrompt =
+        "STYLE LOCK: watercolor. INT. SCHOOLROOM - DAY. MARY comes through the door. " +
+        "THE LAMB follows at her heel into the aisle. " +
+        "<Lighting>Soft warm daylight through tall windows.</Lighting> " +
+        "<Camera>Wide 27mm locked.</Camera> Color grading: hand-tinted print stock, cream paper.";
+
+    /// <summary>
+    /// The predecessor video (or its last frame) IS the input — re-describing it in prose made the
+    /// model replay it. Mary19 S02C02 restaged S02C01's "comes through the door" from this block.
+    /// </summary>
+    [Theory]
+    [InlineData("video-extend")]
+    [InlineData("continue")]
+    public void Clip_with_visual_input_gets_no_previous_clip_prose(string mode)
+    {
+        var block = InvokeContinuityBlock(mode, PrevClipPrompt);
+        Assert.DoesNotContain("PreviousClip", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("comes through the door", block, StringComparison.Ordinal);
+        Assert.Contains("Continuity", block, StringComparison.Ordinal);
+    }
+
+    /// <summary>Cast-change reseed has no visual input, so the LOOK is kept — the action is not.</summary>
+    [Fact]
+    public void Fresh_reseed_context_keeps_look_and_drops_action()
+    {
+        var look = ClipVideoPromptBuilder.PreviousClipLookOnly(PrevClipPrompt, Array.Empty<string>());
+        Assert.Contains("INT. SCHOOLROOM", look, StringComparison.Ordinal);
+        Assert.Contains("<Lighting>", look, StringComparison.Ordinal);
+        Assert.Contains("hand-tinted print stock", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("comes through the door", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("follows at her heel", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("<Camera>", look, StringComparison.Ordinal);
+    }
+
+    /// <summary>A byte-identical second copy of a descriptive block buys nothing.</summary>
+    [Fact]
+    public void Identical_descriptive_blocks_are_emitted_once()
+    {
+        const string lighting = "<Lighting>Soft warm daylight through tall windows.</Lighting>";
+        var deduped = ClipVideoPromptBuilder.DropRepeatedDirectives($"A {lighting} B {lighting} C");
+        Assert.Equal(1, CountOccurrences(deduped, lighting));
+
+        // Two DIFFERENT blocks are a real instruction — never silently merged.
+        var kept = ClipVideoPromptBuilder.DropRepeatedDirectives(
+            $"A {lighting} B <Lighting>Harsh noon glare.</Lighting> C");
+        Assert.Equal(2, CountOccurrences(kept, "<Lighting>"));
+    }
+
+    /// <summary>
+    /// A half-written directive is worse than a missing one — the model still tries to honour it.
+    /// Real Mary19 traffic ended at "&lt;Camera&gt;Medium tracking".
+    /// </summary>
+    [Fact]
+    public void Budget_cut_never_leaves_a_dangling_tag()
+    {
+        var prompt = new string('x', 400) + " <Camera>Medium tracking shot that runs well past the cap</Camera>";
+        var capped = ClipVideoPromptBuilder.TagSafeHeadCap(prompt, 430);
+        Assert.True(capped.Length <= 430);
+        Assert.DoesNotContain("<Camera>", capped, StringComparison.Ordinal);
+    }
+
+    /// <summary>Notes explain their block; they outlive mechanical squeezing and die only under real pressure.</summary>
+    [Fact]
+    public void Section_notes_survive_compression_but_not_a_tight_budget()
+    {
+        var withNote = PromptTags.WrapWithNote("Context", "its action already happened", "prior look");
+        Assert.Contains("note=", ClipVideoPromptBuilder.CompressPromptText(withNote), StringComparison.Ordinal);
+
+        var padded = withNote + " " + new string('y', 4000);
+        Assert.DoesNotContain("note=", ClipVideoPromptBuilder.FitPromptToVideoBudget(padded, 300), StringComparison.Ordinal);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var n = 0;
+        var i = 0;
+        while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0)
+        {
+            n++;
+            i += needle.Length;
+        }
+        return n;
+    }
+
+    private static string InvokeContinuityBlock(string mode, string previousClipVisualPrompt)
+    {
+        var m = typeof(ClipVideoPromptBuilder).GetMethod(
+            "BuildContinuityBlock",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            ?? throw new InvalidOperationException("BuildContinuityBlock not found");
+        return (string)m.Invoke(null, new object?[]
+        {
+            mode, Array.Empty<string>(), false, previousClipVisualPrompt,
+        })!;
     }
 }

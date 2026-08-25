@@ -40,4 +40,62 @@ public class ShotPlanLintTests
             """);
         Assert.Empty(ShotPlanLint.Check(doc.RootElement, new[] { "Character_Narrator" }));
     }
+
+    private const string PlannedStyle =
+        "stylized 3D animated children's picture-book CG (same render family as animal hero)";
+
+    private static JsonDocument ClipWithStyle(string styleLock) =>
+        JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            clip_number = 2,
+            visual_prompt = $"STYLE LOCK: {styleLock}. INT. SCHOOLROOM - DAY. The children point.",
+        }));
+
+    /// <summary>
+    /// Changing the style after the shot plan is built leaves the old lock inside every clip, so
+    /// the model gets two mediums at once — Mary19 shipped watercolor alongside 3D CG in 19 clips.
+    /// </summary>
+    [Fact]
+    public void Style_lock_that_disagrees_with_the_project_is_a_finding()
+    {
+        using var doc = ClipWithStyle(PlannedStyle);
+        var findings = ShotPlanLint.Check(
+            doc.RootElement,
+            Array.Empty<string>(),
+            "STYLE LOCK: illustrated picture-book; painted nursery-rhyme world with flat watercolor washes");
+        var f = Assert.Single(findings);
+        Assert.Equal("style_lock_drift", f.Rule);
+        Assert.Contains("rebuild the shot plan", f.Message);
+    }
+
+    [Fact]
+    public void Matching_style_lock_is_not_a_finding()
+    {
+        using var doc = ClipWithStyle(PlannedStyle);
+        Assert.Empty(ShotPlanLint.Check(doc.RootElement, Array.Empty<string>(), $"STYLE LOCK: {PlannedStyle}"));
+    }
+
+    /// <summary>
+    /// Compared on the leading clause, where the medium is named. Reworded descriptive tails must
+    /// not fire on every clip forever, and a bare style head (no "STYLE LOCK:" prefix) still works.
+    /// </summary>
+    [Fact]
+    public void Reworded_tail_and_unprefixed_head_still_agree()
+    {
+        using var doc = ClipWithStyle(PlannedStyle);
+        Assert.Empty(ShotPlanLint.Check(
+            doc.RootElement, Array.Empty<string>(),
+            $"STYLE LOCK: {PlannedStyle}, soft edges, muted palette, gentle grain"));
+
+        using var bare = ClipWithStyle(PlannedStyle);
+        Assert.Empty(ShotPlanLint.Check(bare.RootElement, Array.Empty<string>(), PlannedStyle));
+    }
+
+    [Fact]
+    public void No_style_head_means_no_style_finding()
+    {
+        using var doc = ClipWithStyle(PlannedStyle);
+        Assert.Empty(ShotPlanLint.Check(doc.RootElement, Array.Empty<string>()));
+        Assert.Empty(ShotPlanLint.Check(doc.RootElement, Array.Empty<string>(), "   "));
+    }
 }
