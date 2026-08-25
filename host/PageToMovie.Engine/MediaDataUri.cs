@@ -72,22 +72,31 @@ internal static class MediaDataUri
                 resolvedPath);
         }
 
-        var bytes = await File.ReadAllBytesAsync(resolvedPath, ct).ConfigureAwait(false);
-        if (bytes.Length > MaxBytes)
-            throw new InvalidOperationException(
-                $"Video/image too large for data URI ({bytes.Length / (1024 * 1024)} MB). Max {MaxBytes / (1024 * 1024)} MB.");
-        var ext = Path.GetExtension(resolvedPath).ToLowerInvariant();
-        var mime = ext switch
+        // Size-check before ReadAllBytes — a leftover combined hop (C1+C2) used as a
+        // data-URI fallback would otherwise OOM the API host.
+        ClipInlineMedia.EnsureFitsInline(resolvedPath, MaxBytes);
+        try
         {
-            ".png" => "image/png",
-            ".webp" => "image/webp",
-            ".gif" => "image/gif",
-            ".mp4" => "video/mp4",
-            ".webm" => "video/webm",
-            ".mov" => "video/quicktime",
-            _ => "image/jpeg",
-        };
-        return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            var bytes = await File.ReadAllBytesAsync(resolvedPath, ct).ConfigureAwait(false);
+            var ext = Path.GetExtension(resolvedPath).ToLowerInvariant();
+            var mime = ext switch
+            {
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                ".mp4" => "video/mp4",
+                ".webm" => "video/webm",
+                ".mov" => "video/quicktime",
+                _ => "image/jpeg",
+            };
+            return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch (OutOfMemoryException ex)
+        {
+            throw new InvalidOperationException(
+                $"Ran out of memory inlining {Path.GetFileName(resolvedPath)}. The clip was not loaded; the API stays up.",
+                ex);
+        }
     }
 }
 

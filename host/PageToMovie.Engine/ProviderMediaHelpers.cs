@@ -18,18 +18,31 @@ internal static class ProviderMediaHelpers
     public static async Task<(string Mime, string Base64)> FileToBase64Async(
         string path, CancellationToken ct, bool allowVideo = false)
     {
-        var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-        var mime = ext switch
+        // Size-check before ReadAllBytes — a combined extend hop inlined during the
+        // next clip's download is how a two-clip same-scene regen OOMs Railway.
+        ClipInlineMedia.EnsureFitsInline(path);
+        byte[] bytes;
+        try
         {
-            ".png" => "image/png",
-            ".webp" => "image/webp",
-            ".gif" => "image/gif",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".mp4" when allowVideo => "video/mp4",
-            _ => "image/jpeg",
-        };
-        return (mime, Convert.ToBase64String(bytes));
+            bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            var mime = ext switch
+            {
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".mp4" when allowVideo => "video/mp4",
+                _ => "image/jpeg",
+            };
+            return (mime, Convert.ToBase64String(bytes));
+        }
+        catch (OutOfMemoryException ex)
+        {
+            throw new InvalidOperationException(
+                $"Ran out of memory inlining {Path.GetFileName(path)}. The clip was not loaded; the API stays up.",
+                ex);
+        }
     }
 
     /// <summary>

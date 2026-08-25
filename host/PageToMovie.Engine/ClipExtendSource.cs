@@ -73,6 +73,29 @@ public static class ClipExtendSource
         return new Choice(null, null, null);
     }
 
+    /// <summary>
+    /// Predecessor was regenerated in this same job (C1+C2 selected together).
+    /// Chain only the new take's provider <c>file_id</c>, or its current-take MP4
+    /// when fakes still keep bytes on disk. Leftover local takes and browser
+    /// extend-source markers are the previous take — using them after C1's
+    /// transient MP4 was deleted re-uploads a stale (often combined) file and
+    /// can OOM the host.
+    /// </summary>
+    public static Choice SelectAfterPredecessorRegen(PredecessorOffer predecessor)
+    {
+        if (!string.IsNullOrWhiteSpace(predecessor.FileId))
+        {
+            var input = ProviderInputDurationSeconds(
+                predecessor.LeadInSeconds, predecessor.DurationSeconds, predecessor.ClipStopSeconds);
+            return new Choice(predecessor.FileId, null, input > 0.1 ? input : predecessor.DurationSeconds);
+        }
+
+        if (!string.IsNullOrWhiteSpace(predecessor.LocalPath))
+            return new Choice(null, predecessor.LocalPath, predecessor.LocalDuration);
+
+        return new Choice(null, null, null);
+    }
+
     public static Choice SelectFromPredecessor(ClipProviderSource? src) =>
         src is null
             ? new Choice(null, null, null)
