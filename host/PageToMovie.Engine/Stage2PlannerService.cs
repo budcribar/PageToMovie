@@ -1232,7 +1232,23 @@ public sealed class Stage2PlannerService
         }
 
         if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
-            vp = $"{vp} {aiColor.GradingPrompt}";
+        {
+            // The classifier is told to return the look only — the tag names the field. This strip
+            // stays as a belt-and-braces guard: it is the one slot whose text a model writes, and
+            // an older cached directive (or a model that ignores the instruction) can still arrive
+            // with the label attached.
+            var grade = aiColor.GradingPrompt.Trim();
+            foreach (var label in new[] { "Color grading:", "Colour grading:", "Grade:" })
+            {
+                if (grade.StartsWith(label, StringComparison.OrdinalIgnoreCase))
+                {
+                    grade = grade[label.Length..].Trim();
+                    break;
+                }
+            }
+            if (grade.Length > 0)
+                vp = $"{vp} {PromptTags.Wrap(PromptFieldTags.Grade, PromptTags.SanitizeValue(grade))}";
+        }
 
         return vp;
     }
@@ -1931,19 +1947,59 @@ public sealed class Stage2PlannerService
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
         var ward = WardrobeContinuityClause(wardrobe, visualCast, primary);
 
-        // Join full slots — no length budget, no dropping fields, no ellipsis packing.
+        // Sound cues arrive inside the beat's visual_event (Stage 1 fountain writes "(SOUND: …)").
+        // Lift them into their own slot rather than leaving them buried in the action.
+        var (action, sound) = SplitSoundCues(ve);
+
+        // Emit full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.
-        var parts = new List<(int Order, string Text)>
+        //
+        // Each slot is tagged. This method knows exactly where every field starts and ends, so
+        // flattening them into one prose blob (which is what this used to do) threw that away and
+        // made every later consumer guess it back with regexes — the editor, the style-lock lint,
+        // and PreviousClipLookOnly all had to pattern-match "STYLE LOCK:" / "INT." / "Color
+        // grading:" out of running text. Lighting/Camera/Performance/Optics were already tagged
+        // in AppendVisualDirectives; these are the rest of the same idea.
+        var parts = new List<(int Order, string Tag, string Text)>
         {
-            (0, style),
-            (2, PlaceLockIfMissing(place, ve)),
-            (3, othersBit),
-            (5, ve),
-            (6, speech),
-            (7, mustBit),
-            (8, ward),
+            (0, PromptFieldTags.StyleLock, StripLabel(style, "STYLE LOCK:")),
+            (2, PromptFieldTags.Setting, PlaceLockIfMissing(place, ve)),
+            (3, PromptFieldTags.Cast, StripLabel(othersBit, "also on screen:")),
+            (5, PromptFieldTags.Action, action),
+            (6, PromptFieldTags.Sound, sound),
+            (7, PromptFieldTags.Speech, speech),
+            (8, PromptFieldTags.MustNot, StripLabel(mustBit, "must not:")),
+            (9, PromptFieldTags.Wardrobe, ward),
         };
         return JoinVisualPromptParts(parts);
+    }
+
+    /// <summary>Pull every <c>(SOUND: …)</c> cue out of the action prose. Returns (action, cues).</summary>
+    internal static (string Action, string Sound) SplitSoundCues(string? visualEvent)
+    {
+        var text = visualEvent ?? "";
+        if (text.Length == 0)
+            return ("", "");
+        var cues = new List<string>();
+        var stripped = CommonRegex.Replace(text, @"\(\s*SOUND:\s*(?<cue>[^)]*)\)", m =>
+        {
+            var cue = m.Groups["cue"].Value.Trim();
+            if (cue.Length > 0)
+                cues.Add(cue);
+            return "";
+        }, RegexOptions.IgnoreCase);
+        stripped = CommonRegex.WhitespaceCollapse.Replace(stripped, " ").Trim();
+        stripped = CommonRegex.Replace(stripped, @"\s+([.,;])", "$1");
+        return (stripped, string.Join("; ", cues));
+    }
+
+    /// <summary>Drop a prose label now that the tag carries the field's identity.</summary>
+    private static string StripLabel(string? text, string label)
+    {
+        var t = (text ?? "").Trim();
+        return t.StartsWith(label, StringComparison.OrdinalIgnoreCase)
+            ? t[label.Length..].Trim()
+            : t;
     }
 
     private static string EnsureCastStyleLock(
@@ -2108,17 +2164,21 @@ public sealed class Stage2PlannerService
         return bare.Replace('_', ' ').Trim();
     }
 
-    private static string JoinVisualPromptParts(IEnumerable<(int Order, string Text)> parts)
+    /// <summary>
+    /// Emit each populated slot as its own tag. Tags are self-delimiting, so the sentence-joining
+    /// that used to fuse these fields into one blob is gone; empty slots are simply absent.
+    /// </summary>
+    private static string JoinVisualPromptParts(IEnumerable<(int Order, string Tag, string Text)> parts)
     {
-        var sentences = parts
+        var blocks = parts
             .OrderBy(p => p.Order)
-            .Select(p => NormalizeSentencePart(p.Text))
-            .Where(t => t.Length > 0)
+            .Select(p => (p.Tag, Text: NormalizeSentencePart(p.Text)))
+            .Where(p => p.Text.Length > 0)
+            .Select(p => PromptTags.Wrap(p.Tag, PromptTags.SanitizeValue(p.Text)))
             .ToList();
-        if (sentences.Count == 0)
-            sentences.Add("Scene action");
-        var body = string.Join(". ", sentences);
-        return body.TrimEnd('.', ' ', '\t');
+        if (blocks.Count == 0)
+            blocks.Add(PromptTags.Wrap(PromptFieldTags.Action, "Scene action"));
+        return string.Join(" ", blocks);
     }
 
     private static readonly Regex CharacterTokenRegex = new(@"Character_[A-Za-z0-9_]+", RegexOptions.Compiled, CommonRegex.Timeout);
@@ -2616,7 +2676,11 @@ public sealed class Stage2PlannerService
             return true;
         if (t.Contains("as described in the scr", StringComparison.OrdinalIgnoreCase))
             return true;
-        // "Match Name as cast for this production." — old EnsureCharacter visual_lock
+        // "Match Name as cast for this production." — old EnsureCharacter visual_lock.
+        // Absent from every sample project's cast seeds, and it stays: this is a guard against
+        // placeholder text reaching a visual prompt, not a compression rule. It reads cast-seed
+        // DATA rather than plan format, so retagging the plan does not retire it, and never
+        // matching is the outcome it exists to produce.
         if (CommonRegex.IsMatch(t, @"^Match\s+.+\s+as cast for this production\.?$", RegexOptions.IgnoreCase))
             return true;
         // Bare name-only or "Name (voice only…)" without real appearance detail is OK to skip for visual

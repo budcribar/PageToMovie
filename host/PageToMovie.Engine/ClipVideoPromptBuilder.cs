@@ -404,19 +404,14 @@ public static class ClipVideoPromptBuilder
         var clean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
         var parts = new List<string>();
 
-        // Scene slug (INT./EXT. … - DAY) names the location in the model's own vocabulary.
-        var slug = CommonRegex.Match(clean, @"\b(?:INT|EXT)[./][^.]{0,80}\.", RegexOptions.IgnoreCase);
-        if (slug.Success)
-            parts.Add(slug.Value.Trim());
-
-        var lighting = CommonRegex.Match(clean, @"<Lighting>.*?</Lighting>", RegexOptions.Singleline);
-        if (lighting.Success)
-            parts.Add(lighting.Value.Trim());
-
-        var grade = CommonRegex.Match(clean, @"(?:Color grading|Grade):[^<\n]{0,160}", RegexOptions.IgnoreCase);
-        if (grade.Success)
-            parts.Add(grade.Value.Trim());
-
+        // Tags only — Stage 2 emits all three. No prose fallback: pattern-matching the old
+        // flattened form would be guesswork that quietly matches nothing on a current plan.
+        foreach (var tag in new[] { PromptFieldTags.Setting, PromptFieldTags.Lighting, PromptFieldTags.Grade })
+        {
+            var m = CommonRegex.Match(clean, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
+            if (m.Success)
+                parts.Add(m.Value.Trim());
+        }
         return string.Join(" ", parts);
     }
 
@@ -731,6 +726,12 @@ public static class ClipVideoPromptBuilder
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
         CommonRegex.Timeout);
 
+    // These five fire on none of the sample plans (278 clips, 4 projects) — and they stay. They
+    // are GUARDS, not optimizations: if a plan ever does carry an embedded CAST COUNT or a res/fps
+    // suffix, the builder appends its own and the model gets two contradictory instructions.
+    // Never firing is what a working guard looks like. (Contrast the film-stock rewrite deleted
+    // from CompressPromptText: that was a ~20-char compression win, so never firing made it
+    // worthless. Dead optimizations are safe to delete; dead guards are not.)
     private static readonly Regex ResFpsSuffixRegex1 = new(@"\s*/\s*\d{3,4}p\s*,\s*\d{2}fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex ResFpsSuffixRegex2 = new(@"\s*/\s*\d+p[^/]*24fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex ResFpsSuffixRegex3 = new(@"\s*/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
@@ -909,7 +910,15 @@ public static class ClipVideoPromptBuilder
     /// what a viewer loses: lens character, then colour, then a negative list the model mostly
     /// infers, then acting notes. Framing (<c>Camera</c>) and identity are never in this list.
     /// </summary>
-    private static readonly string[] SacrificialTags = { "Optics", "Negative", "Performance" };
+    private static readonly string[] SacrificialTags =
+    {
+        PromptFieldTags.Optics,
+        "Negative",
+        PromptFieldTags.MustNot,
+        PromptFieldTags.Grade,
+        PromptFieldTags.Sound,
+        PromptFieldTags.Performance,
+    };
 
     /// <summary>
     /// Fit a finished prompt under the video API hard cap before the first request, cheapest loss
@@ -942,6 +951,13 @@ public static class ClipVideoPromptBuilder
 
         // Section notes explain their block; losing one costs less than losing content.
         p = PromptTags.StripNotes(p);
+        if (p.Length <= hardCapChars)
+            return p;
+
+        // The style lock is never dropped — it is the one directive holding the film's look
+        // together — but now that it is a tag it can at least be trimmed instead of being
+        // untouchable prose.
+        p = PromptTags.Shorten(p, PromptFieldTags.StyleLock, 160);
         if (p.Length <= hardCapChars)
             return p;
 
@@ -1017,27 +1033,20 @@ public static class ClipVideoPromptBuilder
         // 3. Compress image reference tags (<IMAGE_1> -> I1, <IMAGE_2> -> I2)
         p = CommonRegex.Replace(p, @"<IMAGE_(\d+)>", "I$1");
 
-        // 4. Compress technical camera/stock text. Camera/Performance/Optics/VisualLock/Audio/
-        // Score/Ambient/Foley/Pronunciation/Negative/CastCount are already emitted as
-        // <Tag>...</Tag> at build time (see the "note" attribute strip above and the Voice/
-        // VoiceLock strip below) — no label rename needed for those anymore. "Color grading:" is
-        // the one holdout: it's partly embedded in ColorPaletteGradingClassifier's own AI prompt
-        // template (an example output format shown to the model), not purely deterministic C#
-        // string building like the others — converting it means editing what the model is shown,
-        // a different/riskier kind of change than a label rename, so it's left as plain text and
-        // still needs the rename here.
-        // The "Kodak Vision3 500T 5219 film stock" -> "Kodak 500T film" rule used to live here and
-        // has been deleted, not generalized. Every other replacement in this method rewrites text
-        // THIS class built, so the literal is exact by construction. That one rewrote free prose
-        // from ColorPaletteGradingClassifier, i.e. a guess about what a model would write: Mary19
-        // grades to "Kodak Vision3 250D 5207 film stock" (15 clips) and "hand-tinted watercolor
-        // print stock" (4), so it fired on none of them. Worth ~20 of 4000 chars when it did hit.
-        // The label rename below stays — the classifier is told to emit that exact prefix.
-        p = p.Replace("Color grading:", "Grade:");
+        // 4. Compress technical text. Every field is emitted as <Tag>...</Tag> at build time now,
+        // so there are no prose labels left to rename — the "Color grading:" rename that used to
+        // live here went with them, and so did a "Kodak Vision3 500T 5219 film stock" ->
+        // "Kodak 500T film" rule. That one is worth remembering: every other replacement in this
+        // method rewrites text THIS class built, so the literal is exact by construction, but that
+        // one rewrote free prose from a classifier — a guess about what a model would write.
+        // Mary19 grades to "Kodak Vision3 250D 5207 film stock" (15 clips) and "hand-tinted
+        // watercolor print stock" (4), so it fired on none of them. Do not add its like back.
         p = p.Replace("ON CAMERA lip-syncs", "lip-syncs");
 
-        // Strip [Display Name] bracketed titles in character lines (C1/C2 alias is sufficient)
-        p = CommonRegex.Replace(p, @"(-\s*C\d+(?:\s+I\d+)?)\s*\[[^\]]+\]:", "$1:");
+        // Drop the human display name from character lines — the C1/C2 alias is enough once the
+        // keys are mapped. Was a bracket match anchored on "- C1 I1 [x]:", which had to run after
+        // the aliasing above and, needing the trailing colon, silently skipped the VOICE ONLY line.
+        p = PromptTags.Strip(p, PromptFieldTags.Name);
 
         // Strip resolution/fps suffix (e.g. " / 480p, 24fps" -> "") since resolution/fps is configured via API payload
         p = CommonRegex.Replace(p, @"\s*/\s*\d+p,\s*\d+fps$", "");
@@ -1134,7 +1143,7 @@ public static class ClipVideoPromptBuilder
         var list = new List<string>();
         if (string.IsNullOrWhiteSpace(prose) || characters.Count == 0) return list;
         var text = prose.ToLowerInvariant();
-        AddOfficerKeysFromProse(text, characters, list);
+        AddCollectivelyNamedKeysFromProse(text, characters, list);
         foreach (var (key, prof) in characters)
         {
             if (list.Contains(key, StringComparer.OrdinalIgnoreCase)) continue;
@@ -1145,20 +1154,70 @@ public static class ClipVideoPromptBuilder
         return list;
     }
 
-    private static void AddOfficerKeysFromProse(
+    /// <summary>
+    /// Action prose often refers to a group collectively — "the officers sit", "the children
+    /// point" — instead of naming each member, so per-name matching finds none of them. When two
+    /// or more cast keys share a role word and the prose uses its plural, put the whole group on
+    /// screen.
+    /// </summary>
+    /// <remarks>
+    /// This replaces a hardcoded "Officer" check that matched "three officers" / "the officers"
+    /// literally. It worked (16 clips across the two Tell-Tale Heart plans) and would never have
+    /// fired for any other book's cast — a story name in engine code, which AGENTS.md rule 1
+    /// forbids. The shared-role-word rule covers the same clips without naming anyone.
+    /// </remarks>
+    private static void AddCollectivelyNamedKeysFromProse(
         string text,
         IReadOnlyDictionary<string, CharacterProfile> characters,
         List<string> list)
     {
-        var officerKeys = characters.Keys
-            .Where(k => k.Contains("Officer", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (officerKeys.Count == 0 ||
-            !CommonRegex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
-            return;
-        foreach (var k in officerKeys.Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
-            list.Add(k);
+        var byRoleWord = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in characters.Keys)
+        {
+            foreach (var word in RoleWordsInKey(key))
+            {
+                if (!byRoleWord.TryGetValue(word, out var group))
+                    byRoleWord[word] = group = new List<string>();
+                group.Add(key);
+            }
+        }
+
+        foreach (var (word, group) in byRoleWord)
+        {
+            if (group.Count < 2)
+                continue;
+            if (!ProseUsesPlural(text, word))
+                continue;
+            foreach (var k in group.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                         .Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
+                list.Add(k);
+        }
+    }
+
+    /// <summary>Role-ish words in a cast key: <c>Character_Officer_Two</c> → "officer".</summary>
+    private static IEnumerable<string> RoleWordsInKey(string key) =>
+        key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
+            .Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim())
+            .Where(w => w.Length >= 4 && !IsOrdinalWord(w));
+
+    /// <summary>Index suffixes (One/Two/2nd…) name the member, never the role.</summary>
+    private static bool IsOrdinalWord(string word) =>
+        CommonRegex.IsMatch(
+            word,
+            @"^(one|two|three|four|five|six|seven|eight|nine|ten|1st|2nd|3rd|\d+(?:th)?)$",
+            RegexOptions.IgnoreCase);
+
+    /// <summary>"officer" → matches "officers"; also the irregular "-y"/"child" plurals.</summary>
+    private static bool ProseUsesPlural(string text, string roleWord)
+    {
+        var w = System.Text.RegularExpressions.Regex.Escape(roleWord.ToLowerInvariant());
+        var plurals = $"{w}s|{w}es";
+        if (roleWord.EndsWith("y", StringComparison.OrdinalIgnoreCase) && roleWord.Length > 1)
+            plurals += "|" + System.Text.RegularExpressions.Regex.Escape(roleWord[..^1].ToLowerInvariant()) + "ies";
+        if (roleWord.Equals("child", StringComparison.OrdinalIgnoreCase))
+            plurals += "|children";
+        return CommonRegex.IsMatch(text, $@"\b(?:{plurals})\b", RegexOptions.IgnoreCase);
     }
 
     private static List<string> ProseNameHints(string key, CharacterProfile prof)
@@ -1169,25 +1228,41 @@ public static class ClipVideoPromptBuilder
         var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
             .Replace('_', ' ').Trim();
         if (suffix.Length > 0) names.Add(suffix);
-        if (key.Contains("Old_Man", StringComparison.OrdinalIgnoreCase) ||
-            key.Contains("OldMan", StringComparison.OrdinalIgnoreCase))
-            names.Add("old man");
-        if (key.Contains("Narrator", StringComparison.OrdinalIgnoreCase))
-            names.Add("narrator");
+
+        // A key can carry an article the prose leaves off — Character_The_Narrator gives
+        // "the narrator", which never matches prose that just says "narrator". This used to be two
+        // hardcoded hints ("old man", "narrator"), i.e. one book's cast names in engine code;
+        // dropping the article covers those and every other book's the-prefixed role.
+        foreach (var withArticle in names.ToList())
+        {
+            var bare = StripLeadingArticle(withArticle);
+            if (bare.Length >= 3 && !names.Contains(bare, StringComparer.OrdinalIgnoreCase))
+                names.Add(bare);
+        }
         return names;
+    }
+
+    private static string StripLeadingArticle(string name)
+    {
+        var m = CommonRegex.Match(name.Trim(), @"^(?:the|a|an)\s+(.+)$", RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value.Trim() : name.Trim();
     }
 
     private static bool ProseMentionsAnyName(string text, List<string> names) =>
         names.Any(n => n.Length >= 3 && text.Contains(n.ToLowerInvariant(), StringComparison.Ordinal));
 
-    /// <summary>Pull leading STYLE LOCK sentence from plan visual if present.</summary>
+    /// <summary>
+    /// Style lock carried by the plan itself, used when the project has no live style head.
+    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits — the old "STYLE LOCK: …up to the
+    /// first full stop" prose match guessed where the sentence ended and would find nothing now.
+    /// </summary>
     public static string? ExtractStyleHead(string visual)
     {
         if (string.IsNullOrWhiteSpace(visual)) return null;
         var m = CommonRegex.Match(
             visual,
-            @"STYLE LOCK:\s*([^.]+\.)",
-            RegexOptions.IgnoreCase);
+            $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
         return m.Success ? ("STYLE LOCK: " + m.Groups[1].Value.Trim()) : null;
     }
     public static List<string> FindCharacterRefPaths(
@@ -1553,7 +1628,7 @@ public static class ClipVideoPromptBuilder
     {
         var (display, tag, _, _, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         return
-            $"- {key}{tag} [{display}] VOICE ONLY — not on screen." +
+            $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))} VOICE ONLY — not on screen." +
             (voice.Length > 0 ? $" {PromptTags.Wrap("Voice", voice)}" : "");
     }
 
@@ -1580,7 +1655,7 @@ public static class ClipVideoPromptBuilder
         var (display, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         var compactSource = vlock.Length > 0 ? vlock : desc;
         var compact =
-            $"- {key}{tag} [{display}]: Also present (not shot focus); keep identity consistent: {compactSource}.";
+            $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))}: Also present (not shot focus); keep identity consistent: {compactSource}.";
         if (useImageTags && tag.Length > 0) compact += $" Match reference {tag.Trim()}.";
         return compact;
     }
@@ -1592,7 +1667,7 @@ public static class ClipVideoPromptBuilder
         bool useImageTags)
     {
         var (display, tag, desc, vlock, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
-        var line = $"- {key}{tag} [{display}]:";
+        var line = $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))}:";
         if (desc.Length > 0) line += $" {desc}";
         if (vlock.Length > 0) line += $" {PromptTags.Wrap("VisualLock", vlock)}";
         if (voice.Length > 0) line += $" {PromptTags.Wrap("Voice", voice)}";

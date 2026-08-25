@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Engine;
 
@@ -31,8 +32,10 @@ public static class ShotPlanLint
         {
             var k = Regex.Escape(key);
             var dressed = Regex.IsMatch(visual, $@"\b{k}\s+still\s+wears\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+            // The cast list is a <Cast> tag now — the "also on screen:" label it used to carry is
+            // gone, so matching that prose would silently stop finding anything.
             var listedOnScreen =
-                Regex.IsMatch(visual, $@"also on screen:[^.<]*\b{k}\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
+                Regex.IsMatch(visual, $@"<{PromptFieldTags.Cast}>[^<]*\b{k}\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
                 || Regex.IsMatch(visual, $@"\b{k}\s+is\s+on\s+screen\b", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
             if (dressed || listedOnScreen)
             {
@@ -59,8 +62,10 @@ public static class ShotPlanLint
     /// </summary>
     private static void AddStyleLockDrift(List<Finding> findings, string visual, string? currentStyleHead)
     {
+        // The plan's copy is a tag; the project's live head is still the prose the style
+        // classifier produces, so its "STYLE LOCK:" label has to come off before they compare.
         var planned = ExtractStyleLock(visual);
-        var current = ExtractStyleLock(currentStyleHead) ?? Normalize(currentStyleHead);
+        var current = ExtractStyleLock(currentStyleHead) ?? StripStyleLockLabel(currentStyleHead);
         if (string.IsNullOrEmpty(planned) || string.IsNullOrEmpty(current))
             return;
         if (StyleLocksAgree(planned, current))
@@ -90,8 +95,20 @@ public static class ShotPlanLint
     {
         if (string.IsNullOrWhiteSpace(text))
             return null;
-        var m = Regex.Match(text, @"STYLE LOCK:\s*([^\n<]+)", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+        // Tag only — Stage 2 emits it. A plan predating that simply does not report drift, which
+        // is the right answer: rebuilding it is the fix for drift anyway.
+        var m = Regex.Match(
+            text, $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromSeconds(1));
         return m.Success ? Normalize(m.Groups[1].Value) : null;
+    }
+
+    /// <summary>The live style head is prose and may or may not lead with the label.</summary>
+    private static string StripStyleLockLabel(string? value)
+    {
+        var t = Normalize(value);
+        var m = Regex.Match(t, @"^STYLE LOCK(?:\s*\(hard\))?:\s*", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+        return m.Success ? Normalize(t[m.Length..]) : t;
     }
 
     private static string Normalize(string? value) =>

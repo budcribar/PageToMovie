@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -13,7 +14,7 @@ public class ShotPlanLintTests
     {
         using var doc = JsonDocument.Parse("""
             {"clip_number":2,"characters_on_screen":["Character_Mary","Character_Narrator"],
-             "visual_prompt":"EXT. SCHOOLHOUSE - DAY. also on screen: Character_Mary, Character_Narrator. THE LAMB waits. Character_Narrator still wears wool jacket, felt hat <Lighting>x</Lighting>"}
+             "visual_prompt":"<Setting>EXT. SCHOOLHOUSE - DAY</Setting> <Cast>Character_Mary, Character_Narrator</Cast> <Action>THE LAMB waits</Action> <Wardrobe>Character_Narrator still wears wool jacket, felt hat</Wardrobe> <Lighting>x</Lighting>"}
             """);
         var findings = ShotPlanLint.Check(doc.RootElement, new[] { "Character_Narrator" });
         var f = Assert.Single(findings);
@@ -48,7 +49,9 @@ public class ShotPlanLintTests
         JsonDocument.Parse(JsonSerializer.Serialize(new
         {
             clip_number = 2,
-            visual_prompt = $"STYLE LOCK: {styleLock}. INT. SCHOOLROOM - DAY. The children point.",
+            visual_prompt =
+                $"<{PromptFieldTags.StyleLock}>{styleLock}</{PromptFieldTags.StyleLock}> " +
+                "<Setting>INT. SCHOOLROOM - DAY</Setting> <Action>The children point</Action>",
         }));
 
     /// <summary>
@@ -97,5 +100,22 @@ public class ShotPlanLintTests
         using var doc = ClipWithStyle(PlannedStyle);
         Assert.Empty(ShotPlanLint.Check(doc.RootElement, Array.Empty<string>()));
         Assert.Empty(ShotPlanLint.Check(doc.RootElement, Array.Empty<string>(), "   "));
+    }
+
+    /// <summary>
+    /// A plan built before Stage 2 tagged its fields carries no <c>&lt;StyleLock&gt;</c>, so drift
+    /// is simply not reported — rebuilding it is the fix for drift anyway. There is no prose
+    /// fallback to guess the old layout back.
+    /// </summary>
+    [Fact]
+    public void Untagged_legacy_plan_reports_no_style_drift()
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            clip_number = 2,
+            visual_prompt = "STYLE LOCK: stylized 3D CG. INT. SCHOOLROOM - DAY. The children point.",
+        }));
+        Assert.Empty(ShotPlanLint.Check(
+            doc.RootElement, Array.Empty<string>(), "STYLE LOCK: illustrated watercolor picture-book"));
     }
 }

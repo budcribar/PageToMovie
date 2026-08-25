@@ -59,11 +59,48 @@
                         }
                     </div>
 
-                    <h6 class="mb-1">Visual</h6>
-                    <label class="form-label small mb-0">Prompt <span class="text-danger">*</span></label>
-                    <textarea class="form-control form-control-sm mb-3" rows="4" required
-                              placeholder="Required — action / framing for this take"
-                              @bind="ed.VisualPrompt"></textarea>
+                    <div class="d-flex align-items-center mb-1">
+                        <h6 class="mb-0">Visual</h6>
+                        <button type="button" class="btn btn-sm btn-link ms-auto p-0 small"
+                                data-testid="clip-prompt-raw-toggle"
+                                title="@(RawPrompt ? "Back to one box per field" : "Edit the whole prompt as plain text")"
+                                @onclick="ToggleRawPrompt">
+                            @(RawPrompt ? "Fields" : "Raw text")
+                        </button>
+                    </div>
+                    @if (RawPrompt)
+                    {
+                        <label class="form-label small mb-0">Prompt <span class="text-danger">*</span></label>
+                        <textarea class="form-control form-control-sm mb-3" rows="10" required
+                                  data-testid="clip-prompt-raw"
+                                  placeholder="Required — action / framing for this take"
+                                  @bind="ed.VisualPrompt"></textarea>
+                    }
+                    else
+                    {
+                        <div class="mb-3" data-testid="clip-prompt-fields">
+                            @for (var i = 0; i < _sections.Count; i++)
+                            {
+                                var index = i;
+                                var section = _sections[index];
+                                var hint = SectionHint(section.Field);
+                                <div class="mb-2">
+                                    <label class="form-label small mb-0 d-flex">
+                                        <span>@SectionLabel(index)</span>
+                                        @if (!string.IsNullOrEmpty(hint))
+                                        {
+                                            <span class="text-muted ms-auto fw-normal">@hint</span>
+                                        }
+                                    </label>
+                                    <textarea class="form-control form-control-sm"
+                                              rows="@SectionRows(section)"
+                                              data-testid="@($"clip-prompt-{section.Field.ToString().ToLowerInvariant()}-{index}")"
+                                              value="@section.Value"
+                                              @onchange="e => SetSection(index, e.Value?.ToString())"></textarea>
+                                </div>
+                            }
+                        </div>
+                    }
 
                     <h6 class="mb-1">Dialogue</h6>
                     <div class="row g-2 mb-2">

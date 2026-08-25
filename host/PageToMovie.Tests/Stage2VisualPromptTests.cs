@@ -543,20 +543,21 @@ public class Stage2VisualPromptTests : IDisposable
         var bp = await File.ReadAllTextAsync(result.OutPath!);
         using var doc = System.Text.Json.JsonDocument.Parse(bp);
 
-        // Every clip in the animal-only Scene 1 must have STYLE LOCK in its visual_prompt
+        // Every clip in the animal-only Scene 1 must carry a style lock. Stage 2 emits it as a
+        // <StyleLock> tag now rather than a "STYLE LOCK:" prose label.
         var foundStyleLock = false;
         foreach (var scene in doc.RootElement.GetProperty("scenes").EnumerateArray())
         {
             foreach (var clip in scene.GetProperty("veo_clips").EnumerateArray())
             {
                 var vp = clip.GetProperty("visual_prompt").GetString() ?? "";
-                if (vp.Contains("STYLE LOCK", StringComparison.OrdinalIgnoreCase))
+                if (vp.Contains($"<{PromptFieldTags.StyleLock}>", StringComparison.OrdinalIgnoreCase))
                     foundStyleLock = true;
             }
         }
         Assert.True(foundStyleLock,
-            "Expected at least one clip to have 'STYLE LOCK' in its visual_prompt, " +
-            "but none did. Animal-only scenes were not getting a style lock injected.");
+            $"Expected at least one clip to carry a <{PromptFieldTags.StyleLock}> block in its " +
+            "visual_prompt, but none did. Animal-only scenes were not getting a style lock injected.");
     }
 
     /// <summary>

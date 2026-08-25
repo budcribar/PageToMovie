@@ -46,14 +46,16 @@ public sealed class ColorPaletteGradingClassifier
         DIRECTIVES TO ASSIGN:
         1. film_stock: Emulsion and grain spec (e.g. "Kodak Vision3 500T 5219 film stock, subtle 35mm grain", "Fuji Eterna 500T desaturated stock", "Technicolor 3-strip vibrant emulsion").
         2. color_palette: Color palette balance (e.g. "Desaturated cool-teal shadow tones with warm amber candle highlights", "Monochromatic sepia tones with deep charcoal shadows").
-        3. grading_prompt: Concise 10–20 word prompt tag (e.g. "Color grading: Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights").
+        3. grading_prompt: Concise 10–20 word description of the look. Describe the look ONLY —
+           do NOT prefix it with "Color grading:" or any other label. The caller supplies the
+           label. (e.g. "Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights").
 
         OUTPUT FORMAT:
         Return ONLY valid JSON matching this schema:
         {
           "film_stock": "Kodak Vision3 500T 5219 film stock, subtle 35mm grain",
           "color_palette": "Desaturated cool-teal shadow tones with warm amber candle highlights",
-          "grading_prompt": "Color grading: Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights"
+          "grading_prompt": "Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights"
         }
         """;
 
@@ -109,8 +111,10 @@ public sealed class ColorPaletteGradingClassifier
             var palette = root.TryGetProperty("color_palette", out var cp) ? cp.GetString() ?? "" : "";
             var prompt = root.TryGetProperty("grading_prompt", out var gp) ? gp.GetString() ?? "" : "";
 
+            // Look only, no label — same contract the system prompt asks the model for. The tag
+            // Stage 2 wraps this in is what names the field.
             if (string.IsNullOrWhiteSpace(prompt) && !string.IsNullOrWhiteSpace(stock))
-                prompt = $"Color grading: {stock}, {palette}".TrimEnd(',', ' ');
+                prompt = $"{stock}, {palette}".TrimEnd(',', ' ');
 
             return !string.IsNullOrWhiteSpace(stock) || !string.IsNullOrWhiteSpace(palette)
                 ? new ColorGradingDirective(stock, palette, prompt)

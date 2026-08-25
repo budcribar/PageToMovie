@@ -366,7 +366,7 @@ public class ClipVideoPromptBuilderTests
                     " Character_The_Narrator <IMAGE_1>: Lean man of middle years. <VisualLock>dark coat</VisualLock>.\n" +
                     " Character_Old_Man <IMAGE_2>: Elderly man with pale blue eye.\n" +
                     "<Clip>\n" +
-                    "<Camera>Medium shot</Camera>. Color grading: Dark. Character_The_Narrator ON CAMERA lip-syncs to Character_Old_Man <IMAGE_2>.";
+                    "<Camera>Medium shot</Camera>. <Grade>Dark</Grade>. Character_The_Narrator ON CAMERA lip-syncs to Character_Old_Man <IMAGE_2>.";
 
         var compressed = ClipVideoPromptBuilder.CompressPromptText(input);
 
@@ -380,7 +380,8 @@ public class ClipVideoPromptBuilderTests
         Assert.Contains("C1 I1", compressed);
         Assert.Contains("C2 I2", compressed);
         Assert.Contains("<Camera>Medium shot</Camera>", compressed);
-        Assert.Contains("Grade: Dark.", compressed);
+        // Every field is a tag now, so there are no prose labels left for compression to rename.
+        Assert.Contains("<Grade>Dark</Grade>", compressed);
         Assert.Contains("<VisualLock>dark coat</VisualLock>", compressed);
         Assert.Contains("C1 lip-syncs to C2 I2.", compressed);
     }
@@ -1393,10 +1394,10 @@ public class PreviousClipQuoteRedactionTests
     }
 
     private const string PrevClipPrompt =
-        "STYLE LOCK: watercolor. INT. SCHOOLROOM - DAY. MARY comes through the door. " +
-        "THE LAMB follows at her heel into the aisle. " +
+        "<StyleLock>watercolor</StyleLock> <Setting>INT. SCHOOLROOM - DAY</Setting> " +
+        "<Action>MARY comes through the door. THE LAMB follows at her heel into the aisle</Action> " +
         "<Lighting>Soft warm daylight through tall windows.</Lighting> " +
-        "<Camera>Wide 27mm locked.</Camera> Color grading: hand-tinted print stock, cream paper.";
+        "<Camera>Wide 27mm locked.</Camera> <Grade>hand-tinted print stock, cream paper</Grade>";
 
     /// <summary>
     /// The predecessor video (or its last frame) IS the input — re-describing it in prose made the
