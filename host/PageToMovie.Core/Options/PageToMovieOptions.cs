@@ -126,6 +126,15 @@ public sealed class PageToMovieOptions
     public bool ClassifyExtendCutWithChat { get; set; } = true;
     public string ExtendCutClassifyModel { get; set; } = "";
 
+    /// <summary>
+    /// Rewrite a continuation clip's action to events only, dropping where things ARE.
+    /// A continuation is generated from the previous clip's last frame, so a position
+    /// stated in the action makes the model place the subject there — moving it even when
+    /// it is already in the right spot.
+    /// </summary>
+    public bool ClassifyContinuationActionWithChat { get; set; } = true;
+    public string ContinuationActionClassifyModel { get; set; } = "";
+
     public bool ClassifySpeciesKindWithChat { get; set; } = true;
     public string SpeciesKindClassifyModel { get; set; } = "";
 

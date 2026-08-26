@@ -58,6 +58,7 @@ public static class ChatCallModes
     public const string AmbientSfxClassify = "ambient_sfx_classify";
     public const string OnScreenCastClassify = "onscreen_cast_classify";
     public const string ExtendCutClassify = "extend_cut_classify";
+    public const string ContinuationActionClassify = "continuation_action_classify";
     public const string SpeciesKindClassify = "species_kind_classify";
     public const string PlateRankClassify = "plate_rank_classify";
     public const string ShotPlanRefineClassify = "shot_plan_refine_classify";

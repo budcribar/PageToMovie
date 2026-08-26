@@ -93,6 +93,7 @@ public sealed class Stage2PlannerService
     private readonly SoundDesignComposerClassifier? _soundComposerClassifier;
     private readonly DepthOfFieldClassifier? _dofClassifier;
     private readonly ColorPaletteGradingClassifier? _colorGradingClassifier;
+    private readonly ContinuationActionClassifier? _continuationActionClassifier;
     private readonly GenerationErrorLogger? _errorLog;
 
     public Stage2PlannerService(
@@ -113,6 +114,7 @@ public sealed class Stage2PlannerService
         SoundDesignComposerClassifier? soundComposerClassifier = null,
         DepthOfFieldClassifier? dofClassifier = null,
         ColorPaletteGradingClassifier? colorGradingClassifier = null,
+        ContinuationActionClassifier? continuationActionClassifier = null,
         GenerationErrorLogger? errorLog = null)
     {
         _projects = projects;
@@ -131,6 +133,7 @@ public sealed class Stage2PlannerService
         _soundComposerClassifier = soundComposerClassifier;
         _dofClassifier = dofClassifier;
         _colorGradingClassifier = colorGradingClassifier;
+        _continuationActionClassifier = continuationActionClassifier;
         _errorLog = errorLog;
     }
 
@@ -404,14 +407,15 @@ public sealed class Stage2PlannerService
             var tasks = StartSceneClassifierTasks(s, sn, durMaxSeconds, planningModel, fanout, ct);
             await Task.WhenAll(
                 tasks.Pacing, tasks.Lighting, tasks.Camera, tasks.Negative, tasks.Wardrobe,
-                tasks.Emotion, tasks.Sound, tasks.Dof, tasks.Color).ConfigureAwait(false);
+                tasks.Emotion, tasks.Sound, tasks.Dof, tasks.Color,
+                tasks.ContinuationAction).ConfigureAwait(false);
 
             var plannedScene = PlanScene(
                 s, locSeeds, charSeeds, styleLock,
                 tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
                 tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
-                extendMaxSpeakersPerClip);
+                extendMaxSpeakersPerClip, tasks.ContinuationAction.Result);
             // Skip transition-only phantoms (e.g. FADE IN before first heading)
             if (plannedScene is null)
             {
@@ -479,9 +483,15 @@ public sealed class Stage2PlannerService
         var colorTask = _colorGradingClassifier is not null
             ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, report, ct, model: planningModel)
             : Task.FromResult<ColorGradingDirective?>(null);
+        // Only continuation beats go out — the classifier filters them itself, and a scene with
+        // none makes no call at all.
+        var continuationActionTask = _continuationActionClassifier is not null
+            ? _continuationActionClassifier.ClassifySceneContinuationActionsAsync(
+                s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, string>?>(null);
         return new SceneClassifierTasks(
             pacingTask, lightingTask, cameraTask, negativeTask, wardrobeTask,
-            emotionTask, soundTask, dofTask, colorTask);
+            emotionTask, soundTask, dofTask, colorTask, continuationActionTask);
     }
 
     private static void BackupExistingBlueprint(string outPath, Action<string>? onProgress)
@@ -889,7 +899,8 @@ public sealed class Stage2PlannerService
         int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds,
         int? extensionMaxSeconds = null,
         int maxSpeakersPerClip = 1,
-        int? extendMaxSpeakersPerClip = null)
+        int? extendMaxSpeakersPerClip = null,
+        Dictionary<string, string>? aiContinuationActions = null)
     {
         var effectiveExtensionMax = extensionMaxSeconds ?? maxSeconds;
         var sceneInput = new Dictionary<string, object?>(scene);
@@ -957,7 +968,8 @@ public sealed class Stage2PlannerService
             var planned = PlanSingleClip(
                 beats[i], i, durs[i], t, sceneWork, locSeeds, charSeeds, wardrobe, lids, primary,
                 prevBeat, prevLid, activeSpeaker, monologueStep,
-                aiLighting, aiNegative, aiCamera, aiEmotion, aiSound, aiDof, aiColor);
+                aiLighting, aiNegative, aiCamera, aiEmotion, aiSound, aiDof, aiColor,
+                aiContinuationActions);
             clips.Add(planned.Clip);
             beatMap.Add(planned.BeatId);
             t += planned.Duration;
@@ -1068,6 +1080,22 @@ public sealed class Stage2PlannerService
         return cont;
     }
 
+    /// <summary>
+    /// The action-only rewrite for a continuation clip, or null to use the beat's own action.
+    /// </summary>
+    private static string? ResolveContinuationAction(
+        Dictionary<string, object?> beat, string cont, Dictionary<string, string>? rewrites)
+    {
+        if (rewrites is null || rewrites.Count == 0)
+            return null;
+        if (!string.Equals(cont, "extend_previous", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var beatId = ReadBeatString(beat, "beat_id");
+        if (string.IsNullOrWhiteSpace(beatId) || !rewrites.TryGetValue(beatId, out var rewritten))
+            return null;
+        return string.IsNullOrWhiteSpace(rewritten) ? null : rewritten;
+    }
+
     private static void EnsurePrimaryInClipCast(List<string> clipCast, string ps)
     {
         if (ps.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal) && !clipCast.Contains(ps))
@@ -1095,7 +1123,8 @@ public sealed class Stage2PlannerService
         Dictionary<string, EmotionDirective>? aiEmotion,
         Dictionary<string, SoundDesignDirective>? aiSound,
         Dictionary<string, DepthOfFieldDirective>? aiDof,
-        ColorGradingDirective? aiColor)
+        ColorGradingDirective? aiColor,
+        Dictionary<string, string>? aiContinuationActions = null)
     {
         var lid = ResolveBeatLocation(beat, primary, lids);
         var cont = ResolveClipContinuation(beat, i, prevBeat, prevLid, lid);
@@ -1111,7 +1140,11 @@ public sealed class Stage2PlannerService
 
         // Continuity + resolution/fps are owned by ClipVideoPromptBuilder at gen time —
         // keep blueprint visual_prompt declarative (action/style only).
-        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe);
+        // Applied only when this clip really ends up continuing. The classifier judges beats, but
+        // ResolveClipContinuation can still force a cut afterwards (big_action, location change) —
+        // and a fresh shot needs its placement, because staging the shot is what it is for.
+        var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
+        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe, continuationAction);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
             vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
@@ -1938,14 +1971,23 @@ public sealed class Stage2PlannerService
         };
     }
 
+    /// <param name="continuationAction">
+    /// For a clip that continues the previous one, the beat's action rewritten to events only —
+    /// see <see cref="ContinuationActionClassifier"/>. Null keeps the beat's own action, which is
+    /// what a fresh shot needs. Everything downstream is unchanged: the rewrite goes through the
+    /// same subject, cast-key, blocking and sound-cue handling the original would have.
+    /// </param>
     internal static string BuildVisualPrompt(
         Dictionary<string, object?> beat,
         Dictionary<string, object?> scene,
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
-        Dictionary<string, List<string>> wardrobe)
+        Dictionary<string, List<string>> wardrobe,
+        string? continuationAction = null)
     {
-        var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
+        var ve = !string.IsNullOrWhiteSpace(continuationAction)
+            ? continuationAction
+            : CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
         ve = CommonRegex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
         var cast = ClipCastTokens(scene, beat, charSeeds);
@@ -3072,7 +3114,8 @@ public sealed class Stage2PlannerService
         Task<Dictionary<string, EmotionDirective>?> Emotion,
         Task<Dictionary<string, SoundDesignDirective>?> Sound,
         Task<Dictionary<string, DepthOfFieldDirective>?> Dof,
-        Task<ColorGradingDirective?> Color);
+        Task<ColorGradingDirective?> Color,
+        Task<Dictionary<string, string>?> ContinuationAction);
 
     private sealed record PlannedClip(
         Dictionary<string, object?> Clip,

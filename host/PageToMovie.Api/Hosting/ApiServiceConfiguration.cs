@@ -135,6 +135,9 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<SceneMusicCompositionService>();
         builder.Services.AddSingleton<DepthOfFieldClassifier>();
         builder.Services.AddSingleton<ColorPaletteGradingClassifier>();
+        // Rewrites a continuation clip's action to events only — a position stated in the
+        // action makes the model re-place a subject the previous frame already had right.
+        builder.Services.AddSingleton<ContinuationActionClassifier>();
         builder.Services.AddSingleton<Stage2PlannerService>();
         builder.Services.AddSingleton<VoicePreviewService>();
         builder.Services.AddHttpClient(ApiText.ElevenLabsClient, c =>
