@@ -67,8 +67,14 @@ public partial class Scenes_ClipFieldEditor
     /// the operator a box whose edits change nothing about what is spoken. It stays in
     /// <c>_sections</c> so an unedited save still round-trips the plan byte for byte.
     /// </summary>
+    /// <summary>
+    /// Legacy sections a plan may still carry but the operator must not edit here. Both restate
+    /// something <c>audio_payload</c> already owns and the AUDIO block already delivers, so a box
+    /// for them would be a second editable surface for one fact — and the edit would change
+    /// nothing. They stay in <c>_sections</c> so an unedited save round-trips the plan unchanged.
+    /// </summary>
     private static bool IsEditableSection(ClipPromptSection section) =>
-        section.Field != ClipPromptField.Speech;
+        section.Field is not (ClipPromptField.Speech or ClipPromptField.Sound);
 
     private static int SectionRows(ClipPromptSection section) => section.Field switch
     {

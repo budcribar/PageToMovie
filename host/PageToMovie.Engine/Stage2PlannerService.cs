@@ -1995,7 +1995,13 @@ public sealed class Stage2PlannerService
             (2, PromptFieldTags.Setting, PlaceLockIfMissing(place, ve)),
             (3, PromptFieldTags.Cast, StripLabel(othersBit, "also on screen:")),
             (5, PromptFieldTags.Action, action),
-            (6, PromptFieldTags.Sound, sound),
+            // No <Sound>. The screenplay's own (SOUND: …) cue is parsed at Stage 1 into the
+            // beat's ambient/sfx, reaches the clip as audio_payload, and ClipVideoPromptBuilder
+            // renders it into <Audio> as <Foley>/<Score> at gen time. Emitting it here too asked
+            // the model for the same foley twice against ONE request for the narration, and the
+            // foley won the opening moment: measured in the provider playground, adding this
+            // block alone to a working extend made the narrator drop the line's first word.
+            // <Foley> by itself does not. Same duplication as <Speech>, but this one is audible.
             // No <Speech>. The spoken line lives in audio_payload, and ClipVideoPromptBuilder
             // renders it into <Audio> at gen time — that copy is the one the model obeys. Baking
             // a second copy in here put every line in the prompt twice: wasted budget on prompts
