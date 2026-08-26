@@ -1971,7 +1971,6 @@ public sealed class Stage2PlannerService
         var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var acv) ? acv : null) ?? "").ToLowerInvariant();
         ve = AppendActionClassMotion(ve, ac);
 
-        var speech = SpeechClause(beat);
         var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
         var mustBit = mustNot.Count > 0 ? $"must not: {string.Join("; ", mustNot)}" : "";
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
@@ -1997,7 +1996,12 @@ public sealed class Stage2PlannerService
             (3, PromptFieldTags.Cast, StripLabel(othersBit, "also on screen:")),
             (5, PromptFieldTags.Action, action),
             (6, PromptFieldTags.Sound, sound),
-            (7, PromptFieldTags.Speech, speech),
+            // No <Speech>. The spoken line lives in audio_payload, and ClipVideoPromptBuilder
+            // renders it into <Audio> at gen time — that copy is the one the model obeys. Baking
+            // a second copy in here put every line in the prompt twice: wasted budget on prompts
+            // already being compressed, and two editable surfaces for one fact, only one of which
+            // changed what was actually said. Same reasoning that moved continuity and
+            // resolution/fps out to gen time (see PlanSingleClip) — keep visual_prompt visual.
             (8, PromptFieldTags.MustNot, StripLabel(mustBit, "must not:")),
             (9, PromptFieldTags.Wardrobe, ward),
         };
@@ -2550,21 +2554,6 @@ public sealed class Stage2PlannerService
             payload["foley_layer"] = sd.FoleyLayer;
         if (!string.IsNullOrWhiteSpace(sd.ScoreLayer))
             payload["score_layer"] = sd.ScoreLayer;
-    }
-
-    private static string SpeechClause(Dictionary<string, object?> beat)
-    {
-        var ap = BuildAudioPayload(beat);
-        var delivery = (ap[Keys.Delivery] as string ?? "none").ToLowerInvariant();
-        var speaker = ap[JsonKeys.Speaker] as string ?? "";
-        var dialogue = ap[JsonKeys.Dialogue] as string ?? "";
-        if (string.IsNullOrWhiteSpace(dialogue) || delivery is "none" or "")
-            return "";
-        // Full speech-safe line (BuildAudioPayload already sanitized)
-        var quote = dialogue.Trim();
-        if (IsOnCameraDelivery(delivery))
-            return $"{speaker} ON CAMERA lip-syncs \"{quote}\"";
-        return $"OFF-CAMERA VOICEOVER {speaker} says \"{quote}\"";
     }
 
     /// <summary>Test hook — thin public wrapper for <see cref="ClipCastTokens"/>.</summary>

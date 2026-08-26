@@ -456,9 +456,7 @@ public class Stage2VisualPromptTests : IDisposable
             {
                 var vp = clip.GetProperty("visual_prompt").GetString() ?? "";
                 if (vp.Contains("BEDCHAMBER", StringComparison.OrdinalIgnoreCase) ||
-                    vp.Contains("Pitch black", StringComparison.OrdinalIgnoreCase) ||
-                    vp.Contains("midnight", StringComparison.OrdinalIgnoreCase) ||
-                    vp.Contains("OFF-CAMERA", StringComparison.OrdinalIgnoreCase))
+                    vp.Contains("Pitch black", StringComparison.OrdinalIgnoreCase))
                 {
                     nightPrompt = vp;
                     nightDelivery = clip.GetProperty("audio_payload").GetProperty("delivery").GetString();
@@ -474,8 +472,11 @@ public class Stage2VisualPromptTests : IDisposable
         Assert.Contains("NIGHT", nightPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("BEDCHAMBER - DAY", nightPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("voiceover_internal", nightDelivery);
+        // The delivery is the plan's only statement about how the line is spoken. The line itself
+        // is not restated in the visual prompt: audio_payload carries it, and the AUDIO block
+        // built at generation time is the single copy the model gets.
         Assert.DoesNotContain("ON CAMERA lip-syncs", nightPrompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("OFF-CAMERA VOICEOVER", nightPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("OFF-CAMERA VOICEOVER", nightPrompt, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Bug regression tests ────────────────────────────────────────────────

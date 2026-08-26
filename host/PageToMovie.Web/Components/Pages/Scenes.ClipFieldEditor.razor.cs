@@ -59,6 +59,17 @@ public partial class Scenes_ClipFieldEditor
         return $"{section.Label} {freeText.FindIndex(s => ReferenceEquals(s, section)) + 1}";
     }
 
+    /// <summary>
+    /// Whether this field gets an edit box. Everything does except a legacy
+    /// <see cref="ClipPromptField.Speech"/> block: what a character says is edited once, under
+    /// Dialogue, which is the copy that reaches the model. Stage 2 stopped baking a second copy
+    /// into the prompt, but plans built before that still carry one, and showing it would offer
+    /// the operator a box whose edits change nothing about what is spoken. It stays in
+    /// <c>_sections</c> so an unedited save still round-trips the plan byte for byte.
+    /// </summary>
+    private static bool IsEditableSection(ClipPromptSection section) =>
+        section.Field != ClipPromptField.Speech;
+
     private static int SectionRows(ClipPromptSection section) => section.Field switch
     {
         ClipPromptField.Action => 4,
