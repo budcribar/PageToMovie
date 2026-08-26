@@ -171,7 +171,7 @@ public static class ClipVideoPromptBuilder
             .ToList();
 
         var rawVisual = ReadVisualPrompt(clipEl);
-        var actionText = SanitizeActionText(rawVisual, onScreenKeys);
+        var actionText = DropWhatTheSourceVideoShows(SanitizeActionText(rawVisual, onScreenKeys), mode);
 
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
@@ -202,11 +202,14 @@ public static class ClipVideoPromptBuilder
         }
 
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
+        // The style lock is the look, and the look is in the video being continued. Restating it
+        // is the same redundancy as the blocks dropped above, and it re-establishes the shot.
+        var styleForPrompt = mode is ModeVideoExtend or ModeContinue ? "" : style;
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
-        var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags);
+        var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
         var castCountLine = FormatCastCountLine(onScreenKeys);
@@ -214,7 +217,7 @@ public static class ClipVideoPromptBuilder
 
         var prompt = FitPromptToVideoBudget(
             AppendPromptSections(
-                style, varBlock, locationRefAttached, locationImageTag, locationKey,
+                styleForPrompt, varBlock, locationRefAttached, locationImageTag, locationKey,
                 castCountLine, audioBlock, continuityBlock, clipEl, actionTagged),
             promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
@@ -617,6 +620,65 @@ public static class ClipVideoPromptBuilder
     /// <c>&lt;Speech&gt;</c> block so the AUDIO block owns the spoken line.
     /// Ensures each on-screen key appears at least once in action prose.
     /// </summary>
+    /// <summary>
+    /// On a continuation, removes the blocks describing what the source video already shows.
+    /// </summary>
+    /// <remarks>
+    /// An extend is generated from the previous clip's video, so the setting, lighting, framing,
+    /// optics and grade are all visibly present in the input. Sending them again does not confirm
+    /// them — it asks the model to establish a shot, and it does, from scratch: the subject is
+    /// restaged and the continuation breaks.
+    ///
+    /// <para>Measured against the provider's extend endpoint on Mary19 S02C02, repeated runs. With
+    /// these blocks present the animal was thrown back to the front of the room; with them removed
+    /// and the source video unchanged it stayed where the previous clip left it. Removing the
+    /// continuity block as well made it slightly WORSE, so that one stays — it is carrying its
+    /// weight, unlike these.</para>
+    ///
+    /// <para>What describes the NEW footage is kept: the action, the acting note, the shot length,
+    /// the negatives, and the identity blocks an extend cannot supply as reference plates.</para>
+    /// </remarks>
+    private static string DropWhatTheSourceVideoShows(string actionText, string mode)
+    {
+        if (mode is not (ModeVideoExtend or ModeContinue))
+            return actionText;
+        var trimmed = actionText;
+        foreach (var tag in SourceVideoAlreadyShows)
+            trimmed = BlockRegexFor(tag).Replace(trimmed, "");
+        return CollapseWhitespace(trimmed).Trim();
+    }
+
+    /// <summary>Blocks whose content is visible in the video an extend continues from.</summary>
+    private static readonly string[] SourceVideoAlreadyShows =
+    {
+        PromptFieldTags.StyleLock,
+        PromptFieldTags.Setting,
+        PromptFieldTags.Lighting,
+        PromptFieldTags.Camera,
+        PromptFieldTags.Optics,
+        PromptFieldTags.Grade,
+    };
+
+    private static readonly Dictionary<string, Regex> BlockRegexCache = new(StringComparer.Ordinal);
+
+    private static Regex BlockRegexFor(string tag)
+    {
+        lock (BlockRegexCache)
+        {
+            if (!BlockRegexCache.TryGetValue(tag, out var re))
+            {
+                re = new Regex($@"<{tag}>.*?</{tag}>\s*",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled,
+                    CommonRegex.Timeout);
+                BlockRegexCache[tag] = re;
+            }
+            return re;
+        }
+    }
+
+    private static string CollapseWhitespace(string text) =>
+        CommonRegex.Replace(text, @"[ 	]{2,}", " ");
+
     public static string SanitizeActionText(string visual, IReadOnlyList<string>? onScreenKeys = null)
     {
         if (string.IsNullOrWhiteSpace(visual)) return "";
@@ -1782,11 +1844,15 @@ public static class ClipVideoPromptBuilder
         return (tags, ids);
     }
 
+    /// <param name="mode">
+    /// Generation mode. A continuation gets no music/Foley layers — see <see cref="BuildAudioBed"/>.
+    /// </param>
     private static string BuildAudioBlock(
         JsonElement clipEl,
         IReadOnlyDictionary<string, CharacterProfile>? characters,
         ClipCorrection? correction = null,
-        IReadOnlyDictionary<string, string>? audioTags = null)
+        IReadOnlyDictionary<string, string>? audioTags = null,
+        string? mode = null)
     {
         if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var audio) ||
             audio.ValueKind != JsonValueKind.Object)
@@ -1806,7 +1872,7 @@ public static class ClipVideoPromptBuilder
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
                 audio, spoken, sfx, ambient, score,
-                new SpokenAudioExtras(voiceLock, correction, audioTags));
+                new SpokenAudioExtras(voiceLock, correction, audioTags, mode));
 
         if (HasAmbientLayers(ambient, sfx, score))
             return BuildAmbientOnlyAudio(ambient, sfx, score);
@@ -1894,8 +1960,28 @@ public static class ClipVideoPromptBuilder
         return layers;
     }
 
-    private static string BuildAudioBed(string score, string ambient, string sfx)
+    /// <summary>
+    /// Music, ambience and Foley to lay under the line — omitted entirely on a continuation.
+    /// </summary>
+    /// <remarks>
+    /// A continuation is generated from the previous clip's video, which already carries that clip's
+    /// audio bed; the model continues it on its own. Asking for the bed again makes it re-generate
+    /// the effects prominently, and they land on top of the line's opening word.
+    ///
+    /// <para>Measured against the provider's extend endpoint on Mary19 S02C02, with repeated runs
+    /// rather than single trials: with the layers present the narrator dropped the line's first word
+    /// in every run; with only Score and Foley removed and everything else identical, the word
+    /// survived in every run.</para>
+    ///
+    /// <para>Same defect as the duplicated Sound block, one layer down. That removed the SECOND
+    /// request for these effects; this removes the last one on a path where the video already
+    /// supplies them. A fresh clip keeps its bed — it has no predecessor to inherit one from, and
+    /// establishing the audio is exactly its job.</para>
+    /// </remarks>
+    private static string BuildAudioBed(string score, string ambient, string sfx, string? mode = null)
     {
+        if (mode is ModeVideoExtend or ModeContinue)
+            return "";
         var audioBedParts = CollectAudioLayers(score, ambient, sfx);
         return audioBedParts.Count > 0
             ? " " + string.Join(" ", audioBedParts)
@@ -1918,10 +2004,14 @@ public static class ClipVideoPromptBuilder
         return BuildPronunciationHints(quote);
     }
 
+    /// <param name="Mode">
+    /// Generation mode — a continuation gets no music/Foley layers. See <see cref="BuildAudioBed"/>.
+    /// </param>
     private readonly record struct SpokenAudioExtras(
         string VoiceLock,
         ClipCorrection? Correction,
-        IReadOnlyDictionary<string, string>? AudioTags);
+        IReadOnlyDictionary<string, string>? AudioTags,
+        string? Mode = null);
 
     private static string BuildSpokenDialogueAudio(
         JsonElement audio,
@@ -1957,7 +2047,7 @@ public static class ClipVideoPromptBuilder
                 speakerLock += " " + correction.DeliveryCue.Trim();
         }
         var openCue = BuildOpenCue(quote);
-        var bed = BuildAudioBed(score, ambient, sfx);
+        var bed = BuildAudioBed(score, ambient, sfx, extras.Mode);
 
         const string endPause =
             " After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring.";
