@@ -16,7 +16,7 @@ public partial class Locations : IDisposable
     private string? _selectedKey;
 
     private IEnumerable<LocationSummary> LocationsForUi =>
-        _locations.Where(l => _showUnusedInPlan || l.UsedInPlan);
+        _locations.Where(l => _showUnusedInPlan || l.UsedInPlan || UsedInPlanCount == 0);
 
     private int UnusedInPlanCount =>
         _locations.Count(l => !l.UsedInPlan);

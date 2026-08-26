@@ -135,6 +135,7 @@ public partial class Configuration
             S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
             S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
             S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
+            S.Coverage._videoEditModel = GetStr("video_edit_model_name", S.Coverage._videoEditModel);
         }
 
         private void ApplyPipelineFields()
@@ -198,6 +199,7 @@ public partial class Configuration
             var planningProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._planningModel, ModelCapability.Chat);
             var visionProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._visionModel, ModelCapability.Vision);
             var qualityProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._qualityModel, ModelCapability.Chat);
+            var videoEditProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._videoEditModel, ModelCapability.VideoEdit);
 
             var updates = new Dictionary<string, object?>
             {
@@ -211,6 +213,7 @@ public partial class Configuration
                 ["planning_provider"] = planningProvider,
                 ["vision_provider"] = visionProvider,
                 ["quality_provider"] = qualityProvider,
+                ["video_edit_provider"] = videoEditProvider,
                 ["model_name"] = S.Coverage._modelName,
                 ["image_model_name"] = S.Coverage._imageModel,
                 ["planning_model_name"] = S.Coverage._planningModel,
@@ -218,6 +221,7 @@ public partial class Configuration
                 ["quality_model_name"] = S.Coverage._qualityModel,
                 ["audio_model_name"] = S.Coverage._audioModel,
                 ["voice_model_name"] = S.Coverage._voiceModel,
+                ["video_edit_model_name"] = S.Coverage._videoEditModel,
                 ["enable_background_music"] = S.Coverage._enableBackgroundMusic,
                 ["background_music_volume_percent"] = S.Coverage._backgroundMusicVolumePercent,
                 ["model_selections"] = new Dictionary<string, string>
@@ -228,6 +232,7 @@ public partial class Configuration
                     ["vision"] = S.Coverage._visionModel,
                     ["video-review"] = S.Coverage._qualityModel,
                     ["audio"] = S.Coverage._audioModel,
+                    ["video-edit"] = S.Coverage._videoEditModel,
                 },
                 ["aspect_ratio"] = _aspect,
                 ["resolution"] = _resolution,

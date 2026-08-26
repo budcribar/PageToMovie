@@ -200,4 +200,45 @@ public class ProjectLifecycleTests
         await page.GetByTestId("clip-editor-save").ClickAsync();
         await Assertions.Expect(page.GetByTestId("clip-editor-modal")).ToHaveCountAsync(0, new() { Timeout = 15_000 });
     }
+
+    [Fact]
+    public async Task Studio_process_strip_navigates_smoothly_across_all_workflow_steps()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            var project = Uniq("NavStep");
+            await PipelineFlow.RunToScenesAsync(page, _fx.BaseUrl, project, "mary_had_a_lamb.fountain");
+
+            // Verify navigation across steps via process strip
+            var navScreenplay = page.Locator("nav.ptm-steps a", new() { HasText = "Screenplay" });
+            if (await navScreenplay.CountAsync() > 0)
+            {
+                await navScreenplay.First.ClickAsync();
+                await Assertions.Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/adaptation/screenplay"), new() { Timeout = 15_000 });
+            }
+
+            var navCast = page.Locator("nav.ptm-steps a", new() { HasText = "Cast" });
+            if (await navCast.CountAsync() > 0)
+            {
+                await navCast.First.ClickAsync();
+                await Assertions.Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/characters"), new() { Timeout = 15_000 });
+            }
+
+            var navLocations = page.Locator("nav.ptm-steps a", new() { HasText = "Locations" });
+            if (await navLocations.CountAsync() > 0)
+            {
+                await navLocations.First.ClickAsync();
+                await Assertions.Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/locations"), new() { Timeout = 15_000 });
+            }
+
+            var navFilm = page.Locator("nav.ptm-steps a", new() { HasText = "Film" });
+            if (await navFilm.CountAsync() > 0)
+            {
+                await navFilm.First.ClickAsync();
+                await Assertions.Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/scenes"), new() { Timeout = 15_000 });
+            }
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

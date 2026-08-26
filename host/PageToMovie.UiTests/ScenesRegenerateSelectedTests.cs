@@ -135,6 +135,45 @@ public class ScenesRegenerateSelectedTests
         finally { await ctx.CloseAsync(); }
     }
 
+    [Fact]
+    public async Task Scene_search_filter_narrows_scene_index_and_select_all_scopes_to_visible()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            var name = "Filter_" + Guid.NewGuid().ToString("N")[..6];
+            await PipelineFlow.RunToScenesAsync(page, _fx.BaseUrl, name, "tell_tale_heart.fountain");
+
+            var status = page.GetByTestId("scenes-status");
+            await status.WaitForAsync(new() { Timeout = 60_000 });
+            var sceneRows = page.Locator("[data-testid='scene-row']");
+            var initialCount = await sceneRows.CountAsync();
+            Assert.True(initialCount >= 3);
+
+            // Filter search input
+            var searchInput = page.GetByTestId("scene-index-search");
+            await Assertions.Expect(searchInput).ToBeVisibleAsync(new() { Timeout = 15_000 });
+
+            // Type "EIGHTH" (matches scene 3: INT. CHAMBER - NIGHT - THE EIGHTH NIGHT)
+            await searchInput.FillAsync("EIGHTH");
+            await Assertions.Expect(sceneRows).ToHaveCountAsync(1, new() { Timeout = 10_000 });
+            await Assertions.Expect(sceneRows.First).ToContainTextAsync("EIGHTH NIGHT");
+
+            // Select all visible (should select only 1 scene)
+            var selectAllCheck = page.GetByTestId("scenes-select-all");
+            await selectAllCheck.ClickAsync();
+            await Assertions.Expect(page.Locator("label[for='masterSceneCheck']")).ToContainTextAsync("1 selected", new() { Timeout = 10_000 });
+
+            // Clear search filter
+            await searchInput.FillAsync("");
+            await Assertions.Expect(sceneRows).ToHaveCountAsync(initialCount, new() { Timeout = 10_000 });
+
+            // Selection remains 1
+            await Assertions.Expect(page.Locator("label[for='masterSceneCheck']")).ToContainTextAsync("1 selected");
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
     /// <summary>Job ids currently known for the project (before triggering a new one), via the app's
     /// own job-list API (authed browser fetch) — same "arrange"-style helper pattern as PipelineFlow.</summary>
     private static async Task<List<string>> GetJobIdsAsync(IPage page, string projectId)

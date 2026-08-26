@@ -34,6 +34,8 @@ public partial class Configuration
 
         internal List<SupportedModelDto> _voiceModels = new();
 
+        internal List<SupportedModelDto> _videoEditModels = new();
+
 
         internal async Task LoadCatalogAsync()
         {
@@ -63,6 +65,7 @@ public partial class Configuration
             _videoReviewModels = new();
             _audioModels = new();
             _voiceModels = new();
+            _videoEditModels = new();
         }
 
         private async Task TryHydrateCatalogJsonAsync()
@@ -126,6 +129,7 @@ public partial class Configuration
             _visionModels = _allModels.Where(m => MatchesCapability(m, "vision")).ToList();
             _audioModels = _allModels.Where(m => MatchesCapability(m, "audio")).ToList();
             _voiceModels = _allModels.Where(m => MatchesCapability(m, "voice")).ToList();
+            _videoEditModels = _allModels.Where(m => MatchesCapability(m, "video-edit") || MatchesCapability(m, "videoedit") || MatchesCapability(m, "video_edit") || MatchesCapability(m, "VideoEdit")).ToList();
             // Review: only models the catalog marks SupportsVideoReview, else chat/vision from catalog.
             _videoReviewModels = _allModels.Where(m => m.SupportsVideoReview).ToList();
             if (_videoReviewModels.Count == 0)
@@ -138,12 +142,14 @@ public partial class Configuration
             if (!_audioModels.Any(m => m.Id == "none"))
                 _audioModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (No Background Music)", Provider = "None", ProviderId = "none" });
             _voiceModels = _voiceModels
-                .OrderBy(m => string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(m => m.IsVoiceCloneStep ? 0 : 1)
+                .Where(m => m.Id != "none")
+                .OrderBy(m => m.IsVoiceCloneStep ? 0 : 1)
                 .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             if (!_voiceModels.Any(m => m.Id == "none"))
-                _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no voice clone)", Provider = "None", ProviderId = "none" });
+                _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (No Voice Cloning)", Provider = "None", ProviderId = "none" });
+            if (!_videoEditModels.Any(m => m.Id == "none"))
+                _videoEditModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (Default Video Edit)", Provider = "None", ProviderId = "none" });
         }
 
 

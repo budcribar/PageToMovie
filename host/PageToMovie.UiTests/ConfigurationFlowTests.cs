@@ -32,14 +32,15 @@ public class ConfigurationFlowTests
             await Assertions.Expect(page.GetByTestId("studio-coverage-card"))
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
 
-            // Settings sections start collapsed by design (acf910b5) — open the two we touch.
+            // Settings sections start collapsed by design (acf910b5) — open right before interacting.
             await Ui.OpenConfigSectionAsync(page, "config-section-format");
-            await Ui.OpenConfigSectionAsync(page, "config-section-pipeline");
-            // Change a Format & Resolution field (plain @bind, no testid) and a Pipeline Behavior checkbox.
-            var aspect = page.Locator("select").Filter(new() { Has = page.Locator("option[value='9:16']") }).First;
+            var aspect = page.GetByTestId("config-format-aspect");
+            await Assertions.Expect(aspect).ToBeVisibleAsync(new() { Timeout = 15_000 });
             await aspect.SelectOptionAsync("9:16");
 
+            await Ui.OpenConfigSectionAsync(page, "config-section-pipeline");
             var qaRetry = page.Locator("#qaRetry");
+            await Assertions.Expect(qaRetry).ToBeVisibleAsync(new() { Timeout = 15_000 });
             var wasChecked = await qaRetry.IsCheckedAsync();
             var expectChecked = !wasChecked;
             await qaRetry.SetCheckedAsync(expectChecked);
@@ -55,10 +56,10 @@ public class ConfigurationFlowTests
             await Assertions.Expect(page.GetByTestId("studio-coverage-card"))
                 .ToBeVisibleAsync(new() { Timeout = 20_000 });
             await Ui.OpenConfigSectionAsync(page, "config-section-format");
+            var aspectAfterReload = page.GetByTestId("config-format-aspect");
+            await Assertions.Expect(aspectAfterReload).ToHaveValueAsync("9:16", new() { Timeout = 15_000 });
             await Ui.OpenConfigSectionAsync(page, "config-section-pipeline");
-            var aspectAfterReload = page.Locator("select").Filter(new() { Has = page.Locator("option[value='9:16']") }).First;
-            await Assertions.Expect(aspectAfterReload).ToHaveValueAsync("9:16");
-            await Assertions.Expect(page.Locator("#qaRetry")).ToBeCheckedAsync(new() { Checked = expectChecked });
+            await Assertions.Expect(page.Locator("#qaRetry")).ToBeCheckedAsync(new() { Checked = expectChecked, Timeout = 15_000 });
         }
         finally { await ctx.CloseAsync(); }
     }
@@ -102,6 +103,37 @@ public class ConfigurationFlowTests
             // so an unscoped role lookup is a strict-mode violation waiting to happen.
             await musicRow.GetByRole(AriaRole.Button, new() { Name = "Turn off" }).ClickAsync();
             await Assertions.Expect(musicRow.Locator(".badge")).ToHaveTextAsync("Off", new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Video_edit_capability_selection_updates_ready_badge_and_persists()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl,
+                "CfgVidEdit_" + Guid.NewGuid().ToString("N")[..6]);
+
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
+            var editRow = page.GetByTestId("coverage-video-edit");
+            await Assertions.Expect(editRow).ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            // Pick fake provider for video-edit
+            await page.GetByTestId("coverage-provider-video-edit").SelectOptionAsync(new SelectOptionValue { Value = "fake" });
+            await page.GetByTestId("coverage-model-video-edit").SelectOptionAsync("fake-video-edit");
+
+            await Assertions.Expect(editRow.Locator(".badge")).ToHaveTextAsync("Ready", new() { Timeout = 15_000 });
+
+            // Reload and verify
+            await page.GetByTestId("nav-studio").ClickAsync();
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
+            editRow = page.GetByTestId("coverage-video-edit");
+            await Assertions.Expect(editRow.Locator(".badge")).ToHaveTextAsync("Ready", new() { Timeout = 20_000 });
+            await Assertions.Expect(page.GetByTestId("coverage-model-video-edit")).ToHaveValueAsync("fake-video-edit");
         }
         finally { await ctx.CloseAsync(); }
     }

@@ -215,7 +215,7 @@
             <div class="card-body row g-2">
                 <div class="col-md-4">
                     <label class="form-label">Aspect ratio</label>
-                    <select class="form-select" @bind="Form._aspect" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
+                    <select class="form-select" data-testid="config-format-aspect" @bind="Form._aspect" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
                         <option value="16:9">16:9</option>
                         <option value="9:16">9:16</option>
                         <option value="1:1">1:1</option>

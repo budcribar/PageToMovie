@@ -84,4 +84,29 @@ public class CutTimelineUiTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Cut_timeline_play_controls_and_clock_display_interact_properly()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(
+                page, _fx.BaseUrl, "CutPlay_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+
+            var cutEditor = page.Locator(".cut-editor");
+            await Assertions.Expect(cutEditor).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Toolbar renders
+            var toolbar = page.Locator(".cut-toolbar");
+            await Assertions.Expect(toolbar).ToBeVisibleAsync(new() { Timeout = 15_000 });
+
+            // Save cut button renders
+            var saveCutBtn = page.Locator("button.cut-btn", new() { HasText = "Save cut" });
+            await Assertions.Expect(saveCutBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

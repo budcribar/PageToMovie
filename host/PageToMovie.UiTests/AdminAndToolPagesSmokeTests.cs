@@ -133,4 +133,66 @@ public class AdminAndToolPagesSmokeTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Admin_models_catalog_search_and_capability_filter_narrows_table()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/models-catalog");
+            await Assertions.Expect(page.GetByTestId("catalog-filters")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Search for "fake"
+            var searchInput = page.GetByPlaceholder("Search model ID, name, provider…");
+            await Assertions.Expect(searchInput).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await searchInput.FillAsync("fake");
+
+            // Filter by Video capability
+            var capSelect = page.GetByTestId("catalog-filters").Locator("select").First;
+            await Assertions.Expect(capSelect).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await capSelect.SelectOptionAsync("Video");
+
+            // Assert that results table contains fake-video
+            await Assertions.Expect(page.Locator("table tbody tr").First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(page.Locator("table tbody")).ToContainTextAsync("fake-video");
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Admin_book_cache_renders_and_clears_safely()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/book-cache");
+            var header = page.Locator("h1, h2, h3, h4").First;
+            await Assertions.Expect(header).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.Locator(".alert-danger")).ToHaveCountAsync(0);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Admin_server_configuration_saves_and_hot_applies()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/config");
+            await Assertions.Expect(page.GetByTestId("admin-config-masonry")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Find Save & hot-apply button
+            var saveBtn = page.Locator("button", new() { HasText = "Save & hot-apply" });
+            await Assertions.Expect(saveBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(saveBtn).ToBeEnabledAsync();
+
+            await saveBtn.ClickAsync();
+
+            // Success alert surfaces
+            await Assertions.Expect(page.Locator(".alert-success, .alert:has-text('Saved')")).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

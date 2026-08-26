@@ -113,4 +113,74 @@ public class ReviewFlowTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Run_ai_continuity_review_triggers_review_and_completes()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
+                "ReviewAI_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+            await page.GetByTestId("review-tab-review").ClickAsync();
+
+            var autoAllBtn = page.GetByTestId("review-auto-all");
+            await Assertions.Expect(autoAllBtn).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(autoAllBtn).ToBeEnabledAsync();
+
+            await autoAllBtn.ClickAsync();
+
+            // Progress finishes and button re-enables
+            await Assertions.Expect(autoAllBtn).ToBeEnabledAsync(new() { Timeout = 60_000 });
+            // The review either produced a movie report summary or an informative alert
+            var alertOrReport = page.Locator(".alert, .review-report-card, [data-testid='review-movie-report']");
+            await Assertions.Expect(alertOrReport.First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Publish_to_gallery_guidelines_and_incomplete_cut_warning_interactions()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
+                "ReviewPub_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+
+            var shareTab = page.GetByTestId("review-tab-share");
+            await Assertions.Expect(shareTab).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await shareTab.ClickAsync();
+
+            var saveConfirmBtn = page.GetByTestId("review-save-confirm");
+            await Assertions.Expect(saveConfirmBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            // Initially disabled because guidelines are not checked
+            await Assertions.Expect(saveConfirmBtn).ToBeDisabledAsync();
+
+            // Check guidelines
+            var guidelinesCheck = page.Locator("#demoGuidelines");
+            await Assertions.Expect(guidelinesCheck).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await guidelinesCheck.CheckAsync();
+
+            // Button enables
+            await Assertions.Expect(saveConfirmBtn).ToBeEnabledAsync(new() { Timeout = 10_000 });
+
+            // Click Publish
+            await saveConfirmBtn.ClickAsync();
+
+            // If some scenes are missing clips in this test run, incomplete warning is displayed with Proceed/Cancel
+            var warning = page.GetByTestId("review-incomplete-warning");
+            if (await warning.IsVisibleAsync())
+            {
+                var cancelBtn = warning.Locator("button", new() { HasText = "Cancel" });
+                await cancelBtn.ClickAsync();
+                await Assertions.Expect(warning).ToBeHiddenAsync(new() { Timeout = 10_000 });
+            }
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

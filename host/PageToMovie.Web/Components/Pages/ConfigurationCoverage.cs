@@ -26,6 +26,7 @@ public partial class Configuration
         private const string CapImage = "image";
         private const string CapPlanning = "planning";
         private const string CapVision = "vision";
+        private const string CapVideoEdit = "video-edit";
         private const string ModelDisabled = "disabled";
 
         internal string _audioModel = "none";
@@ -57,6 +58,8 @@ public partial class Configuration
 
         internal string _voiceModel = "none";
 
+        internal string _videoEditModel = "none";
+
 
 
         internal void ParseFocusFromUri()
@@ -81,6 +84,7 @@ public partial class Configuration
                 CapVoice or "voice_clone" or "clone" or "tts" => CapVoice,
                 CapReview or "qa" or "video_review" or "quality" => CapReview,
                 CapVideo or "film" => CapVideo,
+                CapVideoEdit or "videoedit" or "video_edit" => CapVideoEdit,
                 CapImage or "portrait" or "characters" => CapImage,
                 CapPlanning or "script" or "chat" or "screenplay" => CapPlanning,
                 CapVision or "ocr" => CapVision,
@@ -114,6 +118,7 @@ public partial class Configuration
                 MakeCoverage(CapImage, "Character portraits", "Image gen", _imageModel, CapImage, required: true),
                 MakeCoverage(CapPlanning, "Script & planning", "Screenplay, cast, shot plan", _planningModel, "chat", required: true),
                 MakeCoverage(CapVision, "Image vision / OCR", "Book pages & image understanding", _visionModel, CapVision, required: true),
+                MakeCoverage(CapVideoEdit, "Video clip edit", "AI text-prompt clip editing", _videoEditModel, CapVideoEdit, required: false),
                 // QA only — missing key must not block book→screenplay or film generation.
                 MakeCoverage(CapReview, "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
                 MakeCoverage(CapMusic, "Background music", "Optional scores", _audioModel, CapAudio, required: false),
@@ -308,6 +313,7 @@ public partial class Configuration
             CapReview => _qualityModel,
             CapMusic => _audioModel,
             CapVoice => _voiceModel,
+            CapVideoEdit => _videoEditModel,
             _ => "",
         };
 
@@ -323,6 +329,7 @@ public partial class Configuration
                 case CapReview: _qualityModel = modelId; break;
                 case CapMusic: _audioModel = modelId; break;
                 case CapVoice: _voiceModel = modelId; break;
+                case CapVideoEdit: _videoEditModel = modelId; break;
             }
         }
 
@@ -336,6 +343,7 @@ public partial class Configuration
             CapReview => S.Catalog._videoReviewModels,
             CapMusic => S.Catalog._audioModels,
             CapVoice => S.Catalog._voiceModels,
+            CapVideoEdit => S.Catalog._videoEditModels,
             _ => Array.Empty<SupportedModelDto>(),
         };
 

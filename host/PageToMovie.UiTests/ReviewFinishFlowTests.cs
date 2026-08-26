@@ -21,7 +21,7 @@ public class ReviewFinishFlowTests
             await PipelineFlow.RunToGeneratedClipsAsync(
                 page, _fx.BaseUrl, "FinishTab_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
-            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+            await page.GetByTestId("nav-review").ClickAsync();
 
             // The embedded Cut editor renders without error on the active Finish tab
             var cutEditor = page.Locator(".cut-editor");
@@ -30,6 +30,29 @@ public class ReviewFinishFlowTests
             // "Save cut" button is present
             var saveCutBtn = page.Locator("button.cut-btn", new() { HasText = "Save cut" });
             await Assertions.Expect(saveCutBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Save_cut_in_embedded_cut_editor_saves_and_shows_feedback()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(
+                page, _fx.BaseUrl, "SaveCut_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            await page.GetByTestId("nav-review").ClickAsync();
+
+            var saveCutBtn = page.Locator("button.cut-btn", new() { HasText = "Save cut" });
+            await Assertions.Expect(saveCutBtn).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await saveCutBtn.ClickAsync();
+
+            // SavedNote appears
+            var okMsg = page.Locator(".cut-ok");
+            await Assertions.Expect(okMsg).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(page.Locator(".cut-error")).ToHaveCountAsync(0);
         }
         finally { await ctx.CloseAsync(); }
     }

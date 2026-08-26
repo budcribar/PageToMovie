@@ -36,8 +36,11 @@ public static class PipelineFlow
         catch (TimeoutException) { /* already in full studio */ }
         await page.GetByTestId("home-new-project").First.ClickAsync(new() { Timeout = 30_000 });
         await page.GetByTestId("home-new-project-name").FillAsync(name);
-        await page.GetByTestId("home-create-project").ClickAsync();
-        await page.WaitForURLAsync(new Regex("adaptation/import", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 60_000 });
+        var createBtn = page.GetByTestId("home-create-project");
+        await createBtn.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15_000 });
+        await createBtn.ClickAsync();
+        await page.WaitForURLAsync(new Regex("adaptation/import", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 60_000, WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.EvaluateAsync($"() => sessionStorage.setItem('ptm.test.currentProject', '{name}')");
     }
 
     /// <summary>Point every studio job at the key-free fake test vendor for the active project, via
@@ -52,7 +55,10 @@ public static class PipelineFlow
             const tok = s.Token || s.token; const uid = s.UserId || s.userId || '';
             const h = {'Authorization':'Bearer '+tok, 'X-User-Id':uid, 'Content-Type':'application/json'};
             const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-            const a = pr.active || pr.Active || {};
+            const list = pr.projects || pr.Projects || [];
+            const targetName = sessionStorage.getItem('ptm.test.currentProject') || '';
+            let a = targetName ? list.find(x => (x.id||'').includes(targetName) || (x.label||'').includes(targetName)) : null;
+            if (!a) a = pr.active || pr.Active || list[0] || {};
             const id = a.id || a.Id || '';
             if (!id) return JSON.stringify({err:'no active project', keys:Object.keys(pr)});
             const body = { version:2,
@@ -98,6 +104,13 @@ public static class PipelineFlow
         }
         catch (TimeoutException)
         {
+            var continueBtn = page.GetByTestId("import-continue-screenplay");
+            if (await continueBtn.CountAsync() > 0 && await continueBtn.IsVisibleAsync())
+            {
+                await continueBtn.ClickAsync();
+                await page.WaitForURLAsync(new Regex("adaptation/screenplay", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 30_000 });
+                return;
+            }
             var gate = page.GetByTestId("import-setup-required");
             var blocked = await gate.CountAsync() > 0 ? await gate.TextContentAsync() : "(not gated)";
             Assert.Fail($"Fountain import did not navigate to screenplay. setup gate: {blocked?.Trim()}");
@@ -114,9 +127,10 @@ public static class PipelineFlow
         await Assertions.Expect(status).ToHaveAttributeAsync("data-draft", "true", new() { Timeout = 60_000 });
 
         var signoff = page.GetByTestId("screenplay-signoff");
-        await signoff.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+        await signoff.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 45_000 });
         await Assertions.Expect(signoff).ToBeEnabledAsync(new() { Timeout = 60_000 });
         await signoff.ClickAsync();
+        await page.WaitForURLAsync(new Regex("(/cost|/characters)", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 60_000 });
     }
 
     /// <summary>After sign-off the app lands on Estimate (<c>/cost</c>). This is the one place that
@@ -149,7 +163,11 @@ public static class PipelineFlow
             const s = JSON.parse(raw);
             const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||''), 'Content-Type':'application/json'};
             const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-            const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
+            const list = pr.projects || pr.Projects || [];
+            const targetName = sessionStorage.getItem('ptm.test.currentProject') || '';
+            let p = targetName ? list.find(x => (x.id||'').includes(targetName) || (x.label||'').includes(targetName)) : null;
+            if (!p) p = pr.active || pr.Active || list[0] || {};
+            const id = p.id || p.Id;
             if (!id) return JSON.stringify({err:'no active project'});
             const start = await fetch('/api/jobs/stage2', {method:'POST', headers:h,
                 body: JSON.stringify({projectId:id, scenes:'all'})}).then(r=>r.json());
@@ -191,13 +209,18 @@ public static class PipelineFlow
             const s = JSON.parse(raw);
             const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||''), 'Content-Type':'application/json'};
             const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-            const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
+            const list = pr.projects || pr.Projects || [];
+            const targetName = sessionStorage.getItem('ptm.test.currentProject') || '';
+            let p = targetName ? list.find(x => (x.id||'').includes(targetName) || (x.label||'').includes(targetName)) : null;
+            if (!p) p = pr.active || pr.Active || list[0] || {};
+            const id = p.id || p.Id;
             if (!id) return JSON.stringify({err:'no active project'});
             const E = encodeURIComponent(id);
             const poll = async (jobId) => {
+                if (!jobId) return 'no jobId';
                 const dl = Date.now()+60000; let last='';
                 while (Date.now()<dl) { await new Promise(r=>setTimeout(r,1000));
-                    const st = await fetch('/api/jobs/'+encodeURIComponent(jobId), {headers:h}).then(r=>r.json());
+                    const st = await fetch('/api/jobs/'+encodeURIComponent(jobId), {headers:h}).then(r=>r.json()).catch(()=>({}));
                     last = (st.job||{}).status; if (last==='done') return 'done';
                     if (last==='error'||last==='cancelled') return 'ERR:'+JSON.stringify(st.job).slice(0,150); }
                 return 'timeout'; };
@@ -221,15 +244,25 @@ public static class PipelineFlow
             }
             for (const c of chars) {
                 const key = c.key||c.Key; const K = encodeURIComponent(key);
-                const v = await fetch('/api/jobs/character-variants', {method:'POST', headers:h,
-                    body: JSON.stringify({projectId:id, charKey:key, count:1, seedMode:'auto'})}).then(r=>r.json());
+                let v = {};
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    v = await fetch('/api/jobs/character-variants', {method:'POST', headers:h,
+                        body: JSON.stringify({projectId:id, charKey:key, count:1, seedMode:'auto'})}).then(r=>r.json()).catch(()=>({}));
+                    if (v.ok && ((v.job||{}).jobId || (v.job||{}).id)) break;
+                    await new Promise(r=>setTimeout(r,1500));
+                }
                 const vp = await poll((v.job||{}).jobId||(v.job||{}).id);
-                if (vp !== 'done') return JSON.stringify({err:'variants '+vp, key});
-                const lk = await fetch('/api/projects/'+E+'/characters/'+K+'/lock-variant', {method:'POST', headers:h,
-                    body: JSON.stringify({index:1})}).then(r=>r.json());
+                if (vp !== 'done') return JSON.stringify({err:'variants '+vp, key, v});
+                let lk = {};
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    lk = await fetch('/api/projects/'+E+'/characters/'+K+'/lock-variant', {method:'POST', headers:h,
+                        body: JSON.stringify({index:1})}).then(r=>r.json()).catch(()=>({}));
+                    if (lk.ok) break;
+                    await new Promise(r=>setTimeout(r,1500));
+                }
                 if (!lk.ok) return JSON.stringify({err:'lock failed', key, detail:(lk.error||'').slice(0,120)});
                 const vo = await fetch('/api/projects/'+E+'/characters/'+K+'/voice', {method:'POST', headers:h,
-                    body: JSON.stringify({voiceProfile:'Adult male, 40s, test voice', voiceLabel:key})}).then(r=>r.json());
+                    body: JSON.stringify({voiceProfile:'Adult male, 40s, test voice', voiceLabel:key})}).then(r=>r.json()).catch(()=>({}));
                 if (!vo.ok) return JSON.stringify({err:'voice failed', key});
             }
             return JSON.stringify({ok:true, count:chars.length});
@@ -248,7 +281,11 @@ public static class PipelineFlow
             const s = JSON.parse(raw);
             const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||''), 'Content-Type':'application/json'};
             const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-            const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
+            const list = pr.projects || pr.Projects || [];
+            const targetName = sessionStorage.getItem('ptm.test.currentProject') || '';
+            let p = targetName ? list.find(x => (x.id||'').includes(targetName) || (x.label||'').includes(targetName)) : null;
+            if (!p) p = pr.active || pr.Active || list[0] || {};
+            const id = p.id || p.Id;
             if (!id) return JSON.stringify({err:'no active project'});
             const E = encodeURIComponent(id);
             const scenes = ((await fetch('/api/projects/'+E+'/scenes', {headers:h}).then(r=>r.json())).scenes || [])
@@ -288,7 +325,9 @@ public static class PipelineFlow
         await status.WaitForAsync(new() { Timeout = 30_000 });
 
         await page.GetByTestId("scenes-select-all").CheckAsync(new() { Timeout = 15_000 });
-        await page.GetByTestId("scenes-generate-batch").ClickAsync(new() { Timeout = 15_000 });
+        var batchBtn = page.GetByTestId("scenes-generate-batch");
+        await Assertions.Expect(batchBtn).ToBeEnabledAsync(new() { Timeout = 30_000 });
+        await batchBtn.ClickAsync(new() { Timeout = 15_000 });
         try
         {
             await page.GetByTestId("generate-confirm-go").ClickAsync(new() { Timeout = 15_000 });

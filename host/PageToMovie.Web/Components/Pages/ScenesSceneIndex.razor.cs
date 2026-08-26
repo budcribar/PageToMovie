@@ -155,6 +155,31 @@ public partial class ScenesSceneIndex : PageSliceComponent
         return nextInFilm > 0 && nextInFilm == nextVisible;
     }
 
+    internal bool AreAllVisibleSelected()
+    {
+        var visible = FilteredScenes.ToList();
+        var list = ListState ?? Host.List;
+        return visible.Count > 0 && visible.All(s => list._selected.Contains(s.SceneNumber));
+    }
+
+    internal void ToggleSelectAllShown(bool on)
+    {
+        var visible = FilteredScenes.ToList();
+        var list = ListState ?? Host.List;
+        if (on)
+        {
+            foreach (var s in visible)
+                list._selected.Add(s.SceneNumber);
+            list._selectionMode = list._selected.Count == (list._scenes?.Count ?? 0) ? "all" : "";
+        }
+        else
+        {
+            foreach (var s in visible)
+                list._selected.Remove(s.SceneNumber);
+            list._selectionMode = "";
+        }
+    }
+
     private static string ItemTitle(SceneSummary s)
     {
         var dur = FormatSceneDuration(s);
