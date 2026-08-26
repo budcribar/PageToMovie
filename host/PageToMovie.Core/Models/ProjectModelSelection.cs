@@ -16,6 +16,7 @@ public static class ProjectModelSelection
     public const string QualityConfigKey = "quality_model_name";
     public const string AudioConfigKey = "audio_model_name";
     public const string VoiceConfigKey = "voice_model_name";
+    public const string VideoEditConfigKey = "video_edit_model_name";
 
     /// <summary>
     /// Read a configured model id from project config. Empty if unset or "none"/"disabled".
@@ -159,6 +160,13 @@ public static class ProjectModelSelection
 
     public static string RequireImage(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Image generation") =>
         Require(cfg, ModelCapability.Image, jobLabel, ImageConfigKey);
+
+    /// <summary>
+    /// Project-configured clip-edit model. Optional slot, so an unset value raises the operator
+    /// "choose a model" error — never <see cref="SupportedModelCatalog.DefaultModelIdForCapability(string)"/>.
+    /// </summary>
+    public static string RequireVideoEdit(IReadOnlyDictionary<string, JsonElement>? cfg, string jobLabel = "Video clip edit") =>
+        Require(cfg, ModelCapability.VideoEdit, jobLabel, VideoEditConfigKey);
 
     /// <summary>
     /// Require an explicit model id argument (caller already chose it) that exists in the catalog.

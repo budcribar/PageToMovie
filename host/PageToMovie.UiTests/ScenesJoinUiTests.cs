@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Playwright;
 
 namespace PageToMovie.UiTests;
@@ -27,31 +28,47 @@ public class ScenesJoinUiTests
             await Assertions.Expect(joinRows.First).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             // Select "dissolve" transition on the first join
-            var kindSelect = joinRows.First.GetByTestId("scene-join-kind");
-            await kindSelect.SelectOptionAsync("dissolve");
+            await joinRows.First.GetByTestId("scene-join-kind").SelectOptionAsync("dissolve");
 
-            // Type a card note
+            // Type a card note. Both controls save on "change", so the edit has to be committed by
+            // moving focus off the field — filling alone only raises "input".
             var cardInput = joinRows.First.GetByTestId("scene-join-card");
             await cardInput.FillAsync("ONE YEAR LATER");
-            await cardInput.BlurAsync();
+            await cardInput.PressAsync("Tab");
 
-            // Navigate to screenplay and verify the transition + card note exist in the draft
-            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/adaptation/screenplay");
-            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
-
-            var draftText = await page.EvaluateAsync<string>(@"async () => {
-                const raw = sessionStorage.getItem('PageToMovie.admin.session');
-                const s = JSON.parse(raw);
-                const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
-                const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-                const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id;
-                const sp = await fetch('/api/projects/'+encodeURIComponent(id)+'/screenplay', {headers:h}).then(r=>r.json());
-                return (sp.text||sp.Text||'');
-            }");
+            // Each edit writes the screenplay draft in the background, so poll for the result
+            // instead of reading once — a single read races the write and passes only by luck.
+            var projectId = await Ui.ServerActiveProjectIdAsync(page);
+            var draftText = await WaitForDraftAsync(
+                page, projectId!, "DISSOLVE TO:", "[[CARD: ONE YEAR LATER]]");
 
             Assert.Contains("DISSOLVE TO:", draftText);
             Assert.Contains("[[CARD: ONE YEAR LATER]]", draftText);
+
+            // The screenplay page still opens on that draft.
+            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/adaptation/screenplay");
+            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor"))
+                .ToBeVisibleAsync(new() { Timeout = 60_000 });
         }
         finally { await ctx.CloseAsync(); }
+    }
+
+    /// <summary>Read the screenplay draft until it carries every expected marker, or time out.</summary>
+    private static async Task<string> WaitForDraftAsync(
+        IPage page, string projectId, params string[] expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var text = "";
+        while (true)
+        {
+            var raw = await Ui.ApiFetchAsync(page, $"/api/projects/{Uri.EscapeDataString(projectId)}/screenplay");
+            using (var doc = JsonDocument.Parse(raw))
+            {
+                text = doc.RootElement.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+            }
+            if (expected.All(text.Contains) || DateTime.UtcNow >= deadline)
+                return text;
+            await page.WaitForTimeoutAsync(500);
+        }
     }
 }

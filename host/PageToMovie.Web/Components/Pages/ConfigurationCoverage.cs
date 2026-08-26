@@ -23,6 +23,7 @@ public partial class Configuration
         private const string CapVoice = "voice";
         private const string CapReview = "review";
         private const string CapVideo = "video";
+        private const string CapVideoEdit = "video-edit";
         private const string CapImage = "image";
         private const string CapPlanning = "planning";
         private const string CapVision = "vision";
@@ -55,6 +56,8 @@ public partial class Configuration
 
         internal string _visionModel = "";
 
+        internal string _videoEditModel = "none";
+
         internal string _voiceModel = "none";
 
 
@@ -80,6 +83,7 @@ public partial class Configuration
                 CapMusic or CapAudio or "bgm" => CapMusic,
                 CapVoice or "voice_clone" or "clone" or "tts" => CapVoice,
                 CapReview or "qa" or "video_review" or "quality" => CapReview,
+                CapVideoEdit or "edit" or "clip_edit" => CapVideoEdit,
                 CapVideo or "film" => CapVideo,
                 CapImage or "portrait" or "characters" => CapImage,
                 CapPlanning or "script" or "chat" or "screenplay" => CapPlanning,
@@ -118,6 +122,7 @@ public partial class Configuration
                 MakeCoverage(CapReview, "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
                 MakeCoverage(CapMusic, "Background music", "Optional scores", _audioModel, CapAudio, required: false),
                 MakeCoverage(CapVoice, "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, CapVoice, required: false),
+                MakeCoverage(CapVideoEdit, "Clip editing", "Optional: re-render a clip from a written instruction", _videoEditModel, nameof(ModelCapability.VideoEdit), required: false),
             };
             return rows;
         }
@@ -192,15 +197,11 @@ public partial class Configuration
                 return ConfigurationCatalog.ModelProviderId(m);
 
             // Server-side catalog (if WASM hydrated SupportedModelCatalog).
-            var cap = capability.ToLowerInvariant() switch
-            {
-                CapVideo => ModelCapability.Video,
-                CapImage => ModelCapability.Image,
-                CapVision => ModelCapability.Vision,
-                CapAudio => ModelCapability.Audio,
-                CapVoice => ModelCapability.Voice,
-                _ => ModelCapability.Chat,
-            };
+            // Capability ids are the catalog's own ("video", "vision", "video-edit", …) — parse
+            // them into the enum instead of maintaining a per-capability ladder here.
+            var cap = Enum.TryParse<ModelCapability>(capability.Replace("-", ""), ignoreCase: true, out var parsed)
+                ? parsed
+                : ModelCapability.Chat;
             var entry = SupportedModelCatalog.Find(modelId, cap) ?? SupportedModelCatalog.Find(modelId);
             if (entry is null || !entry.Enabled)
                 return ""; // not in catalog → not real
@@ -308,6 +309,7 @@ public partial class Configuration
             CapReview => _qualityModel,
             CapMusic => _audioModel,
             CapVoice => _voiceModel,
+            CapVideoEdit => _videoEditModel,
             _ => "",
         };
 
@@ -323,6 +325,7 @@ public partial class Configuration
                 case CapReview: _qualityModel = modelId; break;
                 case CapMusic: _audioModel = modelId; break;
                 case CapVoice: _voiceModel = modelId; break;
+                case CapVideoEdit: _videoEditModel = modelId; break;
             }
         }
 
@@ -336,6 +339,7 @@ public partial class Configuration
             CapReview => S.Catalog._videoReviewModels,
             CapMusic => S.Catalog._audioModels,
             CapVoice => S.Catalog._voiceModels,
+            CapVideoEdit => S.Catalog._videoEditModels,
             _ => Array.Empty<SupportedModelDto>(),
         };
 
@@ -371,7 +375,7 @@ public partial class Configuration
                 var pick = models.FirstOrDefault(m => m.IsVoiceCloneStep) ?? models.FirstOrDefault();
                 if (pick is not null)
                     SetCoverageModelId(coverageId, pick.Id);
-                else if (coverageId is CapMusic or CapVoice)
+                else if (coverageId is CapMusic or CapVoice or CapVideoEdit)
                     SetCoverageModelId(coverageId, "none");
             }
 
@@ -527,6 +531,7 @@ public partial class Configuration
             CapReview => "chat",
             CapMusic => CapAudio,
             CapVoice => CapVoice,
+            CapVideoEdit => nameof(ModelCapability.VideoEdit),
             _ => "chat",
         };
 
@@ -588,19 +593,10 @@ public partial class Configuration
 
         internal async Task TurnOffOptionalAsync(string coverageId)
         {
+            // Every optional slot turns off the same way — by storing "none" in its own field.
+            SetCoverageModelId(coverageId, "none");
             if (coverageId == CapMusic)
-            {
-                _audioModel = "none";
                 _enableBackgroundMusic = false;
-            }
-            else if (coverageId == CapVoice)
-            {
-                _voiceModel = "none";
-            }
-            else if (coverageId == CapReview)
-            {
-                _qualityModel = "none";
-            }
             S.Keys.CancelAddKey();
             if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
             {

@@ -65,6 +65,11 @@ public static class ProjectCatalogModelHeal
             ModelCapability.Voice,
             "voice",
             [ProjectModelSelection.VoiceConfigKey]);
+        ValidateOptional(
+            cfg,
+            ModelCapability.VideoEdit,
+            "video-edit",
+            [ProjectModelSelection.VideoEditConfigKey]);
         return false;
     }
 

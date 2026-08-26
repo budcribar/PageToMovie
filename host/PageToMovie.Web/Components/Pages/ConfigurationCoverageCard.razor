@@ -55,7 +55,7 @@
                             var providers = Cov.ProvidersForCoverage(c.Id).ToList();
                             var providerModels = Cov.ModelsForCoverageProvider(c.Id, c.ProviderId).ToList();
                             var editing = string.Equals(Cov._coverageEditId, c.Id, StringComparison.OrdinalIgnoreCase);
-                            var isOptionalJob = c.Id is "music" or "voice" or "review";
+                            var isOptionalJob = !c.Required;
                             <tr @key="@($"cov-row-{c.Id}")" class="@(c.OptionalOff ? "opacity-75" : "")" data-testid="coverage-@c.Id">
                                 <td>
                                     <div class="fw-semibold small">@c.Label</div>

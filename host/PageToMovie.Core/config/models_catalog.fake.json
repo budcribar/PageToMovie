@@ -1455,12 +1455,12 @@
       "endpointPath": "videos/edits",
       "requiredEnvKeys": [],
       "enabled": true,
-      "supportsVideoContinue": true,
       "minClipDurationSeconds": 1,
       "maxClipDurationSeconds": 15,
       "absMaxClipDurationSeconds": 15,
+      "maxEditInputDurationSeconds": 8.7,
       "maxPromptLength": 4000,
-      "notes": "Fake video edit model.",
+      "notes": "Fake video edit model. Mirrors the real VideoEdit row's input-duration cap so the fakes exercise the same server-side gate.",
       "lastVerifiedAt": "2026-08-07",
       "pricingLastReviewedAt": "2026-08-07"
     }

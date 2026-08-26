@@ -135,6 +135,7 @@ public partial class Configuration
             S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
             S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
             S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
+            S.Coverage._videoEditModel = GetStr(ProjectModelSelection.VideoEditConfigKey, S.Coverage._videoEditModel);
         }
 
         private void ApplyPipelineFields()
@@ -218,6 +219,7 @@ public partial class Configuration
                 ["quality_model_name"] = S.Coverage._qualityModel,
                 ["audio_model_name"] = S.Coverage._audioModel,
                 ["voice_model_name"] = S.Coverage._voiceModel,
+                [ProjectModelSelection.VideoEditConfigKey] = S.Coverage._videoEditModel,
                 ["enable_background_music"] = S.Coverage._enableBackgroundMusic,
                 ["background_music_volume_percent"] = S.Coverage._backgroundMusicVolumePercent,
                 ["model_selections"] = new Dictionary<string, string>
@@ -228,6 +230,7 @@ public partial class Configuration
                     ["vision"] = S.Coverage._visionModel,
                     ["video-review"] = S.Coverage._qualityModel,
                     ["audio"] = S.Coverage._audioModel,
+                    ["video-edit"] = S.Coverage._videoEditModel,
                 },
                 ["aspect_ratio"] = _aspect,
                 ["resolution"] = _resolution,

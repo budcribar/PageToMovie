@@ -2425,20 +2425,18 @@ public sealed class FilmJobService
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             var activeMp4Path = ResolveVideoEditSourcePath(projectId, videoDir, req.Scene, req.Clip);
 
+            // Caller's explicit pick wins; otherwise the project's own Settings slot. Never the
+            // catalog default — an unchosen model must not spend money on the operator's behalf.
             string editModelId;
             if (!string.IsNullOrWhiteSpace(req.Model))
             {
-                editModelId = ProjectModelSelection.RequireExplicit(req.Model, ModelCapability.VideoEdit, "video-edit");
+                editModelId = ProjectModelSelection.RequireExplicit(
+                    req.Model, ModelCapability.VideoEdit, "Video clip edit");
             }
             else
             {
                 var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-                var configuredId = ProjectModelSelection.TryGet(cfg, "video_edit_model_name", "video-edit");
-                if (string.IsNullOrWhiteSpace(configuredId))
-                    configuredId = SupportedModelCatalog.DefaultModelIdForCapability("video-edit");
-                if (string.IsNullOrWhiteSpace(configuredId))
-                    throw new InvalidOperationException(ProjectModelSelection.FormatMissingModel("video-edit"));
-                editModelId = configuredId;
+                editModelId = ProjectModelSelection.RequireVideoEdit(cfg);
             }
             var entry = SupportedModelCatalog.Find(editModelId, ModelCapability.VideoEdit);
             if (entry is null || !entry.Enabled)

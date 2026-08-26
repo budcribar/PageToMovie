@@ -26,6 +26,8 @@ public partial class Configuration
 
         internal List<SupportedModelDto> _planningModels = new();
 
+        internal List<SupportedModelDto> _videoEditModels = new();
+
         internal List<SupportedModelDto> _videoModels = new();
 
         internal List<SupportedModelDto> _videoReviewModels = new();
@@ -57,6 +59,7 @@ public partial class Configuration
         {
             _allModels = new();
             _videoModels = new();
+            _videoEditModels = new();
             _imageModels = new();
             _planningModels = new();
             _visionModels = new();
@@ -121,6 +124,7 @@ public partial class Configuration
         private void AssignModelsByCapability()
         {
             _videoModels = _allModels.Where(m => MatchesCapability(m, "video")).ToList();
+            _videoEditModels = _allModels.Where(m => MatchesCapability(m, nameof(ModelCapability.VideoEdit))).ToList();
             _imageModels = _allModels.Where(m => MatchesCapability(m, "image")).ToList();
             _planningModels = _allModels.Where(m => MatchesCapability(m, "chat")).ToList();
             _visionModels = _allModels.Where(m => MatchesCapability(m, "vision")).ToList();
@@ -144,6 +148,8 @@ public partial class Configuration
                 .ToList();
             if (!_voiceModels.Any(m => m.Id == "none"))
                 _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no voice clone)", Provider = "None", ProviderId = "none" });
+            if (!_videoEditModels.Any(m => m.Id == "none"))
+                _videoEditModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no clip editing)", Provider = "None", ProviderId = "none" });
         }
 
 
@@ -157,6 +163,8 @@ public partial class Configuration
                 S.Coverage._audioModel = "none";
             if (string.IsNullOrWhiteSpace(S.Coverage._voiceModel))
                 S.Coverage._voiceModel = "none";
+            if (string.IsNullOrWhiteSpace(S.Coverage._videoEditModel))
+                S.Coverage._videoEditModel = "none";
         }
 
 

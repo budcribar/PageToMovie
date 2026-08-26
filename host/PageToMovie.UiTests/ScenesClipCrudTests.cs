@@ -88,6 +88,8 @@ public class ScenesClipCrudTests
             // Select clip 1 in scene 1
             var clip1Checkbox = page.GetByTestId("clip-select-1");
             await Assertions.Expect(clip1Checkbox).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            var sceneClipRows = page.Locator("[data-testid^='clip-expander-']");
+            var sceneClipsBefore = await sceneClipRows.CountAsync();
             await clip1Checkbox.CheckAsync();
 
             // Open scene ⋯ menu
@@ -97,15 +99,28 @@ public class ScenesClipCrudTests
             await Assertions.Expect(deleteSelectedBtn).ToBeEnabledAsync();
             await deleteSelectedBtn.ClickAsync();
 
-            // Confirm delete modal
-            var confirmBtn = page.Locator("[data-testid='clip-delete-confirm'], [data-testid='clips-delete-confirm']");
+            // One checked clip routes to the single-clip confirm.
+            var confirmBtn = page.GetByTestId("clip-delete-confirm");
             await Assertions.Expect(confirmBtn).ToBeVisibleAsync(new() { Timeout = 10_000 });
+
+            // The delete preview lands after the modal opens; when the clip maps to screenplay
+            // lines it ticks "take it out of the screenplay" on, which widens the delete to the
+            // clip's whole story beat. Give it a moment and clear the box if it appears, so this
+            // asserts a single-clip delete either way instead of racing the preview.
+            var alsoScreenplay = page.Locator("#clip-delete-screenplay");
+            try { await alsoScreenplay.WaitForAsync(new() { Timeout = 5_000 }); }
+            catch (TimeoutException) { /* preview reports no screenplay line for this clip */ }
+            if (await alsoScreenplay.CountAsync() > 0)
+                await alsoScreenplay.UncheckAsync();
+
             await confirmBtn.ClickAsync();
             await Assertions.Expect(confirmBtn).ToBeHiddenAsync(new() { Timeout = 15_000 });
 
-            // Clip count decrements immediately
+            // Exactly the checked clip went, and the row for it is gone from the scene.
             await Assertions.Expect(status).ToHaveAttributeAsync(
                 "data-clip-count", (clipCountBefore - 1).ToString(), new() { Timeout = 15_000 });
+            await Assertions.Expect(sceneClipRows)
+                .ToHaveCountAsync(sceneClipsBefore - 1, new() { Timeout = 15_000 });
         }
         finally { await ctx.CloseAsync(); }
     }

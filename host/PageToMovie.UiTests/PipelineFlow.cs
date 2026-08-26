@@ -61,6 +61,7 @@ public static class PipelineFlow
                 model_name:'fake-video', image_model_name:'fake-image', planning_model_name:'fake-script',
                 vision_model_name:'fake-vision', quality_model_name:'fake-vision',
                 audio_model_name:'fake-music', voice_model_name:'fake-voice',
+                video_edit_model_name:'fake-video-edit',
                 model_selections:{video:'fake-video',image:'fake-image',chat:'fake-script',vision:'fake-vision',audio:'fake-music','video-edit':'fake-video-edit'} };
             // The import page (where CreateFreshProjectAsync leaves us) may still be finishing its own
             // config write; a PUT that lands before it gets overwritten. Verify and retry a few times.

@@ -302,6 +302,33 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         Assert.Contains("no model selected", error ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The UI's "AI Edit Video" button sends no model id, so an omitted model falls back to the
+    /// project's own Settings slot — the operator's choice — and still never to the catalog default.
+    /// </summary>
+    [Fact]
+    public async Task Edit_without_model_uses_the_project_configured_slot()
+    {
+        SeedActiveClip(scene: 1, clip: 1, durationSeconds: 4.0);
+        var store = _factory.Services.GetRequiredService<ProjectStore>();
+        var editModel = SupportedModelCatalog.ForCapability(ModelCapability.VideoEdit).First().Id;
+        await store.SaveConfigAsync(_projectId, JsonSerializer.SerializeToElement(new Dictionary<string, string>
+        {
+            [ProjectModelSelection.VideoEditConfigKey] = editModel,
+        }));
+
+        var (status, error, _) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
+        {
+            projectId = _projectId,
+            scene = 1,
+            clip = 1,
+            prompt = "change her jacket to red",
+        });
+
+        Assert.Equal("done", status);
+        Assert.Null(error);
+    }
+
     [Fact]
     public async Task Edit_of_an_is_credits_clip_still_writes_a_numbered_take()
     {

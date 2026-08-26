@@ -347,8 +347,9 @@ public sealed class StartVideoEditRequest
     public int Clip { get; set; }
     public string Prompt { get; set; } = "";
     /// <summary>
-    /// Catalog VideoEdit model id. Empty or unknown fails — do not fall back to
-    /// <c>capabilities[].defaultModelId</c>.
+    /// Catalog VideoEdit model id. Empty falls back to the project's configured
+    /// <c>video_edit_model_name</c> slot (Settings → Studio coverage); an unset slot or an
+    /// unknown id fails — never <c>capabilities[].defaultModelId</c>.
     /// </summary>
     public string? Model { get; set; }
 }

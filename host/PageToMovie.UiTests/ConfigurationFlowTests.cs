@@ -1,4 +1,5 @@
 using Microsoft.Playwright;
+using PageToMovie.Core.Models;
 
 namespace PageToMovie.UiTests;
 
@@ -102,6 +103,47 @@ public class ConfigurationFlowTests
             // so an unscoped role lookup is a strict-mode violation waiting to happen.
             await musicRow.GetByRole(AriaRole.Button, new() { Name = "Turn off" }).ClickAsync();
             await Assertions.Expect(musicRow.Locator(".badge")).ToHaveTextAsync("Off", new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    /// <summary>
+    /// Clip editing is its own coverage slot, and the picker has to land on the exact config key
+    /// the edit job reads (<c>video_edit_model_name</c>) — the job refuses to run on an unchosen
+    /// model, so a picker writing anywhere else leaves the feature permanently unavailable.
+    /// </summary>
+    [Fact]
+    public async Task Clip_editing_coverage_choice_persists_to_the_video_edit_model_key()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl,
+                "ConfigEdit_" + Guid.NewGuid().ToString("N")[..6]);
+
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Ui.OpenConfigSectionAsync(page, "config-section-coverage");
+            var editRow = page.GetByTestId("coverage-video-edit");
+            await Assertions.Expect(editRow).ToBeVisibleAsync(new() { Timeout = 20_000 });
+
+            // Optional slot: a fresh project starts with clip editing off.
+            await Assertions.Expect(editRow).ToContainTextAsync("Off");
+
+            await page.GetByTestId("coverage-provider-video-edit")
+                .SelectOptionAsync(new SelectOptionValue { Value = "fake" });
+            await page.GetByTestId("coverage-model-video-edit").SelectOptionAsync("fake-video-edit");
+            await Assertions.Expect(editRow.Locator(".badge"))
+                .ToHaveTextAsync("Ready", new() { Timeout = 15_000 });
+
+            var projectId = await Ui.ServerActiveProjectIdAsync(page);
+            var cfg = await Ui.ApiFetchAsync(
+                page, $"/api/projects/{Uri.EscapeDataString(projectId!)}/config");
+            using var doc = System.Text.Json.JsonDocument.Parse(cfg);
+            Assert.True(
+                doc.RootElement.GetProperty("config")
+                    .TryGetProperty(ProjectModelSelection.VideoEditConfigKey, out var stored),
+                $"config has no {ProjectModelSelection.VideoEditConfigKey}: {cfg}");
+            Assert.Equal("fake-video-edit", stored.GetString());
         }
         finally { await ctx.CloseAsync(); }
     }
