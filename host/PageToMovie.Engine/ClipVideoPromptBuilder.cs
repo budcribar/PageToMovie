@@ -628,6 +628,7 @@ public static class ClipVideoPromptBuilder
         v = CastCountRegex.Replace(v, "");
         v = NoExtraPeopleRegex.Replace(v, "");
         v = LegacySpeechBlockRegex.Replace(v, "");
+        v = LegacySoundBlockRegex.Replace(v, "");
         v = StripFountainLeakage(v);
         // Blueprint may embed lip-sync / says quotes with crushed dashes — speech-safe for gen
         v = SanitizeSpokenQuotesInVisual(v);
@@ -768,6 +769,18 @@ public static class ClipVideoPromptBuilder
     /// </summary>
     private static readonly Regex LegacySpeechBlockRegex = new(
         $@"<{PromptFieldTags.Speech}>.*?</{PromptFieldTags.Speech}>\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>
+    /// A <c>&lt;Sound&gt;</c> block baked into an older plan's <c>visual_prompt</c>. Stage 2 no
+    /// longer emits one — the same cue already reaches the model as <c>&lt;Foley&gt;</c>/
+    /// <c>&lt;Score&gt;</c> inside the AUDIO block, built from <c>audio_payload</c>. Left in place
+    /// it asks for the foley twice against a single request for the narration, and the foley wins
+    /// the opening moment: adding this block alone to an otherwise-working extend made the narrator
+    /// drop the line's first word. Stripped here so existing plans stop losing words before they
+    /// are replanned.
+    /// </summary>
+    private static readonly Regex LegacySoundBlockRegex = new(
+        $@"<{PromptFieldTags.Sound}>.*?</{PromptFieldTags.Sound}>\s*",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex UnicodeDashesRegex = new(@"\s*[\u2012\u2013\u2014\u2015]\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex DoubleHyphenRegex = new(@"\s*--\s*", RegexOptions.Compiled, CommonRegex.Timeout);

@@ -52,13 +52,20 @@ public class ClipPromptEditorMarkupTests
     /// editing it never changed a word of what was spoken.
     /// </summary>
     [Fact]
-    public void Legacy_speech_block_is_not_a_second_place_to_edit_the_line()
+    /// <remarks>
+    /// The same holds for a legacy <c>&lt;Sound&gt;</c> block: <c>audio_payload</c> owns the sound
+    /// and the AUDIO block delivers it, so a box for it would edit nothing — and leaving the block
+    /// in the prompt costs a spoken word, not just budget.
+    /// </remarks>
+    public void Legacy_speech_and_sound_blocks_are_not_a_second_place_to_edit()
     {
         var razor = ReadPage("Scenes.ClipFieldEditor.razor");
         Assert.Contains("IsEditableSection(section)", razor, StringComparison.Ordinal);
 
         var code = ReadPage("Scenes.ClipFieldEditor.razor.cs");
-        Assert.Contains("section.Field != ClipPromptField.Speech", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "section.Field is not (ClipPromptField.Speech or ClipPromptField.Sound)",
+            code, StringComparison.Ordinal);
         // The dialogue box stays — it is where the spoken line is read from and written back.
         Assert.Contains("data-testid=\"clip-editor-dialogue\"", razor, StringComparison.Ordinal);
         Assert.Contains("@bind=\"ed.Dialogue\"", razor, StringComparison.Ordinal);

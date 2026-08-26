@@ -123,8 +123,10 @@ public class SpeechDuplicationTests : IDisposable
         Assert.DoesNotContain("OFF-CAMERA VOICEOVER Character_Mary says", built.Prompt, StringComparison.Ordinal);
         // Everything around the dropped block is still there — this is a strip, not a truncation.
         Assert.Contains("MARY stands by the door", built.Prompt, StringComparison.Ordinal);
-        Assert.Contains("wooden desks scrape", built.Prompt, StringComparison.Ordinal);
         Assert.Contains("INT. SCHOOLROOM - DAY", built.Prompt, StringComparison.Ordinal);
+        // The fixture's legacy <Sound> block goes too, for the same reason and by the same strip:
+        // audio_payload already asks for that sound once. See SoundDuplicationTests.
+        Assert.DoesNotContain("wooden desks scrape", built.Prompt, StringComparison.Ordinal);
     }
 
     /// <summary>The strip is the tag's, not the words' — an unrelated quote in the action stays.</summary>
