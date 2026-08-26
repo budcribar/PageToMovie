@@ -15,8 +15,18 @@ public partial class Locations : IDisposable
     private bool _showUnusedInPlan = false;
     private string? _selectedKey;
 
-    private IEnumerable<LocationSummary> LocationsForUi =>
-        _locations.Where(l => _showUnusedInPlan || l.UsedInPlan);
+    /// <summary>
+    /// Plan locations only, unless the operator asked for everything — or the plan claims none at
+    /// all, where filtering would leave the page blank with no hint that locations exist.
+    /// </summary>
+    private IEnumerable<LocationSummary> LocationsForUi
+    {
+        get
+        {
+            var showAll = _showUnusedInPlan || UsedInPlanCount == 0;
+            return showAll ? _locations : _locations.Where(l => l.UsedInPlan);
+        }
+    }
 
     private int UnusedInPlanCount =>
         _locations.Count(l => !l.UsedInPlan);

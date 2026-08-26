@@ -244,6 +244,23 @@ public static class Ui
     }
 
     /// <summary>The server's active project id for the browser session (GET /api/projects → active.id).</summary>
+    /// <summary>
+    /// This test's project id, via the <c>window.PTM_PROJECT_ID</c> resolver installed by
+    /// <see cref="AppFixture.NewPageAsync"/> — the same one the in-page API snippets use.
+    /// </summary>
+    public static async Task<string> TestProjectIdAsync(IPage page)
+    {
+        var id = await page.EvaluateAsync<string>(@"async () => {
+            const raw = sessionStorage.getItem('PageToMovie.admin.session');
+            if (!raw) return '';
+            const s = JSON.parse(raw);
+            const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+            return await window.PTM_PROJECT_ID(h);
+        }");
+        Assert.False(string.IsNullOrWhiteSpace(id), "could not resolve this test's project id");
+        return id;
+    }
+
     public static async Task<string?> ServerActiveProjectIdAsync(IPage page)
     {
         var text = await ApiFetchAsync(page, "/api/projects");

@@ -157,4 +157,67 @@ public class ScenesClipCrudTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Edit_clip_script_updates_prompt_and_persists_across_reload()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToScenesAsync(
+                page, _fx.BaseUrl, "ClipEdit_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            // Open scene 1
+            await Assertions.Expect(page.GetByTestId("scene-row").First).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
+
+            // Click C01 expand button to open clip inspector
+            var expandC01Btn = page.GetByTestId("clip-expander-1");
+            await Assertions.Expect(expandC01Btn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await expandC01Btn.ClickAsync();
+
+            // Click Edit Clip Script
+            var editBtn = page.GetByTestId("clip-edit-line");
+            await Assertions.Expect(editBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await editBtn.ClickAsync();
+
+            var modal = page.GetByTestId("clip-editor-modal");
+            await Assertions.Expect(modal).ToBeVisibleAsync(new() { Timeout = 15_000 });
+
+            // Switch to raw prompt mode
+            var rawToggle = page.GetByTestId("clip-prompt-raw-toggle");
+            await rawToggle.ClickAsync();
+            var rawInput = page.GetByTestId("clip-prompt-raw");
+            await Assertions.Expect(rawInput).ToBeVisibleAsync(new() { Timeout = 10_000 });
+
+            const string modifiedPrompt = "EXTREME CLOSE-UP — Single flickering candle flame reflects in wide paranoid eyes.";
+            await rawInput.FillAsync(modifiedPrompt);
+
+            // Save edits
+            var saveBtn = page.GetByTestId("clip-editor-save");
+            await saveBtn.ClickAsync();
+            await Assertions.Expect(modal).ToBeHiddenAsync(new() { Timeout = 20_000 });
+
+            // Reload page to verify persistence in shot plan
+            await page.ReloadAsync();
+            await Assertions.Expect(page.GetByTestId("scene-row").First).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await page.GetByTestId("scene-row").First.Locator("span.badge").First.ClickAsync();
+
+            expandC01Btn = page.GetByTestId("clip-expander-1");
+            await Assertions.Expect(expandC01Btn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await expandC01Btn.ClickAsync();
+
+            editBtn = page.GetByTestId("clip-edit-line");
+            await Assertions.Expect(editBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await editBtn.ClickAsync();
+
+            modal = page.GetByTestId("clip-editor-modal");
+            await Assertions.Expect(modal).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            rawToggle = page.GetByTestId("clip-prompt-raw-toggle");
+            await rawToggle.ClickAsync();
+            rawInput = page.GetByTestId("clip-prompt-raw");
+            await Assertions.Expect(rawInput).ToHaveValueAsync(modifiedPrompt, new() { Timeout = 10_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

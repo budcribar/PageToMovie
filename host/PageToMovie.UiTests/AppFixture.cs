@@ -161,6 +161,18 @@ public class AppFixture : IAsyncLifetime
             try { Object.defineProperty(d, 'name', { value: 'TestMediaFolder' }); } catch (e) { /* keep '' */ }
             return d;
         };");
+        // Every test's API snippet resolves its own project through this one function. The suite
+        // shares a single admin account, so the server's "active project" pointer can be moved by
+        // another test between two steps of this one; the name PipelineFlow stamps into
+        // sessionStorage is the reliable handle.
+        await ctx.AddInitScriptAsync(@"window.PTM_PROJECT_ID = async (h) => {
+            const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
+            const list = pr.projects || pr.Projects || [];
+            const want = sessionStorage.getItem('ptm.test.currentProject') || '';
+            let p = want ? list.find(x => (x.id||'').includes(want) || (x.label||'').includes(want)) : null;
+            if (!p) p = pr.active || pr.Active || list[0] || {};
+            return p.id || p.Id || '';
+        };");
         var page = await ctx.NewPageAsync();
         return (ctx, page);
     }

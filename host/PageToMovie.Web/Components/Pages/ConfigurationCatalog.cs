@@ -148,6 +148,7 @@ public partial class Configuration
                 .ToList();
             if (!_voiceModels.Any(m => m.Id == "none"))
                 _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no voice clone)", Provider = "None", ProviderId = "none" });
+            // "none" here means the edit job refuses to run, not that it picks a default for you.
             if (!_videoEditModels.Any(m => m.Id == "none"))
                 _videoEditModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no clip editing)", Provider = "None", ProviderId = "none" });
         }

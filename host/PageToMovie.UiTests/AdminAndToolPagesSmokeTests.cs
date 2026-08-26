@@ -133,4 +133,74 @@ public class AdminAndToolPagesSmokeTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Admin_models_catalog_search_and_capability_filter_narrows_table()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/models-catalog");
+            await Assertions.Expect(page.GetByTestId("catalog-filters")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            var rows = page.Locator("table tbody tr");
+            await Assertions.Expect(rows.First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            var unfiltered = await rows.CountAsync();
+
+            var searchInput = page.GetByPlaceholder("Search model ID, name, provider…");
+            await Assertions.Expect(searchInput).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await searchInput.FillAsync("fake");
+
+            var capSelect = page.GetByTestId("catalog-filters").Locator("select").First;
+            await Assertions.Expect(capSelect).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await capSelect.SelectOptionAsync("Video");
+
+            // "Narrows" is the claim, so assert it: fewer rows than unfiltered, and the one we want.
+            await Assertions.Expect(page.Locator("table tbody")).ToContainTextAsync("fake-video");
+            var filtered = await rows.CountAsync();
+            Assert.True(
+                filtered < unfiltered,
+                $"search + capability filter did not narrow the catalog: {unfiltered} → {filtered} rows");
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Admin_book_cache_renders_and_refreshes()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/book-cache");
+            var header = page.Locator("h1, h2, h3, h4").First;
+            await Assertions.Expect(header).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Refresh is the only action this page offers; it must round-trip cleanly.
+            var refresh = page.Locator("button", new() { HasText = "Refresh" }).First;
+            await Assertions.Expect(refresh).ToBeEnabledAsync(new() { Timeout = 15_000 });
+            await refresh.ClickAsync();
+            await Assertions.Expect(refresh).ToBeEnabledAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.Locator(".alert-danger")).ToHaveCountAsync(0);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Admin_server_configuration_renders_with_a_live_save_action()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await Ui.GotoAppLoggedInAsync(page, _fx.BaseUrl, "/admin/config");
+            await Assertions.Expect(page.GetByTestId("admin-config-masonry")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Deliberately not clicked: "Save & hot-apply" rewrites SERVER config on the host every
+            // other test in this run shares, so a green test here could break an unrelated one.
+            var saveBtn = page.Locator("button", new() { HasText = "Save & hot-apply" });
+            await Assertions.Expect(saveBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(saveBtn).ToBeEnabledAsync();
+            await Assertions.Expect(page.Locator(".alert-danger")).ToHaveCountAsync(0);
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

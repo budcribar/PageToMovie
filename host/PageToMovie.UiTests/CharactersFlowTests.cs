@@ -53,6 +53,45 @@ public class CharactersFlowTests
     }
 
     [Fact]
+    public async Task Lock_character_look_from_pick_grid_updates_thumbnail_and_persists()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl, "CharLock_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            var item = page.Locator("[data-testid='char-list-item'][data-char-voice-only='false'][data-char-group='false']").First;
+            await Assertions.Expect(item).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            var key = await item.GetAttributeAsync("data-char-key");
+            await item.ClickAsync();
+
+            await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
+            var desc = page.GetByTestId("char-look-panel").Locator("textarea").First;
+            await desc.WaitForAsync(new() { Timeout = 30_000 });
+            if (string.IsNullOrWhiteSpace(await desc.InputValueAsync()))
+                await desc.FillAsync("A pale, thin adult with dark hair and a dark wool coat, photoreal.");
+
+            await page.GetByTestId("char-generate-looks").ClickAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(page.GetByTestId("char-pick-grid")).ToBeVisibleAsync(new() { Timeout = 90_000 });
+
+            // Click Use this look on the first candidate
+            var useBtn = page.GetByTestId("char-use-look").First;
+            await Assertions.Expect(useBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await useBtn.ClickAsync();
+
+            // Row in cast list shows thumbnail <img>
+            var row = page.Locator($"[data-testid='char-list-item'][data-char-key='{key}']");
+            await Assertions.Expect(row.Locator("img.char-list-thumb")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Reload page and verify persistence
+            await page.ReloadAsync();
+            row = page.Locator($"[data-testid='char-list-item'][data-char-key='{key}']");
+            await Assertions.Expect(row.Locator("img.char-list-thumb")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task Speaking_character_shows_a_voice_section()
     {
         var (ctx, page) = await _fx.NewPageAsync();
@@ -69,8 +108,7 @@ public class CharactersFlowTests
                 const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return 'no session';
                 const s = JSON.parse(raw);
                 const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||''), 'Content-Type':'application/json'};
-                const pr = await fetch('/api/projects', {headers:h}).then(r=>r.json());
-                const id = (pr.active||pr.Active||{}).id || (pr.active||pr.Active||{}).Id; if (!id) return 'no active';
+                const id = await window.PTM_PROJECT_ID(h); if (!id) return 'no active';
                 const E = encodeURIComponent(id);
                 const chars = (await fetch('/api/projects/'+E+'/characters', {headers:h}).then(r=>r.json())).characters || [];
                 const n = chars.find(c => /narrator/i.test(c.key||c.Key||'') || /narrator/i.test(c.name||c.Name||''));
@@ -117,7 +155,7 @@ public class CharactersFlowTests
             await Assertions.Expect(uploadRoute).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             // Upload a real (tiny) PNG through the hidden InputFile inside the route label.
-            var png = TinyPng(64, 64);
+            var png = TestImages.TinyPng(64, 64);
             await uploadRoute.Locator("input[type=file]").SetInputFilesAsync(new FilePayload
             {
                 Name = "face.png",
@@ -134,48 +172,144 @@ public class CharactersFlowTests
         finally { await ctx.CloseAsync(); }
     }
 
-    /// <summary>Minimal valid RGBA PNG (solid colour) so the upload exercises the real image path.</summary>
-    private static byte[] TinyPng(int w, int h)
+    [Fact]
+    public async Task Editing_character_description_and_visual_lock_autosaves_and_persists_across_reload()
     {
-        using var ms = new MemoryStream();
-        void Chunk(string type, byte[] data)
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
         {
-            var len = BitConverter.GetBytes(data.Length); if (BitConverter.IsLittleEndian) Array.Reverse(len);
-            ms.Write(len);
-            var typeBytes = System.Text.Encoding.ASCII.GetBytes(type);
-            ms.Write(typeBytes); ms.Write(data);
-            var crc = Crc32(typeBytes.Concat(data).ToArray());
-            var crcBytes = BitConverter.GetBytes(crc); if (BitConverter.IsLittleEndian) Array.Reverse(crcBytes);
-            ms.Write(crcBytes);
+            await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl, "CharEdit_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            var item = page.Locator("[data-testid='char-list-item'][data-char-voice-only='false'][data-char-group='false']").First;
+            await Assertions.Expect(item).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            var key = await item.GetAttributeAsync("data-char-key");
+            await item.ClickAsync();
+
+            // Open generate/edit panel
+            await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
+            var desc = page.GetByTestId("char-look-panel").Locator("textarea[placeholder*='Age, build']").First;
+            await desc.WaitForAsync(new() { Timeout = 30_000 });
+
+            const string customDesc = "Distinguished Victorian gentleman with piercing grey eyes and a silver pocket watch.";
+            await desc.FillAsync(customDesc);
+
+            // Open advanced visual lock
+            var advDetails = page.GetByTestId("char-visual-lock-advanced");
+            await advDetails.Locator("summary").ClickAsync();
+            var lockArea = advDetails.Locator("textarea[placeholder*='Optional sticky traits']");
+            await lockArea.WaitForAsync(new() { Timeout = 15_000 });
+
+            const string customLock = "Always wears an antique signet ring on his left index finger.";
+            await lockArea.FillAsync(customLock);
+
+            // Wait for autosave (800ms debounce)
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            var saved = false;
+            while (DateTime.UtcNow < deadline && !saved)
+            {
+                var summary = await page.EvaluateAsync<string>(@"async () => {
+                    const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return '';
+                    const s = JSON.parse(raw);
+                    const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+                    const id = await window.PTM_PROJECT_ID(h); if (!id) return '';
+                    const chars = await fetch('/api/projects/'+encodeURIComponent(id)+'/characters', {headers:h}).then(r=>r.json());
+                    const c = (chars.characters||chars.Characters||[]).find(x => (x.key||x.Key||'').toUpperCase() === '" + key!.ToUpperInvariant() + @"');
+                    return JSON.stringify(c||{});
+                }");
+                saved = summary.Contains("Victorian gentleman", StringComparison.OrdinalIgnoreCase)
+                     && summary.Contains("antique signet ring", StringComparison.OrdinalIgnoreCase);
+                if (!saved) await page.WaitForTimeoutAsync(500);
+            }
+            Assert.True(saved, "character description edits never reached the saved characters summary");
+
+            // Reload and verify inputs
+            await page.ReloadAsync();
+            item = page.Locator($"[data-testid='char-list-item'][data-char-key='{key}']");
+            await Assertions.Expect(item).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            await item.ClickAsync();
+
+            await page.GetByTestId("char-route-generate").ClickAsync(new() { Timeout = 30_000 });
+            desc = page.GetByTestId("char-look-panel").Locator("textarea[placeholder*='Age, build']").First;
+            await Assertions.Expect(desc).ToHaveValueAsync(customDesc, new() { Timeout = 15_000 });
+
+            advDetails = page.GetByTestId("char-visual-lock-advanced");
+            await advDetails.Locator("summary").ClickAsync();
+            lockArea = advDetails.Locator("textarea[placeholder*='Optional sticky traits']");
+            await Assertions.Expect(lockArea).ToHaveValueAsync(customLock, new() { Timeout = 15_000 });
         }
-        ms.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
-        var ihdr = new byte[13];
-        BitConverter.GetBytes(w).Reverse().ToArray().CopyTo(ihdr, 0);
-        BitConverter.GetBytes(h).Reverse().ToArray().CopyTo(ihdr, 4);
-        ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
-        Chunk("IHDR", ihdr);
-        var raw = new byte[h * (1 + w * 4)];
-        for (var y = 0; y < h; y++)
-        {
-            var o = y * (1 + w * 4);
-            for (var x = 0; x < w; x++) { raw[o + 1 + x * 4] = 200; raw[o + 2 + x * 4] = 150; raw[o + 3 + x * 4] = 120; raw[o + 4 + x * 4] = 255; }
-        }
-        using var z = new MemoryStream();
-        using (var zs = new System.IO.Compression.ZLibStream(z, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
-            zs.Write(raw);
-        Chunk("IDAT", z.ToArray());
-        Chunk("IEND", Array.Empty<byte>());
-        return ms.ToArray();
+        finally { await ctx.CloseAsync(); }
     }
 
-    private static uint Crc32(byte[] data)
+    [Fact]
+    public async Task Editing_voice_label_and_profile_autosaves_and_persists()
     {
-        uint crc = 0xFFFFFFFF;
-        foreach (var b in data)
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
         {
-            crc ^= b;
-            for (var k = 0; k < 8; k++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+            await PipelineFlow.RunToCharactersAsync(page, _fx.BaseUrl, "CharVoiceEdit_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            // Select speaking character (Narrator)
+            await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            await page.EvaluateAsync(
+                "() => [...document.querySelectorAll('[data-testid=char-list-item]')].find(b => /narrator/i.test(b.textContent))?.click()");
+
+            // Expand voice card
+            var voiceCardBtn = page.GetByTestId("char-voice-card");
+            await Assertions.Expect(voiceCardBtn).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await voiceCardBtn.ClickAsync();
+
+            var voicePanel = page.GetByTestId("char-voice-panel");
+            await Assertions.Expect(voicePanel).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Edit Voice label
+            var labelInput = voicePanel.Locator("input.form-control").First;
+            await Assertions.Expect(labelInput).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            const string newVoiceLabel = "Whispering Gentleman";
+            await labelInput.FillAsync(newVoiceLabel);
+
+            // Edit Voice profile
+            var profileTextarea = voicePanel.Locator("textarea.form-control").First;
+            await Assertions.Expect(profileTextarea).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            const string newVoiceProfile = "Soft, breathless, intensely anxious Victorian baritone, fast-paced rhythm.";
+            await profileTextarea.FillAsync(newVoiceProfile);
+
+            // Wait for autosave
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            var saved = false;
+            while (DateTime.UtcNow < deadline && !saved)
+            {
+                var summary = await page.EvaluateAsync<string>(@"async () => {
+                    const raw = sessionStorage.getItem('PageToMovie.admin.session'); if (!raw) return '';
+                    const s = JSON.parse(raw);
+                    const h = {'Authorization':'Bearer '+(s.Token||s.token), 'X-User-Id':(s.UserId||s.userId||'')};
+                    const id = await window.PTM_PROJECT_ID(h); if (!id) return '';
+                    const chars = await fetch('/api/projects/'+encodeURIComponent(id)+'/characters', {headers:h}).then(r=>r.json());
+                    const n = (chars.characters||chars.Characters||[]).find(c => /narrator/i.test(c.key||c.Key||''));
+                    return JSON.stringify(n||{});
+                }");
+                saved = summary.Contains("Whispering Gentleman", StringComparison.OrdinalIgnoreCase)
+                     && summary.Contains("intensely anxious", StringComparison.OrdinalIgnoreCase);
+                if (!saved) await page.WaitForTimeoutAsync(500);
+            }
+            Assert.True(saved, "character voice edits never reached the saved characters summary");
+
+            // Reload and verify
+            await page.ReloadAsync();
+            await Assertions.Expect(page.GetByTestId("char-list-item").First).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            await page.EvaluateAsync(
+                "() => [...document.querySelectorAll('[data-testid=char-list-item]')].find(b => /narrator/i.test(b.textContent))?.click()");
+
+            voiceCardBtn = page.GetByTestId("char-voice-card");
+            await Assertions.Expect(voiceCardBtn).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await voiceCardBtn.ClickAsync();
+
+            voicePanel = page.GetByTestId("char-voice-panel");
+            await Assertions.Expect(voicePanel).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            labelInput = voicePanel.Locator("input.form-control").First;
+            await Assertions.Expect(labelInput).ToHaveValueAsync(newVoiceLabel, new() { Timeout = 15_000 });
+            profileTextarea = voicePanel.Locator("textarea.form-control").First;
+            await Assertions.Expect(profileTextarea).ToHaveValueAsync(newVoiceProfile, new() { Timeout = 15_000 });
         }
-        return crc ^ 0xFFFFFFFF;
+        finally { await ctx.CloseAsync(); }
     }
 }

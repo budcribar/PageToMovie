@@ -200,4 +200,47 @@ public class ProjectLifecycleTests
         await page.GetByTestId("clip-editor-save").ClickAsync();
         await Assertions.Expect(page.GetByTestId("clip-editor-modal")).ToHaveCountAsync(0, new() { Timeout = 15_000 });
     }
+
+    [Fact]
+    public async Task Studio_process_strip_navigates_smoothly_across_all_workflow_steps()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            var project = Uniq("NavStep");
+            await PipelineFlow.RunToScenesAsync(page, _fx.BaseUrl, project, "mary_had_a_lamb.fountain");
+
+            // Every step is addressed by its own testid and asserted to exist. A step the project
+            // has not unlocked renders "is-disabled" and does not navigate; the rest must. The
+            // visited count at the end is what stops a bad selector from passing silently.
+            var steps = new[] { "screenplay", "cast", "locations", "film" };
+            var visited = 0;
+            foreach (var step in steps)
+            {
+                var strip = page.GetByTestId("studio-process-nav").First;
+                await Assertions.Expect(strip).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+                var link = strip.GetByTestId($"studio-step-{step}");
+                await Assertions.Expect(link).ToBeVisibleAsync(new() { Timeout = 15_000 });
+
+                var href = await link.GetAttributeAsync("href") ?? "";
+                Assert.False(string.IsNullOrWhiteSpace(href), $"step {step} has no href");
+                if ((await link.GetAttributeAsync("class") ?? "").Contains("is-disabled"))
+                    continue;
+
+                await link.ClickAsync();
+                await Assertions.Expect(page).ToHaveURLAsync(
+                    new System.Text.RegularExpressions.Regex(
+                        System.Text.RegularExpressions.Regex.Escape(href.TrimStart('/'))),
+                    new() { Timeout = 15_000 });
+                visited++;
+            }
+
+            // Every step was found and carries an href — the failure this guards against is a
+            // selector that matches nothing, which used to skip the whole test silently. How many
+            // are clickable depends on what the project has unlocked, so require at least one.
+            Assert.True(visited >= 1, "no studio step in the strip was enabled from the Film page");
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

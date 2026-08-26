@@ -37,4 +37,85 @@ public class ScreenplayBeatEditorTests
         }
         finally { await ctx.CloseAsync(); }
     }
+
+    [Fact]
+    public async Task Adding_action_beat_via_dropdown_inserts_new_beat_input_and_persists()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl, "AddBeat_" + Guid.NewGuid().ToString("N")[..6]);
+            await PipelineFlow.SelectFakeModelsAsync(page);
+            await PipelineFlow.ImportFountainAsync(page, _fx.BaseUrl, "tell_tale_heart.fountain");
+
+            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            var addSelect = page.Locator(".spe-sel-add").First;
+            await Assertions.Expect(addSelect).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Count rows before
+            var rows = page.Locator(".spe-beat-row");
+            var countBefore = await rows.CountAsync();
+
+            // Select Action beat
+            await addSelect.SelectOptionAsync(new SelectOptionValue { Value = "Action" });
+
+            // Rows should increment by 1
+            await Assertions.Expect(rows).ToHaveCountAsync(countBefore + 1, new() { Timeout = 15_000 });
+
+            // Type in the new action beat input
+            var lastBeatInput = page.Locator(".spe-beat-row input[placeholder*='What we see']").Last;
+            await lastBeatInput.FillAsync("A raven taps loudly against the dark window pane.");
+            await lastBeatInput.BlurAsync();
+
+            // Wait for autosave debounce (900ms)
+            await page.WaitForTimeoutAsync(1500);
+
+            // Reload page to verify persistence
+            await page.ReloadAsync();
+            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
+            var lastActionInput = page.Locator(".spe-beat-row input[placeholder*='What we see']").Last;
+            await Assertions.Expect(lastActionInput).ToHaveValueAsync("A raven taps loudly against the dark window pane.", new() { Timeout = 30_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Screenplay_menu_collapse_and_expand_all_scenes_toggles_card_bodies()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl, "MenuCollapse_" + Guid.NewGuid().ToString("N")[..6]);
+            await PipelineFlow.SelectFakeModelsAsync(page);
+            await PipelineFlow.ImportFountainAsync(page, _fx.BaseUrl, "tell_tale_heart.fountain");
+
+            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
+
+            // Initial state: beat inputs are visible
+            var beatInputs = page.Locator(".spe-beat-row");
+            await Assertions.Expect(beatInputs.First).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // Open menu and click "Collapse all scenes"
+            var menuBtn = page.GetByTestId("screenplay-menu");
+            await Assertions.Expect(menuBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await menuBtn.ClickAsync();
+
+            var collapseItem = page.Locator(".dropdown-item", new() { HasText = "Collapse all scenes" });
+            await Assertions.Expect(collapseItem).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            await collapseItem.ClickAsync();
+
+            // Beat rows are now collapsed/hidden inside scene cards
+            await Assertions.Expect(beatInputs.First).ToBeHiddenAsync(new() { Timeout = 15_000 });
+
+            // Open menu and click "Expand all scenes"
+            await menuBtn.ClickAsync();
+            var expandItem = page.Locator(".dropdown-item", new() { HasText = "Expand all scenes" });
+            await Assertions.Expect(expandItem).ToBeVisibleAsync(new() { Timeout = 10_000 });
+            await expandItem.ClickAsync();
+
+            // Beat rows are visible again
+            await Assertions.Expect(beatInputs.First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
 }

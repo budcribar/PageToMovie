@@ -29,7 +29,9 @@ public class ReviewFlowTests
             await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
                 "Review_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
-            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+            // In-app nav, not a page load: the Finish/Review tabs read clips from the browser
+            // media root, which a full load discards (see CutTimelineUiTests).
+            await page.GetByTestId("nav-review").ClickAsync();
 
             // No scene approved yet. Default landing is Finish; scene rows live on Review and Approve.
             await page.GetByTestId("review-tab-review").ClickAsync();
@@ -97,7 +99,9 @@ public class ReviewFlowTests
             await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
                 "ReviewTabs_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
-            await Ui.GotoAppAsync(page, _fx.BaseUrl, "/review");
+            // In-app nav, not a page load: the Finish/Review tabs read clips from the browser
+            // media root, which a full load discards (see CutTimelineUiTests).
+            await page.GetByTestId("nav-review").ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-checklist")).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             var finishTab = page.GetByTestId("review-tab-finish");
@@ -110,6 +114,83 @@ public class ReviewFlowTests
             await Assertions.Expect(page.GetByTestId("review-share-card")).ToBeVisibleAsync(new() { Timeout = 15_000 });
             await page.GetByTestId("review-tab-review").ClickAsync();
             await Assertions.Expect(page.GetByTestId("review-scene-row").First).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Run_ai_continuity_review_triggers_review_and_completes()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
+                "ReviewAI_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            // In-app nav, not a page load: the Finish/Review tabs read clips from the browser
+            // media root, which a full load discards (see CutTimelineUiTests).
+            await page.GetByTestId("nav-review").ClickAsync();
+            await page.GetByTestId("review-tab-review").ClickAsync();
+
+            var autoAllBtn = page.GetByTestId("review-auto-all");
+            await Assertions.Expect(autoAllBtn).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await Assertions.Expect(autoAllBtn).ToBeEnabledAsync();
+
+            await autoAllBtn.ClickAsync();
+
+            // Wait for the run to actually start before waiting for it to finish — asserting
+            // "enabled" straight after the click passes against the pre-click state.
+            await Assertions.Expect(autoAllBtn).ToBeDisabledAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(autoAllBtn).ToBeEnabledAsync(new() { Timeout = 120_000 });
+
+            // A finished review renders its own report card, not just any Bootstrap alert.
+            await Assertions.Expect(page.GetByTestId("review-movie-report-card"))
+                .ToBeVisibleAsync(new() { Timeout = 30_000 });
+        }
+        finally { await ctx.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task Publish_to_gallery_guidelines_and_incomplete_cut_warning_interactions()
+    {
+        var (ctx, page) = await _fx.NewPageAsync();
+        try
+        {
+            await PipelineFlow.RunToGeneratedClipsAsync(page, _fx.BaseUrl,
+                "ReviewPub_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
+
+            // In-app nav, not a page load: the Finish/Review tabs read clips from the browser
+            // media root, which a full load discards (see CutTimelineUiTests).
+            await page.GetByTestId("nav-review").ClickAsync();
+
+            var shareTab = page.GetByTestId("review-tab-share");
+            await Assertions.Expect(shareTab).ToBeVisibleAsync(new() { Timeout = 30_000 });
+            await shareTab.ClickAsync();
+
+            var saveConfirmBtn = page.GetByTestId("review-save-confirm");
+            await Assertions.Expect(saveConfirmBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            // Initially disabled because guidelines are not checked
+            await Assertions.Expect(saveConfirmBtn).ToBeDisabledAsync();
+
+            // Check guidelines
+            var guidelinesCheck = page.Locator("#demoGuidelines");
+            await Assertions.Expect(guidelinesCheck).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await guidelinesCheck.CheckAsync();
+
+            // Button enables
+            await Assertions.Expect(saveConfirmBtn).ToBeEnabledAsync(new() { Timeout = 10_000 });
+
+            // Click Publish
+            await saveConfirmBtn.ClickAsync();
+
+            // If some scenes are missing clips in this test run, incomplete warning is displayed with Proceed/Cancel
+            var warning = page.GetByTestId("review-incomplete-warning");
+            if (await warning.IsVisibleAsync())
+            {
+                var cancelBtn = warning.Locator("button", new() { HasText = "Cancel" });
+                await cancelBtn.ClickAsync();
+                await Assertions.Expect(warning).ToBeHiddenAsync(new() { Timeout = 10_000 });
+            }
         }
         finally { await ctx.CloseAsync(); }
     }

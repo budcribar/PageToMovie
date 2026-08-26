@@ -85,6 +85,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
 
         if (TryStyleGateResponse(prompt, out result)
             || TryLookPickResponse(prompt, out result)
+            || TryMovieSceneGroupReviewResponse(prompt, out result)
             || TryMusicSupervisorResponse(prompt, out result))
         {
             kind = KindVision;
@@ -155,6 +156,38 @@ public sealed class FakeGrokVisionClient : IVisionClient
 
         // Prefer first image — stable for tests; real vision ranks quality.
         result = """{"best":1,"reason":"Fake look pick — first variant."}""";
+        return true;
+    }
+
+    /// <summary>
+    /// Full-movie continuity review (<c>MovieAutoReviewService</c>). Its validator rejects missing
+    /// notes and out-of-range scores, so the fake has to answer in full — a stub reply fails the
+    /// whole review and there is no fake coverage of the feature at all.
+    /// </summary>
+    private static bool TryMovieSceneGroupReviewResponse(string prompt, out string result)
+    {
+        result = "";
+        if (string.IsNullOrEmpty(prompt)
+            || !prompt.Contains("continuityScore", StringComparison.OrdinalIgnoreCase)
+            || !prompt.Contains("visualConsistencyNotes", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        result = """
+            {
+              "overallScore": 8,
+              "continuityScore": 8,
+              "characterScore": 8,
+              "lightingScore": 7,
+              "pacingScore": 8,
+              "dialogueScore": 7,
+              "musicScore": 8,
+              "continuityNotes": "Fake review — shot-to-shot spatial alignment holds across the sampled cuts.",
+              "visualConsistencyNotes": "Fake review — faces and wardrobe stay locked between sampled frames.",
+              "lightingNotes": "Fake review — exposure and palette stay stable across the sampled cuts.",
+              "dialogueNotes": "Fake review — speaking posture matches the scripted beats in sampled frames.",
+              "audioNotes": "Fake review — music cues fade rather than cutting off between scenes."
+            }
+            """;
         return true;
     }
 

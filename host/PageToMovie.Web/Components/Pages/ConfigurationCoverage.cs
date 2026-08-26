@@ -83,7 +83,7 @@ public partial class Configuration
                 CapMusic or CapAudio or "bgm" => CapMusic,
                 CapVoice or "voice_clone" or "clone" or "tts" => CapVoice,
                 CapReview or "qa" or "video_review" or "quality" => CapReview,
-                CapVideoEdit or "edit" or "clip_edit" => CapVideoEdit,
+                CapVideoEdit or "edit" or "clip_edit" or "videoedit" or "video_edit" => CapVideoEdit,
                 CapVideo or "film" => CapVideo,
                 CapImage or "portrait" or "characters" => CapImage,
                 CapPlanning or "script" or "chat" or "screenplay" => CapPlanning,

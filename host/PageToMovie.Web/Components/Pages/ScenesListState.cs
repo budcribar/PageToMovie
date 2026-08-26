@@ -969,18 +969,25 @@ public partial class Scenes
 
 
 
-    internal bool AreAllVisibleSelected()
+    /// <summary>
+    /// Master checkbox state for the rows currently on screen. <paramref name="shown"/> is what the
+    /// index actually renders — the search filter lives there, so <see cref="GetVisibleScenes"/>
+    /// alone would answer for scenes the operator cannot see.
+    /// </summary>
+    internal bool AreAllVisibleSelected(IReadOnlyCollection<SceneSummary> shown) =>
+        shown.Count > 0 && shown.All(s => _selected.Contains(s.SceneNumber));
+
+
+
+    /// <summary>Select or clear exactly the rows on screen, leaving any filtered-out selection alone.</summary>
+    internal void ToggleSelectAllShown(IReadOnlyCollection<SceneSummary> shown, bool on)
     {
-        var visible = GetVisibleScenes();
-        return visible.Count > 0 && visible.All(s => _selected.Contains(s.SceneNumber));
-    }
-
-
-
-    internal void ToggleSelectAllShown(bool on)
-    {
-        if (on) SelectAll();
-        else ClearSelection();
+        foreach (var s in shown)
+        {
+            if (on) _selected.Add(s.SceneNumber);
+            else _selected.Remove(s.SceneNumber);
+        }
+        _selectionMode = on && _selected.Count == (_scenes?.Count ?? 0) ? "all" : "";
     }
 
 
