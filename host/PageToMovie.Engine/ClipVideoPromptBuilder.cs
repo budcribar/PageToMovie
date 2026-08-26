@@ -206,7 +206,7 @@ public static class ClipVideoPromptBuilder
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
-        var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags);
+        var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
         var castCountLine = FormatCastCountLine(onScreenKeys);
@@ -1782,11 +1782,15 @@ public static class ClipVideoPromptBuilder
         return (tags, ids);
     }
 
+    /// <param name="mode">
+    /// Generation mode. A continuation gets no music/Foley layers — see <see cref="BuildAudioBed"/>.
+    /// </param>
     private static string BuildAudioBlock(
         JsonElement clipEl,
         IReadOnlyDictionary<string, CharacterProfile>? characters,
         ClipCorrection? correction = null,
-        IReadOnlyDictionary<string, string>? audioTags = null)
+        IReadOnlyDictionary<string, string>? audioTags = null,
+        string? mode = null)
     {
         if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var audio) ||
             audio.ValueKind != JsonValueKind.Object)
@@ -1806,7 +1810,7 @@ public static class ClipVideoPromptBuilder
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
                 audio, spoken, sfx, ambient, score,
-                new SpokenAudioExtras(voiceLock, correction, audioTags));
+                new SpokenAudioExtras(voiceLock, correction, audioTags, mode));
 
         if (HasAmbientLayers(ambient, sfx, score))
             return BuildAmbientOnlyAudio(ambient, sfx, score);
@@ -1894,8 +1898,28 @@ public static class ClipVideoPromptBuilder
         return layers;
     }
 
-    private static string BuildAudioBed(string score, string ambient, string sfx)
+    /// <summary>
+    /// Music, ambience and Foley to lay under the line — omitted entirely on a continuation.
+    /// </summary>
+    /// <remarks>
+    /// A continuation is generated from the previous clip's video, which already carries that clip's
+    /// audio bed; the model continues it on its own. Asking for the bed again makes it re-generate
+    /// the effects prominently, and they land on top of the line's opening word.
+    ///
+    /// <para>Measured against the provider's extend endpoint on Mary19 S02C02, with repeated runs
+    /// rather than single trials: with the layers present the narrator dropped the line's first word
+    /// in every run; with only Score and Foley removed and everything else identical, the word
+    /// survived in every run.</para>
+    ///
+    /// <para>Same defect as the duplicated Sound block, one layer down. That removed the SECOND
+    /// request for these effects; this removes the last one on a path where the video already
+    /// supplies them. A fresh clip keeps its bed — it has no predecessor to inherit one from, and
+    /// establishing the audio is exactly its job.</para>
+    /// </remarks>
+    private static string BuildAudioBed(string score, string ambient, string sfx, string? mode = null)
     {
+        if (mode is ModeVideoExtend or ModeContinue)
+            return "";
         var audioBedParts = CollectAudioLayers(score, ambient, sfx);
         return audioBedParts.Count > 0
             ? " " + string.Join(" ", audioBedParts)
@@ -1918,10 +1942,14 @@ public static class ClipVideoPromptBuilder
         return BuildPronunciationHints(quote);
     }
 
+    /// <param name="Mode">
+    /// Generation mode — a continuation gets no music/Foley layers. See <see cref="BuildAudioBed"/>.
+    /// </param>
     private readonly record struct SpokenAudioExtras(
         string VoiceLock,
         ClipCorrection? Correction,
-        IReadOnlyDictionary<string, string>? AudioTags);
+        IReadOnlyDictionary<string, string>? AudioTags,
+        string? Mode = null);
 
     private static string BuildSpokenDialogueAudio(
         JsonElement audio,
@@ -1957,7 +1985,7 @@ public static class ClipVideoPromptBuilder
                 speakerLock += " " + correction.DeliveryCue.Trim();
         }
         var openCue = BuildOpenCue(quote);
-        var bed = BuildAudioBed(score, ambient, sfx);
+        var bed = BuildAudioBed(score, ambient, sfx, extras.Mode);
 
         const string endPause =
             " After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring.";
