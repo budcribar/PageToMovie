@@ -171,7 +171,7 @@ public static class ClipVideoPromptBuilder
             .ToList();
 
         var rawVisual = ReadVisualPrompt(clipEl);
-        var actionText = SanitizeActionText(rawVisual, onScreenKeys);
+        var actionText = DropWhatTheSourceVideoShows(SanitizeActionText(rawVisual, onScreenKeys), mode);
 
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
@@ -202,6 +202,9 @@ public static class ClipVideoPromptBuilder
         }
 
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
+        // The style lock is the look, and the look is in the video being continued. Restating it
+        // is the same redundancy as the blocks dropped above, and it re-establishes the shot.
+        var styleForPrompt = mode is ModeVideoExtend or ModeContinue ? "" : style;
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
@@ -214,7 +217,7 @@ public static class ClipVideoPromptBuilder
 
         var prompt = FitPromptToVideoBudget(
             AppendPromptSections(
-                style, varBlock, locationRefAttached, locationImageTag, locationKey,
+                styleForPrompt, varBlock, locationRefAttached, locationImageTag, locationKey,
                 castCountLine, audioBlock, continuityBlock, clipEl, actionTagged),
             promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
@@ -617,6 +620,65 @@ public static class ClipVideoPromptBuilder
     /// <c>&lt;Speech&gt;</c> block so the AUDIO block owns the spoken line.
     /// Ensures each on-screen key appears at least once in action prose.
     /// </summary>
+    /// <summary>
+    /// On a continuation, removes the blocks describing what the source video already shows.
+    /// </summary>
+    /// <remarks>
+    /// An extend is generated from the previous clip's video, so the setting, lighting, framing,
+    /// optics and grade are all visibly present in the input. Sending them again does not confirm
+    /// them — it asks the model to establish a shot, and it does, from scratch: the subject is
+    /// restaged and the continuation breaks.
+    ///
+    /// <para>Measured against the provider's extend endpoint on Mary19 S02C02, repeated runs. With
+    /// these blocks present the animal was thrown back to the front of the room; with them removed
+    /// and the source video unchanged it stayed where the previous clip left it. Removing the
+    /// continuity block as well made it slightly WORSE, so that one stays — it is carrying its
+    /// weight, unlike these.</para>
+    ///
+    /// <para>What describes the NEW footage is kept: the action, the acting note, the shot length,
+    /// the negatives, and the identity blocks an extend cannot supply as reference plates.</para>
+    /// </remarks>
+    private static string DropWhatTheSourceVideoShows(string actionText, string mode)
+    {
+        if (mode is not (ModeVideoExtend or ModeContinue))
+            return actionText;
+        var trimmed = actionText;
+        foreach (var tag in SourceVideoAlreadyShows)
+            trimmed = BlockRegexFor(tag).Replace(trimmed, "");
+        return CollapseWhitespace(trimmed).Trim();
+    }
+
+    /// <summary>Blocks whose content is visible in the video an extend continues from.</summary>
+    private static readonly string[] SourceVideoAlreadyShows =
+    {
+        PromptFieldTags.StyleLock,
+        PromptFieldTags.Setting,
+        PromptFieldTags.Lighting,
+        PromptFieldTags.Camera,
+        PromptFieldTags.Optics,
+        PromptFieldTags.Grade,
+    };
+
+    private static readonly Dictionary<string, Regex> BlockRegexCache = new(StringComparer.Ordinal);
+
+    private static Regex BlockRegexFor(string tag)
+    {
+        lock (BlockRegexCache)
+        {
+            if (!BlockRegexCache.TryGetValue(tag, out var re))
+            {
+                re = new Regex($@"<{tag}>.*?</{tag}>\s*",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled,
+                    CommonRegex.Timeout);
+                BlockRegexCache[tag] = re;
+            }
+            return re;
+        }
+    }
+
+    private static string CollapseWhitespace(string text) =>
+        CommonRegex.Replace(text, @"[ 	]{2,}", " ");
+
     public static string SanitizeActionText(string visual, IReadOnlyList<string>? onScreenKeys = null)
     {
         if (string.IsNullOrWhiteSpace(visual)) return "";
