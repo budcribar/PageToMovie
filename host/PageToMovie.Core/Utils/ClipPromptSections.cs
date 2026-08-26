@@ -61,6 +61,9 @@ public static class ClipPromptSections
         (PromptFieldTags.Cast, ClipPromptField.Cast),
         (PromptFieldTags.Action, ClipPromptField.Action),
         (PromptFieldTags.Sound, ClipPromptField.Sound),
+        // Legacy plans only — Stage 2 stopped emitting it once <Audio> became the single copy
+        // of the spoken line. Still parsed so an old prompt round-trips instead of arriving as
+        // raw tag text in an Action box; the editor does not offer it as an edit box.
         (PromptFieldTags.Speech, ClipPromptField.Speech),
         (PromptFieldTags.MustNot, ClipPromptField.MustNot),
         (PromptFieldTags.Wardrobe, ClipPromptField.Wardrobe),

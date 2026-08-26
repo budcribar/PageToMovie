@@ -12,6 +12,14 @@ public static class PromptFieldTags
     public const string Cast = "Cast";
     public const string Action = "Action";
     public const string Sound = "Sound";
+
+    /// <summary>
+    /// Legacy only. Stage 2 no longer writes a <c>&lt;Speech&gt;</c> block: the spoken line lives
+    /// in the clip's <c>audio_payload</c> and reaches the model once, as the AUDIO block built at
+    /// generation time. The tag stays because plans built before that still contain one, and both
+    /// the generation-time strip and the clip editor have to recognise it to keep the line from
+    /// being sent — or edited — twice.
+    /// </summary>
     public const string Speech = "Speech";
     public const string MustNot = "MustNot";
     public const string Wardrobe = "Wardrobe";

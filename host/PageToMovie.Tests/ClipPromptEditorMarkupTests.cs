@@ -45,6 +45,25 @@ public class ClipPromptEditorMarkupTests
         Assert.Contains("ClipPromptSections.Compose", code, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// What a character says is edited in one place — the Dialogue field, which is the copy that
+    /// reaches the model. A plan built before Stage 2 stopped baking the line into the prompt
+    /// still carries a <c>&lt;Speech&gt;</c> block; it must not be offered as a second box, since
+    /// editing it never changed a word of what was spoken.
+    /// </summary>
+    [Fact]
+    public void Legacy_speech_block_is_not_a_second_place_to_edit_the_line()
+    {
+        var razor = ReadPage("Scenes.ClipFieldEditor.razor");
+        Assert.Contains("IsEditableSection(section)", razor, StringComparison.Ordinal);
+
+        var code = ReadPage("Scenes.ClipFieldEditor.razor.cs");
+        Assert.Contains("section.Field != ClipPromptField.Speech", code, StringComparison.Ordinal);
+        // The dialogue box stays — it is where the spoken line is read from and written back.
+        Assert.Contains("data-testid=\"clip-editor-dialogue\"", razor, StringComparison.Ordinal);
+        Assert.Contains("@bind=\"ed.Dialogue\"", razor, StringComparison.Ordinal);
+    }
+
     private static string ReadPage(string fileName)
     {
         var d = new DirectoryInfo(Directory.GetCurrentDirectory());

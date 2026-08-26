@@ -613,7 +613,8 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Remove Stage2-embedded CAST COUNT so the builder owns a single count line.
+    /// Remove Stage2-embedded CAST COUNT so the builder owns a single count line, and the legacy
+    /// <c>&lt;Speech&gt;</c> block so the AUDIO block owns the spoken line.
     /// Ensures each on-screen key appears at least once in action prose.
     /// </summary>
     public static string SanitizeActionText(string visual, IReadOnlyList<string>? onScreenKeys = null)
@@ -626,6 +627,7 @@ public static class ClipVideoPromptBuilder
         v = ResFpsSuffixRegex3.Replace(v, "").Trim();
         v = CastCountRegex.Replace(v, "");
         v = NoExtraPeopleRegex.Replace(v, "");
+        v = LegacySpeechBlockRegex.Replace(v, "");
         v = StripFountainLeakage(v);
         // Blueprint may embed lip-sync / says quotes with crushed dashes — speech-safe for gen
         v = SanitizeSpokenQuotesInVisual(v);
@@ -757,6 +759,16 @@ public static class ClipVideoPromptBuilder
     private static readonly Regex ResFpsSuffixRegex3 = new(@"\s*/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex CastCountRegex = new(@"\bCAST COUNT:\s*exactly\s+\d+[^.]*\.\s*(?:No extra people\.\s*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex NoExtraPeopleRegex = new(@"\bNo extra people\.\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>
+    /// A <c>&lt;Speech&gt;</c> block baked into an older plan's <c>visual_prompt</c>. Stage 2 no
+    /// longer emits one — the spoken line rides in <c>audio_payload</c> and reaches the model
+    /// through the AUDIO block alone — but plans built before that still carry it, and left in
+    /// place it sends the same line to the model twice. Stripped here rather than migrating the
+    /// stored plans, so no existing project has to be rewritten to stop paying for the duplicate.
+    /// </summary>
+    private static readonly Regex LegacySpeechBlockRegex = new(
+        $@"<{PromptFieldTags.Speech}>.*?</{PromptFieldTags.Speech}>\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex UnicodeDashesRegex = new(@"\s*[\u2012\u2013\u2014\u2015]\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex DoubleHyphenRegex = new(@"\s*--\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex PunctuationDashRegex = new(@"([!?.;:])\s*-+\s*", RegexOptions.Compiled, CommonRegex.Timeout);

@@ -1206,7 +1206,8 @@ public static class FountainStage1Importer
 
     /// <summary>
     /// Picture under voice-over: reuse the last action visual when present; never "X speaks."
-    /// Stage 2 SpeechClause adds OFF-CAMERA VOICEOVER from audio_payload.
+    /// The spoken line is not restated here — it rides in audio_payload and reaches the model as
+    /// the AUDIO block ClipVideoPromptBuilder writes at generation time.
     /// </summary>
     public static string BuildVoiceoverVisualEvent(string? lastPictureVisual)
     {

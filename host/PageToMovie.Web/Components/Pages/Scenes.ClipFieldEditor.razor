@@ -84,20 +84,23 @@
                                 var index = i;
                                 var section = _sections[index];
                                 var hint = SectionHint(section.Field);
-                                <div class="mb-2">
-                                    <label class="form-label small mb-0 d-flex">
-                                        <span>@SectionLabel(index)</span>
-                                        @if (!string.IsNullOrEmpty(hint))
-                                        {
-                                            <span class="text-muted ms-auto fw-normal">@hint</span>
-                                        }
-                                    </label>
-                                    <textarea class="form-control form-control-sm"
-                                              rows="@SectionRows(section)"
-                                              data-testid="@($"clip-prompt-{section.Field.ToString().ToLowerInvariant()}-{index}")"
-                                              value="@section.Value"
-                                              @onchange="e => SetSection(index, e.Value?.ToString())"></textarea>
-                                </div>
+                                if (IsEditableSection(section))
+                                {
+                                    <div class="mb-2">
+                                        <label class="form-label small mb-0 d-flex">
+                                            <span>@SectionLabel(index)</span>
+                                            @if (!string.IsNullOrEmpty(hint))
+                                            {
+                                                <span class="text-muted ms-auto fw-normal">@hint</span>
+                                            }
+                                        </label>
+                                        <textarea class="form-control form-control-sm"
+                                                  rows="@SectionRows(section)"
+                                                  data-testid="@($"clip-prompt-{section.Field.ToString().ToLowerInvariant()}-{index}")"
+                                                  value="@section.Value"
+                                                  @onchange="e => SetSection(index, e.Value?.ToString())"></textarea>
+                                    </div>
+                                }
                             }
                         </div>
                     }
