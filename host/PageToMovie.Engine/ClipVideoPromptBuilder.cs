@@ -763,7 +763,21 @@ public static class ClipVideoPromptBuilder
     private static readonly Regex WhitespaceSingleRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex DashCapitalizationRegex = new(@"([.!?])\s+—\s+(\p{L})", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex PunctuationCapitalizationRegex = new(@"([.!?])\s+(\p{Ll})", RegexOptions.Compiled, CommonRegex.Timeout);
-    private static readonly Regex FirstWordMatchRegex = new(@"^[\p{L}\p{N}']+[!?]?", RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>
+    /// First real word of a spoken line, skipping anything before it that is not a word.
+    /// </summary>
+    /// <remarks>
+    /// Anchored at position 0 this found nothing the moment a line opened with punctuation, and the
+    /// opening cue silently degraded to "start speaking immediately with the first word of the
+    /// line". That matters because leading punctuation is deliberate: an ellipsis or em dash at the
+    /// head of a line is how you ask for a beat of hesitation before the first word, and pairing it
+    /// with a cue that names no word — or worse, names the punctuation — tells the model two
+    /// different things at once.
+    /// </remarks>
+    private static readonly Regex FirstWordMatchRegex = new(@"[\p{L}\p{N}']+[!?]?", RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>Leading <c>[cue]</c> / <c>(cue)</c> markers before the first spoken word.</summary>
+    private static readonly Regex LeadingStageCueRegex =
+        new(@"^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))+\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex ContdRegex = new(@"\s*\(\s*CONT'?D\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex ContinuedRegex = new(@"\s*\(\s*CONTINUED\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex VoRegex = new(@"\s*\(\s*V\s*\.?\s*O\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
@@ -809,12 +823,18 @@ public static class ClipVideoPromptBuilder
     // prompt to be redacted. Unreachable code is not a guard that never fires.
 
     /// <summary>First word/token of a spoken line (for gen cues that protect the opening).</summary>
+    /// <remarks>
+    /// A leading stage cue is skipped, not returned. <c>[PAUSE] It made…</c> opens with a word the
+    /// narrator must never say, and naming it in the cue would instruct the model to say it —
+    /// turning a hesitation marker into spoken dialogue.
+    /// </remarks>
     public static string FirstSpokenToken(string? dialogue)
     {
         if (string.IsNullOrWhiteSpace(dialogue))
             return "";
+        var line = LeadingStageCueRegex.Replace(dialogue.Trim(), "");
         // Prefer word + trailing ! ? if present (True!)
-        var m = FirstWordMatchRegex.Match(dialogue.Trim());
+        var m = FirstWordMatchRegex.Match(line);
         return m.Success ? m.Value : "";
     }
 
