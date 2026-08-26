@@ -75,7 +75,7 @@ public class AppShellTests
             await Assertions.Expect(page.Locator(".demo-yt-open-link")).ToHaveCountAsync(0);
             await Assertions.Expect(page.GetByText("Watch on YouTube ↗")).ToHaveCountAsync(0);
             await Assertions.Expect(page.Locator(".demo-card-chips")).ToHaveCountAsync(0);
-            await Assertions.Expect(page.GetByText("cinematic short film", new() { IgnoreCase = true })).ToHaveCountAsync(0);
+            await Assertions.Expect(page.GetByText(new System.Text.RegularExpressions.Regex("cinematic short film", System.Text.RegularExpressions.RegexOptions.IgnoreCase))).ToHaveCountAsync(0);
 
             var cards = page.GetByTestId("demo-card");
             var cardCount = await cards.CountAsync();
