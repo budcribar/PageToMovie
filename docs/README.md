@@ -109,6 +109,7 @@ Easy Start **is** the public-fork path with a voice step. Do not invent a third 
 | Topic | Detail |
 |-------|--------|
 | Review notes → prompts (operator loop) | [learning-loop](learning-loop.md) · [film-provenance](film-provenance-critic-learning-architecture.md) |
+| What the video model responds to (measured) | [video-prompt-learnings](video-prompt-learnings.md) — never describe what the video input already carries; instructions lose to content; single-trial A/B is worthless |
 | Provenance / critic (architecture) | [film-provenance…](film-provenance-critic-learning-architecture.md) (design; not all shipped) |
 | Copy / jargon | [AGENTS.md](../AGENTS.md) (archived scan: [USER_COPY_JARGON_AUDIT](archive/USER_COPY_JARGON_AUDIT.md)) |
 
