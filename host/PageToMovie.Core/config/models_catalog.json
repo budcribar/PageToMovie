@@ -378,8 +378,8 @@
       "maxResolutionWithReferences": "720p",
       "videoCostPerSecondByResolution": {
         "480p": 0.08,
-        "720p": 0.08,
-        "1080p": 0.08
+        "720p": 0.14,
+        "1080p": 0.25
       },
       "supportedAspectRatios": [
         "1:1",
@@ -391,14 +391,14 @@
         "2:3"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only.",
+      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only. Official docs.x.ai resolutionPricing 2026-08-27: 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s (flattened $0.080/s summary is the 480p default).",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "docs.x.ai/developers/models and /developers/pricing 2026-08-24: official list price is a single $0.080/sec. No official 480p/720p/1080p split is published \u2014 catalog mirrors that flat rate on each requested tier. Do not invent 0.14/0.25. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
-      "lastVerifiedAt": "2026-08-24",
-      "pricingLastReviewedAt": "2026-08-24"
+      "pricingNotes": "docs.x.ai/developers/models/grok-imagine-video-1.5 and /developers/pricing 2026-08-27: official resolutionPricing (embedded model metadata, not the flattened $0.080/sec summary) is 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s. Flattened list-price line $0.080/s is the 480p default. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
+      "lastVerifiedAt": "2026-08-27",
+      "pricingLastReviewedAt": "2026-08-27"
     },
     {
       "id": "imagine-video-1.5-extend",
