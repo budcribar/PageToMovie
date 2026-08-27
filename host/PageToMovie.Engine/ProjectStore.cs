@@ -40,12 +40,15 @@ public sealed partial class ProjectStore
         public const string Characters = "characters";
         public const string VeoClips = "veo_clips";
         public const string ClipJsonSuffix = ".clip.json";
+        public const string MetaJsonSuffix = ".meta.json";
+        public const string NativeSuffix = ".native";
         public const string TrashDir = ".trash";
         public const string VeoContinuationSource = "veo_continuation_source";
         public const string ExtendPrevious = "extend_previous";
         public const string ContinuityRule = "continuity_rule";
         public const string Stage1BeatMap = "stage1_beat_map";
         public const string Stage1BeatId = "stage1_beat_id";
+        public const string Stage1BeatIds = "stage1_beat_ids";
         public const string RefPngSuffix = "_ref.png";
         public const string CastSeedsV1 = "cast_seeds.v1";
         public const string CharacterSeedTokens = "character_seed_tokens";
@@ -618,7 +621,7 @@ public sealed partial class ProjectStore
     private static string ResolveExistingClipSidecar(string mp4)
     {
         var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
-        return File.Exists(sidecar) ? sidecar : Path.ChangeExtension(mp4, ".meta.json");
+        return File.Exists(sidecar) ? sidecar : Path.ChangeExtension(mp4, StoreLit.MetaJsonSuffix);
     }
 
     private static string HistoricalClipRelativePath(string sDir, string mp4)
@@ -878,7 +881,7 @@ public sealed partial class ProjectStore
             try { File.Move(sidecar, trashSidecar, overwrite: true); } catch { /* sidecar may already be gone */ }
         }
 
-        var meta = Path.ChangeExtension(targetMp4, ".meta.json");
+        var meta = Path.ChangeExtension(targetMp4, StoreLit.MetaJsonSuffix);
         if (File.Exists(meta))
         {
             var trashMeta = Path.Combine(trashDir, Path.GetFileName(meta));
@@ -907,7 +910,7 @@ public sealed partial class ProjectStore
         foreach (var mp4 in Directory.EnumerateFiles(trashDir, $"{prefix}*.mp4"))
         {
             var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
-            if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
+            if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, StoreLit.MetaJsonSuffix);
             var fi = new FileInfo(mp4);
             var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: 0, isCurrent: false, fi.LastWriteTimeUtc);
             result.Add(item);
@@ -4430,37 +4433,49 @@ public sealed partial class ProjectStore
     public IReadOnlyList<SceneClipBeatIds> ReadSceneClipBeatIds(string projectId, int sceneNumber)
     {
         var result = new List<SceneClipBeatIds>();
-        var bpPath = FindBlueprintPathSync(projectId);
-        if (bpPath is null || !File.Exists(bpPath))
-            return result;
-        var (_, scenes) = ParseBlueprintScenes(bpPath);
-        var scene = FindSceneNode(scenes, sceneNumber);
-        var clips = scene?[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
-                    ?? scene?[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+        var clips = LoadSceneClipsArray(projectId, sceneNumber);
         if (clips is null)
             return result;
         foreach (var node in clips)
-        {
-            if (node is not System.Text.Json.Nodes.JsonObject c)
-                continue;
-            var number = ClipKeying.ClipNumber(c);
-            if (number <= 0)
-                continue;
-            var ids = new List<string>();
-            if (c["stage1_beat_ids"] is System.Text.Json.Nodes.JsonArray arr)
-            {
-                foreach (var id in arr)
-                {
-                    var value = id?.ToString();
-                    if (!string.IsNullOrWhiteSpace(value))
-                        ids.Add(value);
-                }
-            }
-            if (ids.Count == 0 && c[StoreLit.Stage1BeatId]?.ToString() is { Length: > 0 } single)
-                ids.Add(single);
-            result.Add(new SceneClipBeatIds(number, ids));
-        }
+            AppendClipBeatIds(result, node);
         return result;
+    }
+
+    private System.Text.Json.Nodes.JsonArray? LoadSceneClipsArray(string projectId, int sceneNumber)
+    {
+        var bpPath = FindBlueprintPathSync(projectId);
+        if (bpPath is null || !File.Exists(bpPath))
+            return null;
+        var (_, scenes) = ParseBlueprintScenes(bpPath);
+        return FindSceneClipsArray(scenes, sceneNumber);
+    }
+
+    private static void AppendClipBeatIds(
+        List<SceneClipBeatIds> result, System.Text.Json.Nodes.JsonNode? node)
+    {
+        if (node is not System.Text.Json.Nodes.JsonObject c)
+            return;
+        var number = ClipKeying.ClipNumber(c);
+        if (number <= 0)
+            return;
+        result.Add(new SceneClipBeatIds(number, CollectStage1BeatIds(c)));
+    }
+
+    private static List<string> CollectStage1BeatIds(System.Text.Json.Nodes.JsonObject c)
+    {
+        var ids = new List<string>();
+        if (c[StoreLit.Stage1BeatIds] is System.Text.Json.Nodes.JsonArray arr)
+        {
+            foreach (var id in arr)
+            {
+                var value = id?.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                    ids.Add(value);
+            }
+        }
+        if (ids.Count == 0 && c[StoreLit.Stage1BeatId]?.ToString() is { Length: > 0 } single)
+            ids.Add(single);
+        return ids;
     }
 
     private static System.Text.Json.Nodes.JsonObject? FindSceneNode(
@@ -4862,11 +4877,11 @@ public sealed partial class ProjectStore
     private static void EnsureStage1BeatId(
         System.Text.Json.Nodes.JsonObject clipObj, ClipEditRequest fields, string? sceneSetting)
     {
-        if (!string.IsNullOrWhiteSpace(clipObj["stage1_beat_id"]?.ToString()))
+        if (!string.IsNullOrWhiteSpace(clipObj[StoreLit.Stage1BeatId]?.ToString()))
             return;
         var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : JsonKeys.Dialogue;
         var body = string.IsNullOrWhiteSpace(fields.Dialogue) ? fields.VisualPrompt : fields.Dialogue;
-        clipObj["stage1_beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
+        clipObj[StoreLit.Stage1BeatId] = PageToMovie.Core.Utils.StableBeatId.ForContent(
             PageToMovie.Core.Utils.BeatIdSequencer.SceneKey(sceneSetting, fields.Scene),
             kind, fields.Speaker, body);
     }
@@ -4962,7 +4977,7 @@ public sealed partial class ProjectStore
         {
             [JsonKeys.ClipNumber] = fields.Clip,
             ["timestamp"] = "",
-            ["veo_continuation_source"] = "none",
+            [StoreLit.VeoContinuationSource] = "none",
         };
         ApplyClipFields(clipObj, fields, projectId, SceneSetting(sceneNode));
 
@@ -5061,9 +5076,9 @@ public sealed partial class ProjectStore
         var videoPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
         var deletedVideo = File.Exists(videoPath);
         TrashClipMediaFile(videoDir, videoPath);
-        TrashClipMediaFile(videoDir, videoPath + ".native");
+        TrashClipMediaFile(videoDir, videoPath + StoreLit.NativeSuffix);
         TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, StoreLit.ClipJsonSuffix));
-        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, ".meta.json"));
+        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, StoreLit.MetaJsonSuffix));
 
         var verificationPath = ClipDialogueVerificationService.BuildVerificationPath(projectDir, scene, clip);
         if (File.Exists(verificationPath))
@@ -5133,12 +5148,12 @@ public sealed partial class ProjectStore
             var active = Path.Combine(videoDir, name);
             if (File.Exists(active))
                 continue;
-            foreach (var suffix in new[] { "", ".native", StoreLit.ClipJsonSuffix, ".meta.json" })
+            foreach (var suffix in new[] { "", StoreLit.NativeSuffix, StoreLit.ClipJsonSuffix, StoreLit.MetaJsonSuffix })
             {
                 var fileName = suffix switch
                 {
                     "" => name,
-                    ".native" => name + ".native",
+                    StoreLit.NativeSuffix => name + StoreLit.NativeSuffix,
                     _ => Path.ChangeExtension(name, suffix),
                 };
                 var trashed = Path.Combine(trashDir, fileName);
@@ -5267,7 +5282,7 @@ public sealed partial class ProjectStore
         {
             [JsonKeys.ClipNumber] = 1,
             ["timestamp"] = "",
-            ["veo_continuation_source"] = "none",
+            [StoreLit.VeoContinuationSource] = "none",
             [StoreLit.IsCredits] = true,
             [StoreLit.VisualPrompt] = BuildCreditsVisualPrompt(projectId),
             [JsonKeys.AudioPayload] = new System.Text.Json.Nodes.JsonObject { [JsonKeys.Speaker] = "", [JsonKeys.Dialogue] = "" },
@@ -6506,7 +6521,7 @@ public sealed partial class ProjectStore
             Timestamp = JsonStr(c, "timestamp"),
             DurationSeconds = dur,
             ActualDurationSeconds = actualClip,
-            Continuation = JsonStr(c, "veo_continuation_source", "none"),
+            Continuation = JsonStr(c, StoreLit.VeoContinuationSource, "none"),
             PrimarySubject = JsonStr(c, "primary_subject"),
             VisualPrompt = visualPrompt,
             NegativePrompt = JsonStr(c, "negative_prompt"),
@@ -6632,8 +6647,8 @@ public sealed partial class ProjectStore
     private static (string? BeatId, List<string> BeatIds) ResolveStage1BeatIds(
         JsonElement c, int sceneNumber, string? sceneSetting, string dialogue, string? speaker, string visualPrompt)
     {
-        var stage1BeatId = JsonStrOrNull(c, "stage1_beat_id");
-        var stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
+        var stage1BeatId = JsonStrOrNull(c, StoreLit.Stage1BeatId);
+        var stage1BeatIds = c.TryGetProperty(StoreLit.Stage1BeatIds, out var s1bs) &&
                             s1bs.ValueKind == JsonValueKind.Array
             ? s1bs.EnumerateArray()
                 .Select(x => x.GetString())
