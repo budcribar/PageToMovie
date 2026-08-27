@@ -55,7 +55,7 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
     }
 
     [Fact]
-    public void Catalog_1_5_is_r2v_capped_and_flat_priced()
+    public void Catalog_1_5_is_r2v_capped_and_resolution_priced()
     {
         var m = SupportedModelCatalog.Find(GenerateId, ModelCapability.Video);
         Assert.NotNull(m);
@@ -63,8 +63,8 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
         Assert.Equal(3, m.MaxSpeakersPerClip);
         Assert.Equal("720p", m.MaxResolutionWithReferences);
         Assert.Equal(0.08, m.VideoCostPerSecondByResolution!["480p"]);
-        Assert.Equal(0.08, m.VideoCostPerSecondByResolution["720p"]);
-        Assert.Equal(0.08, m.VideoCostPerSecondByResolution["1080p"]);
+        Assert.Equal(0.14, m.VideoCostPerSecondByResolution["720p"]);
+        Assert.Equal(0.25, m.VideoCostPerSecondByResolution["1080p"]);
 
         var bundle = SupportedModelCatalog.Find(VirtualId, ModelCapability.Video);
         Assert.NotNull(bundle);
