@@ -743,8 +743,9 @@ window.PageToMovieMedia = {
                 setTimeout(() => done(null), 8000);
                 v.src = url;
             });
-            return (typeof seconds === "number" && isFinite(seconds) && seconds > 0) ? seconds : null;
-        } catch (_) {
+            return (typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0) ? seconds : null;
+        } catch (err) {
+            if (err) { /* metadata probe is best-effort; requested duration is the fallback */ }
             return null;
         } finally {
             if (url) { try { URL.revokeObjectURL(url); } catch (_) { /* */ } }
@@ -787,9 +788,9 @@ window.PageToMovieMedia = {
                 const fh = await this._root.getFileHandle(NAME, { create: false });
                 const text = (await (await fh.getFile()).text()).trim();
                 if (text) return { success: true, folderId: text };
-            } catch (_) { /* absent or unreadable — mint one below */ }
+            } catch (err) { if (err) { /* absent or unreadable — mint one below */ } }
 
-            const id = (crypto.randomUUID && crypto.randomUUID()) ||
+            const id = crypto.randomUUID?.() ||
                 Array.from(crypto.getRandomValues(new Uint8Array(16)))
                     .map(b => b.toString(16).padStart(2, "0")).join("");
             const fh = await this._root.getFileHandle(NAME, { create: true });

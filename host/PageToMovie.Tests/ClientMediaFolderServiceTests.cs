@@ -37,6 +37,15 @@ public class ClientMediaFolderServiceTests
         method!.Invoke(svc, new object?[] { snap });
     }
 
+    private static async Task<string> InvokeFolderKeyAsync(ClientMediaFolderService svc)
+    {
+        var method = typeof(ClientMediaFolderService).GetMethod(
+            "FolderKeyAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var task = (Task<string>)method!.Invoke(svc, null)!;
+        return await task;
+    }
+
     [Fact]
     public async Task Each_clip_in_a_multi_clip_batch_is_saved_even_though_status_stays_running()
     {
@@ -297,6 +306,31 @@ public class ClientMediaFolderServiceTests
         Assert.True(ok);
         Assert.True(svc.IsConnected);
         Assert.False(svc.NeedsReconnect);
+    }
+
+    [Fact]
+    public async Task FolderKeyAsync_uses_the_folder_marker_id_from_js()
+    {
+        var (svc, js) = CreateService();
+        js.Responses["PageToMovieMedia.folderIdAsync"] = """{"success":true,"folderId":"marker-abc"}""";
+        await svc.SetFullPathAsync("/tmp/other-folder");
+
+        var key = await InvokeFolderKeyAsync(svc);
+
+        Assert.Equal("marker-abc", key);
+        Assert.Equal(1, js.CallCount("PageToMovieMedia.folderIdAsync"));
+    }
+
+    [Fact]
+    public async Task FolderKeyAsync_falls_back_to_the_folder_path_when_the_marker_is_missing()
+    {
+        var (svc, js) = CreateService();
+        js.Responses["PageToMovieMedia.folderIdAsync"] = """{"success":false,"error":"read-only"}""";
+        await svc.SetFullPathAsync("/tmp/media-folder");
+
+        var key = await InvokeFolderKeyAsync(svc);
+
+        Assert.Equal("/tmp/media-folder", key);
     }
 
     private static async Task WaitForIdleAsync(ClientMediaFolderService svc)
