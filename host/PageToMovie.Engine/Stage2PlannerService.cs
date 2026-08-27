@@ -1301,8 +1301,7 @@ public sealed class Stage2PlannerService
             // with the label attached.
             var grade = aiColor.GradingPrompt.Trim();
             var label = new[] { "Color grading:", "Colour grading:", "Grade:" }
-                .Where(l => grade.StartsWith(l, StringComparison.OrdinalIgnoreCase))
-                .FirstOrDefault();
+                .FirstOrDefault(l => grade.StartsWith(l, StringComparison.OrdinalIgnoreCase));
             if (label is not null)
                 grade = grade[label.Length..].Trim();
             if (grade.Length > 0)
