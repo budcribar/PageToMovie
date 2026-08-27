@@ -6,6 +6,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
+using PageToMovie.Engine.Collaboration;
 
 namespace PageToMovie.Api;
 
@@ -37,6 +38,20 @@ public static partial class SceneClipEndpoints
         MediaRegistryService Registry,
         IUserContext User,
         IOptions<PageToMovieOptions> Opts);
+
+    public sealed record ClipDeleteServices(
+        ProjectStore Store,
+        ReviewIndexService ReviewIndex,
+        EditLogService Logs,
+        ScreenplayClipWriteBackService WriteBack);
+
+    public sealed record SceneDeleteServices(
+        ProjectStore Store,
+        IUserContext User,
+        IOptions<PageToMovieOptions> Opts,
+        ILockService Locks,
+        IProjectLeaseService Leases,
+        ScreenplayClipWriteBackService WriteBack);
 
     private static IResult? ValidateSidecarBody(string body, int scene, int clip)
     {

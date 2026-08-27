@@ -240,8 +240,10 @@ public static partial class SceneClipEndpoints
     /// scene cannot bring the clip back. Default false keeps the old blueprint-only behaviour,
     /// which is the only option for a clip whose line cannot be resolved.
     /// </param>
-    private static async Task<IResult> DeleteProjectsIdScenesSceneClipsClip(string id, int scene, int clip, bool? screenplay, ProjectStore store, ReviewIndexService reviewIndex,
-    EditLogService logs, ScreenplayClipWriteBackService writeBack, CancellationToken ct)
+    private static async Task<IResult> DeleteProjectsIdScenesSceneClipsClip(
+        string id, int scene, int clip, bool? screenplay,
+        [AsParameters] ClipDeleteServices svc,
+        CancellationToken ct)
     {
     try
     {
@@ -251,14 +253,14 @@ public static partial class SceneClipEndpoints
         string? screenplayError = null;
         if (screenplay == true)
         {
-            var preview = writeBack.PreviewDelete(id, scene, new[] { clip });
+            var preview = svc.WriteBack.PreviewDelete(id, scene, new[] { clip });
             group = preview.ClipNumbers.ToList();
             emptiesScene = preview.EmptiesScene;
             // Removing every clip in the scene is a scene delete; the scene must not be left empty,
             // which would fail the shot plan's own "every scene has a clip" rule on the next replan.
             var result = emptiesScene
-                ? writeBack.RemoveScene(id, scene)
-                : writeBack.RemoveBeatsForClips(id, scene, group);
+                ? svc.WriteBack.RemoveScene(id, scene)
+                : svc.WriteBack.RemoveBeatsForClips(id, scene, group);
             screenplayLines = result.Removed;
             screenplayError = result.Error;
         }
@@ -266,15 +268,15 @@ public static partial class SceneClipEndpoints
         var wasInBlueprint = false;
         if (emptiesScene)
         {
-            wasInBlueprint = store.DeleteScene(id, scene);
+            wasInBlueprint = svc.Store.DeleteScene(id, scene);
         }
         else
         {
             foreach (var n in group)
             {
-                wasInBlueprint |= store.DeleteClip(id, scene, n);
-                await reviewIndex.RemoveClipAsync(id, scene, n, ct);
-                await logs.RemoveClipReviewStateAsync(id, scene, n, ct);
+                wasInBlueprint |= svc.Store.DeleteClip(id, scene, n);
+                await svc.ReviewIndex.RemoveClipAsync(id, scene, n, ct);
+                await svc.Logs.RemoveClipReviewStateAsync(id, scene, n, ct);
             }
         }
 
@@ -304,18 +306,18 @@ public static partial class SceneClipEndpoints
     /// When true the scene is removed from the screenplay too, and every surviving scene's number
     /// is pinned in the Fountain so a later replan cannot land one scene's plan on another's clips.
     /// </param>
-    private static async Task<IResult> DeleteProjectsIdScenesScene(string id, int scene, bool? screenplay, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
-    ILockService locks, PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
-    ScreenplayClipWriteBackService writeBack,
-    CancellationToken ct)
+    private static async Task<IResult> DeleteProjectsIdScenesScene(
+        string id, int scene, bool? screenplay,
+        [AsParameters] SceneDeleteServices svc,
+        CancellationToken ct)
     {
-    if (AuthGate.RequireLogin(user, opts) is { } denied)
+    if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
         return denied;
-    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can edit the shot plan.", ct) is { } forbidden)
+    if (await ApiEndpointHelpers.RequireProjectOwnerOrAdmin(id, svc.Store, svc.User, "Only the project owner or an admin can edit the shot plan.", ct) is { } forbidden)
         return forbidden;
     // I9 / P6: cannot delete while scene:N lease or job lock is held
     var leaseKey = PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Scene(scene);
-    var sceneLease = await leases.GetAsync(id, leaseKey, ct);
+    var sceneLease = await svc.Leases.GetAsync(id, leaseKey, ct);
     if (sceneLease is not null)
         return Results.Json(new {
             ok = false,
@@ -323,7 +325,7 @@ public static partial class SceneClipEndpoints
             message = $"Scene {scene:D2} is locked by {sceneLease.HolderUserId}. Release the lease before deleting.",
             holderUserId = sceneLease.HolderUserId,
         }, statusCode: StatusCodes.Status423Locked);
-    var jobLock = locks.Get(LockKeys.Scene(id, scene));
+    var jobLock = svc.Locks.Get(LockKeys.Scene(id, scene));
     if (jobLock is not null)
         return Results.Json(new {
             ok = false,
@@ -336,8 +338,8 @@ public static partial class SceneClipEndpoints
         // Screenplay first: it pins every surviving scene's number in the Fountain, without which
         // deleting a scene shifts the ones after it while the blueprint keeps their old numbers,
         // and the next replan merges one scene's plan onto another's clips.
-        var written = screenplay == true ? writeBack.RemoveScene(id, scene) : null;
-        var removed = store.DeleteScene(id, scene);
+        var written = screenplay == true ? svc.WriteBack.RemoveScene(id, scene) : null;
+        var removed = svc.Store.DeleteScene(id, scene);
         return Results.Ok(new { ok = true, projectId = id, scene, deleted = removed,
             screenplayError = written?.Error,
             message = $"Deleted Scene {scene:D2}" });

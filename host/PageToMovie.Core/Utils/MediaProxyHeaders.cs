@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace PageToMovie.Core.Utils;
 
 /// <summary>
@@ -27,7 +29,12 @@ public static class MediaProxyHeaders
         if (maxLength <= 0)
             maxLength = MaxHeaderValueLength;
 
-        var sb = new System.Text.StringBuilder(Math.Min(detail.Length, maxLength));
+        return CollapseToPrintableAscii(detail, maxLength);
+    }
+
+    private static string CollapseToPrintableAscii(string detail, int maxLength)
+    {
+        var sb = new StringBuilder(Math.Min(detail.Length, maxLength));
         var pendingSpace = false;
         foreach (var ch in detail)
         {
@@ -38,19 +45,24 @@ public static class MediaProxyHeaders
                 pendingSpace = sb.Length > 0;
                 continue;
             }
-            // Printable ASCII only: anything else is what Kestrel would throw on.
-            if (ch < ' ' || ch > '~')
+            if (!IsPrintableAscii(ch))
                 continue;
-            if (pendingSpace && sb.Length < maxLength)
-            {
-                sb.Append(' ');
-                pendingSpace = false;
-                if (sb.Length >= maxLength)
-                    break;
-            }
+            if (!TryAppendPendingSpace(sb, ref pendingSpace, maxLength))
+                break;
             sb.Append(ch);
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private static bool IsPrintableAscii(char ch) => ch is >= ' ' and <= '~';
+
+    private static bool TryAppendPendingSpace(StringBuilder sb, ref bool pendingSpace, int maxLength)
+    {
+        if (!pendingSpace || sb.Length >= maxLength)
+            return sb.Length < maxLength;
+        sb.Append(' ');
+        pendingSpace = false;
+        return sb.Length < maxLength;
     }
 
     public static string RecoveredViaSourceUrlStatus(string? fileIdError)
