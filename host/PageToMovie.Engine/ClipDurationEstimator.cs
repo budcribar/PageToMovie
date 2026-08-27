@@ -366,7 +366,7 @@ public static class ClipDurationEstimator
     }
 
     private readonly record struct BeatEstimateInputs(
-        string Dialogue, string Visual, string ActionClass, string Delivery);
+        string Dialogue, string Visual, string BeatActionClass, string Delivery);
 
     private static BeatEstimateInputs NormalizeBeatInputs(
         string? dialogue, string? visualOrAction, string? actionClass, string? delivery)
@@ -381,8 +381,8 @@ public static class ClipDurationEstimator
 
     private static double EstimateActionSeconds(in BeatEstimateInputs inputs) =>
         inputs.Dialogue.Length == 0
-            ? EstimateSilentActionSeconds(inputs.Visual, inputs.ActionClass)
-            : DialogueClipActionOverhead(inputs.Visual, inputs.ActionClass);
+            ? EstimateSilentActionSeconds(inputs.Visual, inputs.BeatActionClass)
+            : DialogueClipActionOverhead(inputs.Visual, inputs.BeatActionClass);
 
     private static (double Speech, double Action, BeatEstimateInputs Inputs) EstimateSpeechAndAction(
         string? dialogue, string? visualOrAction, string? actionClass, string? delivery)
@@ -434,7 +434,7 @@ public static class ClipDurationEstimator
         // Callers may pass mixed-case labels from JSON / blueprints
         var (speech, action, inputs) = EstimateSpeechAndAction(dialogue, visualOrAction, actionClass, delivery);
         var dlg = inputs.Dialogue;
-        actionClass = inputs.ActionClass;
+        actionClass = inputs.BeatActionClass;
 
         var total = speech + action;
         if (total <= 0)

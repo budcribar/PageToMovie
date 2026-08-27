@@ -152,9 +152,7 @@ public static class ClipPromptSections
                 continue;   // already claimed by an earlier, more specific field
             var prefix = fixedPrefix ?? GroupOrEmpty(m, "prefix");
             var suffix = fixedSuffix ?? GroupOrEmpty(m, "suffix");
-            var value = m.Groups["value"].Success ? m.Groups["value"].Value
-                : m.Groups.Count > 1 ? m.Groups[1].Value
-                : m.Value;
+            var value = CaptureValue(m);
             spans.Add(new Span(m.Index, m.Length,
                 new ClipPromptSection(field, label ?? LabelFor(field), prefix, value, suffix)));
         }
@@ -162,6 +160,15 @@ public static class ClipPromptSections
 
     private static string GroupOrEmpty(System.Text.RegularExpressions.Match m, string name) =>
         m.Groups[name].Success ? m.Groups[name].Value : "";
+
+    private static string CaptureValue(System.Text.RegularExpressions.Match m)
+    {
+        if (m.Groups["value"].Success)
+            return m.Groups["value"].Value;
+        if (m.Groups.Count > 1)
+            return m.Groups[1].Value;
+        return m.Value;
+    }
 
     /// <summary>Interleave the claimed spans with the free text between them, leaving no gaps.</summary>
     private static List<ClipPromptSection> Stitch(string text, List<Span> spans)
