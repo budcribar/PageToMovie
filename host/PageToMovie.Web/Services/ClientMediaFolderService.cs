@@ -1791,9 +1791,9 @@ public sealed class ClientMediaFolderService
     /// <summary>Reply from <c>PageToMovieMedia.folderIdAsync</c> — the folder's marker file.</summary>
     private sealed class JsFolderIdResult
     {
-        public bool Success { get; set; }
-        public string? FolderId { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? FolderId { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsStatResult
