@@ -18,6 +18,8 @@ namespace PageToMovie.Engine;
 /// </remarks>
 public sealed class ScreenplayClipWriteBackService
 {
+    private const string NoScreenplayToEdit = "No screenplay to edit.";
+
     private readonly ProjectStore _store;
 
     public ScreenplayClipWriteBackService(ProjectStore store) => _store = store;
@@ -101,7 +103,7 @@ public sealed class ScreenplayClipWriteBackService
     {
         var text = ReadScreenplay(projectId);
         if (text is null)
-            return new WriteBackResult(false, 0, Array.Empty<string>(), "No screenplay to edit.");
+            return new WriteBackResult(false, 0, Array.Empty<string>(), NoScreenplayToEdit);
 
         var sceneClips = _store.ReadSceneClipBeatIds(projectId, sceneNumber);
         var ids = sceneClips
@@ -131,7 +133,7 @@ public sealed class ScreenplayClipWriteBackService
     {
         var text = ReadScreenplay(projectId);
         if (text is null)
-            return new WriteBackResult(false, 0, Array.Empty<string>(), "No screenplay to edit.");
+            return new WriteBackResult(false, 0, Array.Empty<string>(), NoScreenplayToEdit);
 
         var model = FountainFormatter.Parse(text);
         var sceneIndex = model.Scenes.FindIndex(s => s.SceneNumber == sceneNumber);
@@ -194,7 +196,7 @@ public sealed class ScreenplayClipWriteBackService
     {
         var text = ReadScreenplay(projectId);
         if (text is null)
-            return new WriteBackResult(false, 0, Array.Empty<string>(), "No screenplay to edit.");
+            return new WriteBackResult(false, 0, Array.Empty<string>(), NoScreenplayToEdit);
 
         var model = FountainFormatter.Parse(text);
         var index = model.Scenes.FindIndex(s => s.SceneNumber == sceneNumber);
@@ -214,7 +216,7 @@ public sealed class ScreenplayClipWriteBackService
     {
         var text = ReadScreenplay(projectId);
         if (text is null)
-            return new WriteBackResult(false, 0, Array.Empty<string>(), "No screenplay to edit.");
+            return new WriteBackResult(false, 0, Array.Empty<string>(), NoScreenplayToEdit);
 
         var model = FountainFormatter.Parse(text);
         if (model.Scenes.Any(s => s.SceneNumber == sceneNumber))
