@@ -71,6 +71,18 @@
         }
     }
 
+    // On unless explicitly switched off, so a query string can still bisect a bad copy.
+    function queryFlagDefaultOn(name) {
+        try {
+            const value = new URLSearchParams(window.location.search).get(name);
+            if (value === null) return true;
+            const s = String(value).toLowerCase();
+            return !(s === "0" || s === "false" || s === "off");
+        } catch (_) {
+            return true;
+        }
+    }
+
     function requestedWorkerCount() {
         try {
             const query = new URLSearchParams(window.location.search).get("ffmpegWorkers");
@@ -2157,7 +2169,8 @@
                 const outgoing = cut._playSurfaces.front;
                 if (outgoing && outgoing !== incoming)
                     cut.pauseVideo(outgoing);
-                incoming.muted = false;
+                // A muted clip previews silent, so the toggle is audible before any compose.
+                incoming.muted = !!incoming._cutMuted;
                 cut.playVideo(incoming);
                 showOnlyPlaySurface(incoming);
                 return { success: true };
@@ -2173,7 +2186,7 @@
         swapPlayTo(incoming, url, seconds, false);
     };
 
-    cut.playUrlAt = function (el, url, seconds) {
+    cut.playUrlAt = function (el, url, seconds, muted) {
         if (!url) return Promise.resolve({ success: false });
         const s = cut._playSurfaces || {};
         const surface = (el && el === s.movie) ? "movie" : "native";
@@ -2191,6 +2204,7 @@
             cut.playVideo(incoming);
             return Promise.resolve({ success: true });
         }
+        incoming._cutMuted = !!muted;
         return swapPlayTo(incoming, url, seconds, true);
     };
 
@@ -3087,7 +3101,11 @@
     }
 
     async function concatMixAndValidateAsync(api, pieces, musicUrl, spec, onProgress, metrics) {
-        const tryStreamCopy = queryFlag("ffmpegCopyFinal");
+        // Titles are already burned into the pieces by this point, so the final pass only has to
+        // lay music over finished video: stream-copy it instead of re-encoding the whole movie,
+        // which is what made a music volume tweak cost minutes. A failed or short copy falls back
+        // to the encode path below, and ?ffmpegCopyFinal=0 forces the old behaviour.
+        const tryStreamCopy = queryFlagDefaultOn("ffmpegCopyFinal");
         let combined = await concatAndMixAsync(
             api, pieces, musicUrl, spec, onProgress, tryStreamCopy);
         if (metrics && combined && combined.streamCopyFellBack) {

@@ -22,6 +22,26 @@ public static class CutFinishedMovie
     }
 
     /// <summary>
+    /// What a plain re-stitch of the scene clips would leave out compared with the saved cut.
+    /// Only <c>movie.mp4</c> carries music and titles; a stitch is picture and voice only.
+    /// </summary>
+    public readonly record struct CutExtras(bool Music, bool Titles)
+    {
+        public bool Any => Music || Titles;
+    }
+
+    /// <summary>
+    /// The music and titles the saved cut carries, from <c>cut.project.json</c>. Used to tell a
+    /// share or upload apart from one that would silently ship a lesser movie.
+    /// </summary>
+    public static CutExtras ExtrasInSavedCut(string? projectJson)
+    {
+        if (!CutProjectFile.TryRead(projectJson, out _, out var texts, out _, out var music))
+            return new CutExtras(false, false);
+        return new CutExtras(!string.IsNullOrWhiteSpace(music.FileName), texts.Count > 0);
+    }
+
+    /// <summary>
     /// Share / export / editor / dub source: the resolved Finish movie when
     /// <see cref="ShouldPlay"/> already accepted it, otherwise the caller stitch.
     /// Does not re-check the fingerprint.

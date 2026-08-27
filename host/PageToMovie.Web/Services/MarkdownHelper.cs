@@ -56,6 +56,15 @@ public static class MarkdownHelper
     }
 
     /// <summary>
+    /// <see cref="Render"/> with an em-dash placeholder for empty input. Exists so call sites do
+    /// not write <c>blank ? "-" : Render(x)</c>: mixing a string and a MarkupString in one
+    /// conditional yields a string, which Razor HTML-escapes — the model's own paragraph tags then
+    /// show up on screen as literal &lt;p&gt; text.
+    /// </summary>
+    public static MarkupString RenderOrDash(string? input) =>
+        string.IsNullOrWhiteSpace(input) ? new MarkupString("—") : Render(input);
+
+    /// <summary>
     /// A table only parses when it starts its own block. Models routinely write the header row
     /// straight under a sentence, which makes the whole table part of that paragraph, so insert the
     /// blank line they left out. Detection keys on the delimiter row, which is what actually makes

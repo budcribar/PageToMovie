@@ -920,6 +920,37 @@ public partial class CutTimeline
         }
     }
 
+    /// <summary>Scene block reads as muted only when every clip under it is.</summary>
+    private bool BlockMuted(CutTimelineVideoBlock block)
+    {
+        var any = false;
+        for (var i = block.FirstIndex; i <= block.LastIndex && i < Clips.Count; i++)
+        {
+            if (i < 0) continue;
+            any = true;
+            if (!Clips[i].Muted)
+                return false;
+        }
+        return any;
+    }
+
+    /// <summary>
+    /// Silence a scene's own audio so the background music carries it, the way a per-clip speaker
+    /// toggle works in a normal editor. Picture is untouched.
+    /// </summary>
+    private async Task ToggleBlockMuteAsync(CutTimelineVideoBlock block)
+    {
+        if (Busy)
+            return;
+        var mute = !BlockMuted(block);
+        for (var i = block.FirstIndex; i <= block.LastIndex && i < Clips.Count; i++)
+        {
+            if (i >= 0)
+                Clips[i].Muted = mute;
+        }
+        await OnEdited.InvokeAsync();
+    }
+
     private async Task<bool> TryHandleDeleteKeyAsync(string key)
     {
         if (key is not ("Delete" or "Backspace"))

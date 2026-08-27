@@ -6,18 +6,24 @@
 <div class="card mb-3 border-info text-white shadow-sm" style="background-color: #0f172a !important; border-color: #3b82f6 !important;" data-testid="review-movie-report-card">
             @* Collapsing keeps the header — score, verdict, and the way back in — so the report is
                never lost, just out of the way of the scene table below it. *@
-            <div class="card-header border-secondary d-flex justify-content-between align-items-center flex-wrap gap-2 py-2" style="background-color: #1e293b !important;">
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="fs-5">🤖</span>
-                    <span class="fw-bold fs-6">Full Movie Executive AI Review</span>
-                    <span class="badge fs-6 @ScoreBadgeClass(Report.OverallScore)">
-                        Overall Score: @Report.OverallScore / 10 — @Report.Verdict
+            @* One line at 1024 wide, where the sidebar leaves the card only ~700px: the title
+               shortens, the score keeps its verdict, and the model badge waits for a wider screen.
+               Wrapping here cost 70-odd vertical pixels for a bar that is meant to be out of the way. *@
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center flex-nowrap gap-2 py-2" style="background-color: #1e293b !important;">
+                <div class="d-flex align-items-center gap-2 flex-nowrap overflow-hidden">
+                    <span class="fs-5 flex-shrink-0">🤖</span>
+                    <span class="fw-bold fs-6 text-truncate">
+                        <span class="d-none d-xl-inline">Full Movie Executive AI Review</span>
+                        <span class="d-xl-none">Executive AI Review</span>
                     </span>
-                    <span class="badge bg-dark border border-secondary text-white-50">
+                    <span class="badge fs-6 flex-shrink-0 @ScoreBadgeClass(Report.OverallScore)">
+                        <span class="d-none d-xl-inline">Overall Score: </span>@Report.OverallScore / 10 — @Report.Verdict
+                    </span>
+                    <span class="badge bg-dark border border-secondary text-white-50 d-none d-xxl-inline-block flex-shrink-0">
                         Model: @Report.ProviderUsed.ToUpperInvariant()
                     </span>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary"
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 text-nowrap"
                         data-testid="review-movie-report-toggle"
                         aria-expanded="@((!Collapsed).ToString().ToLowerInvariant())"
                         aria-controls="review-movie-report-body"
@@ -90,11 +96,11 @@
                                         <div class="row g-2">
                                             <div class="col-md-6">
                                                 <div class="small text-white-50"><strong>Continuity &amp; Transitions:</strong></div>
-                                                <div class="markdown-body small text-light mb-2">@(string.IsNullOrWhiteSpace(group.ContinuityNotes) ? "—" : MarkdownHelper.Render(group.ContinuityNotes))</div>
+                                                <div class="markdown-body small text-light mb-2">@MarkdownHelper.RenderOrDash(group.ContinuityNotes)</div>
                                             </div>
                                             <div class="col-md-6">
                                                 <div class="small text-white-50"><strong>Character Consistency &amp; Wardrobe:</strong></div>
-                                                <div class="markdown-body small text-light mb-2">@(string.IsNullOrWhiteSpace(group.VisualConsistencyNotes) ? "—" : MarkdownHelper.Render(group.VisualConsistencyNotes))</div>
+                                                <div class="markdown-body small text-light mb-2">@MarkdownHelper.RenderOrDash(group.VisualConsistencyNotes)</div>
                                             </div>
                                             @if (!string.IsNullOrWhiteSpace(group.LightingNotes))
                                             {

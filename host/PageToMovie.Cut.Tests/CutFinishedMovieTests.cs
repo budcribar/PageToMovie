@@ -19,6 +19,58 @@ public class CutFinishedMovieTests
     }
 
     [Fact]
+    public void Muting_a_clip_survives_a_save_and_changes_the_merge_fingerprint()
+    {
+        var clips = new[] { NewClip(1, 1, 4), NewClip(1, 2, 4) };
+        var music = new CutMusic();
+        var before = CutPlayMerge.Fingerprint(clips, [], null, music);
+
+        clips[0].Muted = true;
+        var after = CutPlayMerge.Fingerprint(clips, [], null, music);
+        Assert.NotEqual(before, after);
+
+        // A saved cut round-trips the flag, so a reopened project keeps the silence.
+        var json = CutProjectFile.Serialize(clips, null, [], after, music);
+        Assert.True(CutProjectFile.TryRead(json, out var read, out _, out _, out _));
+        Assert.True(read.Single(c => c.Scene == 1 && c.Clip == 1).Muted);
+        Assert.False(read.Single(c => c.Scene == 1 && c.Clip == 2).Muted);
+
+        // And the saved movie is stale against the un-muted fingerprint it was built with.
+        Assert.False(CutFinishedMovie.ShouldPlay(
+            CutProjectFile.Serialize(clips, null, [], before, music), movieFilePresent: true));
+    }
+
+    [Fact]
+    public void Extras_report_the_music_and_titles_a_stitch_would_drop()
+    {
+        var clips = new[] { NewClip(1, 1, 4) };
+        var titles = new[] { new CutTextClip { Text = "Mary had a little lamb", StartSec = 0, Seconds = 3 } };
+        var music = new CutMusic { FileName = "score.mp3" };
+
+        var both = CutFinishedMovie.ExtrasInSavedCut(
+            CutProjectFile.Serialize(clips, "score.mp3", titles, null, music));
+        Assert.True(both.Music);
+        Assert.True(both.Titles);
+        Assert.True(both.Any);
+
+        var titlesOnly = CutFinishedMovie.ExtrasInSavedCut(
+            CutProjectFile.Serialize(clips, null, titles, null, new CutMusic()));
+        Assert.False(titlesOnly.Music);
+        Assert.True(titlesOnly.Titles);
+
+        var musicOnly = CutFinishedMovie.ExtrasInSavedCut(
+            CutProjectFile.Serialize(clips, "score.mp3", [], null, music));
+        Assert.True(musicOnly.Music);
+        Assert.False(musicOnly.Titles);
+
+        // A picture-only cut loses nothing in a stitch, and neither does an unreadable file.
+        var plain = CutFinishedMovie.ExtrasInSavedCut(CutProjectFile.Serialize(clips, null));
+        Assert.False(plain.Any);
+        Assert.False(CutFinishedMovie.ExtrasInSavedCut(null).Any);
+        Assert.False(CutFinishedMovie.ExtrasInSavedCut("{not-json").Any);
+    }
+
+    [Fact]
     public void Missing_or_stale_fingerprint_falls_back_to_stitch()
     {
         var clips = new[] { NewClip(1, 1, 4), NewClip(2, 1, 5) };

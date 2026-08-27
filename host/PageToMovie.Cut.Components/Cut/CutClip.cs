@@ -10,6 +10,12 @@ public sealed class CutClip
     /// <summary>Take number from <c>.current.json</c> (0 if none).</summary>
     public int ActiveTakeNumber { get; set; }
 
+    /// <summary>
+    /// Drop this clip's own audio (dialogue and effects) from the cut, leaving the background
+    /// music to carry the span. Picture is untouched.
+    /// </summary>
+    public bool Muted { get; set; }
+
     /// <summary>In-memory current take for preview / in-out / export.</summary>
     public int SelectedTakeNumber { get; private set; }
 

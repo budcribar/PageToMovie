@@ -91,6 +91,23 @@ public class MarkdownHelperTests
     }
 
     [Fact]
+    public void RenderOrDash_StripsModelParagraphTags_AndFallsBackToADash()
+    {
+        // The sequence-group notes come back wrapped in the model's own <p> tags. Rendering them
+        // through a conditional that mixed a string with a MarkupString escaped the whole thing,
+        // so the tags showed on screen as text.
+        var html = MarkdownHelper.RenderOrDash(
+            "<p>Spatial direction flows logically, though background art transitions abruptly.</p>").Value;
+
+        Assert.DoesNotContain("&lt;p&gt;", html);
+        Assert.DoesNotContain("&lt;/p&gt;", html);
+        Assert.Contains("Spatial direction flows logically", html);
+
+        Assert.Equal("—", MarkdownHelper.RenderOrDash(null).Value);
+        Assert.Equal("—", MarkdownHelper.RenderOrDash("   ").Value);
+    }
+
+    [Fact]
     public void StripHtml_StripsAllHtmlTagsAndDecodesEntities()
     {
         // Arrange

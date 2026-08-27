@@ -102,7 +102,18 @@
                             }
                         </div>
                         <span class="cut-tl-clip-name">@block.Label</span>
-                        <span class="cut-tl-speaker" aria-hidden="true">🔊</span>
+                        @{ var blockMuted = BlockMuted(block); }
+                        <button type="button"
+                                class="cut-tl-speaker @(blockMuted ? "is-muted" : "")"
+                                data-testid="cut-tl-mute"
+                                disabled="@Busy"
+                                aria-pressed="@(blockMuted ? "true" : "false")"
+                                title="@(blockMuted
+                                    ? "Unmute " + block.Label + " — bring back its dialogue and effects"
+                                    : "Mute " + block.Label + " — keep the background music only")"
+                                @onpointerdown:stopPropagation="true"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ToggleBlockMuteAsync(block)">@(blockMuted ? "🔇" : "🔊")</button>
                         @if (block.TrimIn)
                         {
                             <button type="button"

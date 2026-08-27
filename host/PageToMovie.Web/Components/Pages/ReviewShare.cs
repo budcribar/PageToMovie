@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -197,7 +198,8 @@ public partial class Review
                 var mediaUrl = await EnsureShareableMovieUrlAsync();
                 if (string.IsNullOrWhiteSpace(mediaUrl))
                 {
-                    S._error = "Could not build a movie to share — generate clips first.";
+                    // Keep a specific reason (e.g. music/titles not composed yet) if one was set.
+                    S._error ??= "Could not build a movie to share — generate clips first.";
                     return;
                 }
 
@@ -328,7 +330,49 @@ public partial class Review
             if (chosen is not null)
                 return UseShareableUrl(chosen, missingMusic: false, finishedCut: true);
 
+            // No usable finished movie, so what follows is a picture-and-voice stitch. If the saved
+            // cut carries music or titles, that stitch is not the movie the operator built — stop
+            // and say which parts would go missing instead of uploading a lesser cut in silence.
+            if (await DescribeMissingCutExtrasAsync() is { } lost)
+            {
+                S._error = lost;
+                return null;
+            }
+
             return await StitchShareableMovieAsync();
+        }
+
+        /// <summary>
+        /// Operator-facing reason the stitch is not good enough, or null when nothing is lost.
+        /// Reads the saved cut rather than assuming: a picture-only cut stitches faithfully and
+        /// must not be blocked.
+        /// </summary>
+        private async Task<string?> DescribeMissingCutExtrasAsync()
+        {
+            if (!S.MediaFolder.IsConnected)
+                return null;
+
+            string? projectJson;
+            try
+            {
+                var bytes = await S.MediaFolder.ReadLocalBytesAsync(
+                    $"{S._projectId}/{CutClipNaming.ProjectFileName}", minBytes: 2);
+                projectJson = bytes is { Length: > 0 } ? Encoding.UTF8.GetString(bytes) : null;
+            }
+            catch (JSException)
+            {
+                return null;
+            }
+
+            var extras = CutFinishedMovie.ExtrasInSavedCut(projectJson);
+            if (!extras.Any)
+                return null;
+
+            var what = extras.Music && extras.Titles ? "background music and titles"
+                : extras.Music ? "background music"
+                : "titles";
+            return $"This cut has {what} that are not in the movie file yet. "
+                   + "Open Finish, choose Make movie, then share or upload.";
         }
 
         private string UseShareableUrl(string url, bool missingMusic, bool finishedCut)
@@ -427,7 +471,8 @@ public partial class Review
                 var mediaUrl = await EnsureShareableMovieUrlAsync();
                 if (string.IsNullOrWhiteSpace(mediaUrl))
                 {
-                    S._error = "Could not build a movie to upload — generate scene clips first.";
+                    // Keep a specific reason (e.g. music/titles not composed yet) if one was set.
+                    S._error ??= "Could not build a movie to upload — generate scene clips first.";
                     return;
                 }
 

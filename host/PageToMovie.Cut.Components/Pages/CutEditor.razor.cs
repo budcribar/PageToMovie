@@ -692,7 +692,8 @@ public partial class CutEditor : IAsyncDisposable
             try
             {
                 await BindPlaySurfacesAsync();
-                await Js.InvokeVoidAsync(PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local);
+                await Js.InvokeVoidAsync(
+                    PlayUrlAtJs, ClipPlayer, window.Value.Clip.PreviewUrl, local, window.Value.Clip.Muted);
                 await Js.InvokeVoidAsync("PageToMovieCut.setPlayClockWindow",
                     "native", window.Value.TimelineStart, window.Value.LocalStart, window.Value.LocalEnd);
                 await Js.InvokeVoidAsync(PaintPlayheadJs, timelineSec);

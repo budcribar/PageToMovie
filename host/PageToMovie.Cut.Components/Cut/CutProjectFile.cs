@@ -273,6 +273,7 @@ public static class CutProjectFile
         foreach (var del in row.RangeDeletes ?? [])
             CutRangeDelete.TryAdd(clip.RangeDeletes, del.Start, del.End, clip.MarkIn, clip.MarkOut, out _);
         clip.JoinOverride = ParseJoinOverride(row.JoinOut);
+        clip.Muted = row.Muted ?? false;
         if (!string.IsNullOrWhiteSpace(row.FountainTransition))
             clip.FountainTransition = row.FountainTransition;
         if (row.Card is not null)
@@ -294,6 +295,7 @@ public static class CutProjectFile
         RangeDeletes = clip.RangeDeletes.Select(r => new SpanDto { Start = r.Start, End = r.End }).ToList(),
         JoinOut = clip.JoinOverride is { } j ? CutTransitionMap.WireName(j) : null,
         FountainTransition = clip.FountainTransition,
+        Muted = clip.Muted ? true : null,
         Card = clip.Card.Enabled || !string.IsNullOrWhiteSpace(clip.Card.Text)
             ? new CardDto
             {
@@ -458,6 +460,7 @@ public static class CutProjectFile
         public List<SpanDto>? RangeDeletes { get; set; }
         public string? JoinOut { get; set; }
         public string? FountainTransition { get; set; }
+        public bool? Muted { get; set; }
         public CardDto? Card { get; set; }
     }
 

@@ -380,6 +380,7 @@ public sealed class CutComposeService : IAsyncDisposable
             MarkIn = c.MarkIn,
             MarkOut = c.HasDuration ? c.MarkOut : 0,
             Duration = c.DurationSec,
+            Muted = c.Muted,
             Hold = hold,
             Windows = c.KeepWindows().Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
             JoinOut = joinOut,

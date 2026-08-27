@@ -213,6 +213,10 @@ public sealed class JsExportClip
     [JsonPropertyName("duration")]
     public double Duration { get; set; }
 
+    /// <summary>Render this clip's audio as silence so only the music track carries the span.</summary>
+    [JsonPropertyName("muted")]
+    public bool Muted { get; set; }
+
     [JsonPropertyName("hold")]
     public bool Hold { get; set; }
 

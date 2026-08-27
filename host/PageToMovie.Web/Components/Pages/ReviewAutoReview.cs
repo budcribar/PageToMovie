@@ -173,7 +173,8 @@ public partial class Review
                     _movieReportCollapsed = false;
                     _reviewProgressPct = 100;
                     _reviewProgressStatus = "Full movie AI review ready!";
-                    S._message = $"Full movie AI review ready — Score: {_movieReport.OverallScore}/10 ({_movieReport.Verdict})";
+                    // No page-level message: the report card below states the same score and
+                    // verdict, and the banner only pushed it further down the page.
                 }
                 else
                 {

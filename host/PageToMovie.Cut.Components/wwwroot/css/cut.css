@@ -657,11 +657,31 @@
 
 .cut-tl-speaker {
     position: absolute;
-    left: 6px;
-    top: 4px;
+    left: 4px;
+    top: 2px;
     font-size: 0.65rem;
+    line-height: 1;
     opacity: 0.8;
-    pointer-events: none;
+    padding: 2px 3px;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.45);
+    color: inherit;
+    cursor: pointer;
+}
+
+.cut-tl-speaker:hover:not(:disabled) {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.cut-tl-speaker.is-muted {
+    opacity: 1;
+    background: rgba(220, 53, 69, 0.75);
+}
+
+.cut-tl-speaker:disabled {
+    cursor: default;
 }
 
 .cut-tl-handle {
