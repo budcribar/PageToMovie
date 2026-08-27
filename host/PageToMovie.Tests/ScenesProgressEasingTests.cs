@@ -19,7 +19,7 @@ public class ScenesProgressEasingTests
     }
 
     [Fact]
-    public void Staying_on_one_step_creeps_upward_but_never_past_the_next_step()
+    public async Task Staying_on_one_step_creeps_upward_but_never_past_the_next_step()
     {
         const int total = 29;
         const int index = 10;
@@ -28,7 +28,7 @@ public class ScenesProgressEasingTests
 
         var gen = NewGen();
         Assert.Equal(stepped, gen.EaseAcrossCurrentStep(stepped, index, total)); // starts the clock
-        Thread.Sleep(80);
+        await Task.Delay(80);
         var eased = gen.EaseAcrossCurrentStep(stepped, index, total);
 
         Assert.InRange(eased, stepped, next);
@@ -40,12 +40,12 @@ public class ScenesProgressEasingTests
     /// until real progress passes 5% — worth knowing before chasing "it is stuck at the start".
     /// </summary>
     [Fact]
-    public void Early_steps_below_the_clamp_floor_have_nothing_to_ease_toward()
+    public async Task Early_steps_below_the_clamp_floor_have_nothing_to_ease_toward()
     {
         var gen = NewGen();
         // 1/29 rounds to 3%, under the 5% floor the shared helper clamps to.
         Assert.Equal(5, gen.EaseAcrossCurrentStep(5, index: 0, total: 29));
-        Thread.Sleep(80);
+        await Task.Delay(80);
         Assert.Equal(5, gen.EaseAcrossCurrentStep(5, index: 0, total: 29));
     }
 

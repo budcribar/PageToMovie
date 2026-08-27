@@ -982,11 +982,9 @@ public partial class Scenes
     /// <summary>Select or clear exactly the rows on screen, leaving any filtered-out selection alone.</summary>
     internal void ToggleSelectAllShown(IReadOnlyCollection<SceneSummary> shown, bool on)
     {
-        foreach (var s in shown)
-        {
-            if (on) _selected.Add(s.SceneNumber);
-            else _selected.Remove(s.SceneNumber);
-        }
+        var numbers = shown.Select(s => s.SceneNumber);
+        if (on) _selected.UnionWith(numbers);
+        else _selected.ExceptWith(numbers);
         _selectionMode = on && _selected.Count == (_scenes?.Count ?? 0) ? "all" : "";
     }
 
