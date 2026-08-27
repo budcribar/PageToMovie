@@ -286,15 +286,20 @@ public partial class Scenes
         private static string DeletedMessage(
             int scene, int clip, IReadOnlyList<int> removed, bool wholeScene, bool alsoScreenplay)
         {
-            var what = wholeScene
-                ? $"Deleted scene {scene}"
-                : removed.Count > 1
-                    ? $"Deleted {removed.Count} clips from scene {scene}"
-                    : $"Deleted clip {clip} from scene {scene}";
+            var what = DeletedWhat(scene, clip, removed, wholeScene);
             var story = alsoScreenplay
                 ? " and removed it from the screenplay"
                 : " — it will come back if you rebuild this scene's shot list";
             return what + story + ". Play scene to refresh the assembled cut.";
+        }
+
+        private static string DeletedWhat(int scene, int clip, IReadOnlyList<int> removed, bool wholeScene)
+        {
+            if (wholeScene)
+                return $"Deleted scene {scene}";
+            if (removed.Count > 1)
+                return $"Deleted {removed.Count} clips from scene {scene}";
+            return $"Deleted clip {clip} from scene {scene}";
         }
 
         internal async Task ConfirmDeleteClipAsync()
