@@ -31,6 +31,9 @@ public partial class Review
 
         internal MovieAutoReviewReport? _movieReport;
 
+        /// <summary>Report body collapsed to its header. Reset when a new review lands.</summary>
+        internal bool _movieReportCollapsed;
+
         internal string _note = "";
 
         internal int _reviewProgressPct;
@@ -167,6 +170,7 @@ public partial class Review
                 if (envelope?.Report is not null)
                 {
                     _movieReport = envelope.Report;
+                    _movieReportCollapsed = false;
                     _reviewProgressPct = 100;
                     _reviewProgressStatus = "Full movie AI review ready!";
                     S._message = $"Full movie AI review ready — Score: {_movieReport.OverallScore}/10 ({_movieReport.Verdict})";

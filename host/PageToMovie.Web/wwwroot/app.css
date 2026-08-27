@@ -1747,6 +1747,37 @@ h1:focus {
     border-radius: 0 4px 4px 0;
 }
 
+/* Models write score breakdowns as pipe tables. Keep them readable on a dark card, and let a
+   wide one scroll inside its own box instead of stretching the page. */
+.markdown-body table {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 0.88rem;
+}
+
+.markdown-body th,
+.markdown-body td {
+    border: 1px solid var(--fs-border-color);
+    padding: 0.35rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.markdown-body th {
+    background: rgba(56, 189, 248, 0.12);
+    color: #e2e8f0;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.markdown-body tbody tr:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.03);
+}
+
 
 /* —— Prototype look-feel: path steps + hero (Home) —— */
 .ptm-path-steps {

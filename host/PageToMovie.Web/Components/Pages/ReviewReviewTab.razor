@@ -47,7 +47,8 @@
     @if (autoReview._movieReport is { })
     {
         <Review_MovieReport Report="autoReview._movieReport"
-                            OnDismiss="@( () => autoReview._movieReport = null)"
+                            Collapsed="autoReview._movieReportCollapsed"
+                            OnToggleCollapsed="@(() => autoReview._movieReportCollapsed = !autoReview._movieReportCollapsed)"
                             OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
                             OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
                             OnToggleGroup="list.ToggleSceneGroupExpand"

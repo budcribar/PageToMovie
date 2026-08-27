@@ -86,6 +86,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         if (TryStyleGateResponse(prompt, out result)
             || TryLookPickResponse(prompt, out result)
             || TryMovieSceneGroupReviewResponse(prompt, out result)
+            || TryExecutiveSummaryResponse(prompt, out result)
             || TryMusicSupervisorResponse(prompt, out result))
         {
             kind = KindVision;
@@ -187,6 +188,36 @@ public sealed class FakeGrokVisionClient : IVisionClient
               "dialogueNotes": "Fake review — speaking posture matches the scripted beats in sampled frames.",
               "audioNotes": "Fake review — music cues fade rather than cutting off between scenes."
             }
+            """;
+        return true;
+    }
+
+    /// <summary>
+    /// Executive synthesis for the full-movie review. Answers in Markdown with a score table,
+    /// which is what the real models do — and what the report card has to be able to render.
+    /// </summary>
+    private static bool TryExecutiveSummaryResponse(string prompt, out string result)
+    {
+        result = "";
+        if (string.IsNullOrEmpty(prompt)
+            || !prompt.Contains("Executive Director Summary Report", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        result = """
+            ## Executive Post-Production Assessment
+
+            **Overall Evaluation:** Fake review — the cut holds together across sequences.
+
+            | Category | Score | Status |
+            | :--- | :---: | :--- |
+            | Continuity & Visual Cohesion | 8/10 | Approved |
+            | Character Lock & Model Fidelity | 8/10 | Approved |
+            | Lighting & Color Grading | 7/10 | Needs Polish |
+
+            ### Remediation Roadmap
+
+            1. **Colour pass:** even out exposure between interior and exterior setups.
+            2. **Audio conform:** smooth the music cue transitions between sequences.
             """;
         return true;
     }

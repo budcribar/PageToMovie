@@ -144,8 +144,24 @@ public class ReviewFlowTests
             await Assertions.Expect(autoAllBtn).ToBeEnabledAsync(new() { Timeout = 120_000 });
 
             // A finished review renders its own report card, not just any Bootstrap alert.
-            await Assertions.Expect(page.GetByTestId("review-movie-report-card"))
-                .ToBeVisibleAsync(new() { Timeout = 30_000 });
+            var card = page.GetByTestId("review-movie-report-card");
+            await Assertions.Expect(card).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            // The summary is Markdown: a score table has to render as a table, not as a run-on
+            // line of pipe characters.
+            var body = page.GetByTestId("review-movie-report-body");
+            await Assertions.Expect(body.Locator(".markdown-body table"))
+                .ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await Assertions.Expect(body).Not.ToContainTextAsync("| :--- |");
+
+            // The report collapses to its header and comes back, so it can be moved out of the way
+            // of the scene table without being thrown away.
+            var toggle = page.GetByTestId("review-movie-report-toggle");
+            await toggle.ClickAsync();
+            await Assertions.Expect(body).ToHaveCountAsync(0, new() { Timeout = 10_000 });
+            await Assertions.Expect(card).ToBeVisibleAsync();
+            await toggle.ClickAsync();
+            await Assertions.Expect(body).ToBeVisibleAsync(new() { Timeout = 10_000 });
         }
         finally { await ctx.CloseAsync(); }
     }

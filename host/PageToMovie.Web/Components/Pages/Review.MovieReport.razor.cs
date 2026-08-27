@@ -6,7 +6,10 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review_MovieReport
 {
     [Parameter] public MovieAutoReviewReport? Report { get; set; }
-    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    /// <summary>Body hidden, header (score + verdict + the toggle back) still shown.</summary>
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback OnToggleCollapsed { get; set; }
     [Parameter] public EventCallback OnExpandAll { get; set; }
     [Parameter] public EventCallback OnCollapseAll { get; set; }
     [Parameter] public EventCallback<string> OnToggleGroup { get; set; }
