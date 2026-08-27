@@ -116,7 +116,7 @@ public sealed class ContinuationActionTests
     [Fact]
     public void The_prompt_says_why_a_stated_position_is_harmful()
     {
-        var prompt = ContinuationActionClassifier.SystemPrompt();
+        var prompt = ContinuationActionClassifier.SystemPrompt;
         Assert.Contains("LAST FRAME", prompt, StringComparison.Ordinal);
         Assert.Contains("only what HAPPENS", prompt, StringComparison.Ordinal);
         Assert.Contains("where someone or something IS", prompt, StringComparison.Ordinal);

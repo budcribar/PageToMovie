@@ -1300,14 +1300,10 @@ public sealed class Stage2PlannerService
             // an older cached directive (or a model that ignores the instruction) can still arrive
             // with the label attached.
             var grade = aiColor.GradingPrompt.Trim();
-            foreach (var label in new[] { "Color grading:", "Colour grading:", "Grade:" })
-            {
-                if (grade.StartsWith(label, StringComparison.OrdinalIgnoreCase))
-                {
-                    grade = grade[label.Length..].Trim();
-                    break;
-                }
-            }
+            var label = new[] { "Color grading:", "Colour grading:", "Grade:" }
+                .FirstOrDefault(l => grade.StartsWith(l, StringComparison.OrdinalIgnoreCase));
+            if (label is not null)
+                grade = grade[label.Length..].Trim();
             if (grade.Length > 0)
                 vp = $"{vp} {PromptTags.Wrap(PromptFieldTags.Grade, PromptTags.SanitizeValue(grade))}";
         }
@@ -1971,6 +1967,16 @@ public sealed class Stage2PlannerService
         };
     }
 
+    private static string ResolveVisualEvent(
+        Dictionary<string, object?> beat,
+        string? continuationAction)
+    {
+        if (!string.IsNullOrWhiteSpace(continuationAction))
+            return continuationAction;
+        beat.TryGetValue(Keys.VisualEvent, out var vev);
+        return CoerceString(vev) ?? "";
+    }
+
     /// <param name="continuationAction">
     /// For a clip that continues the previous one, the beat's action rewritten to events only —
     /// see <see cref="ContinuationActionClassifier"/>. Null keeps the beat's own action, which is
@@ -1985,9 +1991,7 @@ public sealed class Stage2PlannerService
         Dictionary<string, List<string>> wardrobe,
         string? continuationAction = null)
     {
-        var ve = !string.IsNullOrWhiteSpace(continuationAction)
-            ? continuationAction
-            : CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
+        var ve = ResolveVisualEvent(beat, continuationAction);
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
         ve = CommonRegex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
         var cast = ClipCastTokens(scene, beat, charSeeds);
@@ -2020,7 +2024,7 @@ public sealed class Stage2PlannerService
 
         // Sound cues arrive inside the beat's visual_event (Stage 1 fountain writes "(SOUND: …)").
         // Lift them into their own slot rather than leaving them buried in the action.
-        var (action, sound) = SplitSoundCues(ve);
+        var (action, _) = SplitSoundCues(ve);
 
         // Emit full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.

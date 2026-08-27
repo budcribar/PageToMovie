@@ -244,8 +244,8 @@ public static class ClipVideoPromptBuilder
             ReferenceAudioVoiceIds = referenceAudioVoiceIds,
             PromptLogDetails = FormatPromptLogDetails(
                 allKeys.Count, onScreenKeys.Count, attached.Count,
-                locationRefAttached, locationKey, startFrameImagePath,
-                prompt.Length, previousClipVideoPath),
+                FormatLocationLogLabel(locationRefAttached, locationKey),
+                startFrameImagePath, prompt.Length, previousClipVideoPath),
         };
     }
 
@@ -460,21 +460,22 @@ public static class ClipVideoPromptBuilder
                 ". Do not invent extra people, duplicate faces, or crowd extras not listed.")
             : "";
 
+    private static string FormatLocationLogLabel(bool locationRefAttached, string? locationKey)
+    {
+        if (locationRefAttached)
+            return locationKey ?? "";
+        return locationKey is null ? "none" : "unlocked";
+    }
+
     private static string FormatPromptLogDetails(
         int allKeysCount,
         int onScreenCount,
         int attachedCount,
-        bool locationRefAttached,
-        string? locationKey,
+        string locLabel,
         string? startFrameImagePath,
         int promptLength,
         string? previousClipVideoPath)
     {
-        string? locLabel;
-        if (locationRefAttached)
-            locLabel = locationKey;
-        else
-            locLabel = locationKey is null ? "none" : "unlocked";
         return $"chars={allKeysCount} onScreen={onScreenCount} " +
         $"refs={attachedCount} loc={locLabel} " +
         $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
@@ -1310,8 +1311,8 @@ public static class ClipVideoPromptBuilder
                 continue;
             if (!ProseUsesPlural(text, word))
                 continue;
-            foreach (var k in group.OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-                         .Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
+            foreach (var k in group.Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase))
+                         .OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
                 list.Add(k);
         }
     }
@@ -1351,10 +1352,10 @@ public static class ClipVideoPromptBuilder
             .Replace('_', ' ').Trim();
         if (suffix.Length > 0) names.Add(suffix);
 
-        // A key can carry an article the prose leaves off — Character_The_Narrator gives
-        // "the narrator", which never matches prose that just says "narrator". This used to be two
-        // hardcoded hints ("old man", "narrator"), i.e. one book's cast names in engine code;
-        // dropping the article covers those and every other book's the-prefixed role.
+        // A key can carry an article the prose leaves off. A the-prefixed role such as
+        // Character_The_Narrator yields "the narrator", which never matches prose that just
+        // says "narrator". Dropping the article covers that case and every other book's
+        // the-prefixed role, without hardcoding book-specific names.
         foreach (var withArticle in names.ToList())
         {
             var bare = StripLeadingArticle(withArticle);

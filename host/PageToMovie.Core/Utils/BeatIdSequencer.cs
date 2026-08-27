@@ -28,7 +28,7 @@ public sealed class BeatIdSequencer
     public static string SceneKey(string? setting, int sceneNumber) =>
         !string.IsNullOrWhiteSpace(setting)
             ? setting
-            : $"scene:{(sceneNumber > 0 ? sceneNumber : 0)}";
+            : $"scene:{Math.Max(sceneNumber, 0)}";
 
     /// <summary>Clears the repeat counter. Call when a new scene starts.</summary>
     public void Reset() => _occurrence.Clear();
