@@ -1768,8 +1768,8 @@ h1:focus {
 }
 
 .markdown-body th {
-    background: rgba(56, 189, 248, 0.12);
-    color: #e2e8f0;
+    background: var(--fs-alert-info-bg);
+    color: var(--fs-alert-info-text);
     font-weight: 600;
     white-space: nowrap;
 }
