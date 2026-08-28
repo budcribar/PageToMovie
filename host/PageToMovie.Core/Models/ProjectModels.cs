@@ -208,6 +208,24 @@ public sealed class JobSnapshot : JobProgress
     /// <summary>True when job completed successfully (done or partial).</summary>
     public bool IsSuccess => Status is "done" or "partial";
 
+    /// <summary>How long a succeeded job keeps its progress card before it is just clutter.</summary>
+    public static readonly TimeSpan ProgressCardLinger = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Should this job still hold a progress card? A success that landed a while ago is already
+    /// reflected in the page around it — scene counts, checklist, activity history — so it stops
+    /// taking space. Anything still working, and anything that failed or was cancelled, keeps its
+    /// card: a failure's reason has nowhere else to appear.
+    /// </summary>
+    public bool DeservesProgressCard(DateTimeOffset now)
+    {
+        if (!IsFinished || !IsSuccess)
+            return true;
+        // No timestamp at all is degenerate; keep showing rather than hide something unexplained.
+        return (FinishedAt ?? StartedAt) is not { } completed
+               || now - completed < ProgressCardLinger;
+    }
+
     /// <summary>For Kind="music": one id shared by every segment of the same generation run, so the
     /// client archives all of a take's segments under the same take-history timestamp instead of each
     /// segment computing its own independently (they can be minutes apart — real provider polling
