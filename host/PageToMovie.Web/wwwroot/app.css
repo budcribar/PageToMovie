@@ -1747,6 +1747,14 @@ h1:focus {
     border-radius: 0 4px 4px 0;
 }
 
+/* The model decides how long this report is, so cap it and let it scroll inside its own card.
+   Uncapped, a wordy review pushed the scene table off a 768-tall screen entirely. */
+.review-report-body {
+    max-height: 52vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 /* Models write score breakdowns as pipe tables. Keep them readable on a dark card, and let a
    wide one scroll inside its own box instead of stretching the page. */
 .markdown-body table {
@@ -1883,8 +1891,20 @@ h1:focus {
     gap: 0.35rem;
 }
 @media (max-width: 1100px) {
+    /* Seven steps over three columns is three stacked rows — 225px of a 768-tall screen spent on
+       navigation the sidebar already carries. Keep one row and let it scroll sideways instead. */
     .ptm-step-strip--studio {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        grid-template-columns: none;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        padding-bottom: 0.2rem;
+    }
+    .ptm-step-strip--studio .ptm-step {
+        flex: 0 0 auto;
+        min-width: 8.25rem;
+        min-height: 3.4rem;
     }
 }
 @media (max-width: 640px) {
