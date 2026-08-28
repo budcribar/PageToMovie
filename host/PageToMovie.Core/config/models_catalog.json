@@ -780,6 +780,47 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
+      "id": "veo-3.1-lite-generate-preview",
+      "displayName": "Google Veo 3.1 Lite",
+      "capability": "Video",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/veo-3.1-lite-generate-preview:predictLongRunning",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 4,
+      "maxClipDurationSeconds": 8,
+      "absMaxClipDurationSeconds": 8,
+      "allowedDurationsSeconds": [
+        4,
+        6,
+        8
+      ],
+      "videoCostPerSecondByResolution": {
+        "720p": 0.05,
+        "1080p": 0.08
+      },
+      "supportedAspectRatios": [
+        "16:9",
+        "9:16"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-lite-generate-preview. Cheaper SKU of Veo 3.1. No 4K, no Extension. Duration 4/6/8s copied from the Veo 3.1 family. Official 2026-08-28 prices $0.05/s 720p, $0.08/s 1080p (ai.google.dev/gemini-api/docs/pricing).",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "maxPromptLength": 4000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "Google Gemini API 2026-08-28: $0.05/s 720p, $0.08/s 1080p. No 4K. Sources: ai.google.dev/gemini-api/docs/pricing and /docs/models/veo-3.1-lite-generate-preview.",
+      "lastVerifiedAt": "2026-08-28",
+      "pricingLastReviewedAt": "2026-08-28"
+    },
+    {
       "id": "grok-imagine-image-quality",
       "displayName": "Grok Imagine Image (quality)",
       "capability": "Image",

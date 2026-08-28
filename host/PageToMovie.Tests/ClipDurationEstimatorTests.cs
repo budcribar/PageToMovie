@@ -152,6 +152,20 @@ public class ClipDurationEstimatorTests
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData(1, 4)]
+    [InlineData(5, 4)]
+    [InlineData(7, 6)]
+    [InlineData(6, 6)]
+    [InlineData(9, 8)]
+    public void ResolveActualDurationForModel_SnapsToVeoLiteDiscreteDurations(int requested, int expected)
+    {
+        // Veo 3.1 Lite copies the family 4/6/8 discrete set; Lite docs do not publish a different set.
+        var actual = ClipDurationEstimator.ResolveActualDurationForModel(
+            "veo-3.1-lite-generate-preview", requested);
+        Assert.Equal(expected, actual);
+    }
+
     [Fact]
     public void ResolveActualDurationForModel_FallsBackToPlainClampWithoutDiscreteSet()
     {

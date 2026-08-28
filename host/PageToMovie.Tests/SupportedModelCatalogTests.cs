@@ -322,6 +322,7 @@ public class SupportedModelCatalogTests
         foreach (var (id, cap) in new[]
         {
             ("veo-3.1", ModelCapability.Video),
+            ("veo-3.1-lite-generate-preview", ModelCapability.Video),
             ("gemini-2.5-pro-image", ModelCapability.Image),
             ("claude-sonnet-5", ModelCapability.Chat),
             ("gemini-2.5-flash", ModelCapability.Chat),
@@ -410,6 +411,30 @@ public class SupportedModelCatalogTests
         Assert.NotNull(veo?.VideoCostPerSecondByResolution);
         Assert.Equal(0.40, veo!.VideoCostPerSecondByResolution!["720p"]);
         Assert.Equal(0.40, veo.VideoCostPerSecondByResolution["1080p"]);
+    }
+
+    [Fact]
+    public void Gemini_veo_lite_resolves_with_official_prices_and_family_durations()
+    {
+        var m = SupportedModelCatalog.Find("veo-3.1-lite-generate-preview", ModelCapability.Video);
+        Assert.NotNull(m);
+        Assert.True(m!.Enabled);
+        Assert.Equal("Google Veo 3.1 Lite", m.DisplayName);
+        Assert.Equal(ModelProviderFamily.Google, m.Provider);
+        Assert.Equal("gemini", m.ProviderId);
+        Assert.Contains("GEMINI_API_KEY", m.RequiredEnvKeys);
+        Assert.False(m.SupportsVideoContinue);
+        Assert.True(m.SupportsReferenceImages);
+        Assert.Equal(3, m.MaxReferenceImages);
+        Assert.Equal(4, m.MinClipDurationSeconds);
+        Assert.Equal(8, m.MaxClipDurationSeconds);
+        Assert.Equal(8, m.AbsMaxClipDurationSeconds);
+        Assert.Equal(new[] { 4, 6, 8 }, m.AllowedDurationsSeconds);
+        Assert.NotNull(m.VideoCostPerSecondByResolution);
+        Assert.Equal(0.05, m.VideoCostPerSecondByResolution!["720p"]);
+        Assert.Equal(0.08, m.VideoCostPerSecondByResolution["1080p"]);
+        Assert.False(m.VideoCostPerSecondByResolution.ContainsKey("4K"));
+        Assert.Equal("models/veo-3.1-lite-generate-preview:predictLongRunning", m.EndpointPath);
     }
 
     [Fact]
