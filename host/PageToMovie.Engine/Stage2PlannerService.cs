@@ -225,7 +225,7 @@ public sealed class Stage2PlannerService
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
         var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null);
-        var visualMedium = CoerceString(gpv.TryGetValue("visual_medium", out var vm) ? vm : null);
+        var visualMedium = CoerceString(gpv.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
 
         var planned = await PlanScenesInParallelAsync(
                 scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
@@ -397,8 +397,8 @@ public sealed class Stage2PlannerService
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(targetAspectRatio) && !s.ContainsKey("target_aspect_ratio"))
             s["target_aspect_ratio"] = targetAspectRatio;
-        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey("visual_medium"))
-            s["visual_medium"] = visualMedium;
+        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey(JsonKeys.VisualMedium))
+            s[JsonKeys.VisualMedium] = visualMedium;
 
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
@@ -2179,7 +2179,7 @@ public sealed class Stage2PlannerService
     }
 
     private static string? SceneVisualMedium(Dictionary<string, object?> scene) =>
-        CoerceString(scene.TryGetValue("visual_medium", out var vm) ? vm : null);
+        CoerceString(scene.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
 
     private static string AttachSubjectIfMissing(
         string ve,

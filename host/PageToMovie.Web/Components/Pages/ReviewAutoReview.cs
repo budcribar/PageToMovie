@@ -217,11 +217,16 @@ public partial class Review
             var detail = await ResolveSceneDetailAsync(s);
             if (detail?.Clips is { Count: > 0 })
             {
-                foreach (var c in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber).Take(2))
+                var clipNumbers = detail.Clips
+                    .Where(c => c.OnDisk)
+                    .OrderBy(c => c.ClipNumber)
+                    .Take(2)
+                    .Select(c => c.ClipNumber);
+                foreach (var clipNumber in clipNumbers)
                 {
                     var clipUrls = await S.Stitch.CollectClipUrlsAsync(
-                        S._projectId, s.SceneNumber, detail, clipNumbers: new[] { c.ClipNumber });
-                    await SampleUrlsAsync(s.SceneNumber, c.ClipNumber, clipUrls, keyframes);
+                        S._projectId, s.SceneNumber, detail, clipNumbers: new[] { clipNumber });
+                    await SampleUrlsAsync(s.SceneNumber, clipNumber, clipUrls, keyframes);
                 }
                 return;
             }
