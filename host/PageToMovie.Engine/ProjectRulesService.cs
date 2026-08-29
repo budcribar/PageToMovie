@@ -85,15 +85,7 @@ public sealed class ProjectRulesService
             .Select(r => $"- [{(string.IsNullOrWhiteSpace(r.Category) ? CategoryOther : r.Category.Trim())}] {r.Text.Trim()}")
             .ToList();
 
-        // Fallback: cast_seeds locks if no matching rules yet (gen/auto-review still see them)
-        if (!doc.Active.Any(r =>
-                string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase)))
-        {
-            var fromCast = await TryReadCastFieldAsync(projectId, "render_style_lock", ct).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(fromCast))
-                lines.Add($"- [style] {NormalizeStyleRuleText(fromCast)}");
-        }
+        // Film-level STYLE LOCK is ProjectVisionMeta — do not inject cast_seeds render_style_lock.
 
         if (!doc.Active.Any(r =>
                 string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) ||

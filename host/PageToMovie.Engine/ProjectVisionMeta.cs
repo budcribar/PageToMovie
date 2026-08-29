@@ -20,10 +20,9 @@ public enum ProjectVisionMetaStatus
 }
 
 /// <summary>
-/// Structured visual medium decided at book→screenplay (adaptation) time.
-/// Source of truth for photoreal vs illustrated — not regex over Fountain prose.
-/// Primary store: import sidecar <c>source/extract_meta.json</c> (book_kind + visual_medium).
-/// Optional overlay: <c>source/vision_meta.json</c>.
+/// Structured visual medium decided at book→screenplay (adaptation / book prepare).
+/// Single source of truth: <c>source/vision_meta.json</c> overlay, then <c>source/extract_meta.json</c>.
+/// Stage 2 and video generate call <see cref="RequireDecided"/> — they do not invent photoreal or 3D CG.
 /// </summary>
 public static class ProjectVisionMeta
 {
@@ -42,9 +41,9 @@ public static class ProjectVisionMeta
         [JsonPropertyName("schema_version")]
         public string SchemaVersion { get; set; } = ProjectVisionMeta.CurrentSchemaVersion;
 
-        /// <summary>Machine enum: photoreal_live_action | illustrated_picture_book | stylized_3d_animated | other</summary>
+        /// <summary>Machine enum: photoreal_live_action | illustrated_picture_book | stylized_3d_animated | other. Empty until decided.</summary>
         [JsonPropertyName("visual_medium")]
-        public string VisualMedium { get; set; } = MediumPhotoreal;
+        public string VisualMedium { get; set; } = "";
 
         /// <summary>Full STYLE LOCK prose for image/video models.</summary>
         [JsonPropertyName("render_style_lock")]
@@ -73,20 +72,47 @@ public static class ProjectVisionMeta
     public static string GetExtractMetaPath(string projectDir) =>
         Path.Combine(projectDir, "source", ExtractMetaFileName);
 
+    /// <summary>
+    /// Operator-facing fail-fast when Stage 2 or video generate runs without a decided medium.
+    /// Do not invent photoreal / 3D CG — the project must re-run book/screenplay.
+    /// </summary>
+    public const string MissingMediumMessage =
+        "This project is out of date: it has no visual medium. Re-run book/screenplay (or regen).";
+
+    public static bool IsDecidedMedium(string? raw) => VisualMediumStyles.IsDecidedMedium(raw);
+
+    /// <summary>
+    /// Decided film medium from vision_meta overlay, then extract_meta. Null when missing or <c>auto</c>.
+    /// Does not guess from GPV, cast_seeds, project_rules, or book_kind.
+    /// </summary>
+    public static Document? TryGetDecided(string projectDir)
+    {
+        var doc = TryRead(projectDir);
+        if (doc is null || !IsDecidedMedium(doc.VisualMedium))
+            return null;
+        if (string.IsNullOrWhiteSpace(doc.RenderStyleLock))
+            doc.RenderStyleLock = DefaultStyleLock(doc.VisualMedium);
+        return doc;
+    }
+
+    /// <summary>Stage 2 / generate: decided medium or throw <see cref="MissingMediumMessage"/>.</summary>
+    public static Document RequireDecided(string projectDir) =>
+        TryGetDecided(projectDir)
+        ?? throw new InvalidOperationException(MissingMediumMessage);
+
     public static Document? TryRead(string projectDir)
     {
-        // 1) Optional overlay (tests / explicit writes)
+        // 1) Overlay wins when it already has a decided medium (adaptation or user lock).
         var overlay = TryReadVisionFile(GetPath(projectDir));
-        if (overlay is not null &&
-            string.Equals(overlay.DecidedBy, Adaptation, StringComparison.OrdinalIgnoreCase))
+        if (overlay is not null && IsDecidedMedium(overlay.VisualMedium))
             return overlay;
 
-        // 2) Import extract_meta.json (book_full + analysis at prepare time)
+        // 2) extract_meta.json written at book prepare / adaptation.
         var fromExtract = TryReadExtractMeta(projectDir);
-        if (fromExtract is not null)
+        if (fromExtract is not null && IsDecidedMedium(fromExtract.VisualMedium))
             return fromExtract;
 
-        // 3) vision_meta.json fallback
+        // 3) Overlay may still hold an auto preference (Stage-1 MEDIUM DIRECTIVE) — not a film decision.
         return overlay ?? TryReadVisionFile(GetPath(projectDir));
     }
 
@@ -125,12 +151,10 @@ public static class ProjectVisionMeta
         var style = ReadOptionalString(root, "render_style_lock");
         var source = ReadOptionalString(root, "medium_source");
         var notes = ReadExtractNotes(root);
-        (medium, source) = ApplyLegacyBookKind(root, medium, source);
-
-        if (string.IsNullOrWhiteSpace(medium) && string.IsNullOrWhiteSpace(style))
+        if (!IsDecidedMedium(medium))
             return null;
 
-        var med = NormalizeMedium(medium ?? MediumPhotoreal);
+        var med = NormalizeMedium(medium);
         return new Document
         {
             VisualMedium = med,
@@ -156,21 +180,6 @@ public static class ProjectVisionMeta
         return string.Join("; ", n.EnumerateArray().Select(x => x.GetString()).Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 
-    private static (string? Medium, string? Source) ApplyLegacyBookKind(
-        JsonElement root, string? medium, string? source)
-    {
-        if (!string.IsNullOrWhiteSpace(medium) ||
-            !root.TryGetProperty("book_kind", out var bk) ||
-            bk.ValueKind != JsonValueKind.String)
-            return (medium, source);
-
-        medium = string.Equals(bk.GetString(), "picture_book", StringComparison.OrdinalIgnoreCase)
-            ? MediumIllustrated
-            : MediumPhotoreal;
-        source ??= "import_book_kind";
-        return (medium, source);
-    }
-
     private static string ResolveExtractDecidedBy(string? source) =>
         source switch
         {
@@ -185,7 +194,7 @@ public static class ProjectVisionMeta
         doc.SchemaVersion = CurrentSchemaVersion;
         doc.VisualMedium = NormalizeMedium(doc.VisualMedium);
         doc.DecidedAt = DateTimeOffset.UtcNow.ToString("o");
-        if (string.IsNullOrWhiteSpace(doc.RenderStyleLock))
+        if (IsDecidedMedium(doc.VisualMedium) && string.IsNullOrWhiteSpace(doc.RenderStyleLock))
             doc.RenderStyleLock = DefaultStyleLock(doc.VisualMedium);
 
         // Keep import sidecar as the shared home (merge into extract_meta when present).
@@ -335,6 +344,22 @@ public static class ProjectVisionMeta
         VisualMediumStyles.DefaultAspectRatioFor(visualMedium);
 
     /// <summary>
+    /// Persist a decided adaptation medium. Fills <c>render_style_lock</c> from
+    /// <see cref="VisualMediumStyles.StyleLockFor"/> when the trailer omitted it.
+    /// Returns null when <paramref name="fromScript"/> is not a decided medium (caller must not invent).
+    /// </summary>
+    public static Document? PersistAdaptationDecision(string projectDir, Document? fromScript)
+    {
+        if (fromScript is null || !IsDecidedMedium(fromScript.VisualMedium))
+            return null;
+        fromScript.DecidedBy = string.IsNullOrWhiteSpace(fromScript.DecidedBy)
+            ? Adaptation
+            : fromScript.DecidedBy;
+        Write(projectDir, fromScript);
+        return fromScript;
+    }
+
+    /// <summary>
     /// Ask the planning model once at adaptation time for structured medium metadata.
     /// Fountain prose is not parsed; the model returns JSON only.
     /// </summary>
@@ -374,12 +399,12 @@ public static class ProjectVisionMeta
             ct: chat.Ct,
             mode: ChatCallModes.VisionMetaAdaptation).ConfigureAwait(false);
 
-        var doc = ParseModelJson(raw) ?? new Document
+        var doc = ParseModelJson(raw);
+        if (doc is null || !IsDecidedMedium(doc.VisualMedium))
         {
-            VisualMedium = MediumPhotoreal,
-            RenderStyleLock = DefaultStyleLock(MediumPhotoreal),
-            Notes = "fallback: model JSON unparseable",
-        };
+            throw new InvalidOperationException(
+                "Adaptation could not decide visual medium. " + MissingMediumMessage);
+        }
         doc.DecidedBy = Adaptation;
         Write(projectDir, doc);
         chat.Report($"Visual medium: {doc.VisualMedium}");
@@ -399,46 +424,4 @@ public static class ProjectVisionMeta
         };
     }
 
-    /// <summary>Upsert from cast extract when adaptation metadata is missing.</summary>
-    public static void UpsertFromCast(string projectDir, string? renderStyleLock, string? performanceLock)
-    {
-        if (string.IsNullOrWhiteSpace(renderStyleLock) && string.IsNullOrWhiteSpace(performanceLock))
-            return;
-        var existing = TryRead(projectDir);
-        // Do not overwrite adaptation decision with cast unless missing.
-        if (existing is not null &&
-            string.Equals(existing.DecidedBy, Adaptation, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(existing.RenderStyleLock))
-        {
-            if (!string.IsNullOrWhiteSpace(performanceLock) && string.IsNullOrWhiteSpace(existing.PerformanceLock))
-            {
-                existing.PerformanceLock = performanceLock.Trim();
-                Write(projectDir, existing);
-            }
-            return;
-        }
-
-        var med = existing?.VisualMedium ?? MediumPhotoreal;
-        if (!string.IsNullOrWhiteSpace(renderStyleLock))
-        {
-            var r = renderStyleLock;
-            if (r.Contains("picture", StringComparison.OrdinalIgnoreCase) ||
-                r.Contains("illustrat", StringComparison.OrdinalIgnoreCase) ||
-                r.Contains("cartoon", StringComparison.OrdinalIgnoreCase))
-                med = MediumIllustrated;
-            else if (r.Contains("photoreal", StringComparison.OrdinalIgnoreCase) ||
-                     r.Contains("live-action", StringComparison.OrdinalIgnoreCase) ||
-                     r.Contains("live action", StringComparison.OrdinalIgnoreCase))
-                med = MediumPhotoreal;
-        }
-
-        Write(projectDir, new Document
-        {
-            VisualMedium = med,
-            RenderStyleLock = renderStyleLock?.Trim() ?? existing?.RenderStyleLock ?? DefaultStyleLock(med),
-            PerformanceLock = performanceLock?.Trim() ?? existing?.PerformanceLock,
-            DecidedBy = existing is null ? "cast_extract" : existing.DecidedBy,
-            Notes = existing?.Notes,
-        });
-    }
 }

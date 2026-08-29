@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 using PageToMovie.Adaptation;
+using PageToMovie.Adaptation.Contracts;
 
 namespace PageToMovie.Engine;
 
@@ -1193,11 +1194,12 @@ public sealed class BookPrepareService
             ["book_kind"] = analysis.BookKind.ToApiString(),
             // Initial film medium from import analysis (refined at screenplay adaptation).
             ["visual_medium"] = analysis.BookKind == BookKind.PictureBook
-                ? "illustrated_picture_book"
-                : "photoreal_live_action",
-            ["render_style_lock"] = analysis.BookKind == BookKind.PictureBook
-                ? "STYLE LOCK: stylized animated children's picture-book look for ALL on-screen cast (animals and humans share the same medium) -- not photoreal, not live-action"
-                : "STYLE LOCK: photoreal live-action continuity portrait — naturalistic face and wardrobe. NOT cartoon, NOT illustration, NOT anime",
+                ? VisualMediumStyles.MediumIllustrated
+                : VisualMediumStyles.MediumPhotoreal,
+            ["render_style_lock"] = VisualMediumStyles.StyleLockFor(
+                analysis.BookKind == BookKind.PictureBook
+                    ? VisualMediumStyles.MediumIllustrated
+                    : VisualMediumStyles.MediumPhotoreal),
             ["medium_source"] = "import_extract_meta",
             // natural/target/mode filled by FilmRuntime.ApplyNaturalToMetaDictionary below
             ["suggested_chunk_pages"] = analysis.SuggestedChunkPages,

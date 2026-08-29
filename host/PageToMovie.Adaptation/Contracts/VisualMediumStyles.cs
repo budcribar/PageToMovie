@@ -54,6 +54,18 @@ public static class VisualMediumStyles
         };
     }
 
+    /// <summary>
+    /// True when <paramref name="raw"/> is a film-level decision (not empty, not <c>auto</c>).
+    /// Unknown tokens normalize to <see cref="MediumOther"/> and count as decided.
+    /// </summary>
+    public static bool IsDecidedMedium(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+        var n = NormalizeMedium(raw, allowAuto: true);
+        return n is MediumPhotoreal or MediumIllustrated or MediumStylized3d or MediumOther;
+    }
+
     /// <summary>Default STYLE LOCK prose for an already-normalized medium token.</summary>
     public static string StyleLockFor(string normalizedMedium) => normalizedMedium switch
     {

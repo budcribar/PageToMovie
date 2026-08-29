@@ -29,7 +29,8 @@ public static class ScreenplayEnrichFiles
 
     public static string CastInstruction(string? locationHints) =>
         "Files attached: screenplay.fountain is the source of truth; book_full.txt (if present) is look detail only.\n" +
-        "Do not add plot from the book. Return JSON only (schema_version cast_seeds.v1, " +
+        "Do not add plot from the book. Do not invent a film-level STYLE LOCK / render_style_lock.\n" +
+        "Return JSON only (schema_version cast_seeds.v1, " +
         "character_seed_tokens, location_seed_tokens).\n" +
         (string.IsNullOrWhiteSpace(locationHints)
             ? ""

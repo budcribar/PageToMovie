@@ -2904,8 +2904,8 @@ public sealed class FilmJobService
         try
         {
             var dir = await _projects.GetProjectDirAsync(projectId, ct);
-            return ProjectVisionMeta.TryRead(dir)?.VisualMedium
-                   ?? ProjectVisionMeta.GetAdaptationMediumPreference(dir);
+            var decided = ProjectVisionMeta.TryGetDecided(dir);
+            return decided?.VisualMedium;
         }
         catch { return null; /* enrich without medium */ }
     }
@@ -5921,7 +5921,8 @@ public sealed class FilmJobService
         await ApplyFirstSpokenAfterSilenceReseedAsync(ctx).ConfigureAwait(false);
         await LogContinuityOrReseedAsync(ctx).ConfigureAwait(false);
 
-        var styleHead = await TryGetStyleLockHeadAsync(ctx.ProjectId, ctx.Ct).ConfigureAwait(false);
+        var vision = ProjectVisionMeta.RequireDecided(ctx.ProjectDir);
+        var styleHead = vision.RenderStyleLock;
         var sceneLocationKey = ResolveSceneLocationKey(ctx.BlueprintRoot, ctx.Scene);
 
         // Plan lint: say it in the job log when this clip's plan text contradicts cast facts. Not
@@ -5963,7 +5964,7 @@ public sealed class FilmJobService
                 ?? throw new InvalidOperationException(
                     $"Video model '{ctx.VideoRoles.Generate.Id}' has no maxReferenceImages in models_catalog.json."),
             styleHead: styleHead,
-            visualMedium: ProjectVisionMeta.TryRead(ctx.ProjectDir)?.VisualMedium,
+            visualMedium: vision.VisualMedium,
             videoModel: wireModel,
             fallbackLocationKey: sceneLocationKey,
             previousClipExtendFileId: ctx.ExtendSourceFileId,
@@ -6131,22 +6132,6 @@ public sealed class FilmJobService
                 $"  [Identity] Reseed S{ctx.Scene:D2}C{ctx.Clip:D2} after S{ctx.Scene:D2}C{ctx.Clip - 1:D2} " +
                 "(locked character refs attached)");
         }
-    }
-
-    private async Task<string?> TryGetStyleLockHeadAsync(string projectId, CancellationToken ct)
-    {
-        try
-        {
-            var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(rules))
-                return null;
-            var m = CommonRegex.Match(
-                rules, @"STYLE LOCK:\s*([^\n]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (m.Success)
-                return "STYLE LOCK: " + m.Groups[1].Value.Trim().TrimEnd('.', ' ');
-        }
-        catch { /* non-fatal */ }
-        return null;
     }
 
     private static string? ResolveSceneLocationKey(JsonElement? blueprintRoot, int scene)

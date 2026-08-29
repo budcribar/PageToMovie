@@ -1554,28 +1554,39 @@ public static string NormalizeText(string text)
     {
         // Medium sidecar from the same adaptation response (preferred).
         // Fallback: one structured LLM call if the model omitted the trailer.
-        try
+        var persisted = ProjectVisionMeta.PersistAdaptationDecision(projectDir, visionFromScript);
+        if (persisted is not null)
         {
-            if (visionFromScript is not null)
-            {
-                ProjectVisionMeta.Write(projectDir, visionFromScript);
-                onProgress?.Invoke($"Saved visual medium ({visionFromScript.VisualMedium}) to extract_meta");
-            }
-            else if (chat.IsConfigured)
-            {
-                onProgress?.Invoke("No VISION_META trailer in screenplay response — asking model for medium…");
-                await ProjectVisionMeta.DecideAtAdaptationAsync(
-                    projectDir,
-                    title,
-                    book,
-                    fountain,
-                    new ChatCall(chat, model, ct, onProgress)).ConfigureAwait(false);
-            }
+            onProgress?.Invoke($"Saved visual medium ({persisted.VisualMedium}) to extract_meta");
+            return;
         }
-        catch (Exception metaEx)
+
+        var pref = ProjectVisionMeta.GetAdaptationMediumPreference(projectDir);
+        if (ProjectVisionMeta.IsDecidedMedium(pref))
         {
-            onProgress?.Invoke("Vision medium metadata skipped: " + metaEx.Message);
+            ProjectVisionMeta.Write(projectDir, new ProjectVisionMeta.Document
+            {
+                VisualMedium = pref,
+                DecidedBy = "user",
+            });
+            onProgress?.Invoke($"Saved visual medium ({pref}) from Look preference");
+            return;
         }
+
+        if (!chat.IsConfigured)
+        {
+            onProgress?.Invoke(
+                "No visual medium on this draft. Re-run book/screenplay before the shot plan.");
+            return;
+        }
+
+        onProgress?.Invoke("No VISION_META trailer in screenplay response — asking model for medium…");
+        await ProjectVisionMeta.DecideAtAdaptationAsync(
+            projectDir,
+            title,
+            book,
+            fountain,
+            new ChatCall(chat, model, ct, onProgress)).ConfigureAwait(false);
     }
 
     private static async Task TryWriteAdaptationReportAsync(

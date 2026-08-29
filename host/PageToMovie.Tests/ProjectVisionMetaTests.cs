@@ -25,7 +25,7 @@ public sealed class ProjectVisionMetaTests
     }
 
     [Fact]
-    public void TryRead_UsesExtractMetaBookKind()
+    public void TryRead_book_kind_only_is_not_a_decided_medium()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ptm-extract-" + Guid.NewGuid().ToString("n"));
         Directory.CreateDirectory(Path.Combine(dir, "source"));
@@ -33,9 +33,10 @@ public sealed class ProjectVisionMetaTests
         {
             File.WriteAllText(Path.Combine(dir, "source", "extract_meta.json"),
                 """{"schema_version":"extract_meta.v1","book_kind":"short","pages":12}""");
-            var read = ProjectVisionMeta.TryRead(dir);
-            Assert.NotNull(read);
-            Assert.Equal(ProjectVisionMeta.MediumPhotoreal, read!.VisualMedium);
+            Assert.Null(ProjectVisionMeta.TryGetDecided(dir));
+            var ex = Assert.Throws<InvalidOperationException>(() => ProjectVisionMeta.RequireDecided(dir));
+            Assert.Contains("out of date", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("visual medium", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

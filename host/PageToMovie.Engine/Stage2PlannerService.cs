@@ -223,9 +223,13 @@ public sealed class Stage2PlannerService
         NormalizeCharPlaceholders(charSeeds);
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
-        var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
-        var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null);
-        var visualMedium = CoerceString(gpv.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
+        var vision = ProjectVisionMeta.RequireDecided(projectDir);
+        var styleLock = vision.RenderStyleLock;
+        var visualMedium = vision.VisualMedium;
+        var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null)
+            ?? ProjectVisionMeta.DefaultAspectRatio(visualMedium);
+        gpv["render_style_lock"] = styleLock;
+        gpv[JsonKeys.VisualMedium] = visualMedium;
 
         var planned = await PlanScenesInParallelAsync(
                 scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
@@ -397,8 +401,10 @@ public sealed class Stage2PlannerService
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(targetAspectRatio) && !s.ContainsKey("target_aspect_ratio"))
             s["target_aspect_ratio"] = targetAspectRatio;
-        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey(JsonKeys.VisualMedium))
+        if (!string.IsNullOrWhiteSpace(visualMedium))
             s[JsonKeys.VisualMedium] = visualMedium;
+        if (!string.IsNullOrWhiteSpace(styleLock))
+            s["render_style_lock"] = styleLock;
 
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
@@ -2174,6 +2180,8 @@ public sealed class Stage2PlannerService
         if (!string.IsNullOrWhiteSpace(style))
             return style;
         if (!cast.Any(t => !IsNeverOnScreenCharacter(t, charSeeds)))
+            return style;
+        if (!VisualMediumStyles.IsDecidedMedium(visualMedium))
             return style;
         return VisualMediumStyles.StyleLockFor(VisualMediumStyles.NormalizeMedium(visualMedium));
     }
