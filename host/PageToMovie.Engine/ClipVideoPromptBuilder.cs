@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Engine.Deterministic.Pronunciation;
 using PageToMovie.Core.Models;
 
@@ -146,7 +147,8 @@ public static class ClipVideoPromptBuilder
         string? videoModel = null,
         string? fallbackLocationKey = null,
         string? previousClipExtendFileId = null,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        string? visualMedium = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
         var promptMaxLen = ResolvePromptMaxLen(videoModel);
@@ -201,25 +203,28 @@ public static class ClipVideoPromptBuilder
                 imageTagByKey, out locationImageTag, out locationRefAttached);
         }
 
-        var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
-        // The style lock is the look, and the look is in the video being continued. Restating it
-        // is the same redundancy as the blocks dropped above, and it re-establishes the shot.
-        var styleForPrompt = mode is ModeVideoExtend or ModeContinue ? "" : style;
+        var resolvedMedium = ResolveVisualMedium(projectDir, visualMedium);
+        var style = ResolveStyleLockForGeneration(projectDir, styleHead, rawVisual, resolvedMedium);
+        // One StyleLock per prompt, from project render_style_lock / StyleLockFor.
+        // Mary19 shipped house-rule watercolor at the head AND "STYLE LOCK: stylized 3D…"
+        // still sitting in the action (prose, not a tag). Strip every lock from the action.
+        actionText = StripStyleLocksFromAction(actionText);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
-            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
+            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium);
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
-        var prompt = FitPromptToVideoBudget(
+        var assembled = EnsureSingleStyleLock(
             AppendPromptSections(
-                styleForPrompt, varBlock, locationRefAttached, locationImageTag, locationKey,
-                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged),
-            promptMaxLen);
+                style, varBlock, locationRefAttached, locationImageTag, locationKey,
+                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged, resolvedMedium),
+            style);
+        var prompt = FitPromptToVideoBudget(assembled, promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
 
         return new PromptBuildResult
@@ -349,7 +354,8 @@ public static class ClipVideoPromptBuilder
         string mode,
         IReadOnlyList<string> onScreenKeys,
         bool useReferenceImages,
-        string? previousClipVisualPrompt)
+        string? previousClipVisualPrompt,
+        string? visualMedium = null)
     {
         // "Positions come from that frame" is the tie-breaker, and it is here because the two tags
         // can disagree: the plan writes <Action> from a story beat, so a continuation clip whose
@@ -359,17 +365,21 @@ public static class ClipVideoPromptBuilder
         // Stage 2 is where that is prevented (the extend/cut staging test, and ShotPlanLint's
         // continuation_unchecked). This only decides which way the model leans when a plan built
         // before that test still contradicts itself — holding position beats teleporting.
+        const string sameMedium =
+            "Same art medium and renderer as the source clip — do not switch illustration, watercolor, CG, or live-action. ";
         var continuityBlock = mode switch
         {
             ModeVideoExtend => PromptTags.Wrap("Continuity",
                 "This is a seamless EXTENSION of the provided previous video. " +
                 "Pick up from its last frame. Same character identity, wardrobe, lighting, and location. " +
+                sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — do not invent a new establishing shot or redesign faces/outfits."),
             ModeContinue => PromptTags.Wrap("Continuity",
                 "Continue seamlessly from the provided starting frame (end of previous clip). " +
                 "Same character identity, wardrobe, lighting, and location. " +
+                sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — " +
@@ -383,7 +393,7 @@ public static class ClipVideoPromptBuilder
         // video-extend cannot attach locked plates (API continues from previous video only).
         // Reinforce identity from CHARACTER VARIABLES text so faces/wardrobe do not drift.
         if (mode is ModeVideoExtend or ModeContinue)
-            continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages);
+            continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages, visualMedium);
 
         // Video-extend and continue both hand the model the previous clip as VISUAL input (whole
         // video, or its last frame). Re-describing that clip in prose adds nothing it cannot
@@ -495,7 +505,8 @@ public static class ClipVideoPromptBuilder
         string audioBlock,
         string continuityBlock,
         JsonElement clipEl,
-        string actionTagged)
+        string actionTagged,
+        string? visualMedium = null)
     {
         var sb = new StringBuilder();
         AppendStyleHead(sb, style);
@@ -512,7 +523,7 @@ public static class ClipVideoPromptBuilder
         // separate fields in the video API's request payload (GrokVideoClient.SubmitFreshOnceAsync:
         // "resolution", "duration"), so appending "/ 480p, 24fps" as prose was pure duplication
         // with no effect on what the API actually renders at.
-        AppendTrailingBlock(sb, BuildNegativeBlock(clipEl));
+        AppendTrailingBlock(sb, BuildNegativeBlock(clipEl, visualMedium));
         // Embedded house rules (git-owned). Placed after core action so budget strip can drop
         // them first without cutting CHARACTER VARIABLES / THIS CLIP. Marker: HOUSE RULES:
         AppendHouseRules(sb);
@@ -652,7 +663,6 @@ public static class ClipVideoPromptBuilder
     /// <summary>Blocks whose content is visible in the video an extend continues from.</summary>
     private static readonly string[] SourceVideoAlreadyShows =
     {
-        PromptFieldTags.StyleLock,
         PromptFieldTags.Setting,
         PromptFieldTags.Lighting,
         PromptFieldTags.Camera,
@@ -1077,13 +1087,6 @@ public static class ClipVideoPromptBuilder
         if (p.Length <= hardCapChars)
             return p;
 
-        // The style lock is never dropped — it is the one directive holding the film's look
-        // together — but now that it is a tag it can at least be trimmed instead of being
-        // untouchable prose.
-        p = PromptTags.Shorten(p, PromptFieldTags.StyleLock, 160);
-        if (p.Length <= hardCapChars)
-            return p;
-
         foreach (var tag in SacrificialTags)
         {
             p = PromptTags.Strip(p, tag);
@@ -1091,6 +1094,13 @@ public static class ClipVideoPromptBuilder
             if (p.Length <= hardCapChars)
                 return p;
         }
+
+        // Style lock is last among trims — it is the one directive holding the film's look.
+        // House-rule / tagged STYLE LOCK used to be shortened before Optics/Grade and was the
+        // first real content lost on overflow.
+        p = PromptTags.Shorten(p, PromptFieldTags.StyleLock, 160);
+        if (p.Length <= hardCapChars)
+            return p;
 
         return TagSafeHeadCap(p, hardCapChars);
     }
@@ -1225,11 +1235,11 @@ public static class ClipVideoPromptBuilder
         foreach (var tag in DedupableTags)
             p = DropLaterDuplicates(p, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
 
-        // STYLE LOCK is deliberately NOT de-duplicated. Repeats came from the re-embedded previous
-        // clip, which no longer ships on extend/continue. What can still appear twice is the live
-        // style head next to a stale one baked into the plan — and those two disagree. Collapsing
-        // them would hide exactly the contradiction ShotPlanLint's style_lock_drift rule exists to
-        // report, and hiding it is worse than the ~130 chars it would save.
+        // Extra STYLE LOCK copies (house-rule line + stale plan prose) are stripped at build
+        // time — one lock from VisualMediumStyles / project render_style_lock is the SSoT.
+        p = DropLaterDuplicates(p, @"STYLE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
+        p = DropLaterDuplicates(p, $@"<{PromptFieldTags.StyleLock}>.*?</{PromptFieldTags.StyleLock}>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
         return p;
     }
 
@@ -1376,8 +1386,8 @@ public static class ClipVideoPromptBuilder
 
     /// <summary>
     /// Style lock carried by the plan itself, used when the project has no live style head.
-    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits — the old "STYLE LOCK: …up to the
-    /// first full stop" prose match guessed where the sentence ended and would find nothing now.
+    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits, or the older prose
+    /// <c>STYLE LOCK: …</c> line still sitting in Mary19-era action text.
     /// </summary>
     public static string? ExtractStyleHead(string visual)
     {
@@ -1386,7 +1396,13 @@ public static class ClipVideoPromptBuilder
             visual,
             $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return m.Success ? ("STYLE LOCK: " + m.Groups[1].Value.Trim()) : null;
+        if (m.Success)
+            return "STYLE LOCK: " + m.Groups[1].Value.Trim();
+        var prose = CommonRegex.Match(
+            visual,
+            @"STYLE LOCK(?:\s*\(hard\))?:\s*(.+?)(?=\s*(?:<[A-Za-z]|INT\.|EXT\.|EST\.|$))",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return prose.Success ? ("STYLE LOCK: " + prose.Groups[1].Value.Trim()) : null;
     }
     public static List<string> FindCharacterRefPaths(
         JsonElement clipEl,
@@ -2133,26 +2149,140 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Global provider negatives + story-specific <c>negative_prompt</c> from the blueprint.
+    /// Global provider negatives + story-specific <c>negative_prompt</c> from the blueprint
+    /// + a medium-derived opposite (illustrated ↛ photoreal, and vice versa) unless this clip
+    /// explicitly changes world/medium.
     /// </summary>
-    private static string BuildNegativeBlock(JsonElement clipEl)
+    private static string BuildNegativeBlock(JsonElement clipEl, string? visualMedium = null)
     {
         var story = clipEl.TryGetProperty("negative_prompt", out var np)
             ? PromptTags.SanitizeValue(np.GetString()).Trim()
             : "";
         var global = (GlobalNegativePrompt ?? "").Trim();
-        if (global.Length == 0 && story.Length == 0)
+        var mediumNeg = ClipExplicitlyChangesMedium(clipEl)
+            ? ""
+            : VisualMediumStyles.NegativeFor(VisualMediumStyles.NormalizeMedium(visualMedium));
+        if (global.Length == 0 && story.Length == 0 && mediumNeg.Length == 0)
             return "";
 
-        // Dedupe tokens across global + story
+        // Dedupe tokens across global + story + medium
         var items = new List<string>();
         if (global.Length > 0)
             AddCsvNegatives(items, global);
         if (story.Length > 0)
             AddCsvNegatives(items, story);
+        if (mediumNeg.Length > 0)
+            AddCsvNegatives(items, mediumNeg);
         if (items.Count == 0)
             return "";
         return PromptTags.Wrap("Negative", string.Join(", ", items));
+    }
+
+    /// <summary>
+    /// True when the clip's own prompt says the world or art medium changes in this beat
+    /// (dream, portal, flash to live-action, etc.). Those clips keep story negatives only.
+    /// </summary>
+    internal static bool ClipExplicitlyChangesMedium(JsonElement clipEl)
+    {
+        var visual = ReadVisualPrompt(clipEl);
+        if (string.IsNullOrWhiteSpace(visual))
+            return false;
+        return CommonRegex.IsMatch(
+            visual,
+            @"\b(world|medium|art style|render(?:er|ing)?|look)\b.{0,40}\b(change|shift|become|turns? into|switch)\b" +
+            @"|\b(change|shift|become|turns? into|switch)\b.{0,40}\b(world|medium|art style|photoreal|live[- ]action|watercolor|illustration|3d)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>Project visual medium: explicit arg, else <see cref="ProjectVisionMeta"/> on disk.</summary>
+    internal static string ResolveVisualMedium(string? projectDir, string? visualMedium)
+    {
+        if (!string.IsNullOrWhiteSpace(visualMedium))
+            return VisualMediumStyles.NormalizeMedium(visualMedium);
+        if (!string.IsNullOrWhiteSpace(projectDir))
+        {
+            var vision = ProjectVisionMeta.TryRead(projectDir);
+            if (!string.IsNullOrWhiteSpace(vision?.VisualMedium))
+                return VisualMediumStyles.NormalizeMedium(vision.VisualMedium);
+        }
+        return VisualMediumStyles.MediumOther;
+    }
+
+    /// <summary>
+    /// One lock per prompt: project <c>render_style_lock</c>, else
+    /// <see cref="VisualMediumStyles.StyleLockFor"/>. A disagreeing 3D lock in Stage-2
+    /// action text is discarded — lint still reports the plan drift.
+    /// </summary>
+    internal static string ResolveStyleLockForGeneration(
+        string? projectDir,
+        string? styleHead,
+        string? rawVisual,
+        string resolvedMedium)
+    {
+        if (!string.IsNullOrWhiteSpace(projectDir))
+        {
+            var vision = ProjectVisionMeta.TryRead(projectDir);
+            if (!string.IsNullOrWhiteSpace(vision?.RenderStyleLock))
+                return vision.RenderStyleLock.Trim();
+        }
+
+        var medium = VisualMediumStyles.NormalizeMedium(resolvedMedium);
+        if (medium is VisualMediumStyles.MediumIllustrated
+            or VisualMediumStyles.MediumPhotoreal
+            or VisualMediumStyles.MediumStylized3d)
+        {
+            var canonical = VisualMediumStyles.StyleLockFor(medium);
+            var fromHead = VisualMediumStyles.StripStyleLockLabel(styleHead);
+            if (!string.IsNullOrWhiteSpace(fromHead)
+                && VisualMediumStyles.StyleLocksAgree(fromHead, canonical))
+                return styleHead!.Trim();
+            return canonical;
+        }
+
+        var plannedHead = VisualMediumStyles.StripStyleLockLabel(styleHead);
+        var extracted = VisualMediumStyles.StripStyleLockLabel(ExtractStyleHead(rawVisual ?? ""));
+        if (!string.IsNullOrWhiteSpace(plannedHead) && !string.IsNullOrWhiteSpace(extracted)
+            && !VisualMediumStyles.StyleLocksAgree(plannedHead, extracted))
+            return styleHead!.Trim();
+        if (!string.IsNullOrWhiteSpace(styleHead))
+            return styleHead.Trim();
+        var fromPlan = ExtractStyleHead(rawVisual ?? "");
+        return string.IsNullOrWhiteSpace(fromPlan) ? "" : fromPlan.Trim();
+    }
+
+    /// <summary>
+    /// Remove every StyleLock from action — tagged and prose — so the prompt
+    /// head is the only lock. Must-fix: Stage-2 still injects
+    /// <c>STYLE LOCK: stylized 3D animated children's picture-book CG…</c>.
+    /// </summary>
+    internal static string StripStyleLocksFromAction(string? action)
+    {
+        if (string.IsNullOrWhiteSpace(action)) return action ?? "";
+        var text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(action, "");
+        text = CommonRegex.Replace(
+            text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "\n");
+        text = CommonRegex.Replace(
+            text,
+            @"(?is)\bSTYLE LOCK(?:\s*\(hard\))?\s*:\s*.+?(?=\s*<(?:Location|Characters|Wardrobe|Camera|Lighting|Audio|Continuity|StyleLock|Setting|Action)\b|\s*\b(?:INT\.|EXT\.|EST\.)\b|$)",
+            "");
+        return CollapseWhitespace(text).Trim();
+    }
+
+    /// <summary>
+    /// After house / project rules are appended (they often restate STYLE LOCK),
+    /// keep exactly one lock — the canonical project/medium lock.
+    /// </summary>
+    public static string EnsureSingleStyleLock(string? prompt, string? styleLock)
+    {
+        var text = prompt ?? "";
+        text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(text, "");
+        text = CommonRegex.Replace(text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "");
+        text = text.Trim();
+        if (string.IsNullOrWhiteSpace(styleLock)) return text;
+        var head = styleLock.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
+            ? styleLock.Trim()
+            : "STYLE LOCK: " + styleLock.Trim();
+        return head + "\n\n" + text;
     }
 
     private static void AddCsvNegatives(List<string> dest, string csv)
@@ -2229,12 +2359,16 @@ public static class ClipVideoPromptBuilder
     /// <summary>
     /// When API cannot attach locked refs (video-extend), reinforce identity from CHARACTER VARIABLES text.
     /// </summary>
-    private static string IdentityReinforceBlock(IReadOnlyList<string> onScreenKeys, bool refsAttached)
+    private static string IdentityReinforceBlock(
+        IReadOnlyList<string> onScreenKeys,
+        bool refsAttached,
+        string? visualMedium = null)
     {
         if (refsAttached || onScreenKeys.Count == 0) return "";
+        var medium = VisualMediumStyles.NormalizeMedium(visualMedium);
         return " " + PromptTags.Wrap("Identity",
             "Match locked plate descriptions in Characters exactly — " +
-            "do not drift to illustration, anime, cartoon, or a different face/wardrobe. " +
+            VisualMediumStyles.IdentityMediumDriftClause(medium) + ". " +
             "On-screen: " + string.Join(", ", onScreenKeys) + ".");
     }
 

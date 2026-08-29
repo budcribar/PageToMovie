@@ -5963,6 +5963,7 @@ public sealed class FilmJobService
                 ?? throw new InvalidOperationException(
                     $"Video model '{ctx.VideoRoles.Generate.Id}' has no maxReferenceImages in models_catalog.json."),
             styleHead: styleHead,
+            visualMedium: ProjectVisionMeta.TryRead(ctx.ProjectDir)?.VisualMedium,
             videoModel: wireModel,
             fallbackLocationKey: sceneLocationKey,
             previousClipExtendFileId: ctx.ExtendSourceFileId,
@@ -6200,8 +6201,9 @@ public sealed class FilmJobService
             var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(rules))
             {
+                var merged = built.Prompt.TrimEnd() + "\n\n" + rules.Trim();
                 built = built.WithPrompt(
-                    built.Prompt.TrimEnd() + "\n\n" + rules.Trim(),
+                    ClipVideoPromptBuilder.EnsureSingleStyleLock(merged, built.StyleHead),
                     " · project-rules");
             }
         }

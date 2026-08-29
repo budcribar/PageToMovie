@@ -49,6 +49,8 @@ public sealed class MovieSceneGroupFeedback
     public string DialogueNotes { get; set; } = "";
     public string AudioNotes { get; set; } = "";
     public List<int> SceneNumbers { get; set; } = new();
+    /// <summary>Scene/clip cites for style or medium claims (e.g. S03C01).</summary>
+    public List<MovieReviewEvidence> Evidence { get; set; } = new();
 
     /// <summary>True when this group covers <paramref name="sceneNumber"/> (explicit list, else range text).</summary>
     public bool IncludesScene(int sceneNumber)
@@ -90,9 +92,16 @@ public sealed class MovieSceneGroupFeedback
     }
 }
 
+public sealed class MovieReviewEvidence
+{
+    public string Ref { get; set; } = "";
+    public string Claim { get; set; } = "";
+}
+
 public sealed class MovieAutoReviewKeyframe
 {
     public int SceneNumber { get; set; }
+    public int ClipNumber { get; set; }
     public string Label { get; set; } = "";
     public string Base64 { get; set; } = "";
     public string Mime { get; set; } = "image/jpeg";

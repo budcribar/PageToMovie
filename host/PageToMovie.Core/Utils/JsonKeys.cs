@@ -15,4 +15,5 @@ public static class JsonKeys
     public const string ApplicationJson = "application/json";
     public const string CharacterPrefix = "Character_";
     public const string LocationPrefix = "Loc_";
+    public const string VisualMedium = "visual_medium";
 }

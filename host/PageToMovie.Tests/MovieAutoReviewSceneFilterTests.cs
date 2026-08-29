@@ -59,6 +59,9 @@ public sealed class MovieAutoReviewSceneFilterTests
         Assert.Contains("GroupsForScene", cs, StringComparison.Ordinal);
         Assert.Contains("ShowMovieOverview", razor, StringComparison.Ordinal);
         Assert.Contains("VisibleGroups", razor, StringComparison.Ordinal);
+        Assert.Contains("DialogueNotes", razor, StringComparison.Ordinal);
+        Assert.Contains("group.Evidence", razor, StringComparison.Ordinal);
+        Assert.DoesNotContain("Audio &amp; Dialogue Alignment", razor, StringComparison.Ordinal);
     }
 
     private static string ReviewPagePath(string fileName)

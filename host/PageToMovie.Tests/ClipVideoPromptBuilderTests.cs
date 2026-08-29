@@ -1524,7 +1524,7 @@ public class PreviousClipQuoteRedactionTests
             ?? throw new InvalidOperationException("BuildContinuityBlock not found");
         return (string)m.Invoke(null, new object?[]
         {
-            mode, Array.Empty<string>(), false, previousClipVisualPrompt,
+            mode, Array.Empty<string>(), false, previousClipVisualPrompt, null,
         })!;
     }
 }

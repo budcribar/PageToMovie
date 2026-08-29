@@ -326,7 +326,7 @@ public static class ProjectVisionMeta
     }
 
     public static bool PrefersIllustrated(string? visualMedium) =>
-        NormalizeMedium(visualMedium) is MediumIllustrated or MediumStylized3d;
+        VisualMediumStyles.PrefersIllustrated(visualMedium);
 
     public static string DefaultStyleLock(string visualMedium) =>
         VisualMediumStyles.StyleLockFor(NormalizeMedium(visualMedium));

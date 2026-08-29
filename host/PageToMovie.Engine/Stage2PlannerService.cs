@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Fountain;
@@ -224,7 +225,7 @@ public sealed class Stage2PlannerService
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
         var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null);
-        var visualMedium = CoerceString(gpv.TryGetValue("visual_medium", out var vm) ? vm : null);
+        var visualMedium = CoerceString(gpv.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
 
         var planned = await PlanScenesInParallelAsync(
                 scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
@@ -396,8 +397,8 @@ public sealed class Stage2PlannerService
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(targetAspectRatio) && !s.ContainsKey("target_aspect_ratio"))
             s["target_aspect_ratio"] = targetAspectRatio;
-        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey("visual_medium"))
-            s["visual_medium"] = visualMedium;
+        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey(JsonKeys.VisualMedium))
+            s[JsonKeys.VisualMedium] = visualMedium;
 
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
@@ -1999,7 +2000,7 @@ public sealed class Stage2PlannerService
                       ?? (cast.Count > 0 ? cast[0] : "");
 
         var place = LocationLockPhrase(scene, beat, locSeeds);
-        var style = EnsureCastStyleLock(RenderStyleLock(scene), cast, charSeeds);
+        var style = EnsureCastStyleLock(RenderStyleLock(scene), SceneVisualMedium(scene), cast, charSeeds);
         // A voice-only role (never_on_screen) is never "on screen" and has no wardrobe to keep: listing
         // the narrator here (and "Character_Narrator still wears wool jacket…" below) put a man in the
         // yard in Mary19 S03. Visual cast = cast minus voice-only roles.
@@ -2158,24 +2159,27 @@ public sealed class Stage2PlannerService
             : t;
     }
 
-    private static string EnsureCastStyleLock(
+    /// <summary>
+    /// When the scene has no <c>render_style_lock</c>, fill from the project's visual medium.
+    /// Never invent a 3D CG lock — that flipped illustrated films to photoreal/CG backgrounds.
+    /// </summary>
+    internal static string EnsureCastStyleLock(
         string style,
+        string? visualMedium,
         List<string> cast,
         Dictionary<string, object?> charSeeds)
     {
-        // Bug fix: previously only fired for human cast tokens ("mom"/"dad"/"human"),
-        // so animal-only scenes (e.g. Buster's backyard opener) received no style lock and
-        // rendered in a completely different visual style from all subsequent scenes.
-        // Fix: fire for any on-screen character that is visually present, i.e. not a
+        // Fire for any on-screen character that is visually present, i.e. not a
         // pure-voice-only character (display_name_policy = "never_on_screen").
         if (!string.IsNullOrWhiteSpace(style))
             return style;
         if (!cast.Any(t => !IsNeverOnScreenCharacter(t, charSeeds)))
             return style;
-        return
-            "STYLE LOCK: stylized 3D animated children's picture-book CG " +
-            "(same render family as animal hero) -- not photoreal, not live-action";
+        return VisualMediumStyles.StyleLockFor(VisualMediumStyles.NormalizeMedium(visualMedium));
     }
+
+    private static string? SceneVisualMedium(Dictionary<string, object?> scene) =>
+        CoerceString(scene.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
 
     private static string AttachSubjectIfMissing(
         string ve,

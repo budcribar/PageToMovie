@@ -62,6 +62,90 @@ public static class VisualMediumStyles
         _ => PhotorealStyleLock,
     };
 
+    /// <summary>
+    /// Negative tokens that keep video/image gens from flipping to the opposite medium family.
+    /// Empty for <see cref="MediumOther"/> — no invented opposite when the book did not pick a family.
+    /// </summary>
+    public static string NegativeFor(string normalizedMedium) => normalizedMedium switch
+    {
+        MediumIllustrated => "photoreal, live-action, CGI realism, 3D render",
+        MediumPhotoreal => "watercolor, flat illustration, cartoon",
+        MediumStylized3d => "photoreal live-action, flat 2D doodle, watercolor illustration",
+        _ => "",
+    };
+
+    /// <summary>Short establishing clause for location plates (no people) in this medium.</summary>
+    public static string LocationPlateClause(string normalizedMedium) => normalizedMedium switch
+    {
+        MediumIllustrated =>
+            "Picture-book / illustrated establishing still — painted or watercolor set, not photoreal, not live-action, not 3D CGI. ",
+        MediumStylized3d =>
+            "Stylized 3D animated establishing still — coherent CG set, not photoreal live-action, not flat 2D doodle. ",
+        MediumPhotoreal =>
+            "Photoreal live-action establishing still — naturalistic set, not cartoon, not illustration. ",
+        _ =>
+            "Cinematic establishing still matching the project's visual medium. ",
+    };
+
+    /// <summary>
+    /// Identity-reinforce ban list. Illustration/cartoon are only banned when the film is photoreal.
+    /// </summary>
+    public static string IdentityMediumDriftClause(string normalizedMedium) => normalizedMedium switch
+    {
+        MediumPhotoreal =>
+            "do not drift to illustration, anime, cartoon, or a different face/wardrobe",
+        MediumIllustrated =>
+            "do not drift to photoreal, live-action, CGI realism, or a different face/wardrobe",
+        MediumStylized3d =>
+            "do not drift to photoreal live-action, flat 2D illustration, or a different face/wardrobe",
+        _ =>
+            "do not drift to a different art medium, face, or wardrobe",
+    };
+
+    /// <summary>True when this medium is a drawn / picture-book family (image-edit illustrated flag).</summary>
+    public static bool PrefersIllustrated(string? visualMedium)
+    {
+        var n = NormalizeMedium(visualMedium);
+        return n is MediumIllustrated or MediumStylized3d;
+    }
+
+    /// <summary>
+    /// Compared on the leading clause, where the medium is named — descriptive tails may be
+    /// reworded without meaning a different lock.
+    /// </summary>
+    public static bool StyleLocksAgree(string? planned, string? current)
+    {
+        var a = StripStyleLockLabel(planned);
+        var b = StripStyleLockLabel(current);
+        if (a.Length == 0 || b.Length == 0)
+            return false;
+        if (a.StartsWith(b, StringComparison.OrdinalIgnoreCase)
+            || b.StartsWith(a, StringComparison.OrdinalIgnoreCase))
+            return true;
+        const int clause = 40;
+        var headA = a.Length <= clause ? a : a[..clause];
+        var headB = b.Length <= clause ? b : b[..clause];
+        return string.Equals(headA, headB, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The live style head is prose and may or may not lead with the label.</summary>
+    public static string StripStyleLockLabel(string? value)
+    {
+        var t = (value ?? "").Trim();
+        if (t.Length == 0)
+            return "";
+        const string label = "STYLE LOCK:";
+        if (t.StartsWith(label, StringComparison.OrdinalIgnoreCase))
+            t = t[label.Length..].Trim();
+        else if (t.StartsWith("STYLE LOCK (hard):", StringComparison.OrdinalIgnoreCase))
+        {
+            var colon = t.IndexOf(':');
+            if (colon >= 0)
+                t = t[(colon + 1)..].Trim();
+        }
+        return t;
+    }
+
     /// <summary>Default target aspect ratio for a visual medium (4:3 for illustrated picture books, 16:9 for photoreal).</summary>
     public static string DefaultAspectRatioFor(string? normalizedMedium) =>
         NormalizeMedium(normalizedMedium) == MediumIllustrated ? "4:3" : "16:9";

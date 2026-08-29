@@ -65,13 +65,14 @@ public sealed class ExtendPromptShapeTests
         Assert.DoesNotContain($"<{tag}>", built.Prompt, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The style lock is the look, and the look is in the video being continued.</summary>
+    /// <summary>Continuity keeps the art medium — blanking StyleLock let later hops flip watercolor to CG.</summary>
     [Fact]
-    public void A_continuation_drops_the_style_lock_too()
+    public void A_continuation_keeps_the_style_lock()
     {
         var built = Build(extendFileId: "file_abc123");
 
-        Assert.DoesNotContain("stylized picture-book CG", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stylized picture-book CG", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Same art medium and renderer", built.Prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>What describes the NEW footage stays — that is the only thing the model must invent.</summary>
