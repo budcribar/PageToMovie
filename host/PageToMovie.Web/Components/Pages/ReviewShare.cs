@@ -368,9 +368,13 @@ public partial class Review
             if (!extras.Any)
                 return null;
 
-            var what = extras.Music && extras.Titles ? "background music and titles"
-                : extras.Music ? "background music"
-                : "titles";
+            string what;
+            if (extras.Music && extras.Titles)
+                what = "background music and titles";
+            else if (extras.Music)
+                what = "background music";
+            else
+                what = "titles";
             return $"This cut has {what} that are not in the movie file yet. "
                    + "Open Finish, choose Make movie, then share or upload.";
         }

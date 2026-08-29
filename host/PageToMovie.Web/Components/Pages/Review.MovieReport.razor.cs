@@ -21,12 +21,17 @@ public partial class Review_MovieReport
     private bool IsSceneGroupExpanded(string rangeStr) =>
         IsGroupExpanded?.Invoke(rangeStr) ?? false;
 
-    internal IReadOnlyList<MovieSceneGroupFeedback> VisibleGroups =>
-        Report is null
-            ? Array.Empty<MovieSceneGroupFeedback>()
-            : FilterSceneNumber is int sn
-                ? Report.GroupsForScene(sn)
-                : Report.GroupFeedback;
+    internal IReadOnlyList<MovieSceneGroupFeedback> VisibleGroups
+    {
+        get
+        {
+            if (Report is null)
+                return Array.Empty<MovieSceneGroupFeedback>();
+            if (FilterSceneNumber is int sn)
+                return Report.GroupsForScene(sn);
+            return Report.GroupFeedback;
+        }
+    }
 
     internal bool ShowMovieOverview => FilterSceneNumber is null;
 
