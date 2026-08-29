@@ -44,6 +44,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         // Seed a blueprint with one normal scene/clip. The job requires an explicit VideoEdit
         // model id on the request — it does not fall back to capabilities[].defaultModelId.
         var store = _factory.Services.GetRequiredService<ProjectStore>();
+        _factory.StampDecidedVision(_projectId);
         var projectDir = store.GetProjectDir(_projectId);
         var blueprintPath = Path.Combine(projectDir, "blueprint.clips.grok.json");
         var blueprint = new JsonObject

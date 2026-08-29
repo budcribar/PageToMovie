@@ -67,6 +67,11 @@ public class VisualMediumLockTests
         var existing = Stage2PlannerService.EnsureCastStyleLock(
             "STYLE LOCK: already set", VisualMediumStyles.MediumIllustrated, cast, seeds);
         Assert.Equal("STYLE LOCK: already set", existing);
+
+        var missing = Stage2PlannerService.EnsureCastStyleLock("", null, cast, seeds);
+        Assert.True(string.IsNullOrWhiteSpace(missing));
+        Assert.DoesNotContain("photoreal", missing ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("3D", missing ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

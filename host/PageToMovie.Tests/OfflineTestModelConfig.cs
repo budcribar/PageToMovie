@@ -13,7 +13,14 @@ internal static class OfflineTestModelConfig
         SupportedModelCatalog.RequireDefaultModelIdForCapability(capability);
 
     public static Task ApplyAsync(ProjectStore store, string projectId) =>
-        store.SaveConfigAsync(projectId, JsonSerializer.SerializeToElement(new
+        ApplyAsync(store, projectId, writeDecidedVision: true);
+
+    /// <param name="writeDecidedVision">
+    /// Stage 2 / generate require a decided medium. Tests that prove the fail-fast pass false.
+    /// </param>
+    public static async Task ApplyAsync(ProjectStore store, string projectId, bool writeDecidedVision)
+    {
+        await store.SaveConfigAsync(projectId, JsonSerializer.SerializeToElement(new
         {
             model_name = Required(ModelCapability.Video),
             image_model_name = Required(ModelCapability.Image),
@@ -24,4 +31,24 @@ internal static class OfflineTestModelConfig
             audio_model_name = Required(ModelCapability.Audio),
             voice_model_name = Required(ModelCapability.Voice)
         }));
+        if (writeDecidedVision)
+            WriteDecidedVision(store, projectId);
+    }
+
+    /// <summary>
+    /// Test fixtures that Stage 2 / generate always know the truth. Fills
+    /// <c>render_style_lock</c> via <see cref="ProjectVisionMeta.Write"/> /
+    /// <c>VisualMediumStyles.StyleLockFor</c>. Do not invent a product fallback.
+    /// </summary>
+    public static void WriteDecidedVision(
+        ProjectStore store,
+        string projectId,
+        string medium = ProjectVisionMeta.MediumPhotoreal)
+    {
+        ProjectVisionMeta.Write(store.GetProjectDir(projectId), new ProjectVisionMeta.Document
+        {
+            VisualMedium = medium,
+            DecidedBy = "adaptation",
+        });
+    }
 }

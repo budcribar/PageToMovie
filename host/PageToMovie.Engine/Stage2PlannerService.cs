@@ -223,9 +223,13 @@ public sealed class Stage2PlannerService
         NormalizeCharPlaceholders(charSeeds);
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
-        var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
-        var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null);
-        var visualMedium = CoerceString(gpv.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
+        var vision = ProjectVisionMeta.RequireDecided(projectDir);
+        var styleLock = vision.RenderStyleLock;
+        var visualMedium = vision.VisualMedium;
+        var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null)
+            ?? ProjectVisionMeta.DefaultAspectRatio(visualMedium);
+        gpv[JsonKeys.RenderStyleLock] = styleLock;
+        gpv[JsonKeys.VisualMedium] = visualMedium;
 
         var planned = await PlanScenesInParallelAsync(
                 scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
@@ -397,8 +401,10 @@ public sealed class Stage2PlannerService
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(targetAspectRatio) && !s.ContainsKey("target_aspect_ratio"))
             s["target_aspect_ratio"] = targetAspectRatio;
-        if (!string.IsNullOrWhiteSpace(visualMedium) && !s.ContainsKey(JsonKeys.VisualMedium))
+        if (!string.IsNullOrWhiteSpace(visualMedium))
             s[JsonKeys.VisualMedium] = visualMedium;
+        if (!string.IsNullOrWhiteSpace(styleLock))
+            s[JsonKeys.RenderStyleLock] = styleLock;
 
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
@@ -951,7 +957,7 @@ public sealed class Stage2PlannerService
             [Keys.CharactersOnScreen] = cast.Cast<object?>().ToList(),
         };
         if (!string.IsNullOrWhiteSpace(styleLock))
-            sceneWork["render_style_lock"] = styleLock;
+            sceneWork[JsonKeys.RenderStyleLock] = styleLock;
 
         var wardrobe = InitWardrobeState(cast, charSeeds, scene);
         ApplyAiWardrobeOverrides(wardrobe, aiWardrobe);
@@ -980,7 +986,7 @@ public sealed class Stage2PlannerService
             monologueStep = planned.MonologueStep;
         }
 
-        return BaseSceneShell(scene, lids, primary, cast, total, clips, beatMap);
+        return BaseSceneShell(sceneWork, lids, primary, cast, total, clips, beatMap);
     }
 
     private static List<string> CollectLocationIds(Dictionary<string, object?> scene) =>
@@ -1401,6 +1407,8 @@ public sealed class Stage2PlannerService
         [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(null),
         ["spoiler_constraints"] = SceneValueOrList(scene, "spoiler_constraints"),
         ["source_book_refs"] = SceneValueOrList(scene, "source_book_refs"),
+        [JsonKeys.VisualMedium] = SceneValue(scene, JsonKeys.VisualMedium),
+        [JsonKeys.RenderStyleLock] = SceneValue(scene, JsonKeys.RenderStyleLock),
     };
 
     private static object? SceneValue(Dictionary<string, object?> scene, string key) =>
@@ -2175,6 +2183,8 @@ public sealed class Stage2PlannerService
             return style;
         if (!cast.Any(t => !IsNeverOnScreenCharacter(t, charSeeds)))
             return style;
+        if (!VisualMediumStyles.IsDecidedMedium(visualMedium))
+            return style;
         return VisualMediumStyles.StyleLockFor(VisualMediumStyles.NormalizeMedium(visualMedium));
     }
 
@@ -2787,7 +2797,7 @@ public sealed class Stage2PlannerService
     }
 
     private static string RenderStyleLock(Dictionary<string, object?> scene) =>
-        CoerceString(scene.TryGetValue("render_style_lock", out var r) ? r : null) ?? "";
+        CoerceString(scene.TryGetValue(JsonKeys.RenderStyleLock, out var r) ? r : null) ?? "";
 
     /// <summary>
     /// True when a character key has <c>display_name_policy = "never_on_screen"</c> in the

@@ -69,10 +69,14 @@ public sealed class CastExtractRegressionTests
             }
             """;
 
-        var (result, keys, userPrompt) = await RunExtractAsync(fountain, book, modelJson);
+        var (result, keys, userPrompt, castSeeds, rules) = await RunExtractAsync(fountain, book, modelJson);
 
         Assert.True(result.Ok, result.Error);
         Assert.Equal(3, keys.Count);
+        Assert.Contains("black and white short-haired dog", castSeeds, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("style_from_cast", rules, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"render_style_lock\"", castSeeds, StringComparison.Ordinal);
+        Assert.Contains("Do NOT invent a film-level", userPrompt, StringComparison.Ordinal);
         Assert.Contains(keys, k => k.Equals("Character_Buster", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(keys, k => k.Equals("Character_Mom", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(keys, k => k.Equals("Character_Narrator", StringComparison.OrdinalIgnoreCase));
@@ -132,7 +136,7 @@ public sealed class CastExtractRegressionTests
             }
             """;
 
-        var (result, keys, _) = await RunExtractAsync(fountain, book: null, modelJson);
+        var (result, keys, _, _, _) = await RunExtractAsync(fountain, book: null, modelJson);
 
         Assert.True(result.Ok, result.Error);
         Assert.Single(keys);
@@ -170,7 +174,7 @@ public sealed class CastExtractRegressionTests
             }
             """;
 
-        var (result, keys, _) = await RunExtractAsync(fountain, book: null, modelJson);
+        var (result, keys, _, _, _) = await RunExtractAsync(fountain, book: null, modelJson);
         Assert.True(result.Ok, result.Error);
         Assert.Single(keys);
         Assert.Equal("Character_Hero", keys[0], ignoreCase: true);
@@ -199,7 +203,7 @@ public sealed class CastExtractRegressionTests
         }
     }
 
-    private static async Task<(CastFromScreenplayService.ExtractResult Result, List<string> Keys, string UserPrompt)>
+    private static async Task<(CastFromScreenplayService.ExtractResult Result, List<string> Keys, string UserPrompt, string CastSeeds, string Rules)>
         RunExtractAsync(string fountain, string? book, string modelJson)
     {
         var workspace = Path.Combine(Path.GetTempPath(), "ptm_cast_reg_" + Guid.NewGuid().ToString("N"));
@@ -239,7 +243,11 @@ public sealed class CastExtractRegressionTests
 
             var result = await cast.ExtractAsync(project.Id, force: true);
             var keys = result.CharacterKeys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
-            return (result, keys, chat.LastCastUserPrompt ?? "");
+            var castPath = ScreenplayService.GetCastSeedsPath(store, project.Id);
+            var castSeeds = File.Exists(castPath) ? await File.ReadAllTextAsync(castPath) : "";
+            var rulesPath = Path.Combine(dir, "project_rules.json");
+            var rulesJson = File.Exists(rulesPath) ? await File.ReadAllTextAsync(rulesPath) : "";
+            return (result, keys, chat.LastCastUserPrompt ?? "", castSeeds, rulesJson);
         }
         finally
         {

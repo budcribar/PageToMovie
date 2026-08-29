@@ -146,7 +146,9 @@ public sealed class CastFromScreenplayService
         onProgress?.Invoke("Loading cast prompt…");
         var system = await LoadSystemPromptAsync(_projects.WorkspaceRoot, ct).ConfigureAwait(false);
         var locationHints = BuildLocationHintsFromFountain(fountain);
-        var user = BuildUserPrompt(fountain, book, locationHints);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var decidedMedium = ProjectVisionMeta.TryGetDecided(projectDir)?.VisualMedium;
+        var user = BuildUserPrompt(fountain, book, locationHints, decidedMedium);
 
         onProgress?.Invoke("Calling Grok for closed cast + locations (book-aware looks)…");
         var (parsed, parseError) = await ParseCastDocumentAsync(
@@ -154,7 +156,7 @@ public sealed class CastFromScreenplayService
         if (parseError is not null)
             return parseError;
 
-        var normalized = NormalizeCastDoc(parsed!, projectId, book);
+        var normalized = NormalizeCastDoc(parsed!, projectId, book, decidedMedium);
 
         var seedsObj = GetSeedsDict(normalized);
 
@@ -431,19 +433,9 @@ public sealed class CastFromScreenplayService
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        // Project style + performance rules from book/screenplay (medium + audience address)
+        // Performance/address only. Film-level STYLE LOCK is ProjectVisionMeta (adaptation).
         try
         {
-            if (normalized.TryGetValue(KeyRenderStyleLock, out var rslObj) &&
-                rslObj?.ToString() is { Length: > 0 } rsl &&
-                await _projectRules.EnsureStyleRuleFromRenderLockAsync(projectId, rsl, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
-                onProgress?.Invoke("Project style rule updated from book/screenplay medium.");
-
-            // Persist structured medium for portraits (prefer adaptation vision_meta if already set).
-            var rslText = normalized.TryGetValue(KeyRenderStyleLock, out var rslV) ? rslV?.ToString() : null;
-            var perfText = normalized.TryGetValue(KeyPerformanceLock, out var plV) ? plV?.ToString() : null;
-            ProjectVisionMeta.UpsertFromCast(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), rslText, perfText);
-
             if (normalized.TryGetValue(KeyPerformanceLock, out var perfObj) &&
                 perfObj?.ToString() is { Length: > 0 } perf &&
                 await _projectRules.EnsurePerformanceRuleFromLockAsync(projectId, perf, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
@@ -451,7 +443,7 @@ public sealed class CastFromScreenplayService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Could not write style/performance project rules for {Project}", projectId);
+            _log.LogWarning(ex, "Could not write performance project rules for {Project}", projectId);
         }
     }
 
@@ -613,13 +605,13 @@ public sealed class CastFromScreenplayService
         }
     }
 
-    private static string BuildUserPrompt(string fountain, string? book, string? locationHints = null)
+    internal static string BuildUserPrompt(string fountain, string? book, string? locationHints = null, string? decidedVisualMedium = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are the closed-cast and location authority.");
         sb.AppendLine("SOURCE OF TRUTH: the FOUNTAIN screenplay. It must describe the story world,");
-        sb.AppendLine("including visual medium, on-screen cast, and places. BOOK text is supporting detail only");
-        sb.AppendLine("when Fountain is thin — never override Fountain medium or cast with book-only invention.");
+        sb.AppendLine("including on-screen cast and places. BOOK text is supporting detail only");
+        sb.AppendLine("when Fountain is thin — never override Fountain cast with book-only invention.");
         sb.AppendLine("There is NO external name list and NO forced candidate list — membership is your judgment only.");
         sb.AppendLine("Include every person or animal who appears on screen or speaks (including silent leads");
         sb.AppendLine("named only in action lines, and titled beings from the book/title when they are story roles).");
@@ -634,9 +626,16 @@ public sealed class CastFromScreenplayService
         sb.AppendLine("Set species_kind from the story (human/animal/etc.) — do not guess from word lists.");
         sb.AppendLine("Set cast_kind to group for plural unnamed bodies (children, crowd, classmates);");
         sb.AppendLine("do not invent proper names for those groups. Individuals stay cast_kind individual.");
-        sb.AppendLine("REQUIRED: render_style_lock from the FOUNTAIN medium (title Notes / early Action /");
-        sb.AppendLine("story register). The screenplay must carry the book's visual medium; do not choose");
-        sb.AppendLine("cartoon vs photoreal from file type. One medium for all cast.");
+        if (ProjectVisionMeta.IsDecidedMedium(decidedVisualMedium))
+        {
+            sb.AppendLine($"VISUAL MEDIUM is already decided ({decidedVisualMedium}). Do NOT invent a film-level");
+            sb.AppendLine("STYLE LOCK or render_style_lock. Omit render_style_lock. Keep per-character visual_lock.");
+        }
+        else
+        {
+            sb.AppendLine("Do NOT invent a film-level STYLE LOCK / render_style_lock. Visual medium is decided");
+            sb.AppendLine("at book/screenplay, not by cast extract. Omit render_style_lock. Keep visual_lock.");
+        }
         sb.AppendLine();
         sb.AppendLine("LOCATIONS (REQUIRED): Also emit location_seed_tokens for every distinct place in");
         sb.AppendLine("Fountain INT./EXT. headings. Same place day vs night = one Loc_* seed.");
@@ -1146,7 +1145,8 @@ public sealed class CastFromScreenplayService
     internal static Dictionary<string, object?> NormalizeCastDoc(
         Dictionary<string, object?> parsed,
         string projectId,
-        string? bookText = null)
+        string? bookText = null,
+        string? decidedVisualMedium = null)
     {
 
         var outDoc = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -1177,12 +1177,7 @@ public sealed class CastFromScreenplayService
         else
             outDoc[JsonKeys.MovieTitle] = projectId;
 
-        if (parsed.TryGetValue(KeyRenderStyleLock, out var rsl) && rsl is not null && !string.IsNullOrWhiteSpace(rsl.ToString()))
-        {
-            // Medium comes from cast model reading the screenplay — never from file type.
-            outDoc[KeyRenderStyleLock] = rsl.ToString()!.Trim();
-        }
-        // If omitted, leave unset; CharacterDesignService reads Fountain Notes as fallback.
+        // Film-level STYLE LOCK is ProjectVisionMeta only — never persist render_style_lock from Cast.
 
         // Film-level audience/performance conventions inferred from book (not hardcoded gaze recipes)
         if (parsed.TryGetValue(KeyPerformanceLock, out var pl) && pl is not null &&

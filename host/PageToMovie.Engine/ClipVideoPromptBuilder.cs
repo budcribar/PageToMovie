@@ -2201,11 +2201,11 @@ public static class ClipVideoPromptBuilder
             return VisualMediumStyles.NormalizeMedium(visualMedium);
         if (!string.IsNullOrWhiteSpace(projectDir))
         {
-            var vision = ProjectVisionMeta.TryRead(projectDir);
-            if (!string.IsNullOrWhiteSpace(vision?.VisualMedium))
+            var vision = ProjectVisionMeta.TryGetDecided(projectDir);
+            if (vision is not null)
                 return VisualMediumStyles.NormalizeMedium(vision.VisualMedium);
         }
-        return VisualMediumStyles.MediumOther;
+        return "";
     }
 
     /// <summary>
@@ -2221,7 +2221,7 @@ public static class ClipVideoPromptBuilder
     {
         if (!string.IsNullOrWhiteSpace(projectDir))
         {
-            var vision = ProjectVisionMeta.TryRead(projectDir);
+            var vision = ProjectVisionMeta.TryGetDecided(projectDir);
             if (!string.IsNullOrWhiteSpace(vision?.RenderStyleLock))
                 return vision.RenderStyleLock.Trim();
         }

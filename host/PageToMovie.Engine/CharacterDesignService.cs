@@ -1625,34 +1625,12 @@ public sealed class CharacterDesignService
     }
 
     /// <summary>
-    /// Project medium from cast extract (<c>render_style_lock</c>). Null when missing.
+    /// Project STYLE LOCK from <see cref="ProjectVisionMeta"/>. Null when the project has no decided medium.
     /// </summary>
     internal static string? ReadProjectRenderStyleLock(string projectDir)
     {
-        // Structured metadata from adaptation (or cast) — never regex over Fountain prose.
-        var vision = ProjectVisionMeta.TryRead(projectDir);
-        var renderStyleLock = vision?.RenderStyleLock;
-        if (!string.IsNullOrWhiteSpace(renderStyleLock))
-            return renderStyleLock.Trim();
-
-        try
-        {
-            var castPath = Path.Combine(projectDir, "source", ScreenplayService.CastSeedsFileName);
-            if (File.Exists(castPath))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
-                if (doc.RootElement.TryGetProperty("render_style_lock", out var rsl) &&
-                    rsl.ValueKind == JsonValueKind.String &&
-                    rsl.GetString() is { Length: > 0 } s)
-                    return s.Trim();
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
-        return null;
+        var vision = ProjectVisionMeta.TryGetDecided(projectDir);
+        return string.IsNullOrWhiteSpace(vision?.RenderStyleLock) ? null : vision.RenderStyleLock.Trim();
     }
 
     internal static string StripNegativeStyleClauses(string style)

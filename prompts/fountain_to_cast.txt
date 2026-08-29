@@ -52,14 +52,11 @@ GOALS
    film-level lock in performance_lock. Per character, optional performance_notes when
    that role has a special address pattern. Do NOT hardcode "eyes open facing camera"
    for every project — only state conventions the book/screenplay actually support.
-9. **RENDER MEDIUM FROM SCREENPLAY (HARD):** Set `render_style_lock` from the FOUNTAIN's
-   stated medium (title-page Notes, early Action, overall dramatic register). The screenplay
-   must describe the book's visual world — illustrated picture-book vs photoreal period
-   drama vs gothic live-action, etc. Use BOOK text only to support what the Fountain already
-   encodes; do NOT invent cartoon vs photoreal from "there was a text file" or "there were
-   image plates." If Fountain never states medium, infer from story content in Fountain+Book
-   (e.g. Poe short story → photoreal gothic live-action; animal picture book → illustrated).
-   One medium for all cast.
+9. **DO NOT INVENT A FILM-LEVEL STYLE LOCK:** Visual medium is already decided at
+   book/screenplay (`visual_medium` on vision_meta). Omit `render_style_lock`. Keep
+   per-character `visual_lock` / wardrobe / species — that is Cast's job. If the user
+   message names a decided VISUAL MEDIUM, do not contradict it and do not emit a
+   second STYLE LOCK.
 10. **SHARED UNIFORMS (HARD):** If two or more on-screen characters wear the same
    professional uniform/costume (police officers, soldiers, servants, sports team, etc.),
    do NOT re-describe the coat/hat/badge/insignia separately in each character's own
@@ -85,8 +82,7 @@ PRIORITY IF CONFLICTS:
 1. Valid JSON matching the schema below
 2. Fidelity to screenplay + book (on-screen cast complete; looks from book when present)
 3. Closed cast (no unnamed "MAN #2")
-4. One render medium for the whole film
-5. Distinct faces for each on-screen Character_* (no shared generic pale man)
+4. Distinct faces for each on-screen Character_* (no shared generic pale man)
 
 ================================================================
 OUTPUT (HARD) — JSON ONLY
@@ -96,7 +92,6 @@ Return ONLY a JSON object (no markdown fences, no commentary):
 {
   "schema_version": "cast_seeds.v1",
   "movie_title": "…",
-  "render_style_lock": "STYLE LOCK: … one medium for all cast …",
   "performance_lock": "PERFORMANCE LOCK: … how this film addresses the viewer / default gaze & staging conventions inferred from book+screenplay …",
   "character_seed_tokens": {
     "Character_Example": {
@@ -133,8 +128,7 @@ Return ONLY a JSON object (no markdown fences, no commentary):
 }
 
 FIELD RULES:
-- render_style_lock (REQUIRED): one STYLE LOCK string for the whole film, derived from the
-  FOUNTAIN medium (Notes / early Action / story register). Not from upload format.
+- Do not emit render_style_lock. Film-level medium is decided at book/screenplay.
 - description: 1–3 dense sentences of filmable identity (age band, build, face, hair,
   eyes, skin, wardrobe, era/medium). Enough for a portrait model with no other context.
 - visual_lock: 1–3 sentences of **constants that must not drift** (same face, hair,

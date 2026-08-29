@@ -98,20 +98,11 @@ public static class Stage1Normalizer
 
     private static void ApplyStyleLock(Dictionary<string, object?> gpv)
     {
-        var treat = CoerceString(gpv.TryGetValue("directorial_treatment", out var dt) ? dt : "") ?? "";
+        // Keep an existing lock if the model wrote one. Do not invent photoreal / illustrated / 3D
+        // from treatment prose — ProjectVisionMeta is the film-level SSoT.
         var rsl = CoerceString(ReadStyleLockRaw(gpv)) ?? "";
-        if (string.IsNullOrWhiteSpace(rsl) &&
-            CommonRegex.IsMatch(treat, @"styliz|animated|picture-book|cartoon|pixar|dreamworks|illustration|2d\b|3d\b",
-                RegexOptions.IgnoreCase))
-        {
-            gpv["render_style_lock"] =
-                "STYLE LOCK: stylized animated children's picture-book look for ALL on-screen " +
-                "cast (animals and humans share the same medium) -- not photoreal, not live-action";
-        }
-        else if (!string.IsNullOrWhiteSpace(rsl))
-        {
+        if (!string.IsNullOrWhiteSpace(rsl))
             gpv["render_style_lock"] = rsl;
-        }
     }
 
     private static object? ReadStyleLockRaw(Dictionary<string, object?> gpv)

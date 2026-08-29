@@ -126,6 +126,9 @@ public sealed class BookTextRegistryServiceTests : IDisposable
             store, project.Id, chat, model: OfflineTestModelConfig.Required("chat"),
             bookRegistry: registry, cacheUserId: "user-a");
         Assert.True(first.Ok, first.Error);
+        var vision = ProjectVisionMeta.RequireDecided(store.GetProjectDir(project.Id));
+        Assert.Equal(ProjectVisionMeta.MediumIllustrated, vision.VisualMedium);
+        Assert.False(string.IsNullOrWhiteSpace(vision.RenderStyleLock));
         var callsAfterFirst = chat.Calls;
         Assert.True(callsAfterFirst > 0);
 
