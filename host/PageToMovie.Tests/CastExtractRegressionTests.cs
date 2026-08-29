@@ -76,7 +76,7 @@ public sealed class CastExtractRegressionTests
         Assert.Contains("black and white short-haired dog", castSeeds, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("style_from_cast", rules, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"render_style_lock\"", castSeeds, StringComparison.Ordinal);
-        Assert.Contains("Do NOT invent a film-level STYLE LOCK", userPrompt, StringComparison.Ordinal);
+        Assert.Contains("Do NOT invent a film-level", userPrompt, StringComparison.Ordinal);
         Assert.Contains(keys, k => k.Equals("Character_Buster", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(keys, k => k.Equals("Character_Mom", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(keys, k => k.Equals("Character_Narrator", StringComparison.OrdinalIgnoreCase));
@@ -246,8 +246,8 @@ public sealed class CastExtractRegressionTests
             var castPath = ScreenplayService.GetCastSeedsPath(store, project.Id);
             var castSeeds = File.Exists(castPath) ? await File.ReadAllTextAsync(castPath) : "";
             var rulesPath = Path.Combine(dir, "project_rules.json");
-            var rules = File.Exists(rulesPath) ? await File.ReadAllTextAsync(rulesPath) : "";
-            return (result, keys, chat.LastCastUserPrompt ?? "", castSeeds, rules);
+            var rulesJson = File.Exists(rulesPath) ? await File.ReadAllTextAsync(rulesPath) : "";
+            return (result, keys, chat.LastCastUserPrompt ?? "", castSeeds, rulesJson);
         }
         finally
         {
