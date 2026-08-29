@@ -6201,8 +6201,9 @@ public sealed class FilmJobService
             var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(rules))
             {
+                var merged = built.Prompt.TrimEnd() + "\n\n" + rules.Trim();
                 built = built.WithPrompt(
-                    built.Prompt.TrimEnd() + "\n\n" + rules.Trim(),
+                    ClipVideoPromptBuilder.EnsureSingleStyleLock(merged, built.StyleHead),
                     " · project-rules");
             }
         }

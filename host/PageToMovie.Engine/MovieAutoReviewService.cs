@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.ModelExecution;
 using PageToMovie.Engine.ModelBacked;
@@ -311,6 +313,7 @@ public sealed class MovieAutoReviewService
     internal static string BuildSceneChunkPrompt(string rangeStr) =>
         $@"You are a professional film director reviewing visual keyframe sequence {rangeStr} of a movie cut.
 Frames are labeled Sxx (scene) or SxxCyy (scene + clip). Do not use a scene-only SCENE_ prefix.
+A group range such as ""Scenes 1-4"" is not a cite — name the scene, and the clip when the frame label includes one (S01, S02C01).
 Critically evaluate these 6 key filmmaking categories and assign an independent score (1-10) for each:
 1. Continuity & Transitions (shot-to-shot spatial alignment, character position, camera movement flow)
 2. Character Consistency & Wardrobe (facial structure lock, outfit drift, visual identity retention)
@@ -319,7 +322,7 @@ Critically evaluate these 6 key filmmaking categories and assign an independent 
 5. Dialogue & Script Fidelity (speaking posture, mouth/lip movement alignment, character line execution matching prompt beats)
 6. Background Music & Audio Score (audio transition smoothness, music cues fading/ending gracefully vs abrupt cutoffs, score volume balance)
 
-Art medium / style lock: if watercolor, illustration, 2D, 3D, photoreal, live-action, or CG look jumps between frames, name the scene and clip (e.g. S03C01). Never claim a style or medium change without a cite.
+Art medium / style lock: if watercolor, illustration, 2D, 3D, photoreal, live-action, or CG look jumps between frames, cite the hop as Sxx or SxxCyy (e.g. S01 → S02, or S02C01). A range like ""Scenes 1-4"" is not a cite. Never claim a style or medium change without that cite.
 Flag a style/medium jump even when the group score is 7 or higher.
 
 Return valid JSON with non-generic, specific observations:
@@ -367,8 +370,8 @@ evidence may be an empty array when there is no style/medium or continuity cite.
     internal static string BuildExecutiveSynthesisSystemPrompt() =>
         "You are an Executive Film Director and Post-Production Supervisor writing a high-level Executive Director Summary Report for a complete movie. " +
         "Synthesize a unified, insightful executive overview (3-5 well-structured sections) evaluating overall visual narrative continuity, character lock consistency, lighting mood, dialogue & lip-sync delivery, background music transitions, and final recommendations. " +
-        "For any style, art-medium, or renderer claim (watercolor, illustration, 2D, 3D, photoreal, live-action, CG), you MUST name the scene and clip (e.g. S03C01). " +
-        "Do not describe a style jump without a cite. Visual and medium problems may be listed by scene; other topics stay synthesized rather than a scene-by-scene recap.";
+        "For any style, art-medium, or renderer claim (watercolor, illustration, 2D, 3D, photoreal, live-action, CG), you MUST cite Sxx and Cyy when the clip is known (e.g. S01, S02C01). " +
+        "A group range such as \"Scenes 1-4\" is not a cite. Do not describe a style jump without that cite. Visual and medium problems may be listed by Sxx; other topics stay synthesized rather than a scene-by-scene recap.";
 
     private static string BuildExecutiveReviewPromptBody(
         MovieAutoReviewReport report,
@@ -423,9 +426,14 @@ evidence may be an empty array when there is no style/medium or continuity cite.
         }
         if (!HasStyleMediumIssue(f))
             yield break;
+        var fromEvidence = SceneNumbersFromEvidence(f.Evidence).ToList();
+        if (fromEvidence.Count > 0)
+        {
+            foreach (var n in fromEvidence)
+                yield return n;
+            yield break;
+        }
         foreach (var n in f.SceneNumbers)
-            yield return n;
-        foreach (var n in SceneNumbersFromEvidence(f.Evidence))
             yield return n;
     }
 
@@ -453,6 +461,14 @@ evidence may be an empty array when there is no style/medium or continuity cite.
             || text.Contains("3d render", StringComparison.OrdinalIgnoreCase)
             || text.Contains("3d rendered", StringComparison.OrdinalIgnoreCase)
             || text.Contains("cgi", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>S01 or S01C02 — not a group range such as "Scenes 1-4".</summary>
+    internal static bool IsSpecificSceneCite(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        return CommonRegex.IsMatch(value.Trim(), @"^S\d{1,3}(?:C\d{1,3})?$", RegexOptions.IgnoreCase);
     }
 
     private static IEnumerable<int> SceneNumbersFromEvidence(IEnumerable<MovieReviewEvidence> evidence)
@@ -557,7 +573,7 @@ evidence may be an empty array when there is no style/medium or continuity cite.
                     ? c.GetString() ?? ""
                     : "",
             };
-            if (ev.Ref.Length > 0 || ev.Claim.Length > 0)
+            if (IsSpecificSceneCite(ev.Ref) && ev.Claim.Length > 0)
                 list.Add(ev);
         }
         return list;
@@ -628,7 +644,7 @@ evidence may be an empty array when there is no style/medium or continuity cite.
         }
         if (report.FlaggedScenes.Count > 0)
         {
-            sb.AppendLine($"\n**Recommended Priority Touch-ups**: Scene(s) {string.Join(", ", report.FlaggedScenes)}");
+            sb.AppendLine($"\n**Recommended Priority Touch-ups**: {string.Join(", ", report.FlaggedScenes.Select(n => $"S{n:D2}"))}");
         }
         return sb.ToString().Trim();
     }

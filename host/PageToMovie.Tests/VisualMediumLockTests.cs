@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Utils;
@@ -66,6 +67,124 @@ public class VisualMediumLockTests
         var existing = Stage2PlannerService.EnsureCastStyleLock(
             "STYLE LOCK: already set", VisualMediumStyles.MediumIllustrated, cast, seeds);
         Assert.Equal("STYLE LOCK: already set", existing);
+    }
+
+    /// <summary>
+    /// Mary19 smoking gun: house-rule watercolor at the head AND
+    /// <c>STYLE LOCK: stylized 3D animated children's picture-book CG (same render family as animal hero)</c>
+    /// still sitting in action. Gen must emit exactly one lock from VisualMediumStyles.
+    /// </summary>
+    [Fact]
+    public void Mary19_prose_3d_action_lock_is_stripped_one_lock_from_medium()
+    {
+        const string mary19Lock =
+            "STYLE LOCK: stylized 3D animated children's picture-book CG (same render family as animal hero)";
+        var clip = ClipWithStyle(
+            mary19Lock + " INT. SCHOOLROOM - DAY. Character_Mary walks in. " +
+            "<Lighting>gentle volumetric dust motes</Lighting>");
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip,
+            Path.GetTempPath(),
+            styleHead: "STYLE LOCK: 2D watercolor picture-book, never photoreal",
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        Assert.Equal("fresh", built.Mode);
+        Assert.Equal(1, CountStyleLocks(built.Prompt));
+        Assert.DoesNotContain(
+            "stylized 3D animated children's picture-book CG",
+            built.Prompt,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("same render family as animal hero", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(VisualMediumStyles.IllustratedStyleLock, built.Prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Mary19_extend_strips_prose_3d_lock_same_as_fresh()
+    {
+        const string mary19Lock =
+            "STYLE LOCK: stylized 3D animated children's picture-book CG (same render family as animal hero)";
+        var clip = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            clip_number = 2,
+            visual_prompt = mary19Lock + " INT. SCHOOLROOM - DAY. Character_Mary turns.",
+            characters_on_screen = new[] { "Character_Mary" },
+            veo_continuation_source = "extend_previous",
+            audio_payload = new { speaker = "", dialogue = "", delivery = "none" },
+        })).RootElement.Clone();
+
+        var tmp = Path.Combine(Path.GetTempPath(), "fs-mary19-extend-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        File.WriteAllBytes(Path.Combine(tmp, "scene_01_clip_01.mp4"), new byte[2048]);
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new() { Key = "Character_Mary", DisplayName = "Mary" },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip,
+            tmp,
+            characters: profiles,
+            previousClipVideoPath: Path.Combine(tmp, "scene_01_clip_01.mp4"),
+            styleHead: "STYLE LOCK: 2D watercolor picture-book, never photoreal",
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        Assert.Equal("video-extend", built.Mode);
+        Assert.Equal(1, CountStyleLocks(built.Prompt));
+        Assert.DoesNotContain(
+            "stylized 3D animated children's picture-book CG",
+            built.Prompt,
+            StringComparison.Ordinal);
+        Assert.Contains(VisualMediumStyles.IllustratedStyleLock, built.Prompt, StringComparison.OrdinalIgnoreCase);
+
+        try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+    }
+
+    [Fact]
+    public void Project_render_style_lock_is_the_only_lock()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "fs-rsl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(tmp, "source"));
+        File.WriteAllText(
+            Path.Combine(tmp, "source", "vision_meta.json"),
+            """{"schema_version":"vision_meta.v1","visual_medium":"illustrated_picture_book","render_style_lock":"STYLE LOCK: 2D watercolor picture-book, never photoreal","decided_by":"adaptation"}""");
+
+        try
+        {
+            var clip = ClipWithStyle(
+                "STYLE LOCK: stylized 3D animated children's picture-book CG (same render family as animal hero) " +
+                "INT. SCHOOLROOM - DAY. Character_Mary walks in.");
+            var built = ClipVideoPromptBuilder.Build(
+                clip,
+                tmp,
+                visualMedium: VisualMediumStyles.MediumIllustrated);
+
+            Assert.Equal(1, CountStyleLocks(built.Prompt));
+            Assert.Contains("2D watercolor picture-book, never photoreal", built.Prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "stylized 3D animated children's picture-book CG",
+                built.Prompt,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void EnsureSingleStyleLock_collapses_house_rule_and_3d_action()
+    {
+        var dual =
+            VisualMediumStyles.IllustratedStyleLock + "\n\naction\n\n" +
+            "STYLE LOCK: stylized 3D animated children's picture-book CG (same render family as animal hero)\n" +
+            "STYLE LOCK: 2D watercolor picture-book, never photoreal\n";
+        var one = ClipVideoPromptBuilder.EnsureSingleStyleLock(dual, VisualMediumStyles.IllustratedStyleLock);
+        Assert.Equal(1, CountStyleLocks(one));
+        Assert.StartsWith(VisualMediumStyles.IllustratedStyleLock, one, StringComparison.Ordinal);
+        Assert.DoesNotContain("stylized 3D animated children's picture-book CG", one, StringComparison.Ordinal);
+        Assert.DoesNotContain("2D watercolor picture-book", one, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -137,9 +256,12 @@ public class VisualMediumLockTests
         Assert.Contains("evidence", chunk, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("S03C01", chunk, StringComparison.Ordinal);
         Assert.Contains("Sxx (scene) or SxxCyy", chunk, StringComparison.Ordinal);
+        Assert.Contains("is not a cite", chunk, StringComparison.Ordinal);
+        Assert.Contains("Scenes 1-4", chunk, StringComparison.Ordinal);
 
         var exec = MovieAutoReviewService.BuildExecutiveSynthesisSystemPrompt();
-        Assert.Contains("S03C01", exec, StringComparison.Ordinal);
+        Assert.Contains("S02C01", exec, StringComparison.Ordinal);
+        Assert.Contains("is not a cite", exec, StringComparison.Ordinal);
         Assert.DoesNotContain("Do NOT list or repeat each scene", exec, StringComparison.Ordinal);
         Assert.Contains("style", exec, StringComparison.OrdinalIgnoreCase);
     }
@@ -165,8 +287,31 @@ public class VisualMediumLockTests
 
         Assert.True(MovieAutoReviewService.HasStyleMediumIssue(groups[0]));
         var flagged = MovieAutoReviewService.CollectFlaggedScenes(groups);
-        Assert.Contains(3, flagged);
+        Assert.Equal(new[] { 3 }, flagged);
         Assert.Equal("S03C01", MovieAutoReviewService.FormatKeyframeLabel(3, 1));
+    }
+
+    [Fact]
+    public void ParseSceneGroupFeedback_drops_range_refs_keeps_Sxx()
+    {
+        var raw = """
+            {"overallScore":6,"continuityScore":5,"characterScore":8,"lightingScore":8,"pacingScore":8,"dialogueScore":8,"musicScore":8,
+             "continuityNotes":"ok","visualConsistencyNotes":"ok","lightingNotes":"ok","dialogueNotes":"ok","audioNotes":"ok",
+             "evidence":[
+               {"ref":"Scenes 1-4","claim":"watercolor to 3D"},
+               {"ref":"S02","claim":"INT. SCHOOLROOM hop"},
+               {"ref":"S02C01","claim":"volumetric dust motes"}
+             ]}
+            """;
+        var parsed = MovieAutoReviewService.ParseSceneGroupFeedback(raw, "Scenes 1-4", new[] { 1, 2, 3, 4 });
+        Assert.Empty(parsed.Issues);
+        Assert.NotNull(parsed.Value);
+        Assert.Equal(2, parsed.Value!.Evidence.Count);
+        Assert.Equal("S02", parsed.Value.Evidence[0].Ref);
+        Assert.Equal("S02C01", parsed.Value.Evidence[1].Ref);
+        Assert.True(MovieAutoReviewService.IsSpecificSceneCite("S01"));
+        Assert.True(MovieAutoReviewService.IsSpecificSceneCite("S02C01"));
+        Assert.False(MovieAutoReviewService.IsSpecificSceneCite("Scenes 1-4"));
     }
 
     [Fact]
@@ -196,6 +341,10 @@ public class VisualMediumLockTests
         Assert.Contains("picture-book", fitted, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain($"<{PromptFieldTags.Optics}>", fitted, StringComparison.Ordinal);
     }
+
+    private static int CountStyleLocks(string prompt) =>
+        CommonRegex.Matches(prompt ?? "", @"STYLE LOCK(?:\s*\(hard\))?\s*:", RegexOptions.IgnoreCase).Count
+        + CommonRegex.Matches(prompt ?? "", @"<StyleLock>", RegexOptions.IgnoreCase).Count;
 
     private static JsonElement ClipWithStyle(string visual) =>
         JsonDocument.Parse(JsonSerializer.Serialize(new

@@ -204,11 +204,11 @@ public static class ClipVideoPromptBuilder
         }
 
         var resolvedMedium = ResolveVisualMedium(projectDir, visualMedium);
-        var style = ResolveStyleLockForGeneration(styleHead, rawVisual, resolvedMedium);
-        // Extend/continue used to blank the lock (the look is in the source video) — that let
-        // later hops flip watercolor to CG. Keep one locked-medium line on every hop.
-        var styleForPrompt = style;
-        actionText = ReplaceStyleLockTag(actionText, style);
+        var style = ResolveStyleLockForGeneration(projectDir, styleHead, rawVisual, resolvedMedium);
+        // One StyleLock per prompt, from project render_style_lock / StyleLockFor.
+        // Mary19 shipped house-rule watercolor at the head AND "STYLE LOCK: stylized 3D…"
+        // still sitting in the action (prose, not a tag). Strip every lock from the action.
+        actionText = StripStyleLocksFromAction(actionText);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
@@ -219,11 +219,12 @@ public static class ClipVideoPromptBuilder
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
-        var prompt = FitPromptToVideoBudget(
+        var assembled = EnsureSingleStyleLock(
             AppendPromptSections(
-                styleForPrompt, varBlock, locationRefAttached, locationImageTag, locationKey,
+                style, varBlock, locationRefAttached, locationImageTag, locationKey,
                 castCountLine, audioBlock, continuityBlock, clipEl, actionTagged, resolvedMedium),
-            promptMaxLen);
+            style);
+        var prompt = FitPromptToVideoBudget(assembled, promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
 
         return new PromptBuildResult
@@ -1234,11 +1235,11 @@ public static class ClipVideoPromptBuilder
         foreach (var tag in DedupableTags)
             p = DropLaterDuplicates(p, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
 
-        // STYLE LOCK is deliberately NOT de-duplicated. Repeats came from the re-embedded previous
-        // clip, which no longer ships on extend/continue. What can still appear twice is the live
-        // style head next to a stale one baked into the plan — and those two disagree. Collapsing
-        // them would hide exactly the contradiction ShotPlanLint's style_lock_drift rule exists to
-        // report, and hiding it is worse than the ~130 chars it would save.
+        // Extra STYLE LOCK copies (house-rule line + stale plan prose) are stripped at build
+        // time — one lock from VisualMediumStyles / project render_style_lock is the SSoT.
+        p = DropLaterDuplicates(p, @"STYLE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
+        p = DropLaterDuplicates(p, $@"<{PromptFieldTags.StyleLock}>.*?</{PromptFieldTags.StyleLock}>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
         return p;
     }
 
@@ -1385,8 +1386,8 @@ public static class ClipVideoPromptBuilder
 
     /// <summary>
     /// Style lock carried by the plan itself, used when the project has no live style head.
-    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits — the old "STYLE LOCK: …up to the
-    /// first full stop" prose match guessed where the sentence ended and would find nothing now.
+    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits, or the older prose
+    /// <c>STYLE LOCK: …</c> line still sitting in Mary19-era action text.
     /// </summary>
     public static string? ExtractStyleHead(string visual)
     {
@@ -1395,7 +1396,13 @@ public static class ClipVideoPromptBuilder
             visual,
             $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return m.Success ? ("STYLE LOCK: " + m.Groups[1].Value.Trim()) : null;
+        if (m.Success)
+            return "STYLE LOCK: " + m.Groups[1].Value.Trim();
+        var prose = CommonRegex.Match(
+            visual,
+            @"STYLE LOCK(?:\s*\(hard\))?:\s*(.+?)(?=\s*(?:<[A-Za-z]|INT\.|EXT\.|EST\.|$))",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return prose.Success ? ("STYLE LOCK: " + prose.Groups[1].Value.Trim()) : null;
     }
     public static List<string> FindCharacterRefPaths(
         JsonElement clipEl,
@@ -2202,38 +2209,80 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Project medium is the generate-time SSoT. A disagreeing plan <c>StyleLock</c> is overwritten
-    /// from <see cref="VisualMediumStyles.StyleLockFor"/> — lint still reports the drift.
+    /// One lock per prompt: project <c>render_style_lock</c>, else
+    /// <see cref="VisualMediumStyles.StyleLockFor"/>. A disagreeing 3D lock in Stage-2
+    /// action text is discarded — lint still reports the plan drift.
     /// </summary>
     internal static string ResolveStyleLockForGeneration(
+        string? projectDir,
         string? styleHead,
-        string rawVisual,
+        string? rawVisual,
         string resolvedMedium)
     {
-        var planned = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
-        // Unknown / "other" medium: do not invent photoreal over a plan lock that already named a look.
-        if (string.IsNullOrWhiteSpace(resolvedMedium)
-            || resolvedMedium == VisualMediumStyles.MediumOther)
-            return string.IsNullOrWhiteSpace(planned)
-                ? VisualMediumStyles.StyleLockFor(resolvedMedium)
-                : planned;
-        var canonical = VisualMediumStyles.StyleLockFor(resolvedMedium);
-        if (string.IsNullOrWhiteSpace(planned))
+        if (!string.IsNullOrWhiteSpace(projectDir))
+        {
+            var vision = ProjectVisionMeta.TryRead(projectDir);
+            if (!string.IsNullOrWhiteSpace(vision?.RenderStyleLock))
+                return vision.RenderStyleLock.Trim();
+        }
+
+        var medium = VisualMediumStyles.NormalizeMedium(resolvedMedium);
+        if (medium is VisualMediumStyles.MediumIllustrated
+            or VisualMediumStyles.MediumPhotoreal
+            or VisualMediumStyles.MediumStylized3d)
+        {
+            var canonical = VisualMediumStyles.StyleLockFor(medium);
+            var fromHead = VisualMediumStyles.StripStyleLockLabel(styleHead);
+            if (!string.IsNullOrWhiteSpace(fromHead)
+                && VisualMediumStyles.StyleLocksAgree(fromHead, canonical))
+                return styleHead!.Trim();
             return canonical;
-        return VisualMediumStyles.StyleLocksAgree(planned, canonical) ? planned : canonical;
+        }
+
+        var plannedHead = VisualMediumStyles.StripStyleLockLabel(styleHead);
+        var extracted = VisualMediumStyles.StripStyleLockLabel(ExtractStyleHead(rawVisual ?? ""));
+        if (!string.IsNullOrWhiteSpace(plannedHead) && !string.IsNullOrWhiteSpace(extracted)
+            && !VisualMediumStyles.StyleLocksAgree(plannedHead, extracted))
+            return styleHead!.Trim();
+        if (!string.IsNullOrWhiteSpace(styleHead))
+            return styleHead.Trim();
+        var fromPlan = ExtractStyleHead(rawVisual ?? "");
+        return string.IsNullOrWhiteSpace(fromPlan) ? "" : fromPlan.Trim();
     }
 
-    /// <summary>Overwrite a disagreeing <c>&lt;StyleLock&gt;</c> in action prose with the gen-time lock.</summary>
-    internal static string ReplaceStyleLockTag(string actionText, string styleLock)
+    /// <summary>
+    /// Remove every StyleLock from action — tagged and prose — so the prompt
+    /// head is the only lock. Must-fix: Stage-2 still injects
+    /// <c>STYLE LOCK: stylized 3D animated children's picture-book CG…</c>.
+    /// </summary>
+    internal static string StripStyleLocksFromAction(string? action)
     {
-        var inner = VisualMediumStyles.StripStyleLockLabel(styleLock);
-        if (string.IsNullOrWhiteSpace(inner) || string.IsNullOrWhiteSpace(actionText))
-            return actionText;
-        var tag = PromptFieldTags.StyleLock;
-        var replacement = $"<{tag}>{inner}</{tag}>";
-        if (BlockRegexFor(tag).IsMatch(actionText))
-            return BlockRegexFor(tag).Replace(actionText, replacement + " ");
-        return actionText;
+        if (string.IsNullOrWhiteSpace(action)) return action ?? "";
+        var text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(action, "");
+        text = CommonRegex.Replace(
+            text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "\n");
+        text = CommonRegex.Replace(
+            text,
+            @"(?is)\bSTYLE LOCK(?:\s*\(hard\))?\s*:\s*.+?(?=\s*<(?:Location|Characters|Wardrobe|Camera|Lighting|Audio|Continuity|StyleLock|Setting|Action)\b|\s*\b(?:INT\.|EXT\.|EST\.)\b|$)",
+            "");
+        return CollapseWhitespace(text).Trim();
+    }
+
+    /// <summary>
+    /// After house / project rules are appended (they often restate STYLE LOCK),
+    /// keep exactly one lock — the canonical project/medium lock.
+    /// </summary>
+    public static string EnsureSingleStyleLock(string? prompt, string? styleLock)
+    {
+        var text = prompt ?? "";
+        text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(text, "");
+        text = CommonRegex.Replace(text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "");
+        text = text.Trim();
+        if (string.IsNullOrWhiteSpace(styleLock)) return text;
+        var head = styleLock.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
+            ? styleLock.Trim()
+            : "STYLE LOCK: " + styleLock.Trim();
+        return head + "\n\n" + text;
     }
 
     private static void AddCsvNegatives(List<string> dest, string csv)
