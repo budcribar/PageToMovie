@@ -16,7 +16,7 @@ Paths are relative to the **workspace root** (repo root with `host/`, `projects/
 | `trim_scene.txt` | Optional: condense the **working** Fountain toward a target runtime (Fit length) |
 | `fountain_to_cast.txt` | **Product path:** Fountain (+ book) → `source/cast_seeds.json` closed cast |
 | `cast_visual_literalize.txt` | Cast post-pass: figurative/idiomatic looks → literal filmable prose |
-| `clip_gen_rules.txt` | **Product path:** house rules composed into clip video prompts |
+| `clip_gen_rules.txt` | **Retired:** not composed into clip prompts. Dialogue / continuity / VoiceLock / CastCount / Performance / pacing have dedicated writers; medium is STYLE LOCK only |
 | `clip_auto_review.txt` | **Product path:** QC checklist + JSON schema for clip auto-review |
 | `adaptation_v16.txt` | Full-film adaptation rules (optional learning append) |
 | `shared_rules.txt` | Rules Stage 2 + verifier must all respect |

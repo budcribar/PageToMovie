@@ -209,6 +209,53 @@ public class VisualMediumLockTests
     }
 
     [Fact]
+    public void EnsureSingleStyleLock_strips_house_Style_bullet_that_names_example_media()
+    {
+        var dual =
+            VisualMediumStyles.IllustratedStyleLock + "\n\naction\n\n" +
+            "- Style: match locked character refs and project medium (picture-book CG, photoreal, etc.). Do not drift medium mid-film.\n";
+        var one = ClipVideoPromptBuilder.EnsureSingleStyleLock(dual, VisualMediumStyles.IllustratedStyleLock);
+        Assert.Equal(1, CountStyleLocks(one));
+        Assert.StartsWith(VisualMediumStyles.IllustratedStyleLock, one, StringComparison.Ordinal);
+        Assert.DoesNotContain("picture-book CG", one, StringComparison.Ordinal);
+        Assert.DoesNotContain("- Style:", one, StringComparison.Ordinal);
+        Assert.DoesNotContain("photoreal, etc.", one, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Watercolor_style_lock_prompt_does_not_contain_house_picture_book_cg()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "fs-wc-house-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(tmp, "source"));
+        File.WriteAllText(
+            Path.Combine(tmp, "source", "vision_meta.json"),
+            """{"schema_version":"vision_meta.v1","visual_medium":"illustrated_picture_book","render_style_lock":"STYLE LOCK: 2D watercolor picture-book, never photoreal","decided_by":"adaptation"}""");
+
+        try
+        {
+            var clip = ClipWithStyle(
+                "<Lighting>Soft warm daylight through tall windows.</Lighting> " +
+                "<Grade>watercolor wash on cold-press paper</Grade> " +
+                "INT. SCHOOLROOM - DAY. Character_Mary walks in.");
+            var built = ClipVideoPromptBuilder.Build(
+                clip,
+                tmp,
+                visualMedium: VisualMediumStyles.MediumIllustrated);
+
+            Assert.Contains("2D watercolor picture-book, never photoreal", built.Prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("picture-book CG", built.Prompt, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("photoreal, etc.", built.Prompt, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("HOUSE RULES:", built.Prompt, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("- Style:", built.Prompt, StringComparison.Ordinal);
+            Assert.Equal(1, CountStyleLocks(built.Prompt));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public void Fresh_gen_overwrites_disagreeing_plan_StyleLock()
     {
         var clip = ClipWithStyle(
@@ -363,6 +410,31 @@ public class VisualMediumLockTests
         Assert.DoesNotContain($"<{PromptFieldTags.Optics}>", fitted, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void FitPromptToVideoBudget_keeps_Grade_when_house_notes_optics_can_shed()
+    {
+        var style = "STYLE LOCK: 2D watercolor picture-book, never photoreal\n\n";
+        var grade = $"<{PromptFieldTags.Grade}>watercolor wash on cold-press paper, muted primaries, visible tooth</{PromptFieldTags.Grade}>";
+        var optics = $"<{PromptFieldTags.Optics}>" + new string('O', 200) + $"</{PromptFieldTags.Optics}>";
+        var performance = $"<{PromptFieldTags.Performance}>" + new string('P', 450) + $"</{PromptFieldTags.Performance}>";
+        var notes = PromptTags.WrapWithNote("Context", new string('N', 150), "prior look");
+        var house = "\nHOUSE RULES:\n" + new string('z', 250);
+        var action = "CHARACTER VARIABLES Character_Hero\n" + new string('A', 3400) + "\n";
+        var full = style + action + grade + optics + performance + notes + house;
+
+        Assert.True(full.Length > ClipVideoPromptBuilder.VideoPromptHardCapChars);
+
+        var fitted = ClipVideoPromptBuilder.FitPromptToVideoBudget(full);
+        Assert.True(fitted.Length <= ClipVideoPromptBuilder.VideoPromptHardCapChars);
+        Assert.Contains($"<{PromptFieldTags.Grade}>", fitted, StringComparison.Ordinal);
+        Assert.Contains("watercolor wash on cold-press paper", fitted, StringComparison.Ordinal);
+        Assert.Contains("2D watercolor picture-book", fitted, StringComparison.Ordinal);
+        Assert.DoesNotContain("HOUSE RULES:", fitted, StringComparison.OrdinalIgnoreCase);
+        Assert.False(HasDanglingOpenTag(fitted, PromptFieldTags.Grade));
+        Assert.False(HasDanglingOpenTag(fitted, PromptFieldTags.Performance));
+        Assert.False(HasDanglingOpenTag(fitted, PromptFieldTags.Optics));
+    }
+
     private static void AssertPlatePromptHasNoTodOrLightingMood(string prompt)
     {
         Assert.DoesNotContain("consistent lighting", prompt, StringComparison.OrdinalIgnoreCase);
@@ -373,6 +445,21 @@ public class VisualMediumLockTests
             "Do not freeze a single scene's time-of-day or lighting mood",
             prompt,
             StringComparison.Ordinal);
+    }
+
+    private static bool HasDanglingOpenTag(string prompt, string tag)
+    {
+        var open = $"<{tag}>";
+        var close = $"</{tag}>";
+        var i = 0;
+        while ((i = prompt.IndexOf(open, i, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var after = i + open.Length;
+            if (prompt.IndexOf(close, after, StringComparison.OrdinalIgnoreCase) < 0)
+                return true;
+            i = after;
+        }
+        return false;
     }
 
     private static int CountStyleLocks(string prompt) =>

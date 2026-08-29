@@ -8,14 +8,14 @@ Operator path. Architecture: [film-provenance…](film-provenance-critic-learnin
 |--------|------|
 | **P0** | Host `_learning/review_events.jsonl` + project edit log; before/after on apply; `regen_after_review` on single-clip gen |
 | **P1** | Admin **Learning** page + `/api/admin/learning/*` insights/events |
-| **P2** | *(retired)* Runtime prompt packs — global gen/auto-review rules now live in git-owned embedded prompts (`prompts/clip_gen_rules.txt`, `prompts/clip_auto_review.txt`); ship via redeploy |
+| **P2** | *(retired)* Runtime prompt packs — auto-review checklist lives in `prompts/clip_auto_review.txt`; `clip_gen_rules.txt` is retired (not composed into generate prompts) |
 | **P3** | Propose rules from last N fails (chat or offline fallback) |
 | **P4** | Project `project_rules.json` suggest from categories → admin approve → inject into gen/auto-review |
 
 ## Paths
 
 - Host events: `{WorkspaceRoot}/_learning/review_events.jsonl`
-- Global prompts (embed at build): `prompts/clip_gen_rules.txt`, `prompts/clip_auto_review.txt`, cast/fountain prompts
+- Global prompts (embed at build): `prompts/clip_auto_review.txt`, cast/fountain prompts (`clip_gen_rules.txt` is retired)
 - Project rules: `{project}/project_rules.json`
 
 ## Operator flow

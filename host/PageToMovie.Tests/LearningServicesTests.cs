@@ -48,7 +48,7 @@ public class LearningServicesTests : IDisposable
         var gen = PromptFiles.TryReadEmbedded("prompts/clip_gen_rules.txt");
         var ar = PromptFiles.TryReadEmbedded("prompts/clip_auto_review.txt");
         Assert.False(string.IsNullOrWhiteSpace(gen));
-        Assert.Contains("HOUSE RULES", gen!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("picture-book CG", gen!, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(ar));
         Assert.Contains("CHECKLIST", ar!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("IDENTITY", ar!, StringComparison.OrdinalIgnoreCase);

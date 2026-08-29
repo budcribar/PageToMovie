@@ -18,7 +18,8 @@ public class PromptFilesTests
         Assert.Contains("Character_", cast!, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(lit));
         Assert.False(string.IsNullOrWhiteSpace(book));
-        Assert.False(string.IsNullOrWhiteSpace(gen), "clip_gen_rules should be embedded");
+        Assert.False(string.IsNullOrWhiteSpace(gen), "clip_gen_rules should be embedded (retired stub)");
+        Assert.DoesNotContain("picture-book CG", gen!, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(ar), "clip_auto_review should be embedded");
     }
 

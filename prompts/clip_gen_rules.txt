@@ -1,8 +1,5 @@
-HOUSE RULES:
-- Dialogue: audible speech + visible lip motion for the speaker; never silent mouths on dialogue.
-- Silent/ambient: no open-mouth shout, lip-sync, or speech-performance; restrained tension (tight jaw, fist, held stare) is OK.
-- Continuity: when extending from the previous clip, match wardrobe, place, and facing from the last frames.
-- Honor VOICE LOCK, character visual locks, and any CAST COUNT line exactly — no extra faces, crowds, or role swaps.
-- Performance: facial expression and gaze match the beat and project PERFORMANCE rules (confessional address vs objective). On dialogue, mouth and energy match the line; do not invent rage on a calm line. Keep eyes readable unless sleep/death/covered is planned. No beauty-blank or wrong-emotion default face.
-- Style: match locked character refs and project medium (picture-book CG, photoreal, etc.). Do not drift medium mid-film or merge Character_* faces.
-- Prefer tight action after speech; avoid long empty holds.
+# Retired — not composed into clip generate prompts.
+#
+# Dialogue, silent-beat, continuity, CAST COUNT, VOICE LOCK, Performance, and
+# pacing are written by ClipVideoPromptBuilder. Medium is STYLE LOCK /
+# ProjectVisionMeta only. Do not name example media here.

@@ -6179,8 +6179,8 @@ public sealed class FilmJobService
         ClipVideoPromptBuilder.PromptBuildResult built,
         CancellationToken ct)
     {
-        // Approved project-scoped house rules (learning). Global clip gen rules live in
-        // embedded prompts/clip_gen_rules.txt and are composed inside ClipVideoPromptBuilder.
+        // Approved project-scoped house rules (learning). Global clip_gen_rules.txt is
+        // retired — dedicated writers + STYLE LOCK own those concerns.
         try
         {
             var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
