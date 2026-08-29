@@ -239,11 +239,23 @@ public partial class Review
                 return;
             }
 
+            await SelectSceneKeepAsync(scene);
+        }
+
+        /// <summary>Select a scene for the detail pane without the badge/Clips toggle-off.</summary>
+        internal async Task SelectSceneKeepAsync(int scene)
+        {
+            if (_selectedScene == scene)
+                return;
+
             _selectedScene = scene;
             S.AutoReview.CloseApplyPanel();
             await LoadSelectedDetailAsync(scene);
             await TryLoadDraftsForSceneAsync(scene);
         }
+
+        /// <summary>Full-movie / overall row — executive review in the detail pane.</summary>
+        internal void SelectOverall() => DismissClipReview();
 
 
         internal int ClipCountFor(int scene) =>

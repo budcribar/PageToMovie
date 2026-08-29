@@ -1747,8 +1747,58 @@ h1:focus {
     border-radius: 0 4px 4px 0;
 }
 
-/* The model decides how long this report is, so cap it and let it scroll inside its own card.
-   Uncapped, a wordy review pushed the scene table off a 768-tall screen entirely. */
+/* Review tab: scene list (master) beside the writeup (detail) so Play/Approve stay on screen
+   instead of sitting under a wordy executive review. Each pane scrolls on its own. */
+.review-md {
+    display: grid;
+    grid-template-columns: minmax(22rem, 42%) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: stretch;
+    min-height: 0;
+}
+
+.review-md__master,
+.review-md__detail {
+    min-width: 0;
+    min-height: 0;
+    max-height: calc(100dvh - 15rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.review-md__detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.review-md__table {
+    --bs-table-bg: transparent;
+}
+
+.review-md__detail .review-report-body {
+    max-height: none;
+}
+
+@media (max-width: 991.98px) {
+    .review-md {
+        grid-template-columns: 1fr;
+    }
+
+    .review-md__master {
+        max-height: min(42vh, 22rem);
+    }
+
+    .review-md__detail {
+        max-height: none;
+    }
+
+    .review-md__detail .review-report-body {
+        max-height: 52vh;
+    }
+}
+
+/* Fallback cap when the report is not inside the master-detail grid. */
 .review-report-body {
     max-height: 52vh;
     overflow-y: auto;

@@ -1,28 +1,36 @@
-@* Page-local to Review — AI movie report card *@
+@* Page-local to Review — AI movie report card (detail pane). *@
 @inject IAppLocalizer L
 
-@if (Report is not null)
+@if (ShowCard && Report is not null)
 {
-<div class="card mb-3 border-info text-white shadow-sm" style="background-color: #0f172a !important; border-color: #3b82f6 !important;" data-testid="review-movie-report-card">
-            @* Collapsing keeps the header — score, verdict, and the way back in — so the report is
-               never lost, just out of the way of the scene table below it. *@
-            @* One line at 1024 wide, where the sidebar leaves the card only ~700px: the title
-               shortens, the score keeps its verdict, and the model badge waits for a wider screen.
-               Wrapping here cost 70-odd vertical pixels for a bar that is meant to be out of the way. *@
+<div class="card mb-0 border-info text-white shadow-sm" style="background-color: #0f172a !important; border-color: #3b82f6 !important;" data-testid="review-movie-report-card">
+            @* Header stays when the body is hidden so the score is one click away, not gone. *@
             <div class="card-header border-secondary d-flex justify-content-between align-items-center flex-nowrap gap-2 py-2" style="background-color: #1e293b !important;">
                 <div class="d-flex align-items-center gap-2 flex-nowrap overflow-hidden">
                     <span class="fs-5 flex-shrink-0">🤖</span>
                     <span class="fw-bold fs-6 text-truncate">
-                        <span class="d-none d-xl-inline">Full Movie Executive AI Review</span>
-                        <span class="d-xl-none">Executive AI Review</span>
+                        @if (ShowMovieOverview)
+                        {
+                            <span class="d-none d-xl-inline">Full Movie Executive AI Review</span>
+                            <span class="d-xl-none">Executive AI Review</span>
+                        }
+                        else
+                        {
+                            <span>Scene review</span>
+                        }
                     </span>
                     <span class="badge fs-6 flex-shrink-0 @ScoreBadgeClass(Report.OverallScore)">
                         <span class="d-none d-xl-inline">Overall Score: </span>@Report.OverallScore / 10 — @Report.Verdict
                     </span>
-                    <span class="badge bg-dark border border-secondary text-white-50 d-none d-xxl-inline-block flex-shrink-0">
-                        Model: @Report.ProviderUsed.ToUpperInvariant()
-                    </span>
+                    @if (ShowMovieOverview)
+                    {
+                        <span class="badge bg-dark border border-secondary text-white-50 d-none d-xxl-inline-block flex-shrink-0">
+                            Model: @Report.ProviderUsed.ToUpperInvariant()
+                        </span>
+                    }
                 </div>
+                @if (ShowMovieOverview)
+                {
                 <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 text-nowrap"
                         data-testid="review-movie-report-toggle"
                         aria-expanded="@((!Collapsed).ToString().ToLowerInvariant())"
@@ -30,10 +38,13 @@
                         @onclick="() => OnToggleCollapsed.InvokeAsync()">
                     @(Collapsed ? "▸" : "▾") @(Collapsed ? L["Common.Show"] : L["Common.Hide"])
                 </button>
+                }
             </div>
-            @if (!Collapsed)
+            @if (ShowBody)
             {
             <div class="card-body py-3 review-report-body" id="review-movie-report-body" data-testid="review-movie-report-body">
+                @if (ShowMovieOverview)
+                {
                 <!-- Executive Summary & Category Score Breakdown Matrix -->
                 <div class="p-3 mb-3 rounded border border-secondary" style="background-color: #1e293b;">
                     <div class="fw-semibold text-info mb-2 d-flex justify-content-between align-items-center">
@@ -56,22 +67,26 @@
                         </div>
                     }
                 </div>
+                }
 
                 <!-- Rollup Sequence Group Accordions -->
-                @if (Report.GroupFeedback?.Count > 0)
+                @if (VisibleGroups.Count > 0)
                 {
                     <div class="d-flex justify-content-between align-items-center mb-2 px-1">
-                        <span class="small fw-semibold text-muted">Sequence Groups Breakdown (@Report.GroupFeedback.Count groups)</span>
+                        <span class="small fw-semibold text-muted">Sequence Groups Breakdown (@VisibleGroups.Count groups)</span>
+                        @if (ShowMovieOverview)
+                        {
                         <div class="btn-group btn-group-sm">
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" @onclick="() => OnExpandAll.InvokeAsync()">Expand All</button>
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" @onclick="() => OnCollapseAll.InvokeAsync()">Collapse All</button>
                         </div>
+                        }
                     </div>
                     <div class="d-flex flex-column gap-2">
-                        @foreach (var group in Report.GroupFeedback)
+                        @foreach (var group in VisibleGroups)
                         {
                             var groupRange = group.SceneRange;
-                            var expanded = IsSceneGroupExpanded(groupRange);
+                            var expanded = !ShowMovieOverview || IsSceneGroupExpanded(groupRange);
                             <div class="rounded border border-secondary overflow-hidden" style="background-color: #1e293b;">
                                 <div class="p-2.5 d-flex justify-content-between align-items-center cursor-pointer user-select-none" 
                                      style="background-color: rgba(255,255,255,0.03);"
