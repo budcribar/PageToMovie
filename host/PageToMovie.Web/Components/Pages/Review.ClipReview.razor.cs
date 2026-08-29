@@ -3,6 +3,7 @@ using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
 
+#pragma warning disable S101 // Blazor dotted filename Review.ClipReview.razor requires Review_ClipReview
 public partial class Review_ClipReview : PageSliceComponent
 {
     [CascadingParameter] public required Review Host { get; set; }
@@ -18,3 +19,4 @@ public partial class Review_ClipReview : PageSliceComponent
         return "Review";
     }
 }
+#pragma warning restore S101

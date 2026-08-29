@@ -93,7 +93,7 @@
                         {
                             var sn = s.SceneNumber;
                             var clipsDone = s.ClipsComplete || (s.ClipCount > 0 && s.ClipsOnDisk >= s.ClipCount);
-                            var flagged = report?.FlaggedScenes.Contains(sn) == true;
+                            var flagged = report?.FlaggedScenes.Contains(sn) is true;
                             <tr class="@(list._selectedScene == sn ? "table-active" : "")" data-testid="review-scene-row" data-scene-number="@sn" data-approved="@s.IsApproved.ToString().ToLowerInvariant()">
                                 <td class="text-nowrap" style="cursor:pointer;" @onclick="() => list.SelectSceneKeepAsync(sn)">
                                     <span class="badge @(clipsDone ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
