@@ -56,7 +56,28 @@ public sealed class ColorPaletteGradingClassifierTests
         Assert.NotNull(color);
         Assert.Contains("Kodak Vision3 500T", color!.FilmStock);
         Assert.Contains("Desaturated cool-teal", color.ColorPalette);
-        Assert.Contains("Color grading:", color.GradingPrompt);
+        Assert.DoesNotContain("Color grading:", color.GradingPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Kodak Vision3 500T", color.GradingPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SystemPrompt_owns_emulsion_not_lighting()
+    {
+        var prompt = ColorPaletteGradingClassifier.SystemPrompt();
+        Assert.Contains("emulsion", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do NOT prefix it with \"Color grading:\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("Lighting owns", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do NOT describe light sources", prompt, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Color grading: Kodak Vision3 500T, teal shadows", "Kodak Vision3 500T, teal shadows")]
+    [InlineData("Colour grading: Fuji Eterna 500T", "Fuji Eterna 500T")]
+    [InlineData("Grade: hand-tinted print stock", "hand-tinted print stock")]
+    [InlineData("Kodak Vision3 250D, honeyed amber", "Kodak Vision3 250D, honeyed amber")]
+    public void StripGradeLabel_drops_prose_prefix(string raw, string expected)
+    {
+        Assert.Equal(expected, ColorPaletteGradingClassifier.StripGradeLabel(raw));
     }
 
     [Fact]

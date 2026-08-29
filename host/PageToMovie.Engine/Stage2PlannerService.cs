@@ -1145,7 +1145,7 @@ public sealed class Stage2PlannerService
         // ResolveClipContinuation can still force a cut afterwards (big_action, location change) —
         // and a fresh shot needs its placement, because staging the shot is what it is for.
         var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
-        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe, continuationAction);
+        var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
             vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
@@ -1300,11 +1300,7 @@ public sealed class Stage2PlannerService
             // stays as a belt-and-braces guard: it is the one slot whose text a model writes, and
             // an older cached directive (or a model that ignores the instruction) can still arrive
             // with the label attached.
-            var grade = aiColor.GradingPrompt.Trim();
-            var label = new[] { "Color grading:", "Colour grading:", "Grade:" }
-                .FirstOrDefault(l => grade.StartsWith(l, StringComparison.OrdinalIgnoreCase));
-            if (label is not null)
-                grade = grade[label.Length..].Trim();
+            var grade = ColorPaletteGradingClassifier.StripGradeLabel(aiColor.GradingPrompt);
             if (grade.Length > 0)
                 vp = $"{vp} {PromptTags.Wrap(PromptFieldTags.Grade, PromptTags.SanitizeValue(grade))}";
         }
@@ -1987,7 +1983,6 @@ public sealed class Stage2PlannerService
     internal static string BuildVisualPrompt(
         Dictionary<string, object?> beat,
         Dictionary<string, object?> scene,
-        Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         Dictionary<string, List<string>> wardrobe,
         string? continuationAction = null)
@@ -1999,7 +1994,7 @@ public sealed class Stage2PlannerService
         var primary = CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null)
                       ?? (cast.Count > 0 ? cast[0] : "");
 
-        var place = LocationLockPhrase(scene, beat, locSeeds);
+        var place = LocationLockPhrase(scene);
         var style = EnsureCastStyleLock(RenderStyleLock(scene), SceneVisualMedium(scene), cast, charSeeds);
         // A voice-only role (never_on_screen) is never "on screen" and has no wardrobe to keep: listing
         // the narrator here (and "Character_Narrator still wears wool jacket…" below) put a man in the
@@ -2719,61 +2714,18 @@ public sealed class Stage2PlannerService
     }
 
     /// <summary>
-    /// Place line for visual_prompt. Prefer the scene's full heading (correct DAY/NIGHT)
-    /// so we never stamp the first-visit time-of-day from a shared location seed.
+    /// <c>&lt;Setting&gt;</c> is the scene heading / time-of-day only (INT./EXT. DAY/NIGHT).
+    /// Architecture lives on the set plate; lighting mood lives on <c>&lt;Lighting&gt;</c>.
+    /// No fallback to location-seed visual_lock — old projects without a heading must re-gen Stage 2.
     /// </summary>
-    public static string LocationLockPhrase(
-        Dictionary<string, object?> scene,
-        Dictionary<string, object?> beat,
-        Dictionary<string, object?> locSeeds)
+    public static string LocationLockPhrase(Dictionary<string, object?> scene)
     {
-        // Current scene heading wins — includes correct time of day for this visit
         var setting = CoerceString(scene.TryGetValue(Keys.Setting, out var st) ? st : null)?.Trim();
-        if (HasSceneHeadingSetting(setting))
-            return setting ?? "";
-
-        var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
-                  ?? CoerceString(scene.TryGetValue("primary_location_id", out var pl) ? pl : null);
-        if (string.IsNullOrEmpty(lid)) return setting ?? "";
-
-        if (TryPhraseFromLocationSeed(lid, locSeeds, setting, out var fromSeed))
-            return fromSeed;
-        return HasNonEmptySetting(setting) ? setting ?? "" : lid;
+        return HasSceneHeadingSetting(setting) ? setting ?? "" : "";
     }
 
     private static bool HasSceneHeadingSetting(string? setting) =>
         !string.IsNullOrWhiteSpace(setting) && LooksLikeSceneHeading(setting);
-
-    private static bool HasNonEmptySetting(string? setting) =>
-        !string.IsNullOrWhiteSpace(setting);
-
-    private static bool TryPhraseFromLocationSeed(
-        string lid,
-        Dictionary<string, object?> locSeeds,
-        string? setting,
-        out string phrase)
-    {
-        phrase = lid;
-        if (!locSeeds.TryGetValue(lid, out var seedObj) || seedObj is not Dictionary<string, object?> seed)
-            return false;
-
-        var lockTxt = CoerceString(seed.TryGetValue("visual_lock", out var vl) ? vl : null)
-                      ?? CoerceString(seed.TryGetValue("description", out var d) ? d : null)
-                      ?? lid;
-        if (IsPlaceholderIdentityText(lockTxt))
-        {
-            phrase = lid;
-            return true;
-        }
-        // If seed still has a full heading with TOD, prefer scene setting when available
-        if (HasNonEmptySetting(setting))
-        {
-            phrase = setting ?? "";
-            return true;
-        }
-        phrase = lockTxt;
-        return true;
-    }
 
     /// <summary>True for Fountain-style INT./EXT. headings (used to prefer scene.setting as place lock).</summary>
     public static bool LooksLikeSceneHeading(string? text)

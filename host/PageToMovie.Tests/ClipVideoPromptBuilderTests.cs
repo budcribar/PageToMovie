@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 using Xunit;
@@ -1105,9 +1106,52 @@ public class ClipVideoPromptBuilderTests
         Assert.Single(built.ReferenceImagePaths);
         Assert.Contains("SetReference", built.Prompt);
         Assert.Contains("<IMAGE_1>", built.Prompt);
+        Assert.Contains("Match architecture, materials, props, and depth of that plate.", built.Prompt);
+        Assert.DoesNotContain("and lighting of that plate", built.Prompt, StringComparison.Ordinal);
 
         try { Directory.Delete(dir, true); } catch { /* temp */ }
     }
+
+    [Fact]
+    public void Generate_prompt_emits_one_Lighting_and_one_Grade()
+    {
+        const string fixture =
+            "<StyleLock>watercolor</StyleLock> " +
+            "<Setting>INT. SCHOOLROOM - DAY</Setting> " +
+            "<Action>Character_Mary walks in.</Action> " +
+            "<Lighting>Soft warm daylight through tall windows.</Lighting> " +
+            "<Grade>Kodak Vision3 250D 5207 film stock, warm honey-amber woods</Grade>";
+        const string previous =
+            "<Setting>EXT. LANE - DAY</Setting> " +
+            "<Lighting>Harsh noon glare, volumetric dust motes.</Lighting> " +
+            "<Grade>Fuji Eterna 500T, cool teal</Grade>";
+
+        var clip = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            clip_number = 2,
+            visual_prompt = fixture,
+            characters_on_screen = Array.Empty<string>(),
+            location_id = "Loc_Schoolroom",
+            audio_payload = new { dialogue = "" },
+        })).RootElement;
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip,
+            Path.GetTempPath(),
+            previousClipVisualPrompt: previous,
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        Assert.Equal("fresh", built.Mode);
+        Assert.Equal(1, CountTag(built.Prompt, "Lighting"));
+        Assert.Equal(1, CountTag(built.Prompt, "Grade"));
+        Assert.Contains("Soft warm daylight through tall windows.", built.Prompt, StringComparison.Ordinal);
+        Assert.Contains("Kodak Vision3 250D", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("volumetric dust motes", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Fuji Eterna", built.Prompt, StringComparison.Ordinal);
+    }
+
+    private static int CountTag(string prompt, string tag) =>
+        CommonRegex.Matches(prompt ?? "", $@"<{tag}>", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count;
 
     [Fact]
     public void Build_SkipsLocationPlate_WhenNoSlot()
@@ -1443,6 +1487,24 @@ public class PreviousClipQuoteRedactionTests
         Assert.DoesNotContain("<Camera>", look, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// DropRepeatedDirectives only drops byte-identical copies. If a fresh reseed re-embeds the
+    /// previous clip's Lighting/Grade while this clip already has its own, two looks ship.
+    /// </summary>
+    [Fact]
+    public void Fresh_reseed_does_not_reembed_Lighting_or_Grade_this_clip_already_has()
+    {
+        const string current =
+            "<Setting>INT. SCHOOLROOM - NIGHT</Setting> " +
+            "<Lighting>Moonlight through tall windows, hard shadows.</Lighting> " +
+            "<Grade>Fuji Eterna 500T, cool moonlight</Grade>";
+        var look = ClipVideoPromptBuilder.PreviousClipLookOnly(
+            PrevClipPrompt, Array.Empty<string>(), current);
+        Assert.DoesNotContain("<Lighting>", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("<Grade>", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("<Setting>", look, StringComparison.Ordinal);
+    }
+
     /// <summary>A byte-identical second copy of a descriptive block buys nothing.</summary>
     [Fact]
     public void Identical_descriptive_blocks_are_emitted_once()
@@ -1524,7 +1586,7 @@ public class PreviousClipQuoteRedactionTests
             ?? throw new InvalidOperationException("BuildContinuityBlock not found");
         return (string)m.Invoke(null, new object?[]
         {
-            mode, Array.Empty<string>(), false, previousClipVisualPrompt, null,
+            mode, Array.Empty<string>(), false, previousClipVisualPrompt, null, null,
         })!;
     }
 }

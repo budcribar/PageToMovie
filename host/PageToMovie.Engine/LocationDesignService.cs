@@ -306,7 +306,8 @@ public sealed class LocationDesignService
         var negative = VisualMediumStyles.NegativeFor(medium);
         if (!string.IsNullOrWhiteSpace(negative))
             sb.Append("Must not: ").Append(negative).Append(". ");
-        sb.Append("Wide cinematic composition, consistent lighting, clear architecture and materials.");
+        sb.Append("Wide composition: architecture, materials, era, and props only. ");
+        sb.Append("Do not freeze a single scene's time-of-day or lighting mood into this plate.");
         return sb.ToString();
     }
 
@@ -322,6 +323,7 @@ public sealed class LocationDesignService
         sb.Append("Edit this film location / set reference image. Keep the same place identity and era. ");
         sb.Append(VisualMediumStyles.LocationPlateClause(medium));
         sb.Append("Change only what the instruction asks. No people, no text. ");
+        sb.Append("Do not freeze a single scene's time-of-day or lighting mood into this plate. ");
         sb.Append("Instruction: ").Append(instruction.Trim()).Append(". ");
         if (!string.IsNullOrWhiteSpace(visualLock))
             sb.Append("Visual lock: ").Append(visualLock.Trim()).Append(". ");

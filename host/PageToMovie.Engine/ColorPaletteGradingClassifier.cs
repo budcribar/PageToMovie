@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -15,12 +13,12 @@ public sealed record ColorGradingDirective(
 
 /// <summary>
 /// AI Classifier acting as a Master Colorist & Film Stock Director.
-/// Assigns film stock emulsion characteristics (e.g. Kodak Vision3 500T, Fuji Eterna),
-/// shadow/highlight color palettes, and color grading prompts per scene.
+/// Emulsion / palette SSoT. Does not own light sources, shadows, or volume —
+/// that is <see cref="CinematicLightingClassifier"/>.
 /// </summary>
 public sealed class ColorPaletteGradingClassifier
 {
-    public const string PromptVersion = "v1_product";
+    public const string PromptVersion = "v2_grade_only";
 
     private readonly IChatClient _chat;
     private readonly PageToMovieOptions _opts;
@@ -39,16 +37,18 @@ public sealed class ColorPaletteGradingClassifier
     public bool IsEnabled => _opts.ClassifyColorPaletteGradingWithChat && _chat.IsConfigured;
 
     public static string SystemPrompt() => """
-        You are an expert Master Colorist and Film Stock Director defining the color grading for a scene.
+        You are an expert Master Colorist and Film Stock Director. You own emulsion and palette only.
 
-        Your task: Given a scene's setting, period style lock, and mood, define the color grading and film stock look.
+        Your task: Given a scene's setting, period style lock, and mood, define the film-stock look and color palette.
 
         DIRECTIVES TO ASSIGN:
         1. film_stock: Emulsion and grain spec (e.g. "Kodak Vision3 500T 5219 film stock, subtle 35mm grain", "Fuji Eterna 500T desaturated stock", "Technicolor 3-strip vibrant emulsion").
         2. color_palette: Color palette balance (e.g. "Desaturated cool-teal shadow tones with warm amber candle highlights", "Monochromatic sepia tones with deep charcoal shadows").
-        3. grading_prompt: Concise 10–20 word description of the look. Describe the look ONLY —
+        3. grading_prompt: Concise 10–20 word description of the emulsion/palette look ONLY —
            do NOT prefix it with "Color grading:" or any other label. The caller supplies the
-           label. (e.g. "Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights").
+           <Grade> tag. (e.g. "Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights").
+
+        Do NOT describe light sources, shadows, volumetric effects, or time-of-day lighting — Lighting owns those.
 
         OUTPUT FORMAT:
         Return ONLY valid JSON matching this schema:
@@ -58,6 +58,24 @@ public sealed class ColorPaletteGradingClassifier
           "grading_prompt": "Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights"
         }
         """;
+
+    /// <summary>
+    /// Strip leftover prose labels ("Color grading:", "Grade:") so <c>&lt;Grade&gt;</c> is the only name.
+    /// </summary>
+    public static string StripGradeLabel(string? gradingPrompt)
+    {
+        var grade = (gradingPrompt ?? "").Trim();
+        if (grade.Length == 0)
+            return "";
+        foreach (var label in GradeProseLabels)
+        {
+            if (grade.StartsWith(label, StringComparison.OrdinalIgnoreCase))
+                return grade[label.Length..].Trim();
+        }
+        return grade;
+    }
+
+    private static readonly string[] GradeProseLabels = ["Color grading:", "Colour grading:", "Grade:"];
 
     public async Task<ColorGradingDirective?> ClassifySceneColorGradingAsync(
         Dictionary<string, object?> scene,
@@ -78,7 +96,13 @@ public sealed class ColorPaletteGradingClassifier
                 new JsonColorDirectiveParser(), new ColorDirectiveValidator(),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, ColorGradingDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
             var result = await pipeline.ExecuteAsync(new(SystemPrompt(), userPrompt, effectiveModel, ChatCallModes.ColorPaletteGradingClassify), ct).ConfigureAwait(false);
-            return result.Value;
+            var color = result.Value;
+            if (color is null)
+                return null;
+            var look = StripGradeLabel(color.GradingPrompt);
+            if (string.IsNullOrWhiteSpace(look) && !string.IsNullOrWhiteSpace(color.FilmStock))
+                look = $"{color.FilmStock}, {color.ColorPalette}".TrimEnd(',', ' ');
+            return color with { GradingPrompt = look };
         }
         catch (Exception ex)
         {
@@ -97,33 +121,5 @@ public sealed class ColorPaletteGradingClassifier
         ClassifierPromptParts.AppendSampleBeats(sb, scene);
 
         return sb.ToString();
-    }
-
-    private ColorGradingDirective? ParseColorResponse(string rawJson)
-    {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            var root = doc.RootElement;
-
-            var stock = root.TryGetProperty("film_stock", out var fs) ? fs.GetString() ?? "" : "";
-            var palette = root.TryGetProperty("color_palette", out var cp) ? cp.GetString() ?? "" : "";
-            var prompt = root.TryGetProperty("grading_prompt", out var gp) ? gp.GetString() ?? "" : "";
-
-            // Look only, no label — same contract the system prompt asks the model for. The tag
-            // Stage 2 wraps this in is what names the field.
-            if (string.IsNullOrWhiteSpace(prompt) && !string.IsNullOrWhiteSpace(stock))
-                prompt = $"{stock}, {palette}".TrimEnd(',', ' ');
-
-            return !string.IsNullOrWhiteSpace(stock) || !string.IsNullOrWhiteSpace(palette)
-                ? new ColorGradingDirective(stock, palette, prompt)
-                : null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI color palette grading response JSON: {RawJson}", rawJson);
-            return null;
-        }
     }
 }

@@ -27,6 +27,15 @@ public class PromptTagsTests
     }
 
     [Fact]
+    public void Has_is_true_only_for_a_complete_tag_block()
+    {
+        Assert.True(PromptTags.Has("<Lighting>Soft daylight.</Lighting>", "Lighting"));
+        Assert.False(PromptTags.Has("<Grade>Kodak</Grade>", "Lighting"));
+        Assert.False(PromptTags.Has("", "Lighting"));
+        Assert.False(PromptTags.Has(null, "Lighting"));
+    }
+
+    [Fact]
     public void Strip_removes_the_tagged_span_including_leading_whitespace()
     {
         var text = "Lean pale man. <Voice>Calm, measured tone.</Voice> More text.";

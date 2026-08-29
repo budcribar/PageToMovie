@@ -714,7 +714,7 @@ public class Stage2VoiceOnlyNeverOnScreenTests
             ["Character_Mary"] = new() { "rose ribbon", "pale pinafore" },
         };
 
-        var prompt = PageToMovie.Engine.Stage2PlannerService.BuildVisualPrompt(beat, scene, new(), charSeeds, wardrobe);
+        var prompt = PageToMovie.Engine.Stage2PlannerService.BuildVisualPrompt(beat, scene, charSeeds, wardrobe);
 
         Assert.DoesNotContain("Character_Narrator still wears", prompt);
         Assert.DoesNotContain("also on screen: Character_Narrator", prompt);

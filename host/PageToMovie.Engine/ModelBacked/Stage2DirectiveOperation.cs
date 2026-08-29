@@ -58,8 +58,12 @@ internal sealed class JsonColorDirectiveParser : IModelResponseParser<string, Co
         {
             using var doc = JsonDocument.Parse(ClassifierJsonParser.StripFences(response));
             var root = doc.RootElement;
-            return ModelParseResult<ColorGradingDirective>.Success(new(
-                Get(root, "film_stock"), Get(root, "color_palette"), Get(root, "grading_prompt")));
+            var stock = Get(root, "film_stock");
+            var palette = Get(root, "color_palette");
+            var prompt = ColorPaletteGradingClassifier.StripGradeLabel(Get(root, "grading_prompt"));
+            if (string.IsNullOrWhiteSpace(prompt) && !string.IsNullOrWhiteSpace(stock))
+                prompt = $"{stock}, {palette}".TrimEnd(',', ' ');
+            return ModelParseResult<ColorGradingDirective>.Success(new(stock, palette, prompt));
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
