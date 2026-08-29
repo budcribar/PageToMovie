@@ -175,6 +175,11 @@ public class ClipVideoGenerationLiveTests : IDisposable
 
         ScreenplayService.SaveDraft(store, projectId, fountain);
         Assert.True(ScreenplayService.SignOff(store, projectId).Ok);
+        ProjectVisionMeta.Write(store.GetProjectDir(projectId), new ProjectVisionMeta.Document
+        {
+            VisualMedium = ProjectVisionMeta.MediumIllustrated,
+            DecidedBy = "adaptation",
+        });
 
         var sourceDir = Path.Combine(store.GetProjectDir(projectId), "source");
         Directory.CreateDirectory(sourceDir);
@@ -257,6 +262,11 @@ public class ClipVideoGenerationLiveTests : IDisposable
         var text = await File.ReadAllTextAsync(fountainPath);
         ScreenplayService.SaveDraft(store, projectId, text);
         Assert.True(ScreenplayService.SignOff(store, projectId).Ok);
+        ProjectVisionMeta.Write(store.GetProjectDir(projectId), new ProjectVisionMeta.Document
+        {
+            VisualMedium = ProjectVisionMeta.MediumPhotoreal,
+            DecidedBy = "adaptation",
+        });
 
         var planner = new Stage2PlannerService(store, NullLogger<Stage2PlannerService>.Instance);
         var result = await planner.PlanAsync(projectId, resolution: "480p", scenes: "16");

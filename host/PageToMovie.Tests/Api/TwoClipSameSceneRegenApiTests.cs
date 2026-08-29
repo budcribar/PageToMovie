@@ -46,6 +46,7 @@ public class TwoClipSameSceneRegenApiTests : IClassFixture<PageToMovieApiFactory
         Assert.True(cfg.IsSuccessStatusCode, await cfg.Content.ReadAsStringAsync());
 
         var store = _factory.Services.GetRequiredService<ProjectStore>();
+        _factory.StampDecidedVision(_projectId);
         var projectDir = store.GetProjectDir(_projectId);
         var blueprintPath = Path.Combine(projectDir, "blueprint.clips.grok.json");
         var blueprint = new JsonObject

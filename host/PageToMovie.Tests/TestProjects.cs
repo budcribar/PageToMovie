@@ -32,7 +32,10 @@ internal static class TestProjects
     {
         root = CreateWorkspace(prefix, projectId);
         var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = root, EnableReadCaches = false });
-        return new ProjectStore(opts);
+        var store = new ProjectStore(opts);
+        // Stage 2 / generate fail-fast without a decided medium. Engine harnesses stamp it here.
+        OfflineTestModelConfig.WriteDecidedVision(store, projectId);
+        return store;
     }
 
     /// <summary>Workspace + <see cref="ProjectStore"/> + <see cref="ReviewEventStore"/>.</summary>

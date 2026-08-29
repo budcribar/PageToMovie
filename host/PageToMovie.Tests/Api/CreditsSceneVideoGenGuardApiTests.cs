@@ -53,6 +53,7 @@ public class CreditsSceneVideoGenGuardApiTests : IClassFixture<PageToMovieApiFac
         // Seed a blueprint with a normal scene (1) and an end-credits scene (2), in the same shape
         // ProjectStore.AddCreditsScene writes (scene-level + clip-level is_credits).
         var store = _factory.Services.GetRequiredService<ProjectStore>();
+        _factory.StampDecidedVision(_projectId);
         var blueprintPath = Path.Combine(store.GetProjectDir(_projectId), "blueprint.clips.grok.json");
         var blueprint = new JsonObject
         {

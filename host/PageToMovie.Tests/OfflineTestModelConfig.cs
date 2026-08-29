@@ -35,6 +35,11 @@ internal static class OfflineTestModelConfig
             WriteDecidedVision(store, projectId);
     }
 
+    /// <summary>
+    /// Test fixtures that Stage 2 / generate always know the truth. Fills
+    /// <c>render_style_lock</c> via <see cref="ProjectVisionMeta.Write"/> /
+    /// <c>VisualMediumStyles.StyleLockFor</c>. Do not invent a product fallback.
+    /// </summary>
     public static void WriteDecidedVision(
         ProjectStore store,
         string projectId,
