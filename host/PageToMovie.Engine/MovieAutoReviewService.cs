@@ -310,7 +310,7 @@ public sealed class MovieAutoReviewService
 
     internal static string BuildSceneChunkPrompt(string rangeStr) =>
         $@"You are a professional film director reviewing visual keyframe sequence {rangeStr} of a movie cut.
-Frames are labeled Sxx (scene) or SxxCyy (scene + clip) — use those labels, not SCENE_NN.
+Frames are labeled Sxx (scene) or SxxCyy (scene + clip). Do not use a scene-only SCENE_ prefix.
 Critically evaluate these 6 key filmmaking categories and assign an independent score (1-10) for each:
 1. Continuity & Transitions (shot-to-shot spatial alignment, character position, camera movement flow)
 2. Character Consistency & Wardrobe (facial structure lock, outfit drift, visual identity retention)

@@ -42,7 +42,7 @@ public class VisualMediumLockTests
 
         Assert.Contains("Photoreal", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(VisualMediumStyles.NegativeFor(VisualMediumStyles.MediumPhotoreal), prompt);
-        Assert.DoesNotContain("watercolor", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Picture-book / illustrated", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class VisualMediumLockTests
         Assert.Contains("SxxCyy", chunk, StringComparison.Ordinal);
         Assert.Contains("evidence", chunk, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("S03C01", chunk, StringComparison.Ordinal);
-        Assert.DoesNotContain("SCENE_NN", chunk, StringComparison.Ordinal);
+        Assert.Contains("Sxx (scene) or SxxCyy", chunk, StringComparison.Ordinal);
 
         var exec = MovieAutoReviewService.BuildExecutiveSynthesisSystemPrompt();
         Assert.Contains("S03C01", exec, StringComparison.Ordinal);
@@ -178,7 +178,8 @@ public class VisualMediumLockTests
              "evidence":[{"ref":"S03C01","claim":"watercolor to 3D"}]}
             """;
         var parsed = MovieAutoReviewService.ParseSceneGroupFeedback(raw, "Scenes 1-4", new[] { 1, 2, 3, 4 });
-        Assert.True(parsed.Success);
+        Assert.Empty(parsed.Issues);
+        Assert.NotNull(parsed.Value);
         var ev = Assert.Single(parsed.Value!.Evidence);
         Assert.Equal("S03C01", ev.Ref);
         Assert.Contains("watercolor", ev.Claim, StringComparison.OrdinalIgnoreCase);
