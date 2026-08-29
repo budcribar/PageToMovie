@@ -124,11 +124,37 @@
                                                     <div class="markdown-body small text-light mb-2">@MarkdownHelper.Render(group.LightingNotes)</div>
                                                 </div>
                                             }
+                                            @if (!string.IsNullOrWhiteSpace(group.DialogueNotes))
+                                            {
+                                                <div class="col-md-6">
+                                                    <div class="small text-white-50"><strong>Dialogue:</strong></div>
+                                                    <div class="markdown-body small text-light mb-2">@MarkdownHelper.Render(group.DialogueNotes)</div>
+                                                </div>
+                                            }
                                             @if (!string.IsNullOrWhiteSpace(group.AudioNotes))
                                             {
                                                 <div class="col-md-6">
-                                                    <div class="small text-white-50"><strong>Audio &amp; Dialogue Alignment:</strong></div>
+                                                    <div class="small text-white-50"><strong>Audio:</strong></div>
                                                     <div class="markdown-body small text-light mb-2">@MarkdownHelper.Render(group.AudioNotes)</div>
+                                                </div>
+                                            }
+                                            @if (group.Evidence is { Count: > 0 })
+                                            {
+                                                <div class="col-12">
+                                                    <div class="small text-white-50"><strong>Evidence:</strong></div>
+                                                    <ul class="small text-light mb-2 ps-3">
+                                                        @foreach (var ev in group.Evidence)
+                                                        {
+                                                            <li>
+                                                                @if (!string.IsNullOrWhiteSpace(ev.Ref))
+                                                                {
+                                                                    <span class="fw-semibold">@ev.Ref</span>
+                                                                    <span> — </span>
+                                                                }
+                                                                @ev.Claim
+                                                            </li>
+                                                        }
+                                                    </ul>
                                                 </div>
                                             }
                                         </div>

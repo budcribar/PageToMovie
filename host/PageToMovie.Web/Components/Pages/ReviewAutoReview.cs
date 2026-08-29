@@ -205,16 +205,34 @@ public partial class Review
                 _reviewProgressStatus = $"Sampling visual frames for Scene {s.SceneNumber} ({i + 1}/{scenesToReview.Count})…";
                 S.StateHasChanged();
 
-                var urls = await ResolveSceneUrlsForReviewAsync(s.SceneNumber);
-                if (urls is { Count: > 0 })
-                    await SampleSceneUrlsAsync(s.SceneNumber, urls, keyframes);
+                await SampleSceneForMovieReviewAsync(s, keyframes);
             }
 
             return keyframes;
         }
 
-        private async Task SampleSceneUrlsAsync(
-            int sceneNumber, IReadOnlyList<string> urls, List<MovieAutoReviewKeyframe> keyframes)
+        private async Task SampleSceneForMovieReviewAsync(
+            SceneSummary s, List<MovieAutoReviewKeyframe> keyframes)
+        {
+            var detail = await ResolveSceneDetailAsync(s);
+            if (detail?.Clips is { Count: > 0 })
+            {
+                foreach (var c in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber).Take(2))
+                {
+                    var clipUrls = await S.Stitch.CollectClipUrlsAsync(
+                        S._projectId, s.SceneNumber, detail, clipNumbers: new[] { c.ClipNumber });
+                    await SampleUrlsAsync(s.SceneNumber, c.ClipNumber, clipUrls, keyframes);
+                }
+                return;
+            }
+
+            var urls = await ResolveSceneUrlsForReviewAsync(s.SceneNumber);
+            if (urls is { Count: > 0 })
+                await SampleUrlsAsync(s.SceneNumber, clipNumber: 0, urls, keyframes);
+        }
+
+        private async Task SampleUrlsAsync(
+            int sceneNumber, int clipNumber, IReadOnlyList<string> urls, List<MovieAutoReviewKeyframe> keyframes)
         {
             foreach (var url in urls.Take(2))
             {
@@ -222,22 +240,29 @@ public partial class Review
                 {
                     var framesResult = await S.Stitch.ExtractFramesRawAsync(url, mode: "span", count: 2);
                     if (framesResult.Success && framesResult.Frames is { Count: > 0 })
-                        AddKeyframes(sceneNumber, framesResult.Frames, keyframes);
+                        AddKeyframes(sceneNumber, clipNumber, framesResult.Frames, keyframes);
                 }
                 catch { /* fall through */ }
             }
         }
 
         private static void AddKeyframes(
-            int sceneNumber, List<ClientVideoStitchService.JsFrameItem> frames, List<MovieAutoReviewKeyframe> keyframes)
+            int sceneNumber,
+            int clipNumber,
+            List<ClientVideoStitchService.JsFrameItem> frames,
+            List<MovieAutoReviewKeyframe> keyframes)
         {
+            var label = clipNumber > 0
+                ? $"S{sceneNumber:D2}C{clipNumber:D2}"
+                : $"S{sceneNumber:D2}";
             foreach (var f in frames)
             {
                 if (string.IsNullOrWhiteSpace(f.Base64)) continue;
                 keyframes.Add(new MovieAutoReviewKeyframe
                 {
                     SceneNumber = sceneNumber,
-                    Label = $"SCENE_{sceneNumber:D2}",
+                    ClipNumber = clipNumber,
+                    Label = label,
                     Base64 = f.Base64,
                     Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime
                 });

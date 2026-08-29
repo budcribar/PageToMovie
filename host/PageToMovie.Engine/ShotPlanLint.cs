@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Engine;
@@ -96,8 +97,8 @@ public static class ShotPlanLint
     /// Rule 2: the clip's baked-in STYLE LOCK disagrees with the project's current one. Changing
     /// the style after a shot plan is built leaves the old lock inside every clip prompt, so the
     /// model gets two mediums at once — Mary19 shipped "flat watercolor washes" alongside
-    /// "stylized 3D animated CG" in 19 clips. Nothing is stripped at generation time; the plan
-    /// rebuild is the fix.
+    /// "stylized 3D animated CG" in 19 clips. Generation overwrites the clip lock from the
+    /// project visual medium; rebuild the shot plan so the stored prompt matches.
     /// </summary>
     private static void AddStyleLockDrift(List<Finding> findings, string visual, string? currentStyleHead)
     {
@@ -107,27 +108,11 @@ public static class ShotPlanLint
         var current = ExtractStyleLock(currentStyleHead) ?? StripStyleLockLabel(currentStyleHead);
         if (string.IsNullOrEmpty(planned) || string.IsNullOrEmpty(current))
             return;
-        if (StyleLocksAgree(planned, current))
+        if (VisualMediumStyles.StyleLocksAgree(planned, current))
             return;
         findings.Add(new Finding("style_lock_drift",
             $"plan says \"{Excerpt(planned)}\"; project style is \"{Excerpt(current)}\" — " +
             "rebuild the shot plan"));
-    }
-
-    /// <summary>
-    /// Compared on the leading clause, where the medium is named — the tail is descriptive prose
-    /// that a re-run of the style classifier rewords without meaning anything different. An exact
-    /// compare would fire on every clip forever; comparing nothing at all would never fire.
-    /// </summary>
-    private static bool StyleLocksAgree(string planned, string current)
-    {
-        const int clause = 40;
-        if (planned.StartsWith(current, StringComparison.OrdinalIgnoreCase)
-            || current.StartsWith(planned, StringComparison.OrdinalIgnoreCase))
-            return true;
-        var a = planned.Length <= clause ? planned : planned[..clause];
-        var b = current.Length <= clause ? current : current[..clause];
-        return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractStyleLock(string? text)

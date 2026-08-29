@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Engine.Deterministic.Pronunciation;
 using PageToMovie.Core.Models;
 
@@ -146,7 +147,8 @@ public static class ClipVideoPromptBuilder
         string? videoModel = null,
         string? fallbackLocationKey = null,
         string? previousClipExtendFileId = null,
-        ClipCorrection? correction = null)
+        ClipCorrection? correction = null,
+        string? visualMedium = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
         var promptMaxLen = ResolvePromptMaxLen(videoModel);
@@ -201,24 +203,26 @@ public static class ClipVideoPromptBuilder
                 imageTagByKey, out locationImageTag, out locationRefAttached);
         }
 
-        var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
-        // The style lock is the look, and the look is in the video being continued. Restating it
-        // is the same redundancy as the blocks dropped above, and it re-establishes the shot.
-        var styleForPrompt = mode is ModeVideoExtend or ModeContinue ? "" : style;
+        var resolvedMedium = ResolveVisualMedium(projectDir, visualMedium);
+        var style = ResolveStyleLockForGeneration(styleHead, rawVisual, resolvedMedium);
+        // Extend/continue used to blank the lock (the look is in the source video) — that let
+        // later hops flip watercolor to CG. Keep one locked-medium line on every hop.
+        var styleForPrompt = style;
+        actionText = ReplaceStyleLockTag(actionText, style);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
-            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
+            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium);
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
         var prompt = FitPromptToVideoBudget(
             AppendPromptSections(
                 styleForPrompt, varBlock, locationRefAttached, locationImageTag, locationKey,
-                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged),
+                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged, resolvedMedium),
             promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
 
@@ -349,7 +353,8 @@ public static class ClipVideoPromptBuilder
         string mode,
         IReadOnlyList<string> onScreenKeys,
         bool useReferenceImages,
-        string? previousClipVisualPrompt)
+        string? previousClipVisualPrompt,
+        string? visualMedium = null)
     {
         // "Positions come from that frame" is the tie-breaker, and it is here because the two tags
         // can disagree: the plan writes <Action> from a story beat, so a continuation clip whose
@@ -359,17 +364,21 @@ public static class ClipVideoPromptBuilder
         // Stage 2 is where that is prevented (the extend/cut staging test, and ShotPlanLint's
         // continuation_unchecked). This only decides which way the model leans when a plan built
         // before that test still contradicts itself — holding position beats teleporting.
+        const string sameMedium =
+            "Same art medium and renderer as the source clip — do not switch illustration, watercolor, CG, or live-action. ";
         var continuityBlock = mode switch
         {
             ModeVideoExtend => PromptTags.Wrap("Continuity",
                 "This is a seamless EXTENSION of the provided previous video. " +
                 "Pick up from its last frame. Same character identity, wardrobe, lighting, and location. " +
+                sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — do not invent a new establishing shot or redesign faces/outfits."),
             ModeContinue => PromptTags.Wrap("Continuity",
                 "Continue seamlessly from the provided starting frame (end of previous clip). " +
                 "Same character identity, wardrobe, lighting, and location. " +
+                sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — " +
@@ -383,7 +392,7 @@ public static class ClipVideoPromptBuilder
         // video-extend cannot attach locked plates (API continues from previous video only).
         // Reinforce identity from CHARACTER VARIABLES text so faces/wardrobe do not drift.
         if (mode is ModeVideoExtend or ModeContinue)
-            continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages);
+            continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages, visualMedium);
 
         // Video-extend and continue both hand the model the previous clip as VISUAL input (whole
         // video, or its last frame). Re-describing that clip in prose adds nothing it cannot
@@ -495,7 +504,8 @@ public static class ClipVideoPromptBuilder
         string audioBlock,
         string continuityBlock,
         JsonElement clipEl,
-        string actionTagged)
+        string actionTagged,
+        string? visualMedium = null)
     {
         var sb = new StringBuilder();
         AppendStyleHead(sb, style);
@@ -512,7 +522,7 @@ public static class ClipVideoPromptBuilder
         // separate fields in the video API's request payload (GrokVideoClient.SubmitFreshOnceAsync:
         // "resolution", "duration"), so appending "/ 480p, 24fps" as prose was pure duplication
         // with no effect on what the API actually renders at.
-        AppendTrailingBlock(sb, BuildNegativeBlock(clipEl));
+        AppendTrailingBlock(sb, BuildNegativeBlock(clipEl, visualMedium));
         // Embedded house rules (git-owned). Placed after core action so budget strip can drop
         // them first without cutting CHARACTER VARIABLES / THIS CLIP. Marker: HOUSE RULES:
         AppendHouseRules(sb);
@@ -652,7 +662,6 @@ public static class ClipVideoPromptBuilder
     /// <summary>Blocks whose content is visible in the video an extend continues from.</summary>
     private static readonly string[] SourceVideoAlreadyShows =
     {
-        PromptFieldTags.StyleLock,
         PromptFieldTags.Setting,
         PromptFieldTags.Lighting,
         PromptFieldTags.Camera,
@@ -1077,13 +1086,6 @@ public static class ClipVideoPromptBuilder
         if (p.Length <= hardCapChars)
             return p;
 
-        // The style lock is never dropped — it is the one directive holding the film's look
-        // together — but now that it is a tag it can at least be trimmed instead of being
-        // untouchable prose.
-        p = PromptTags.Shorten(p, PromptFieldTags.StyleLock, 160);
-        if (p.Length <= hardCapChars)
-            return p;
-
         foreach (var tag in SacrificialTags)
         {
             p = PromptTags.Strip(p, tag);
@@ -1091,6 +1093,13 @@ public static class ClipVideoPromptBuilder
             if (p.Length <= hardCapChars)
                 return p;
         }
+
+        // Style lock is last among trims — it is the one directive holding the film's look.
+        // House-rule / tagged STYLE LOCK used to be shortened before Optics/Grade and was the
+        // first real content lost on overflow.
+        p = PromptTags.Shorten(p, PromptFieldTags.StyleLock, 160);
+        if (p.Length <= hardCapChars)
+            return p;
 
         return TagSafeHeadCap(p, hardCapChars);
     }
@@ -2133,26 +2142,98 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Global provider negatives + story-specific <c>negative_prompt</c> from the blueprint.
+    /// Global provider negatives + story-specific <c>negative_prompt</c> from the blueprint
+    /// + a medium-derived opposite (illustrated ↛ photoreal, and vice versa) unless this clip
+    /// explicitly changes world/medium.
     /// </summary>
-    private static string BuildNegativeBlock(JsonElement clipEl)
+    private static string BuildNegativeBlock(JsonElement clipEl, string? visualMedium = null)
     {
         var story = clipEl.TryGetProperty("negative_prompt", out var np)
             ? PromptTags.SanitizeValue(np.GetString()).Trim()
             : "";
         var global = (GlobalNegativePrompt ?? "").Trim();
-        if (global.Length == 0 && story.Length == 0)
+        var mediumNeg = ClipExplicitlyChangesMedium(clipEl)
+            ? ""
+            : VisualMediumStyles.NegativeFor(VisualMediumStyles.NormalizeMedium(visualMedium));
+        if (global.Length == 0 && story.Length == 0 && mediumNeg.Length == 0)
             return "";
 
-        // Dedupe tokens across global + story
+        // Dedupe tokens across global + story + medium
         var items = new List<string>();
         if (global.Length > 0)
             AddCsvNegatives(items, global);
         if (story.Length > 0)
             AddCsvNegatives(items, story);
+        if (mediumNeg.Length > 0)
+            AddCsvNegatives(items, mediumNeg);
         if (items.Count == 0)
             return "";
         return PromptTags.Wrap("Negative", string.Join(", ", items));
+    }
+
+    /// <summary>
+    /// True when the clip's own prompt says the world or art medium changes in this beat
+    /// (dream, portal, flash to live-action, etc.). Those clips keep story negatives only.
+    /// </summary>
+    internal static bool ClipExplicitlyChangesMedium(JsonElement clipEl)
+    {
+        var visual = ReadVisualPrompt(clipEl);
+        if (string.IsNullOrWhiteSpace(visual))
+            return false;
+        return CommonRegex.IsMatch(
+            visual,
+            @"\b(world|medium|art style|render(?:er|ing)?|look)\b.{0,40}\b(change|shift|become|turns? into|switch)\b" +
+            @"|\b(change|shift|become|turns? into|switch)\b.{0,40}\b(world|medium|art style|photoreal|live[- ]action|watercolor|illustration|3d)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>Project visual medium: explicit arg, else <see cref="ProjectVisionMeta"/> on disk.</summary>
+    internal static string ResolveVisualMedium(string? projectDir, string? visualMedium)
+    {
+        if (!string.IsNullOrWhiteSpace(visualMedium))
+            return VisualMediumStyles.NormalizeMedium(visualMedium);
+        if (!string.IsNullOrWhiteSpace(projectDir))
+        {
+            var vision = ProjectVisionMeta.TryRead(projectDir);
+            if (!string.IsNullOrWhiteSpace(vision?.VisualMedium))
+                return VisualMediumStyles.NormalizeMedium(vision.VisualMedium);
+        }
+        return VisualMediumStyles.MediumOther;
+    }
+
+    /// <summary>
+    /// Project medium is the generate-time SSoT. A disagreeing plan <c>StyleLock</c> is overwritten
+    /// from <see cref="VisualMediumStyles.StyleLockFor"/> — lint still reports the drift.
+    /// </summary>
+    internal static string ResolveStyleLockForGeneration(
+        string? styleHead,
+        string rawVisual,
+        string resolvedMedium)
+    {
+        var planned = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
+        // Unknown / "other" medium: do not invent photoreal over a plan lock that already named a look.
+        if (string.IsNullOrWhiteSpace(resolvedMedium)
+            || resolvedMedium == VisualMediumStyles.MediumOther)
+            return string.IsNullOrWhiteSpace(planned)
+                ? VisualMediumStyles.StyleLockFor(resolvedMedium)
+                : planned;
+        var canonical = VisualMediumStyles.StyleLockFor(resolvedMedium);
+        if (string.IsNullOrWhiteSpace(planned))
+            return canonical;
+        return VisualMediumStyles.StyleLocksAgree(planned, canonical) ? planned : canonical;
+    }
+
+    /// <summary>Overwrite a disagreeing <c>&lt;StyleLock&gt;</c> in action prose with the gen-time lock.</summary>
+    internal static string ReplaceStyleLockTag(string actionText, string styleLock)
+    {
+        var inner = VisualMediumStyles.StripStyleLockLabel(styleLock);
+        if (string.IsNullOrWhiteSpace(inner) || string.IsNullOrWhiteSpace(actionText))
+            return actionText;
+        var tag = PromptFieldTags.StyleLock;
+        var replacement = $"<{tag}>{inner}</{tag}>";
+        if (BlockRegexFor(tag).IsMatch(actionText))
+            return BlockRegexFor(tag).Replace(actionText, replacement + " ");
+        return actionText;
     }
 
     private static void AddCsvNegatives(List<string> dest, string csv)
@@ -2229,12 +2310,16 @@ public static class ClipVideoPromptBuilder
     /// <summary>
     /// When API cannot attach locked refs (video-extend), reinforce identity from CHARACTER VARIABLES text.
     /// </summary>
-    private static string IdentityReinforceBlock(IReadOnlyList<string> onScreenKeys, bool refsAttached)
+    private static string IdentityReinforceBlock(
+        IReadOnlyList<string> onScreenKeys,
+        bool refsAttached,
+        string? visualMedium = null)
     {
         if (refsAttached || onScreenKeys.Count == 0) return "";
+        var medium = VisualMediumStyles.NormalizeMedium(visualMedium);
         return " " + PromptTags.Wrap("Identity",
             "Match locked plate descriptions in Characters exactly — " +
-            "do not drift to illustration, anime, cartoon, or a different face/wardrobe. " +
+            VisualMediumStyles.IdentityMediumDriftClause(medium) + ". " +
             "On-screen: " + string.Join(", ", onScreenKeys) + ".");
     }
 

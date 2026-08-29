@@ -5963,6 +5963,7 @@ public sealed class FilmJobService
                 ?? throw new InvalidOperationException(
                     $"Video model '{ctx.VideoRoles.Generate.Id}' has no maxReferenceImages in models_catalog.json."),
             styleHead: styleHead,
+            visualMedium: ProjectVisionMeta.TryRead(ctx.ProjectDir)?.VisualMedium,
             videoModel: wireModel,
             fallbackLocationKey: sceneLocationKey,
             previousClipExtendFileId: ctx.ExtendSourceFileId,

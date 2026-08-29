@@ -1,3 +1,4 @@
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
@@ -65,8 +66,13 @@ public sealed class LocationDesignService
             await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
             "Location plate generation");
 
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var vision = ProjectVisionMeta.TryRead(projectDir);
+        var visualMedium = vision?.VisualMedium ?? "";
+
         var (blobs, mode, tweakSlots, nOut) = await GenerateLocationBlobsAsync(
-            locDir, locKey, desc, vlock, preferred, imageEditInstruction, n, imageModel, onProgress, ct)
+            locDir, locKey, desc, vlock, preferred, imageEditInstruction, n, imageModel,
+            visualMedium, onProgress, ct)
             .ConfigureAwait(false);
         n = nOut;
 
@@ -115,6 +121,7 @@ public sealed class LocationDesignService
             string? imageEditInstruction,
             int n,
             string imageModel,
+            string visualMedium,
             Action<string>? onProgress,
             CancellationToken ct)
     {
@@ -123,32 +130,34 @@ public sealed class LocationDesignService
         string prompt;
         IReadOnlyList<byte[]> blobs;
         string mode;
+        var illustrated = VisualMediumStyles.PrefersIllustrated(visualMedium);
+        var aspect = VisualMediumStyles.DefaultAspectRatioFor(visualMedium);
 
         if (!string.IsNullOrWhiteSpace(imageEditInstruction) && preferred is not null)
         {
             n = 1;
             tweakSlots = LookTweakSlots.Allocate(
                 locDir, i => ProjectStore.LocationVariantFileName(locKey, i), preferred);
-            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction);
-            onProgress?.Invoke($"Grok image edit of locked set plate ({Path.GetFileName(preferred)})…");
+            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction, visualMedium);
+            onProgress?.Invoke($"image edit of locked set plate ({Path.GetFileName(preferred)})…");
             mode = "preferred_edit";
             blobs = await _images.EditVariantsAsync(
                 prompt,
                 new[] { preferred },
                 n,
-                aspectRatio: "16:9",
+                aspectRatio: aspect,
                 model: imageModel,
                 maxRefs: 1,
                 costumeRefPath: null,
-                illustratedMedium: false,
+                illustratedMedium: illustrated,
                 onProgress: onProgress,
                 ct: ct).ConfigureAwait(false);
         }
         else if (preferred is not null)
         {
             // Re-generate variants guided by existing lock + text (set continuity)
-            prompt = BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: true);
-            onProgress?.Invoke($"Grok image edit from existing plate ({Path.GetFileName(preferred)})…");
+            prompt = BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: true, visualMedium);
+            onProgress?.Invoke($"image edit from existing plate ({Path.GetFileName(preferred)})…");
             mode = "preferred_or_text";
             try
             {
@@ -156,11 +165,11 @@ public sealed class LocationDesignService
                     prompt,
                     new[] { preferred },
                     n,
-                    aspectRatio: "16:9",
+                    aspectRatio: aspect,
                     model: imageModel,
                     maxRefs: 1,
                     costumeRefPath: null,
-                    illustratedMedium: false,
+                    illustratedMedium: illustrated,
                     onProgress: onProgress,
                     ct: ct).ConfigureAwait(false);
             }
@@ -169,9 +178,9 @@ public sealed class LocationDesignService
                 _log.LogWarning(ex, "Location preferred-edit failed; falling back to text-only");
                 onProgress?.Invoke($"Edit failed ({ex.Message}); text-only generate…");
                 blobs = await _images.GenerateVariantsAsync(
-                    BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: false),
+                    BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: false, visualMedium),
                     n,
-                    aspectRatio: "16:9",
+                    aspectRatio: aspect,
                     model: imageModel,
                     ct: ct).ConfigureAwait(false);
                 mode = "text_only_fallback";
@@ -179,11 +188,11 @@ public sealed class LocationDesignService
         }
         else
         {
-            prompt = BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: false);
+            prompt = BuildGeneratePrompt(locKey, desc, vlock, seedFromExisting: false, visualMedium);
             onProgress?.Invoke($"generating {n} variant(s) (text-only set plate)…");
             mode = "text_only";
             blobs = await _images.GenerateVariantsAsync(
-                prompt, n, aspectRatio: "16:9", model: imageModel, ct: ct).ConfigureAwait(false);
+                prompt, n, aspectRatio: aspect, model: imageModel, ct: ct).ConfigureAwait(false);
         }
 
         return (blobs, mode, tweakSlots, n);
@@ -265,8 +274,14 @@ public sealed class LocationDesignService
         return (best, refPath);
     }
 
-    public static string BuildGeneratePrompt(string locKey, string description, string visualLock, bool seedFromExisting)
+    public static string BuildGeneratePrompt(
+        string locKey,
+        string description,
+        string visualLock,
+        bool seedFromExisting,
+        string? visualMedium = null)
     {
+        var medium = VisualMediumStyles.NormalizeMedium(visualMedium);
         var name = locKey.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
             ? locKey["Loc_".Length..].Replace('_', ' ')
             : locKey.Replace('_', ' ');
@@ -274,32 +289,45 @@ public sealed class LocationDesignService
         if (seedFromExisting)
         {
             sb.Append("Edit this film set / location still. Keep the same place identity, architecture, and era. ");
-            sb.Append("Produce a clean cinematic establishing still suitable as a video reference plate. ");
+            sb.Append("Produce a clean establishing still suitable as a video reference plate. ");
         }
         else
         {
             sb.Append("Create a cinematic film location still (establishing plate) for a movie set. ");
-            sb.Append("No people, no faces, no text overlays, no watermark. Photoreal live-action. ");
+            sb.Append("No people, no faces, no text overlays, no watermark. ");
         }
+        sb.Append(VisualMediumStyles.LocationPlateClause(medium));
+        sb.Append(VisualMediumStyles.StyleLockFor(medium)).Append(". ");
         sb.Append("Location: ").Append(name).Append(". ");
         if (!string.IsNullOrWhiteSpace(description))
             sb.Append("Description: ").Append(description.Trim()).Append(". ");
         if (!string.IsNullOrWhiteSpace(visualLock))
             sb.Append("Visual lock (must not drift): ").Append(visualLock.Trim()).Append(". ");
+        var negative = VisualMediumStyles.NegativeFor(medium);
+        if (!string.IsNullOrWhiteSpace(negative))
+            sb.Append("Must not: ").Append(negative).Append(". ");
         sb.Append("Wide cinematic composition, consistent lighting, clear architecture and materials.");
         return sb.ToString();
     }
 
-    public static string BuildEditPrompt(string locKey, string description, string visualLock, string instruction)
+    public static string BuildEditPrompt(
+        string locKey,
+        string description,
+        string visualLock,
+        string instruction,
+        string? visualMedium = null)
     {
+        var medium = VisualMediumStyles.NormalizeMedium(visualMedium);
         var sb = new System.Text.StringBuilder();
         sb.Append("Edit this film location / set reference image. Keep the same place identity and era. ");
+        sb.Append(VisualMediumStyles.LocationPlateClause(medium));
         sb.Append("Change only what the instruction asks. No people, no text. ");
         sb.Append("Instruction: ").Append(instruction.Trim()).Append(". ");
         if (!string.IsNullOrWhiteSpace(visualLock))
             sb.Append("Visual lock: ").Append(visualLock.Trim()).Append(". ");
         if (!string.IsNullOrWhiteSpace(description))
-            sb.Append("Base description: ").Append(description.Trim()).Append('.');
+            sb.Append("Base description: ").Append(description.Trim()).Append(". ");
+        sb.Append(VisualMediumStyles.StyleLockFor(medium)).Append('.');
         return sb.ToString();
     }
 }

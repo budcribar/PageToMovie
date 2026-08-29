@@ -139,7 +139,7 @@ public sealed class MovieAutoReviewService
 
         // Master synthesis call
         report.GroupFeedback = groupFeedbacks;
-        report.FlaggedScenes = groupFeedbacks.SelectMany(f => f.SceneNumbers.Where(_ => f.Score < 7)).Distinct().OrderBy(s => s).ToList();
+        report.FlaggedScenes = CollectFlaggedScenes(groupFeedbacks);
 
         var avgScore = (int)Math.Round(groupFeedbacks.Average(g => g.Score));
         var avgContinuity = (int)Math.Round(groupFeedbacks.Average(g => g.ContinuityScore));
@@ -253,9 +253,10 @@ public sealed class MovieAutoReviewService
             if (!TryDecodeChunkFrame(f, out var bytes, out var ext))
                 continue;
             idx++;
-            var p = Path.Combine(tempWorkDir, $"f{idx:D2}_S{f.SceneNumber:D2}.{ext}");
+            var label = FormatKeyframeLabel(f.SceneNumber, f.ClipNumber);
+            var p = Path.Combine(tempWorkDir, $"f{idx:D2}_{label}.{ext}");
             await File.WriteAllBytesAsync(p, bytes, ct).ConfigureAwait(false);
-            imageFiles.Add((p, $"SCENE_{f.SceneNumber:D2}"));
+            imageFiles.Add((p, label));
         }
         return imageFiles;
     }
@@ -304,8 +305,12 @@ public sealed class MovieAutoReviewService
         return execution.Value;
     }
 
-    private static string BuildSceneChunkPrompt(string rangeStr) =>
+    internal static string FormatKeyframeLabel(int sceneNumber, int clipNumber) =>
+        clipNumber > 0 ? $"S{sceneNumber:D2}C{clipNumber:D2}" : $"S{sceneNumber:D2}";
+
+    internal static string BuildSceneChunkPrompt(string rangeStr) =>
         $@"You are a professional film director reviewing visual keyframe sequence {rangeStr} of a movie cut.
+Frames are labeled Sxx (scene) or SxxCyy (scene + clip) — use those labels, not SCENE_NN.
 Critically evaluate these 6 key filmmaking categories and assign an independent score (1-10) for each:
 1. Continuity & Transitions (shot-to-shot spatial alignment, character position, camera movement flow)
 2. Character Consistency & Wardrobe (facial structure lock, outfit drift, visual identity retention)
@@ -313,6 +318,9 @@ Critically evaluate these 6 key filmmaking categories and assign an independent 
 4. Pacing & Editing (visual narrative rhythm, shot length variety, tone matching beat intensity)
 5. Dialogue & Script Fidelity (speaking posture, mouth/lip movement alignment, character line execution matching prompt beats)
 6. Background Music & Audio Score (audio transition smoothness, music cues fading/ending gracefully vs abrupt cutoffs, score volume balance)
+
+Art medium / style lock: if watercolor, illustration, 2D, 3D, photoreal, live-action, or CG look jumps between frames, name the scene and clip (e.g. S03C01). Never claim a style or medium change without a cite.
+Flag a style/medium jump even when the group score is 7 or higher.
 
 Return valid JSON with non-generic, specific observations:
 {{
@@ -324,11 +332,13 @@ Return valid JSON with non-generic, specific observations:
   ""dialogueScore"": 8,
   ""musicScore"": 8,
   ""continuityNotes"": ""Specific observations on visual transitions and spatial alignment"",
-  ""visualConsistencyNotes"": ""Specific observations on character lock and costume drift"",
+  ""visualConsistencyNotes"": ""Specific observations on character lock, costume drift, and art-medium consistency"",
   ""lightingNotes"": ""Specific observations on color palette and lighting continuity"",
   ""dialogueNotes"": ""Specific observations on spoken dialogue delivery and lip movement alignment"",
-  ""audioNotes"": ""Specific observations on music cue transitions, fade-outs, and audio ending smoothness""
-}}";
+  ""audioNotes"": ""Specific observations on music cue transitions, fade-outs, and audio ending smoothness"",
+  ""evidence"": [{{ ""ref"": ""S03C01"", ""claim"": ""background art jumps from 2D watercolor to 3D render"" }}]
+}}
+evidence may be an empty array when there is no style/medium or continuity cite.";
 
     private async Task<string> SynthesizeExecutiveSummaryAsync(
         MovieAutoReviewReport report,
@@ -336,8 +346,7 @@ Return valid JSON with non-generic, specific observations:
         string reviewModel,
         CancellationToken ct)
     {
-        var sysPrompt = "You are an Executive Film Director and Post-Production Supervisor writing a high-level Executive Director Summary Report for a complete movie. " +
-                        "Do NOT list or repeat each scene block-by-block. Instead, synthesize a unified, insightful executive overview (3-5 well-structured sections) evaluating overall visual narrative continuity, character lock consistency, lighting mood, dialogue & lip-sync delivery, background music transitions, and final recommendations.";
+        var sysPrompt = BuildExecutiveSynthesisSystemPrompt();
 
         var fullPrompt = $"{sysPrompt}\n\nReview Data:\n{BuildExecutiveReviewPromptBody(report, groupFeedbacks)}";
         var operation = new MultimodalReviewOperation<ExecutiveReviewSummary>(
@@ -354,6 +363,12 @@ Return valid JSON with non-generic, specific observations:
         _log.LogWarning("Executive summary lifecycle failed; using structured deterministic summary. {Error}", execution.Error);
         return BuildFallbackExecutiveSummary(report, groupFeedbacks);
     }
+
+    internal static string BuildExecutiveSynthesisSystemPrompt() =>
+        "You are an Executive Film Director and Post-Production Supervisor writing a high-level Executive Director Summary Report for a complete movie. " +
+        "Synthesize a unified, insightful executive overview (3-5 well-structured sections) evaluating overall visual narrative continuity, character lock consistency, lighting mood, dialogue & lip-sync delivery, background music transitions, and final recommendations. " +
+        "For any style, art-medium, or renderer claim (watercolor, illustration, 2D, 3D, photoreal, live-action, CG), you MUST name the scene and clip (e.g. S03C01). " +
+        "Do not describe a style jump without a cite. Visual and medium problems may be listed by scene; other topics stay synthesized rather than a scene-by-scene recap.";
 
     private static string BuildExecutiveReviewPromptBody(
         MovieAutoReviewReport report,
@@ -379,6 +394,81 @@ Return valid JSON with non-generic, specific observations:
         AppendNoteLine(promptSb, "  Lighting/Tone: ", gf.LightingNotes);
         AppendNoteLine(promptSb, "  Dialogue: ", gf.DialogueNotes);
         AppendNoteLine(promptSb, "  Audio/Music: ", gf.AudioNotes);
+        if (gf.Evidence.Count > 0)
+        {
+            promptSb.AppendLine("  Evidence:");
+            foreach (var ev in gf.Evidence)
+            {
+                if (string.IsNullOrWhiteSpace(ev.Ref) && string.IsNullOrWhiteSpace(ev.Claim))
+                    continue;
+                promptSb.AppendLine($"    - {ev.Ref}: {ev.Claim}");
+            }
+        }
+    }
+
+    internal static List<int> CollectFlaggedScenes(IReadOnlyList<MovieSceneGroupFeedback> groupFeedbacks) =>
+        groupFeedbacks
+            .SelectMany(ScenesToFlag)
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+    private static IEnumerable<int> ScenesToFlag(MovieSceneGroupFeedback f)
+    {
+        if (f.Score < 7)
+        {
+            foreach (var n in f.SceneNumbers)
+                yield return n;
+            yield break;
+        }
+        if (!HasStyleMediumIssue(f))
+            yield break;
+        foreach (var n in f.SceneNumbers)
+            yield return n;
+        foreach (var n in SceneNumbersFromEvidence(f.Evidence))
+            yield return n;
+    }
+
+    internal static bool HasStyleMediumIssue(MovieSceneGroupFeedback f)
+    {
+        var text = string.Join(' ', new[]
+        {
+            f.ContinuityNotes, f.VisualConsistencyNotes, f.LightingNotes,
+        }.Concat(f.Evidence.Select(e => e.Claim)));
+        return LooksLikeStyleMediumIssue(text);
+    }
+
+    internal static bool LooksLikeStyleMediumIssue(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        return text.Contains("watercolor", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("photoreal", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("live-action", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("live action", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("illustration", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("art medium", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("style lock", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("style jump", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("3d render", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("3d rendered", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("cgi", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<int> SceneNumbersFromEvidence(IEnumerable<MovieReviewEvidence> evidence)
+    {
+        foreach (var ev in evidence)
+        {
+            var r = ev.Ref ?? "";
+            if (r.Length >= 3 && (r[0] is 'S' or 's') && char.IsDigit(r[1]))
+            {
+                var n = 0;
+                for (var i = 1; i < r.Length && char.IsDigit(r[i]); i++)
+                    n = n * 10 + (r[i] - '0');
+                if (n > 0)
+                    yield return n;
+            }
+        }
     }
 
     private static void AppendNoteLine(System.Text.StringBuilder sb, string prefix, string? note)
@@ -429,6 +519,7 @@ Return valid JSON with non-generic, specific observations:
                 LightingNotes = ReadNote(root, "lightingNotes"),
                 DialogueNotes = ReadNote(root, "dialogueNotes"),
                 AudioNotes = ReadNote(root, "audioNotes"),
+                Evidence = ReadEvidence(root),
             });
         }
         catch (Exception ex)
@@ -447,6 +538,30 @@ Return valid JSON with non-generic, specific observations:
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? ""
             : "";
+
+    private static List<MovieReviewEvidence> ReadEvidence(JsonElement root)
+    {
+        var list = new List<MovieReviewEvidence>();
+        if (!root.TryGetProperty("evidence", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var ev = new MovieReviewEvidence
+            {
+                Ref = item.TryGetProperty("ref", out var r) && r.ValueKind == JsonValueKind.String
+                    ? r.GetString() ?? ""
+                    : "",
+                Claim = item.TryGetProperty("claim", out var c) && c.ValueKind == JsonValueKind.String
+                    ? c.GetString() ?? ""
+                    : "",
+            };
+            if (ev.Ref.Length > 0 || ev.Claim.Length > 0)
+                list.Add(ev);
+        }
+        return list;
+    }
 
     internal static IReadOnlyList<ModelValidationIssue> ValidateSceneGroupFeedback(MovieSceneGroupFeedback feedback)
     {
