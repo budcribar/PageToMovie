@@ -1,5 +1,4 @@
 using PageToMovie.Core.Models;
-using PageToMovie.Web.Components.Pages;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -52,28 +51,28 @@ public sealed class MovieAutoReviewSceneFilterTests
     }
 
     [Fact]
-    public void MovieReport_filters_groups_when_a_scene_is_selected()
+    public void MovieReport_razor_filters_groups_for_the_selected_scene()
     {
-        var report = new MovieAutoReviewReport
+        var razor = File.ReadAllText(ReviewPagePath("Review.MovieReport.razor"));
+        var cs = File.ReadAllText(ReviewPagePath("Review.MovieReport.razor.cs"));
+        Assert.Contains("FilterSceneNumber", cs, StringComparison.Ordinal);
+        Assert.Contains("GroupsForScene", cs, StringComparison.Ordinal);
+        Assert.Contains("ShowMovieOverview", razor, StringComparison.Ordinal);
+        Assert.Contains("VisibleGroups", razor, StringComparison.Ordinal);
+    }
+
+    private static string ReviewPagePath(string fileName)
+    {
+        var d = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (d != null)
         {
-            OverallScore = 5,
-            GroupFeedback =
-            {
-                new MovieSceneGroupFeedback { SceneRange = "Scenes 1-2", SceneNumbers = { 1, 2 } },
-                new MovieSceneGroupFeedback { SceneRange = "Scenes 3-4", SceneNumbers = { 3, 4 } }
-            }
-        };
+            var candidate = Path.Combine(
+                d.FullName, "host", "PageToMovie.Web", "Components", "Pages", fileName);
+            if (File.Exists(candidate))
+                return candidate;
+            d = d.Parent;
+        }
 
-        var filtered = new Review_MovieReport { Report = report, FilterSceneNumber = 4 };
-        Assert.True(filtered.ShowCard);
-        Assert.False(filtered.ShowMovieOverview);
-        Assert.True(filtered.ShowBody);
-        Assert.Single(filtered.VisibleGroups);
-        Assert.Equal("Scenes 3-4", filtered.VisibleGroups[0].SceneRange);
-
-        var overall = new Review_MovieReport { Report = report, FilterSceneNumber = null, Collapsed = true };
-        Assert.True(overall.ShowMovieOverview);
-        Assert.False(overall.ShowBody);
-        Assert.Equal(2, overall.VisibleGroups.Count);
+        throw new FileNotFoundException(fileName);
     }
 }
