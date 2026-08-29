@@ -478,6 +478,52 @@ public class ClipVideoPromptBuilderTests
     }
 
     [Fact]
+    public void FitPromptToVideoBudget_does_not_sacrifice_Grade()
+    {
+        var grade = $"<{PromptFieldTags.Grade}>watercolor wash on cold-press paper, muted primaries</{PromptFieldTags.Grade}>";
+        var optics = $"<{PromptFieldTags.Optics}>" + new string('O', 200) + $"</{PromptFieldTags.Optics}>";
+        var performance = $"<{PromptFieldTags.Performance}>" + new string('P', 450) + $"</{PromptFieldTags.Performance}>";
+        var house = "\nHOUSE RULES:\n" + new string('z', 250);
+        var notes = PromptTags.WrapWithNote("Context", new string('N', 150), "prior look");
+        var core = "STYLE LOCK: 2D watercolor picture-book, never photoreal\n\n" +
+                   "CHARACTER VARIABLES Character_Hero\n" + new string('A', 3400) + "\n" +
+                   grade + optics + performance + notes;
+        var full = core + house;
+        Assert.True(full.Length > ClipVideoPromptBuilder.VideoPromptHardCapChars);
+
+        var fitted = ClipVideoPromptBuilder.FitPromptToVideoBudget(full);
+        Assert.True(fitted.Length <= ClipVideoPromptBuilder.VideoPromptHardCapChars);
+        Assert.Contains($"<{PromptFieldTags.Grade}>", fitted, StringComparison.Ordinal);
+        Assert.Contains("watercolor wash on cold-press paper", fitted, StringComparison.Ordinal);
+        Assert.DoesNotContain("HOUSE RULES:", fitted, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_illustrated_prompt_has_no_house_style_example_media()
+    {
+        var clip = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            clip_number = 1,
+            visual_prompt = "<Grade>watercolor wash</Grade> INT. SCHOOLROOM - DAY. Character_Mary walks in.",
+            characters_on_screen = new[] { "Character_Mary" },
+            veo_continuation_source = "none",
+            audio_payload = new { speaker = "", dialogue = "", delivery = "none" },
+        })).RootElement.Clone();
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip,
+            Path.GetTempPath(),
+            styleHead: "STYLE LOCK: 2D watercolor picture-book, never photoreal",
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        Assert.DoesNotContain("picture-book CG", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("photoreal, etc.", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("HOUSE RULES:", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("- Style:", built.Prompt, StringComparison.Ordinal);
+        Assert.Contains("<Grade>watercolor wash</Grade>", built.Prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_does_not_attach_cast_only_named_in_dialogue()
     {
         // Blueprint: Narrator only. Dialogue names "the old man" — must not promote Old Man on screen.
