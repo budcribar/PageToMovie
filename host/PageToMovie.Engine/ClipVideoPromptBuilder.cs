@@ -21,6 +21,7 @@ public static class ClipVideoPromptBuilder
     private const string CharactersOnScreenKey = "characters_on_screen";
     private const string PrimarySubjectKey = "primary_subject";
     private const string AudioTag = "Audio";
+    private const string StyleLockPrefix = "STYLE LOCK: ";
     /// <summary>Provider default negatives (not stored per-clip in Stage 2 blueprint).</summary>
     public static string GlobalNegativePrompt { get; set; } = Stage2PlannerService.GlobalNegativeDefault;
 
@@ -544,7 +545,7 @@ public static class ClipVideoPromptBuilder
         if (string.IsNullOrWhiteSpace(style)) return;
         sb.AppendLine(style.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
             ? style
-            : "STYLE LOCK: " + style);
+            : StyleLockPrefix + style);
         sb.AppendLine();
     }
 
@@ -1406,12 +1407,12 @@ public static class ClipVideoPromptBuilder
             $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (m.Success)
-            return "STYLE LOCK: " + m.Groups[1].Value.Trim();
+            return StyleLockPrefix + m.Groups[1].Value.Trim();
         var prose = CommonRegex.Match(
             visual,
             @"STYLE LOCK(?:\s*\(hard\))?:\s*(.+?)(?=\s*(?:<[A-Za-z]|INT\.|EXT\.|EST\.|$))",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return prose.Success ? ("STYLE LOCK: " + prose.Groups[1].Value.Trim()) : null;
+        return prose.Success ? (StyleLockPrefix + prose.Groups[1].Value.Trim()) : null;
     }
     public static List<string> FindCharacterRefPaths(
         JsonElement clipEl,
@@ -2290,7 +2291,7 @@ public static class ClipVideoPromptBuilder
         if (string.IsNullOrWhiteSpace(styleLock)) return text;
         var head = styleLock.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
             ? styleLock.Trim()
-            : "STYLE LOCK: " + styleLock.Trim();
+            : StyleLockPrefix + styleLock.Trim();
         return head + "\n\n" + text;
     }
 
