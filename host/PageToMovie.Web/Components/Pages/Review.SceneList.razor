@@ -1,0 +1,180 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
+@* Page-local to Review — master pane: overall row + compact scene list *@
+@inject IAppLocalizer L
+@using PageToMovie.Core.Models
+
+@{
+    var autoReview = AutoReview ?? Host.AutoReview;
+    var list = List ?? Host.List;
+    var playback = Playback ?? Host.Playback;
+    var jobs = Jobs ?? Host.Jobs;
+    var report = autoReview._movieReport;
+    var overallSelected = list._selectedScene is null;
+    var clipsOnDisk = list._scenes.Sum(s => s.ClipsOnDisk);
+    var clipCount = list._scenes.Sum(s => s.ClipCount);
+    var actualTotal = list._scenes.Where(s => s.ActualDurationSeconds is not null).Sum(s => s.ActualDurationSeconds ?? 0);
+    var plannedTotal = list._scenes.Where(s => s.PlannedDurationSeconds is not null).Sum(s => s.PlannedDurationSeconds ?? 0);
+    var hasActual = list._scenes.Any(s => s.ActualDurationSeconds is not null);
+}
+
+<div class="card h-100 border-secondary">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span>@L["ReviewPage.ScenesAndClips"]</span>
+        <span class="small text-muted fw-normal">@L["ReviewPage.PlayStitchesHint"]</span>
+    </div>
+    <div class="card-body p-0">
+        @if (list._scenes.Count == 0)
+        {
+            <EmptyState Message="@L["ReviewPage.NoScenesFinishAdaptation"]" CssClass="text-muted p-3 mb-0" />
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle review-md__table">
+                    <thead>
+                        <tr>
+                            <th style="cursor:pointer; user-select:none;" @onclick='() => list.ToggleSceneSort("number")' title="Sort by scene number">
+                                @L["ReviewPage.Scene"] @list.SortArrow("number")
+                            </th>
+                            <th>@L["ReviewPage.Clips"]</th>
+                            <th style="cursor:pointer; user-select:none;" @onclick='() => list.ToggleSceneSort("duration")' title="Sort by duration">
+                                @L["ReviewPage.Dur"] @list.SortArrow("duration")
+                            </th>
+                            <th>@L["ReviewPage.Composite"]</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="@(overallSelected ? "table-active" : "")"
+                            data-testid="review-full-movie-row"
+                            data-selected="@overallSelected.ToString().ToLowerInvariant()"
+                            style="cursor:pointer;">
+                            <td class="text-nowrap" @onclick="list.SelectOverall">
+                                <span class="badge bg-info text-dark px-2 py-1 rounded-pill" style="font-weight:600;">
+                                    @L["Review.FullMovie"]
+                                </span>
+                                @if (report is { })
+                                {
+                                    <div class="small mt-1">
+                                        <span class="badge @Review_MovieReport.ScoreBadgeClass(report.OverallScore)">
+                                            @report.OverallScore / 10
+                                        </span>
+                                    </div>
+                                }
+                            </td>
+                            <td class="small" @onclick="list.SelectOverall">@clipsOnDisk/@clipCount</td>
+                            <td class="small" @onclick="list.SelectOverall">
+                                @if (hasActual)
+                                {
+                                    <span>@Review.FormatClock(actualTotal)</span>
+                                }
+                                else if (plannedTotal > 0)
+                                {
+                                    <span class="text-muted">~@Review.FormatClock(plannedTotal)</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td @onclick="list.SelectOverall">
+                                @if (clipsOnDisk > 0)
+                                {
+                                    <span class="badge bg-success">@clipsOnDisk/@clipCount clips</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">—</span>
+                                }
+                            </td>
+                            <td></td>
+                        </tr>
+                        @foreach (var s in autoReview.SortedReviewScenes)
+                        {
+                            var sn = s.SceneNumber;
+                            var clipsDone = s.ClipsComplete || (s.ClipCount > 0 && s.ClipsOnDisk >= s.ClipCount);
+                            var flagged = report?.FlaggedScenes.Contains(sn) == true;
+                            <tr class="@(list._selectedScene == sn ? "table-active" : "")" data-testid="review-scene-row" data-scene-number="@sn" data-approved="@s.IsApproved.ToString().ToLowerInvariant()">
+                                <td class="text-nowrap" style="cursor:pointer;" @onclick="() => list.SelectSceneKeepAsync(sn)">
+                                    <span class="badge @(clipsDone ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
+                                          style="font-weight:600;"
+                                          title="@(clipsDone ? "All clips on disk" : "Missing clips")"
+                                          @onclick:stopPropagation="true"
+                                          @onclick="() => list.SelectSceneAsync(sn)">
+                                        S@(sn.ToString("D2"))
+                                    </span>
+                                    @if (flagged)
+                                    {
+                                        <span class="badge bg-danger ms-1" title="Flagged in the movie review">!</span>
+                                    }
+                                    <div class="small text-muted mt-1">@(string.IsNullOrEmpty(s.Setting) ? "—" : s.Setting)</div>
+                                </td>
+                                <td class="small" style="cursor:pointer;" @onclick="() => list.SelectSceneKeepAsync(sn)">@s.ClipsOnDisk/@s.ClipCount</td>
+                                <td class="small" style="cursor:pointer;" @onclick="() => list.SelectSceneKeepAsync(sn)">
+                                    @if (s.ActualDurationSeconds is double ad)
+                                    {
+                                        <span>@Review.FormatClock(ad)</span>
+                                    }
+                                    else if (s.PlannedDurationSeconds is double pd)
+                                    {
+                                        <span class="text-muted">~@Review.FormatClock(pd)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td style="cursor:pointer;" @onclick="() => list.SelectSceneKeepAsync(sn)">
+                                    @if (s.CompositeExists || s.ClipsOnDisk > 0)
+                                    {
+                                        <span class="badge bg-success">@s.ClipsOnDisk/@s.ClipCount clips</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">—</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-flex flex-wrap gap-1 justify-content-end">
+                                        <button class="btn btn-sm btn-success"
+                                                data-testid="@($"review-play-scene-{sn}")"
+                                                disabled="@(Host._busy || jobs.JobRunning || !playback.CanPlayScene(sn))"
+                                                title="@playback.ScenePlayTitle(sn)"
+                                                @onclick="() => playback.PlaySceneAsync(sn)">
+                                            ▶ Play
+                                        </button>
+                                        @if (s.IsApproved)
+                                        {
+                                            <button class="btn btn-sm btn-success"
+                                                    data-testid="@($"review-approve-{sn}")"
+                                                    disabled="@(Host._busy || jobs.JobRunning)"
+                                                    title="Scene is approved. Click to toggle."
+                                                    @onclick="() => list.ApproveAsync(sn)">
+                                                ✓ Approved
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-success"
+                                                    data-testid="@($"review-approve-{sn}")"
+                                                    disabled="@(Host._busy || jobs.JobRunning)"
+                                                    title="Mark scene approved"
+                                                    @onclick="() => list.ApproveAsync(sn)">
+                                                ☐ Approve
+                                            </button>
+                                        }
+                                        <button class="btn btn-sm btn-link"
+                                                data-testid="@($"review-clips-{sn}")"
+                                                @onclick="() => list.SelectSceneAsync(sn)">
+                                            Clips
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>

@@ -1,11 +1,8 @@
 @inherits PageToMovie.Web.Components.PageSliceComponent
-@* Page-local to Review — review tab body *@
+@* Page-local to Review — review tab body: master-detail (scene list | writeup) *@
 @inject StudioCapabilityState Caps
-@inject AdminSessionService Session
 @inject IAppLocalizer L
 @inject EngineApiClient Engine
-@inject ClientMediaFolderService MediaFolder
-@using Microsoft.AspNetCore.Components
 @using PageToMovie.Core.Models
 
     @{
@@ -17,7 +14,7 @@
 
     @if (autoReview._isReviewing)
     {
-        <div class="card p-4 mb-3 bg-dark text-white border-info shadow" data-testid="review-ai-progress">
+        <div class="card p-3 mb-3 bg-dark text-white border-info shadow" data-testid="review-ai-progress">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div class="d-flex align-items-center gap-3">
                     <div class="spinner-border text-info" role="status" style="width: 2rem; height: 2rem;"></div>
@@ -44,396 +41,98 @@
         </div>
     }
 
-    @if (autoReview._movieReport is { })
-    {
-        <Review_MovieReport Report="autoReview._movieReport"
-                            Collapsed="autoReview._movieReportCollapsed"
-                            OnToggleCollapsed="@(() => autoReview._movieReportCollapsed = !autoReview._movieReportCollapsed)"
-                            OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
-                            OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
-                            OnToggleGroup="list.ToggleSceneGroupExpand"
-                            IsGroupExpanded="list.IsSceneGroupExpanded" />
-
-    }
-    else
-    {
-        <div class="card mb-3 border-info text-white shadow-sm" style="background-color: #0f172a !important; border-color: #3b82f6 !important;">
-            <div class="card-body p-4 text-center">
-                <div class="fs-1 mb-2">🤖</div>
-                <h5 class="fw-bold mb-2">@L["ReviewPage.AiVisualContinuityTitle"]</h5>
-                <p class="text-white-50 mb-3 mx-auto" style="max-width: 600px;">
-                    @L["ReviewPage.AiVisualContinuityDesc"]
-                </p>
-                <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
-                                         BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
-                                         SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
-                                         TestId="review-empty-cta-cap">
-                    <button class="btn btn-info text-white fw-bold px-4"
-                            disabled="@(Host._busy || jobs.JobRunning)"
-                            @onclick="autoReview.StartFullMovieReviewAsync">
-                        ⚡ @L["ReviewPage.RunAiContinuityReview"]
-                    </button>
-                </CapabilityLockedControl>
-            </div>
-        </div>
-    }
-
-
-
-@if (playback._showScenePlayer && playback._playingScene is int playSn && !playback._clientStitching)
-{
-    <div class="card mb-3 border-primary">
-        <div class="card-header d-flex justify-content-between align-items-center py-2">
-            <span>
-                Scene
-                <code class="small">S@(playSn.ToString("D2"))</code>
-                @if (!string.IsNullOrEmpty(playback._clientSceneUrl))
-                {
-                    <span class="badge bg-info text-dark ms-1">client stitch</span>
-                }
-            </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="playback.HideScenePlayerAsync">@L["Common.Hide"]</button>
-        </div>
-        <div class="card-body py-2">
-            <video controls playsinline autoplay
-                   style="width:100%;max-height:70vh;background:#000;border-radius:0.35rem;"
-                   src="@(string.IsNullOrEmpty(playback._clientSceneUrl) ? playback.SceneServerSrc(playSn) : playback._clientSceneUrl)"
-                   @key="playback._sceneVideoKey"
-                   onloadeddata="this.play().catch(function(){})">
-                @L["ReviewPage.Html5VideoNotSupported"]
-            </video>
-            <p class="small text-muted mb-0 mt-2">
-                @if (string.IsNullOrEmpty(playback._clientSceneUrl))
-                {
-                    <a href="@Engine.CompositeVideoUrl(Host._projectId, playSn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
-                }
-                else
-                {
-                    <span>Stitched in browser from clips (not written to disk).</span>
-                }
-            </p>
-        </div>
+<div class="review-md" data-testid="review-master-detail">
+    <div class="review-md__master" data-testid="review-master-pane">
+        <Review_SceneList />
     </div>
-}
-else if (playback._showScenePlayer && playback._clientStitching)
-{
-    <div class="card mb-3 border-secondary">
-        <div class="card-body py-2 small text-muted">
-            @L["ReviewPage.CombiningSceneBrowser"] @playback._clientStitchStatus
-        </div>
-    </div>
-}
-
-<div class="row g-3">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>@L["ReviewPage.ScenesAndClips"]</span>
-                <span class="small text-muted fw-normal">@L["ReviewPage.PlayStitchesHint"]</span>
+    <div class="review-md__detail" data-testid="review-detail-pane">
+        @if (playback._showScenePlayer && playback._playingScene is int playSn && !playback._clientStitching)
+        {
+            <div class="card mb-3 border-primary">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <span>
+                        Scene
+                        <code class="small">S@(playSn.ToString("D2"))</code>
+                        @if (!string.IsNullOrEmpty(playback._clientSceneUrl))
+                        {
+                            <span class="badge bg-info text-dark ms-1">client stitch</span>
+                        }
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="playback.HideScenePlayerAsync">@L["Common.Hide"]</button>
+                </div>
+                <div class="card-body py-2">
+                    <video controls playsinline autoplay
+                           style="width:100%;max-height:70vh;background:#000;border-radius:0.35rem;"
+                           src="@(string.IsNullOrEmpty(playback._clientSceneUrl) ? playback.SceneServerSrc(playSn) : playback._clientSceneUrl)"
+                           @key="playback._sceneVideoKey"
+                           onloadeddata="this.play().catch(function(){})">
+                        @L["ReviewPage.Html5VideoNotSupported"]
+                    </video>
+                    <p class="small text-muted mb-0 mt-2">
+                        @if (string.IsNullOrEmpty(playback._clientSceneUrl))
+                        {
+                            <a href="@Engine.CompositeVideoUrl(Host._projectId, playSn)" target="_blank" rel="noopener">@L["ReviewPage.OpenInNewTab"]</a>
+                        }
+                        else
+                        {
+                            <span>Stitched in browser from clips (not written to disk).</span>
+                        }
+                    </p>
+                </div>
             </div>
-            <div class="card-body p-0">
-                @if (list._scenes.Count == 0)
-                {
-                    <EmptyState Message="@L["ReviewPage.NoScenesFinishAdaptation"]" CssClass="text-muted p-3 mb-0" />
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm mb-0 align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="cursor:pointer; user-select:none;" @onclick='() => list.ToggleSceneSort("number")' title="Sort by scene number">
-                                        @L["ReviewPage.Scene"] @list.SortArrow("number")
-                                    </th>
-                                    <th>@L["ReviewPage.Clips"]</th>
-                                    <th style="cursor:pointer; user-select:none;" @onclick='() => list.ToggleSceneSort("duration")' title="Sort by duration">
-                                        @L["ReviewPage.Dur"] @list.SortArrow("duration")
-                                    </th>
-                                    <th>@L["ReviewPage.Composite"]</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var s in autoReview.SortedReviewScenes)
-                                {
-                                    var sn = s.SceneNumber;
-                                    var clipsDone = s.ClipsComplete || (s.ClipCount > 0 && s.ClipsOnDisk >= s.ClipCount);
-                                    <tr class="@(list._selectedScene == sn ? "table-active" : "")" data-testid="review-scene-row" data-scene-number="@sn" data-approved="@s.IsApproved.ToString().ToLowerInvariant()">
-                                        <td class="text-nowrap">
-                                            <span class="badge @(clipsDone ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
-                                                  style="font-weight:600;cursor:pointer;"
-                                                  title="@(clipsDone ? "All clips on disk" : "Missing clips")"
-                                                  @onclick="() => list.SelectSceneAsync(sn)">
-                                                S@(sn.ToString("D2"))
-                                            </span>
-                                            <div class="small text-muted mt-1">@(string.IsNullOrEmpty(s.Setting) ? "—" : s.Setting)</div>
-                                        </td>
-                                        <td class="small">@s.ClipsOnDisk/@s.ClipCount</td>
-                                        <td class="small">
-                                            @if (s.ActualDurationSeconds is double ad)
-                                            {
-                                                <span>@Review.FormatClock(ad)</span>
-                                            }
-                                            else if (s.PlannedDurationSeconds is double pd)
-                                            {
-                                                <span class="text-muted">~@Review.FormatClock(pd)</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
-                                        </td>
-                                        <td>
-                                            @if (s.CompositeExists || s.ClipsOnDisk > 0)
-                                            {
-                                                <span class="badge bg-success">@s.ClipsOnDisk/@s.ClipCount clips</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary">—</span>
-                                            }
-                                        </td>
-                                        <td class="text-end">
-                                            <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                                <button class="btn btn-sm btn-success"
-                                                        data-testid="@($"review-play-scene-{sn}")"
-                                                        disabled="@(Host._busy || jobs.JobRunning || !playback.CanPlayScene(sn))"
-                                                        title="@playback.ScenePlayTitle(sn)"
-                                                        @onclick="() => playback.PlaySceneAsync(sn)">
-                                                    ▶ Play
-                                                </button>
-                                                @if (s.IsApproved)
-                                                {
-                                                    <button class="btn btn-sm btn-success"
-                                                            data-testid="@($"review-approve-{sn}")"
-                                                            disabled="@(Host._busy || jobs.JobRunning)"
-                                                            title="Scene is approved. Click to toggle."
-                                                            @onclick="() => list.ApproveAsync(sn)">
-                                                        ✓ Approved
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <button class="btn btn-sm btn-outline-success"
-                                                            data-testid="@($"review-approve-{sn}")"
-                                                            disabled="@(Host._busy || jobs.JobRunning)"
-                                                            title="Mark scene approved"
-                                                            @onclick="() => list.ApproveAsync(sn)">
-                                                        ☐ Approve
-                                                    </button>
-                                                }
-                                                <button class="btn btn-sm btn-link"
-                                                        data-testid="@($"review-clips-{sn}")"
-                                                        @onclick="() => list.SelectSceneAsync(sn)">
-                                                    Clips
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
+        }
+        else if (playback._showScenePlayer && playback._clientStitching)
+        {
+            <div class="card mb-3 border-secondary">
+                <div class="card-body py-2 small text-muted">
+                    @L["ReviewPage.CombiningSceneBrowser"] @playback._clientStitchStatus
+                </div>
             </div>
-        </div>
+        }
 
         @if (list._selectedScene is int sel)
         {
-            <div class="card mt-3" data-testid="review-clip-review-card">
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <span>S@(sel.ToString("D2")) clip review</span>
-                    <button type="button"
-                            class="btn-close"
-                            aria-label="@L["Common.Close"]"
-                            title="@L["Common.Close"]"
-                            data-testid="review-dismiss-clip-review"
-                            @onclick="list.DismissClipReview">
-                    </button>
-                </div>
-                <div class="card-body">
-                    @if (!string.IsNullOrEmpty(playback._clipPlayError))
-                    {
-                        <InlineAlert Message="@playback._clipPlayError"
-                                     Dismissible="true"
-                                     CssClass="mb-2"
-                                     OnDismiss="playback.ClearClipPlayError"
-                                     data-testid="review-clip-play-error" />
-                    }
-                    @if (playback._showClipPlayer
-                         && playback._playingClipScene == sel
-                         && playback._playingClipNum is int playCn
-                         && !string.IsNullOrEmpty(playback._clientClipUrl))
-                    {
-                        <div class="mb-3" data-testid="review-clip-inline-player">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="small text-muted">C@(playCn.ToString("D2"))</span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        @onclick="playback.HideClipPlayer">@L["Common.Hide"]</button>
-                            </div>
-                            <video controls playsinline autoplay
-                                   style="width:100%;max-height:50vh;background:#000;border-radius:0.35rem;"
-                                   src="@playback._clientClipUrl"
-                                   @key="playback._clipVideoKey"
-                                   onloadeddata="this.play().catch(function(){})">
-                            </video>
-                        </div>
-                    }
-                    <div class="mb-2">
-                        <label class="form-label small">Note (required to Pass after auto-review fail)</label>
-                        <input class="form-control form-control-sm" @bind="autoReview._note" disabled="@Host._busy"
-                               placeholder="Override reason if auto-review failed…" />
-                    </div>
-                    <div class="d-flex flex-column gap-3">
-                        @for (var c = 1; c <= list.ClipCountFor(sel); c++)
-                        {
-                            var cn = c;
-                            var key = $"S{sel:D2}C{cn:D2}";
-                            var st = autoReview._reviews.TryGetValue(key, out var r) ? r : "—";
-                            var onDisk = list.ClipOnDisk(sel, cn);
-                            var playable = list.ClipIsPlayable(sel, cn);
-                            var autoBusy = autoReview.IsAutoReviewRunning(sel, cn);
-                            var draft = autoReview.GetLocalDraft(sel, cn);
-                            var editing = autoReview._editKey == key;
-                            <div class="border rounded p-2 small">
-                                <div class="d-flex flex-wrap align-items-center gap-2">
-                                    <span class="badge @(onDisk ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
-                                          style="font-weight:600;"
-                                          title="@(onDisk ? "On disk" : "Not on disk yet")">
-                                        C@(cn.ToString("D2"))
-                                    </span>
-                                    <span class="badge bg-light text-dark">@st</span>
-                                    @if (draft is not null && !editing)
-                                    {
-                                        <span class="badge bg-info text-dark">AI: @draft.Suggestion</span>
-                                    }
-                                </div>
-                                <div class="btn-group btn-group-sm mt-1 flex-wrap">
-                                    <button class="btn btn-sm btn-success"
-                                            data-testid="@($"review-play-clip-{sel}-{cn}")"
-                                            disabled="@(Host._busy || !playable)"
-                                            title="Play this clip"
-                                            @onclick="() => playback.PlayClipAsync(sel, cn)">▶ Play</button>
-                                    <button class="btn btn-outline-primary"
-                                            data-testid="@($"review-auto-{sel}-{cn}")"
-                                            data-scene="@sel"
-                                            data-clip="@cn"
-                                            disabled="@(Host._busy || !onDisk || jobs.JobRunning || autoBusy || !Caps.VideoReviewReady)"
-                                            title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : StudioCapabilityState.VideoReviewBlockedReason)"
-                                            @onclick="() => autoReview.StartAutoReviewAsync(sel, cn)">
-                                        @ReviewButtonLabel(autoBusy, draft is not null, editing)
-                                    </button>
-                                    @if (draft is not null && !editing && !autoBusy)
-                                    {
-                                        <button class="btn btn-primary"
-                                                data-testid="@($"review-apply-open-{sel}-{cn}")"
-                                                disabled="@Host._busy"
-                                                title="Show suggested edits to accept or change"
-                                                @onclick="() => autoReview.OpenApplyPanel(sel, cn)">
-                                            Apply suggestions
-                                        </button>
-                                    }
-                                    @if (editing)
-                                    {
-                                        <button class="btn btn-warning"
-                                                data-testid="@($"review-apply-regen-{sel}-{cn}")"
-                                                disabled="@(Host._busy || jobs.JobRunning || !autoReview.HasIncludedEdits())"
-                                                title="Save accepted edits and re-generate this clip"
-                                                @onclick="() => autoReview.ApplyAndRegenAsync(sel, cn)">
-                                            Apply + regen
-                                        </button>
-                                        <button class="btn btn-outline-secondary" disabled="@Host._busy"
-                                                @onclick="autoReview.CloseApplyPanel">Cancel</button>
-                                    }
-                                    <button class="btn btn-outline-success" data-testid="@($"review-pass-{sel}-{cn}")" disabled="@Host._busy"
-                                            @onclick="() => autoReview.ReviewAsync(sel, cn, Review.passStatus)">Pass</button>
-                                    <button class="btn btn-outline-danger" data-testid="@($"review-fail-{sel}-{cn}")" disabled="@Host._busy"
-                                            @onclick="() => autoReview.ReviewAsync(sel, cn, Review.failStatus)">Fail</button>
-                                </div>
-                                @if (autoBusy && jobs._job is { } activeJob)
-                                {
-                                    var pct = activeJob.Status == "queued" || activeJob.Total <= 0
-                                        ? 8
-                                        : (int)Math.Round(100.0 * Math.Clamp(activeJob.Index, 0, activeJob.Total) / Math.Max(1, activeJob.Total));
-                                    if (activeJob.Status == "running" && activeJob.Index <= 0) pct = 0;
-                                    <div class="mt-2">
-                                        <div class="d-flex justify-content-between text-muted">
-                                            <span>@(activeJob.Message ?? "Reviewing…")</span>
-                                            @if (activeJob.Total == 100 && activeJob.Status == "running")
-                                            {
-                                                <span>@activeJob.Index%</span>
-                                            }
-                                        </div>
-                                        <div class="progress mt-1" style="height: 0.45rem;">
-                                            <div class="progress-bar progress-bar-striped progress-bar-animated"
-                                                 style="width: @(pct)%"></div>
-                                        </div>
-                                    </div>
-                                }
-                                @if (draft is not null && !editing && !autoBusy)
-                                {
-                                    <div class="form-text mt-1">
-                                        @draft.Note
-                                        @if (draft.IncludedPreviousTail)
-                                        {
-                                            <span class="text-muted"> · continuity: @draft.Continuity</span>
-                                        }
-                                        @if (draft.Suggestions.Count > 0)
-                                        {
-                                            <span> · @draft.Suggestions.Count suggestion(s)</span>
-                                        }
-                                    </div>
-                                }
-                                @if (editing && autoReview._editRows is { } editRows)
-                                {
-                                    <div class="mt-2 border-top pt-2">
-                                        @if (!string.IsNullOrEmpty(draft?.Note))
-                                        {
-                                            <div class="mb-2 text-muted">@draft.Note</div>
-                                        }
-                                        @if (editRows.Count == 0)
-                                        {
-                                            <p class="text-muted mb-1">No field changes suggested. You can Pass or Apply + regen as-is.</p>
-                                        }
-                                        @foreach (var row in editRows)
-                                        {
-                                            <div class="border rounded p-2 mb-2 bg-light">
-                                                <div class="form-check mb-1">
-                                                    <input class="form-check-input" type="checkbox"
-                                                           id="@row.Id" @bind="row.Include" disabled="@Host._busy" />
-                                                    <label class="form-check-label" for="@row.Id">
-                                                        <strong>@row.Label</strong>
-                                                        <span class="text-muted">(@row.Layer@(string.IsNullOrEmpty(row.CharKey) ? "" : " · " + row.CharKey))</span>
-                                                    </label>
-                                                </div>
-                                                @if (!string.IsNullOrEmpty(row.Rationale))
-                                                {
-                                                    <div class="text-muted mb-1">@row.Rationale</div>
-                                                }
-                                                @if (!string.IsNullOrEmpty(row.CurrentValue))
-                                                {
-                                                    <div class="mb-1">
-                                                        <span class="text-muted">Current:</span>
-                                                        <div class="small" style="max-height:4rem;overflow:auto;white-space:pre-wrap;">@row.CurrentValue</div>
-                                                    </div>
-                                                }
-                                                <label class="form-label small mb-0">Suggested (editable)</label>
-                                                <textarea class="form-control form-control-sm" rows="3"
-                                                          @bind="row.Value" disabled="@(Host._busy || !row.Include)"></textarea>
-                                            </div>
-                                        }
-                                        <p class="form-text mb-0">
-                                            Check what to keep, edit text if needed, then <strong>Apply + regen</strong> saves and re-generates this clip.
-                                        </p>
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-                    <p class="small text-muted mb-0 mt-3">
-                        <strong>Review</strong> drafts feedback (includes previous clip end when C2+).
-                        <strong>Apply suggestions</strong> shows edits; <strong>Apply + regen</strong> writes them and re-gens.
+            @if (autoReview._movieReport is { })
+            {
+                <Review_MovieReport Report="autoReview._movieReport"
+                                    FilterSceneNumber="sel"
+                                    Collapsed="false"
+                                    OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
+                                    OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
+                                    OnToggleGroup="list.ToggleSceneGroupExpand"
+                                    IsGroupExpanded="list.IsSceneGroupExpanded" />
+            }
+            <Review_ClipReview />
+        }
+        else if (autoReview._movieReport is { })
+        {
+            <Review_MovieReport Report="autoReview._movieReport"
+                                Collapsed="autoReview._movieReportCollapsed"
+                                OnToggleCollapsed="@(() => autoReview._movieReportCollapsed = !autoReview._movieReportCollapsed)"
+                                OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
+                                OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
+                                OnToggleGroup="list.ToggleSceneGroupExpand"
+                                IsGroupExpanded="list.IsSceneGroupExpanded" />
+        }
+        else
+        {
+            <div class="card border-info text-white shadow-sm h-100" style="background-color: #0f172a !important; border-color: #3b82f6 !important;">
+                <div class="card-body p-4 text-center">
+                    <div class="fs-1 mb-2">🤖</div>
+                    <h5 class="fw-bold mb-2">@L["ReviewPage.AiVisualContinuityTitle"]</h5>
+                    <p class="text-white-50 mb-3 mx-auto" style="max-width: 600px;">
+                        @L["ReviewPage.AiVisualContinuityDesc"]
                     </p>
+                    <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
+                                             BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
+                                             SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
+                                             TestId="review-empty-cta-cap">
+                        <button class="btn btn-info text-white fw-bold px-4"
+                                disabled="@(Host._busy || jobs.JobRunning)"
+                                @onclick="autoReview.StartFullMovieReviewAsync">
+                            ⚡ @L["ReviewPage.RunAiContinuityReview"]
+                        </button>
+                    </CapabilityLockedControl>
                 </div>
             </div>
         }

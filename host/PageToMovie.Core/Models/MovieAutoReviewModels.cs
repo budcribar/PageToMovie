@@ -15,6 +15,22 @@ public sealed class MovieAutoReviewReport
     public List<int> FlaggedScenes { get; set; } = new();
     public string ProviderUsed { get; set; } = "";
     public string CreatedAtUtc { get; set; } = DateTime.UtcNow.ToString("o");
+
+    /// <summary>Sequence-group notes that apply to one scene. Empty when the report has no match.</summary>
+    public IReadOnlyList<MovieSceneGroupFeedback> GroupsForScene(int sceneNumber)
+    {
+        if (GroupFeedback.Count == 0)
+            return Array.Empty<MovieSceneGroupFeedback>();
+        List<MovieSceneGroupFeedback>? matches = null;
+        foreach (var group in GroupFeedback)
+        {
+            if (!group.IncludesScene(sceneNumber))
+                continue;
+            matches ??= new List<MovieSceneGroupFeedback>();
+            matches.Add(group);
+        }
+        return matches ?? (IReadOnlyList<MovieSceneGroupFeedback>)Array.Empty<MovieSceneGroupFeedback>();
+    }
 }
 
 public sealed class MovieSceneGroupFeedback
@@ -33,6 +49,45 @@ public sealed class MovieSceneGroupFeedback
     public string DialogueNotes { get; set; } = "";
     public string AudioNotes { get; set; } = "";
     public List<int> SceneNumbers { get; set; } = new();
+
+    /// <summary>True when this group covers <paramref name="sceneNumber"/> (explicit list, else range text).</summary>
+    public bool IncludesScene(int sceneNumber)
+    {
+        if (SceneNumbers.Count > 0)
+            return SceneNumbers.Contains(sceneNumber);
+        return RangeTextIncludesScene(SceneRange, sceneNumber);
+    }
+
+    /// <summary>"Scenes 1-4" / "Scene 3" style labels — used only when <see cref="SceneNumbers"/> is empty.</summary>
+    public static bool RangeTextIncludesScene(string? range, int sceneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(range) || sceneNumber <= 0)
+            return false;
+        var nums = new List<int>();
+        var n = 0;
+        var inNum = false;
+        foreach (var ch in range)
+        {
+            if (char.IsDigit(ch))
+            {
+                n = inNum ? n * 10 + (ch - '0') : ch - '0';
+                inNum = true;
+            }
+            else if (inNum)
+            {
+                nums.Add(n);
+                n = 0;
+                inNum = false;
+            }
+        }
+        if (inNum) nums.Add(n);
+        if (nums.Count == 0) return false;
+        if (nums.Count == 1) return nums[0] == sceneNumber;
+        var lo = nums[0];
+        var hi = nums[^1];
+        if (hi < lo) (lo, hi) = (hi, lo);
+        return sceneNumber >= lo && sceneNumber <= hi;
+    }
 }
 
 public sealed class MovieAutoReviewKeyframe

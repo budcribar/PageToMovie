@@ -23,7 +23,7 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void ReviewReviewTab_clip_review_header_has_dismiss_not_play_scene()
     {
-        var razor = File.ReadAllText(ReviewReviewTabPath());
+        var razor = File.ReadAllText(ReviewClipReviewPath());
         var cardAt = razor.IndexOf("review-clip-review-card", StringComparison.Ordinal);
         Assert.True(cardAt >= 0, "clip-review card test id missing");
 
@@ -40,11 +40,12 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void ReviewReviewTab_keeps_scene_row_play_and_per_clip_play()
     {
-        var razor = File.ReadAllText(ReviewReviewTabPath());
-        Assert.Contains("review-play-scene-{sn}", razor, StringComparison.Ordinal);
-        Assert.Contains("playback.CanPlayScene(sn)", razor, StringComparison.Ordinal);
-        Assert.Contains("playback.PlayClipAsync(sel, cn)", razor, StringComparison.Ordinal);
-        Assert.Contains("list.ClipIsPlayable(sel, cn)", razor, StringComparison.Ordinal);
+        var list = File.ReadAllText(ReviewSceneListPath());
+        var clips = File.ReadAllText(ReviewClipReviewPath());
+        Assert.Contains("review-play-scene-{sn}", list, StringComparison.Ordinal);
+        Assert.Contains("playback.CanPlayScene(sn)", list, StringComparison.Ordinal);
+        Assert.Contains("playback.PlayClipAsync(sel, cn)", clips, StringComparison.Ordinal);
+        Assert.Contains("list.ClipIsPlayable(sel, cn)", clips, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void ReviewReviewTab_clip_play_does_not_use_scene_completeness()
     {
-        var razor = File.ReadAllText(ReviewReviewTabPath());
+        var razor = File.ReadAllText(ReviewClipReviewPath());
         var playAt = razor.IndexOf("playback.PlayClipAsync(sel, cn)", StringComparison.Ordinal);
         Assert.True(playAt >= 0);
         var window = razor[Math.Max(0, playAt - 500)..Math.Min(razor.Length, playAt + 40)];
@@ -78,7 +79,7 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void ReviewReviewTab_clip_play_button_is_success_styled_and_testable()
     {
-        var razor = File.ReadAllText(ReviewReviewTabPath());
+        var razor = File.ReadAllText(ReviewClipReviewPath());
         var playAt = razor.IndexOf("playback.PlayClipAsync(sel, cn)", StringComparison.Ordinal);
         Assert.True(playAt >= 0, "per-clip Play handler missing");
         var window = razor[Math.Max(0, playAt - 500)..Math.Min(razor.Length, playAt + 40)];
@@ -92,7 +93,7 @@ public class ReviewClipReviewCardTests
     [Fact]
     public void ReviewReviewTab_shows_in_card_clip_play_error()
     {
-        var razor = File.ReadAllText(ReviewReviewTabPath());
+        var razor = File.ReadAllText(ReviewClipReviewPath());
         var cardAt = razor.IndexOf("review-clip-review-card", StringComparison.Ordinal);
         Assert.True(cardAt >= 0);
         var card = razor[cardAt..];
@@ -181,7 +182,9 @@ public class ReviewClipReviewCardTests
         Assert.DoesNotContain("404", msg, StringComparison.Ordinal);
     }
 
-    private static string ReviewReviewTabPath() => ReviewPagePath("ReviewReviewTab.razor");
+    private static string ReviewClipReviewPath() => ReviewPagePath("Review.ClipReview.razor");
+
+    private static string ReviewSceneListPath() => ReviewPagePath("Review.SceneList.razor");
 
     private static string ReviewPlayTabPath() => ReviewPagePath("ReviewPlayTab.razor");
 

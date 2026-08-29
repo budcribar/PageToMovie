@@ -1,0 +1,211 @@
+@inherits PageToMovie.Web.Components.PageSliceComponent
+@* Page-local to Review — selected-scene clip review (detail pane) *@
+@inject StudioCapabilityState Caps
+@inject IAppLocalizer L
+
+@{
+    var autoReview = AutoReview ?? Host.AutoReview;
+    var list = List ?? Host.List;
+    var playback = Playback ?? Host.Playback;
+    var jobs = Jobs ?? Host.Jobs;
+}
+
+@if (list._selectedScene is int sel)
+{
+    <div class="card" data-testid="review-clip-review-card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2">
+            <span>S@(sel.ToString("D2")) clip review</span>
+            <button type="button"
+                    class="btn-close"
+                    aria-label="@L["Common.Close"]"
+                    title="@L["Common.Close"]"
+                    data-testid="review-dismiss-clip-review"
+                    @onclick="list.DismissClipReview">
+            </button>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(playback._clipPlayError))
+            {
+                <InlineAlert Message="@playback._clipPlayError"
+                             Dismissible="true"
+                             CssClass="mb-2"
+                             OnDismiss="playback.ClearClipPlayError"
+                             data-testid="review-clip-play-error" />
+            }
+            @if (playback._showClipPlayer
+                 && playback._playingClipScene == sel
+                 && playback._playingClipNum is int playCn
+                 && !string.IsNullOrEmpty(playback._clientClipUrl))
+            {
+                <div class="mb-3" data-testid="review-clip-inline-player">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small text-muted">C@(playCn.ToString("D2"))</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                @onclick="playback.HideClipPlayer">@L["Common.Hide"]</button>
+                    </div>
+                    <video controls playsinline autoplay
+                           style="width:100%;max-height:50vh;background:#000;border-radius:0.35rem;"
+                           src="@playback._clientClipUrl"
+                           @key="playback._clipVideoKey"
+                           onloadeddata="this.play().catch(function(){})">
+                    </video>
+                </div>
+            }
+            <div class="mb-2">
+                <label class="form-label small">Note (required to Pass after auto-review fail)</label>
+                <input class="form-control form-control-sm" @bind="autoReview._note" disabled="@Host._busy"
+                       placeholder="Override reason if auto-review failed…" />
+            </div>
+            <div class="d-flex flex-column gap-3">
+                @for (var c = 1; c <= list.ClipCountFor(sel); c++)
+                {
+                    var cn = c;
+                    var key = $"S{sel:D2}C{cn:D2}";
+                    var st = autoReview._reviews.TryGetValue(key, out var r) ? r : "—";
+                    var onDisk = list.ClipOnDisk(sel, cn);
+                    var playable = list.ClipIsPlayable(sel, cn);
+                    var autoBusy = autoReview.IsAutoReviewRunning(sel, cn);
+                    var draft = autoReview.GetLocalDraft(sel, cn);
+                    var editing = autoReview._editKey == key;
+                    <div class="border rounded p-2 small">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="badge @(onDisk ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
+                                  style="font-weight:600;"
+                                  title="@(onDisk ? "On disk" : "Not on disk yet")">
+                                C@(cn.ToString("D2"))
+                            </span>
+                            <span class="badge bg-light text-dark">@st</span>
+                            @if (draft is not null && !editing)
+                            {
+                                <span class="badge bg-info text-dark">AI: @draft.Suggestion</span>
+                            }
+                        </div>
+                        <div class="btn-group btn-group-sm mt-1 flex-wrap">
+                            <button class="btn btn-sm btn-success"
+                                    data-testid="@($"review-play-clip-{sel}-{cn}")"
+                                    disabled="@(Host._busy || !playable)"
+                                    title="Play this clip"
+                                    @onclick="() => playback.PlayClipAsync(sel, cn)">▶ Play</button>
+                            <button class="btn btn-outline-primary"
+                                    data-testid="@($"review-auto-{sel}-{cn}")"
+                                    data-scene="@sel"
+                                    data-clip="@cn"
+                                    disabled="@(Host._busy || !onDisk || jobs.JobRunning || autoBusy || !Caps.VideoReviewReady)"
+                                    title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : StudioCapabilityState.VideoReviewBlockedReason)"
+                                    @onclick="() => autoReview.StartAutoReviewAsync(sel, cn)">
+                                @ReviewButtonLabel(autoBusy, draft is not null, editing)
+                            </button>
+                            @if (draft is not null && !editing && !autoBusy)
+                            {
+                                <button class="btn btn-primary"
+                                        data-testid="@($"review-apply-open-{sel}-{cn}")"
+                                        disabled="@Host._busy"
+                                        title="Show suggested edits to accept or change"
+                                        @onclick="() => autoReview.OpenApplyPanel(sel, cn)">
+                                    Apply suggestions
+                                </button>
+                            }
+                            @if (editing)
+                            {
+                                <button class="btn btn-warning"
+                                        data-testid="@($"review-apply-regen-{sel}-{cn}")"
+                                        disabled="@(Host._busy || jobs.JobRunning || !autoReview.HasIncludedEdits())"
+                                        title="Save accepted edits and re-generate this clip"
+                                        @onclick="() => autoReview.ApplyAndRegenAsync(sel, cn)">
+                                    Apply + regen
+                                </button>
+                                <button class="btn btn-outline-secondary" disabled="@Host._busy"
+                                        @onclick="autoReview.CloseApplyPanel">Cancel</button>
+                            }
+                            <button class="btn btn-outline-success" data-testid="@($"review-pass-{sel}-{cn}")" disabled="@Host._busy"
+                                    @onclick="() => autoReview.ReviewAsync(sel, cn, Review.passStatus)">Pass</button>
+                            <button class="btn btn-outline-danger" data-testid="@($"review-fail-{sel}-{cn}")" disabled="@Host._busy"
+                                    @onclick="() => autoReview.ReviewAsync(sel, cn, Review.failStatus)">Fail</button>
+                        </div>
+                        @if (autoBusy && jobs._job is { } activeJob)
+                        {
+                            var pct = activeJob.Status == "queued" || activeJob.Total <= 0
+                                ? 8
+                                : (int)Math.Round(100.0 * Math.Clamp(activeJob.Index, 0, activeJob.Total) / Math.Max(1, activeJob.Total));
+                            if (activeJob.Status == "running" && activeJob.Index <= 0) pct = 0;
+                            <div class="mt-2">
+                                <div class="d-flex justify-content-between text-muted">
+                                    <span>@(activeJob.Message ?? "Reviewing…")</span>
+                                    @if (activeJob.Total == 100 && activeJob.Status == "running")
+                                    {
+                                        <span>@activeJob.Index%</span>
+                                    }
+                                </div>
+                                <div class="progress mt-1" style="height: 0.45rem;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                         style="width: @(pct)%"></div>
+                                </div>
+                            </div>
+                        }
+                        @if (draft is not null && !editing && !autoBusy)
+                        {
+                            <div class="form-text mt-1">
+                                @draft.Note
+                                @if (draft.IncludedPreviousTail)
+                                {
+                                    <span class="text-muted"> · continuity: @draft.Continuity</span>
+                                }
+                                @if (draft.Suggestions.Count > 0)
+                                {
+                                    <span> · @draft.Suggestions.Count suggestion(s)</span>
+                                }
+                            </div>
+                        }
+                        @if (editing && autoReview._editRows is { } editRows)
+                        {
+                            <div class="mt-2 border-top pt-2">
+                                @if (!string.IsNullOrEmpty(draft?.Note))
+                                {
+                                    <div class="mb-2 text-muted">@draft.Note</div>
+                                }
+                                @if (editRows.Count == 0)
+                                {
+                                    <p class="text-muted mb-1">No field changes suggested. You can Pass or Apply + regen as-is.</p>
+                                }
+                                @foreach (var row in editRows)
+                                {
+                                    <div class="border rounded p-2 mb-2 bg-light">
+                                        <div class="form-check mb-1">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="@row.Id" @bind="row.Include" disabled="@Host._busy" />
+                                            <label class="form-check-label" for="@row.Id">
+                                                <strong>@row.Label</strong>
+                                                <span class="text-muted">(@row.Layer@(string.IsNullOrEmpty(row.CharKey) ? "" : " · " + row.CharKey))</span>
+                                            </label>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(row.Rationale))
+                                        {
+                                            <div class="text-muted mb-1">@row.Rationale</div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(row.CurrentValue))
+                                        {
+                                            <div class="mb-1">
+                                                <span class="text-muted">Current:</span>
+                                                <div class="small" style="max-height:4rem;overflow:auto;white-space:pre-wrap;">@row.CurrentValue</div>
+                                            </div>
+                                        }
+                                        <label class="form-label small mb-0">Suggested (editable)</label>
+                                        <textarea class="form-control form-control-sm" rows="3"
+                                                  @bind="row.Value" disabled="@(Host._busy || !row.Include)"></textarea>
+                                    </div>
+                                }
+                                <p class="form-text mb-0">
+                                    Check what to keep, edit text if needed, then <strong>Apply + regen</strong> saves and re-generates this clip.
+                                </p>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <p class="small text-muted mb-0 mt-3">
+                <strong>Review</strong> drafts feedback (includes previous clip end when C2+).
+                <strong>Apply suggestions</strong> shows edits; <strong>Apply + regen</strong> writes them and re-gens.
+            </p>
+        </div>
+    </div>
+}
