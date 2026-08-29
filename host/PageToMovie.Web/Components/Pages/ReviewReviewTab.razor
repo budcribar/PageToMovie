@@ -95,7 +95,7 @@
             @if (autoReview._movieReport is { })
             {
                 <Review_MovieReport Report="autoReview._movieReport"
-                                    FilterSceneNumber="sel"
+                                    FilterSceneNumber="@sel"
                                     Collapsed="false"
                                     OnExpandAll="@(() => list.ToggleAllSceneGroups(true))"
                                     OnCollapseAll="@(() => list.ToggleAllSceneGroups(false))"
