@@ -67,12 +67,8 @@ public sealed class ColorPaletteGradingClassifier
         var grade = (gradingPrompt ?? "").Trim();
         if (grade.Length == 0)
             return "";
-        foreach (var label in GradeProseLabels)
-        {
-            if (grade.StartsWith(label, StringComparison.OrdinalIgnoreCase))
-                return grade[label.Length..].Trim();
-        }
-        return grade;
+        var label = GradeProseLabels.FirstOrDefault(l => grade.StartsWith(l, StringComparison.OrdinalIgnoreCase));
+        return label is null ? grade : grade[label.Length..].Trim();
     }
 
     private static readonly string[] GradeProseLabels = ["Color grading:", "Colour grading:", "Grade:"];
