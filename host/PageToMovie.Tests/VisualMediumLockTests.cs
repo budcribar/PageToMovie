@@ -29,6 +29,22 @@ public class VisualMediumLockTests
         Assert.DoesNotContain("Photoreal live-action.", prompt, StringComparison.Ordinal);
         Assert.Contains(VisualMediumStyles.NegativeFor(VisualMediumStyles.MediumIllustrated), prompt);
         Assert.Contains(VisualMediumStyles.StyleLockFor(VisualMediumStyles.MediumIllustrated), prompt);
+        AssertPlatePromptHasNoTodOrLightingMood(prompt);
+    }
+
+    [Fact]
+    public void Location_plate_prompt_has_no_tod_or_lighting_mood()
+    {
+        var prompt = LocationDesignService.BuildGeneratePrompt(
+            "Loc_Hall",
+            "Stone walls, oak beams, iron chandelier as a prop.",
+            "whitewashed plaster, flagstone floor",
+            seedFromExisting: false,
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        AssertPlatePromptHasNoTodOrLightingMood(prompt);
+        Assert.Contains("architecture, materials, era, and props", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not freeze a single scene's time-of-day or lighting mood", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -345,6 +361,18 @@ public class VisualMediumLockTests
 
         Assert.Contains("picture-book", fitted, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain($"<{PromptFieldTags.Optics}>", fitted, StringComparison.Ordinal);
+    }
+
+    private static void AssertPlatePromptHasNoTodOrLightingMood(string prompt)
+    {
+        Assert.DoesNotContain("consistent lighting", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("golden-hour", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("volumetric", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dust motes", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Do not freeze a single scene's time-of-day or lighting mood",
+            prompt,
+            StringComparison.Ordinal);
     }
 
     private static int CountStyleLocks(string prompt) =>

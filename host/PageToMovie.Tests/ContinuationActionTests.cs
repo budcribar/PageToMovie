@@ -134,7 +134,6 @@ public sealed class ContinuationActionTests
                 ["characters_on_screen"] = new List<object?> { "Character_The_Children" },
             },
             new Dictionary<string, object?>(),
-            new Dictionary<string, object?>(),
             new Dictionary<string, List<string>>(),
             rewrite);
 

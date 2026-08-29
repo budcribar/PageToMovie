@@ -640,8 +640,8 @@ public sealed class CastFromScreenplayService
         sb.AppendLine("LOCATIONS (REQUIRED): Also emit location_seed_tokens for every distinct place in");
         sb.AppendLine("Fountain INT./EXT. headings. Same place day vs night = one Loc_* seed.");
         sb.AppendLine("Each description + visual_lock must be filmable set design (architecture, materials,");
-        sb.AppendLine("era, signature props, light sources, palette) — not the place name alone.");
-        sb.AppendLine("Do not freeze a single scene's time-of-day into visual_lock.");
+        sb.AppendLine("era, signature props) — not the place name alone.");
+        sb.AppendLine("Do not freeze a single scene's time-of-day or lighting mood into visual_lock.");
         sb.AppendLine();
         sb.AppendLine("ARCHITECTURAL CONTINUITY FOR PAIRED INT./EXT. PLACES (CRITICAL):");
         sb.AppendLine("For locations that represent the inside and outside of the same building or setting (e.g. INT. SCHOOLROOM and EXT. SCHOOLHOUSE / COUNTRY LANE, INT. TAVERN and EXT. TAVERN):");

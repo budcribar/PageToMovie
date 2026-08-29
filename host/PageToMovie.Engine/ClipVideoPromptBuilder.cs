@@ -215,7 +215,7 @@ public static class ClipVideoPromptBuilder
             videoModel, clipEl, characters, hasPrevVideo);
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
-            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium);
+            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium, rawVisual);
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
@@ -355,7 +355,8 @@ public static class ClipVideoPromptBuilder
         IReadOnlyList<string> onScreenKeys,
         bool useReferenceImages,
         string? previousClipVisualPrompt,
-        string? visualMedium = null)
+        string? visualMedium = null,
+        string? currentClipVisualPrompt = null)
     {
         // "Positions come from that frame" is the tie-breaker, and it is here because the two tags
         // can disagree: the plan writes <Action> from a story beat, so a continuation clip whose
@@ -413,7 +414,7 @@ public static class ClipVideoPromptBuilder
             // hold location/lighting across the cut. Its ACTION is not — re-describing what already
             // happened is what makes the model replay it (Mary19 S03C02 fresh take re-spoke C01's
             // verse from this block). Keep the look, drop the action.
-            var look = PreviousClipLookOnly(previousClipVisualPrompt, onScreenKeys);
+            var look = PreviousClipLookOnly(previousClipVisualPrompt, onScreenKeys, currentClipVisualPrompt);
             if (string.IsNullOrWhiteSpace(look))
                 return continuityBlock;
             return PromptTags.WrapWithNote("Context",
@@ -430,8 +431,14 @@ public static class ClipVideoPromptBuilder
     /// performance direction, and dialogue dropped. Used only where there is no visual input to
     /// carry the look — anything with the previous video (or its last frame) attached needs none
     /// of this. Empty when the prior prompt has no look to salvage.
+    /// When this clip already has a Lighting or Grade tag, those are not re-embedded:
+    /// <see cref="DropRepeatedDirectives"/> only drops byte-identical copies, so two different
+    /// lightings would both ship.
     /// </summary>
-    internal static string PreviousClipLookOnly(string? previousClipVisualPrompt, IReadOnlyList<string> onScreenKeys)
+    internal static string PreviousClipLookOnly(
+        string? previousClipVisualPrompt,
+        IReadOnlyList<string> onScreenKeys,
+        string? currentClipVisualPrompt = null)
     {
         if (string.IsNullOrWhiteSpace(previousClipVisualPrompt))
             return "";
@@ -442,6 +449,8 @@ public static class ClipVideoPromptBuilder
         // flattened form would be guesswork that quietly matches nothing on a current plan.
         foreach (var tag in new[] { PromptFieldTags.Setting, PromptFieldTags.Lighting, PromptFieldTags.Grade })
         {
+            if (PromptTags.Has(currentClipVisualPrompt, tag))
+                continue;
             var m = CommonRegex.Match(clean, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
             if (m.Success)
                 parts.Add(m.Value.Trim());
@@ -558,7 +567,7 @@ public static class ClipVideoPromptBuilder
             return;
         sb.AppendLine(PromptTags.Wrap("SetReference",
             $"{locationImageTag} is the locked LOCATION / SET plate for {locationKey}. " +
-            "Match architecture, materials, props, depth, and lighting of that plate. " +
+            "Match architecture, materials, props, and depth of that plate. " +
             "Do not invent a different building or landscape. Characters from CHARACTER VARIABLES " +
             "perform in this set — faces come from character plates, place from this set plate."));
         sb.AppendLine();

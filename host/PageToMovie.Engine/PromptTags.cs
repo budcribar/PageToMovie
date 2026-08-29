@@ -54,6 +54,11 @@ public static class PromptTags
             return $"<{name}>{cut.TrimEnd(',', ';', ' ', '-')}</{name}>";
         }, System.Text.RegularExpressions.RegexOptions.Singleline, CommonRegex.Timeout);
 
+    /// <summary>True when <paramref name="text"/> already contains a complete &lt;Name&gt;…&lt;/Name&gt; block.</summary>
+    public static bool Has(string? text, string name) =>
+        !string.IsNullOrWhiteSpace(text) &&
+        CommonRegex.IsMatch(text, $@"<{name}>.*?</{name}>", RegexOptions.Singleline);
+
     /// <summary>Remove every &lt;Name&gt;...&lt;/Name&gt; span (and any leading whitespace) from
     /// text — used to fully drop non-essential tagged content during compression (e.g. per-character
     /// &lt;Voice&gt; descriptions; the speaker's &lt;VoiceLock&gt; is shortened, never dropped).</summary>

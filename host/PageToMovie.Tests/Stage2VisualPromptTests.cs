@@ -388,28 +388,26 @@ public class Stage2VisualPromptTests : IDisposable
             ["setting"] = "INT. OLD MAN'S BEDCHAMBER - NIGHT",
             ["primary_location_id"] = "Loc_Old_Mans_Bedchamber",
         };
-        var beat = new Dictionary<string, object?>
-        {
-            ["location_id"] = "Loc_Old_Mans_Bedchamber",
-        };
-        // Seed frozen on first DAY visit (legacy poison) — plan must still use current heading
-        var seeds = new Dictionary<string, object?>
-        {
-            ["Loc_Old_Mans_Bedchamber"] = new Dictionary<string, object?>
-            {
-                ["visual_lock"] = "INT. OLD MAN'S BEDCHAMBER - DAY",
-                ["description"] = "INT. OLD MAN'S BEDCHAMBER - DAY",
-            },
-        };
 
         Assert.Equal(
             "INT. OLD MAN'S BEDCHAMBER - DAY",
-            Stage2PlannerService.LocationLockPhrase(sceneDay, beat, seeds));
+            Stage2PlannerService.LocationLockPhrase(sceneDay));
         Assert.Equal(
             "INT. OLD MAN'S BEDCHAMBER - NIGHT",
-            Stage2PlannerService.LocationLockPhrase(sceneNight, beat, seeds));
+            Stage2PlannerService.LocationLockPhrase(sceneNight));
         Assert.True(Stage2PlannerService.LooksLikeSceneHeading("INT. ROOM - NIGHT"));
         Assert.False(Stage2PlannerService.LooksLikeSceneHeading("OLD MAN'S BEDCHAMBER"));
+    }
+
+    [Fact]
+    public void LocationLockPhrase_is_heading_only_not_architecture()
+    {
+        var scene = new Dictionary<string, object?>
+        {
+            ["setting"] = "clapboard schoolhouse, golden-hour sunlight, warm wood",
+            ["primary_location_id"] = "Loc_Schoolhouse",
+        };
+        Assert.Equal("", Stage2PlannerService.LocationLockPhrase(scene));
     }
 
     [Fact]
