@@ -67,8 +67,8 @@ public sealed class CinematicLightingClassifierTests
         Assert.Contains("Do NOT say \"color grade\"", prompt, StringComparison.Ordinal);
         Assert.Contains("Do NOT name film stock", prompt, StringComparison.Ordinal);
         Assert.Contains("Grade owns", prompt, StringComparison.Ordinal);
-        var exampleStart = prompt.IndexOf("Example (Warm/Day)", StringComparison.Ordinal);
-        var exampleEnd = prompt.IndexOf("Keep the scene", StringComparison.Ordinal);
+        var exampleStart = prompt.IndexOf("Example (Gothic/Night)", StringComparison.Ordinal);
+        var exampleEnd = prompt.IndexOf("Do NOT say", StringComparison.Ordinal);
         Assert.True(exampleStart >= 0 && exampleEnd > exampleStart);
         var examples = prompt[exampleStart..exampleEnd];
         Assert.DoesNotContain("grade", examples, StringComparison.OrdinalIgnoreCase);
