@@ -218,7 +218,6 @@ public sealed class Stage2PlannerService
             .ConfigureAwait(false);
 
         var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
-        var locSeeds = GetDict(gpv, "location_seed_tokens");
         var charSeeds = GetDict(gpv, Keys.CharacterSeedTokens);
         NormalizeCharPlaceholders(charSeeds);
 
@@ -232,7 +231,7 @@ public sealed class Stage2PlannerService
         gpv[JsonKeys.VisualMedium] = visualMedium;
 
         var planned = await PlanScenesInParallelAsync(
-                scenesIn, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
+                scenesIn, charSeeds, styleLock, targetAspectRatio, visualMedium,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                 extendMaxSpeakersPerClip, planningModel, onProgress, ct)
             .ConfigureAwait(false);
@@ -342,7 +341,6 @@ public sealed class Stage2PlannerService
     /// </summary>
     private async Task<List<Dictionary<string, object?>>> PlanScenesInParallelAsync(
         List<Dictionary<string, object?>> scenesIn,
-        Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
         string? targetAspectRatio,
@@ -368,7 +366,7 @@ public sealed class Stage2PlannerService
         using (fanout.SceneGate)
         {
             var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
-                    s, locSeeds, charSeeds, styleLock, targetAspectRatio, visualMedium,
+                    s, charSeeds, styleLock, targetAspectRatio, visualMedium,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                     extendMaxSpeakersPerClip, planningModel, fanout, ct))
                 .ToArray();
@@ -383,7 +381,6 @@ public sealed class Stage2PlannerService
 
     private async Task PlanOneSceneAsync(
         Dictionary<string, object?> s,
-        Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
         string? targetAspectRatio,
@@ -418,7 +415,7 @@ public sealed class Stage2PlannerService
                 tasks.ContinuationAction).ConfigureAwait(false);
 
             var plannedScene = PlanScene(
-                s, locSeeds, charSeeds, styleLock,
+                s, charSeeds, styleLock,
                 tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
                 tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
@@ -889,7 +886,6 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static Dictionary<string, object?>? PlanScene(
         Dictionary<string, object?> scene,
-        Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
         Dictionary<string, int>? aiPacing = null,
@@ -973,7 +969,7 @@ public sealed class Stage2PlannerService
         for (var i = 0; i < beats.Count; i++)
         {
             var planned = PlanSingleClip(
-                beats[i], i, durs[i], t, sceneWork, locSeeds, charSeeds, wardrobe, lids, primary,
+                beats[i], i, durs[i], t, sceneWork, charSeeds, wardrobe, lids, primary,
                 prevBeat, prevLid, activeSpeaker, monologueStep,
                 aiLighting, aiNegative, aiCamera, aiEmotion, aiSound, aiDof, aiColor,
                 aiContinuationActions);
@@ -1115,7 +1111,6 @@ public sealed class Stage2PlannerService
         int dur,
         int t,
         Dictionary<string, object?> sceneWork,
-        Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         Dictionary<string, List<string>> wardrobe,
         List<string> lids,
