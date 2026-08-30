@@ -83,9 +83,14 @@ public class CutComposeContractTests
         Assert.Contains("fps=30,settb=AVTB,setpts=PTS-STARTPTS", src, StringComparison.Ordinal);
         Assert.Contains("anullsrc=channel_layout=stereo:sample_rate=48000", src, StringComparison.Ordinal);
         Assert.Contains("\"-t\", String(outputSec)", src, StringComparison.Ordinal);
-        Assert.Contains("const hardCut = await concatPinned(api, [leftTail.url, rightHead.url], onProgress)", src, StringComparison.Ordinal);
+        Assert.Contains("await concatPinned(api, [leftTail.url, rightHead.url], onProgress)", src, StringComparison.Ordinal);
         var ensureJoin = src[src.IndexOf("async function ensureJoinUrlAsync", StringComparison.Ordinal)
             ..src.IndexOf("async function stitchScenesAsync", StringComparison.Ordinal)];
+        Assert.Contains("function joinAudioOf(join)", src, StringComparison.Ordinal);
+        Assert.Contains("function sceneBodyTrims(prev, join)", src, StringComparison.Ordinal);
+        Assert.Contains("async function audioOffsetJoinAsync", src, StringComparison.Ordinal);
+        Assert.Contains("async function muxVideoAudioAsync", src, StringComparison.Ordinal);
+        Assert.Contains("async function trimBodyAudioOffsetAsync", src, StringComparison.Ordinal);
         Assert.Contains("async function ensureJoinUrlAsync(api, join", ensureJoin, StringComparison.Ordinal);
         Assert.Contains("join.url = hardCut.url", src, StringComparison.Ordinal);
         Assert.Contains("actualSec + 0.25 < expectedSec", src, StringComparison.Ordinal);
@@ -314,6 +319,14 @@ public class CutComposeContractTests
         Assert.Equal(CutComposeAudioJoin.KeepThroughConcat, CutComposeContract.AudioJoin(CutJoinKind.Cut));
         Assert.Equal(CutComposeAudioJoin.KeepThroughConcat, CutComposeContract.AudioJoin(CutJoinKind.CutToBlack));
         Assert.Equal(CutComposeAudioJoin.AcrossfadeOrHardCut, CutComposeContract.AudioJoin(CutJoinKind.Dissolve));
+        Assert.Equal(
+            CutComposeAudioJoin.IncomingLeads,
+            CutComposeContract.AudioJoin(CutJoinKind.Cut, CutJoinAudio.JCut()));
+        Assert.Equal(
+            CutComposeAudioJoin.OutgoingHangs,
+            CutComposeContract.AudioJoin(CutJoinKind.Dissolve, CutJoinAudio.LCut()));
+        Assert.True(CutComposeContract.JoinEncodes(CutJoinKind.Cut, CutJoinAudio.JCut()));
+        Assert.False(CutComposeContract.JoinEncodes(CutJoinKind.Cut, CutJoinAudio.None));
         Assert.Equal(CutComposeAudioJoin.AcrossfadeOrHardCut, CutComposeContract.AudioJoin(CutJoinKind.Dip));
         Assert.Equal(CutComposeAudioJoin.AcrossfadeOrHardCut, CutComposeContract.AudioJoin(CutJoinKind.FadeWhite));
     }

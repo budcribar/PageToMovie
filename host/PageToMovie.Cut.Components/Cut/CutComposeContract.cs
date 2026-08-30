@@ -5,11 +5,12 @@ namespace PageToMovie.Cut.Cut;
 /// clip's native audio on the hop/trim window. Optional music mixes under.
 /// Hard-cut concat keeps audio. Visual dissolves try acrossfade; if that
 /// cannot mix audio, hard-cut audio through the join.
+/// J-cut / L-cut are audio offsets on that join (picture stays at the cut).
 /// Cut-to-black is a short black hold at the join — not a scene card.
 /// </summary>
 public static class CutComposeContract
 {
-    public const string RenderVersion = "cut-render-20260823-media-contract";
+    public const string RenderVersion = "cut-render-20260830-jl-audio";
     public const bool KeepNativeClipAudio = true;
     public const bool PadCardSilence = false;
 
@@ -101,13 +102,34 @@ public static class CutComposeContract
     }
 
     public static CutComposeAudioJoin AudioJoin(CutJoinKind kind) =>
-        kind switch
+        AudioJoin(kind, CutJoinAudio.None);
+
+    public static CutComposeAudioJoin AudioJoin(CutJoinKind kind, CutJoinAudio audio)
+    {
+        if (audio.IsActive)
+            return audio.Kind == CutJoinAudioKind.JCut
+                ? CutComposeAudioJoin.IncomingLeads
+                : CutComposeAudioJoin.OutgoingHangs;
+        return kind switch
         {
             CutJoinKind.Dissolve or CutJoinKind.Dip or CutJoinKind.FadeWhite
                 or CutJoinKind.FadeIn or CutJoinKind.FadeOut
                 => CutComposeAudioJoin.AcrossfadeOrHardCut,
             _ => CutComposeAudioJoin.KeepThroughConcat,
         };
+    }
+
+    public static bool JoinEncodes(CutJoinKind kind, CutJoinAudio audio) =>
+        kind != CutJoinKind.Cut || audio.IsActive;
+
+    public static CutJoinAudio ResolveJoinAudio(CutClip left, CutClip? right)
+    {
+        if (right is null || left.JoinAudio.Kind == CutJoinAudioKind.None)
+            return CutJoinAudio.None;
+        return left.JoinAudio.Clamped(
+            CutTimelineLayout.SlicedSeconds(left),
+            CutTimelineLayout.SlicedSeconds(right));
+    }
 
     public const string ExportVideoCodec = "libx264";
     public const string ExportPixelFormat = "yuv420p";
@@ -219,4 +241,6 @@ public enum CutComposeAudioJoin
 {
     KeepThroughConcat,
     AcrossfadeOrHardCut,
+    IncomingLeads,
+    OutgoingHangs,
 }

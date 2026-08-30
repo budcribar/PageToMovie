@@ -383,6 +383,9 @@ public static class CutPlayMerge
         sb.Append('J').Append(clip.JoinOverride is { } join
             ? CutTransitionMap.WireName(join)
             : clip.FountainTransition ?? "");
+        if (clip.JoinAudio.IsActive)
+            sb.Append('A').Append(CutJoinAudio.WireName(clip.JoinAudio.Kind))
+                .Append(Num(clip.JoinAudio.ResolvedSeconds));
         if (clip.Card.Enabled)
         {
             sb.Append("C").Append(clip.Card.Text).Append('/').Append(Num(clip.Card.HoldSeconds));

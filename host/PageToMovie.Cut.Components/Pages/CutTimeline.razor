@@ -140,9 +140,9 @@
                         <button type="button"
                                 class="@JoinClass(tick)"
                                 data-testid="cut-tl-join"
-                                title="@CutTransitionMap.TickLabel(tick.Kind)"
+                                title="@JoinTickTitle(tick)"
                                 @onclick="() => ToggleJoinMenu(tick.AfterIndex)">
-                            @CutTransitionMap.TickLabel(tick.Kind)
+                            @JoinTickLabel(tick)
                         </button>
                         @if (_joinMenu == tick.AfterIndex)
                         {
@@ -155,6 +155,39 @@
                                         @CutTransitionMap.TickLabel(kind)
                                     </button>
                                 }
+                                @{ var audio = JoinAudioOf(tick.AfterIndex); }
+                                <div class="cut-tl-join-audio" data-testid="cut-tl-join-audio">
+                                    <button type="button"
+                                            class="@(audio.Kind == CutJoinAudioKind.JCut ? "is-on" : "")"
+                                            data-testid="cut-tl-jcut"
+                                            @onclick="() => SetJoinAudioAsync(tick.AfterIndex, CutJoinAudioKind.JCut)">
+                                        J-cut
+                                    </button>
+                                    <button type="button"
+                                            class="@(audio.Kind == CutJoinAudioKind.LCut ? "is-on" : "")"
+                                            data-testid="cut-tl-lcut"
+                                            @onclick="() => SetJoinAudioAsync(tick.AfterIndex, CutJoinAudioKind.LCut)">
+                                        L-cut
+                                    </button>
+                                    <button type="button"
+                                            class="@(audio.Kind == CutJoinAudioKind.None ? "is-on" : "")"
+                                            data-testid="cut-tl-audio-with-picture"
+                                            @onclick="() => SetJoinAudioAsync(tick.AfterIndex, CutJoinAudioKind.None)">
+                                        With picture
+                                    </button>
+                                    @if (audio.IsActive)
+                                    {
+                                        <div class="cut-tl-join-audio-sec">
+                                            <button type="button"
+                                                    data-testid="cut-tl-join-audio-less"
+                                                    @onclick="() => NudgeJoinAudioAsync(tick.AfterIndex, -CutJoinAudio.StepSeconds)">−</button>
+                                            <span data-testid="cut-tl-join-audio-sec">@audio.Seconds.ToString("0.##")s</span>
+                                            <button type="button"
+                                                    data-testid="cut-tl-join-audio-more"
+                                                    @onclick="() => NudgeJoinAudioAsync(tick.AfterIndex, CutJoinAudio.StepSeconds)">+</button>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>

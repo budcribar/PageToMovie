@@ -22,11 +22,13 @@ public static class CutSplit
 
         var oldOut = left.MarkOut;
         var oldJoin = left.JoinOverride;
+        var oldAudio = left.JoinAudio;
         var oldFountain = left.FountainTransition;
         PartitionDeletes(left, local, out var leftDeletes, out var rightDeletes);
 
         right = CloneWindow(left, local, oldOut);
         right.JoinOverride = oldJoin;
+        right.JoinAudio = oldAudio;
         right.FountainTransition = oldFountain;
         right.RangeDeletes.Clear();
         foreach (var span in rightDeletes)
@@ -37,6 +39,7 @@ public static class CutSplit
         foreach (var span in leftDeletes)
             CutRangeDelete.TryAdd(left.RangeDeletes, span.Start, span.End, left.MarkIn, left.MarkOut, out _);
         left.JoinOverride = null;
+        left.JoinAudio = CutJoinAudio.None;
         left.FountainTransition = null;
 
         clips.Insert(index + 1, right);

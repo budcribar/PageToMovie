@@ -273,6 +273,7 @@ public static class CutProjectFile
         foreach (var del in row.RangeDeletes ?? [])
             CutRangeDelete.TryAdd(clip.RangeDeletes, del.Start, del.End, clip.MarkIn, clip.MarkOut, out _);
         clip.JoinOverride = ParseJoinOverride(row.JoinOut);
+        clip.JoinAudio = ParseJoinAudio(row.JoinAudio, row.JoinAudioSec);
         clip.Muted = row.Muted ?? false;
         if (!string.IsNullOrWhiteSpace(row.FountainTransition))
             clip.FountainTransition = row.FountainTransition;
@@ -294,6 +295,12 @@ public static class CutProjectFile
         MarkOut = clip.MarkOut,
         RangeDeletes = clip.RangeDeletes.Select(r => new SpanDto { Start = r.Start, End = r.End }).ToList(),
         JoinOut = clip.JoinOverride is { } j ? CutTransitionMap.WireName(j) : null,
+        JoinAudio = clip.JoinAudio.Kind == CutJoinAudioKind.None
+            ? null
+            : CutJoinAudio.WireName(clip.JoinAudio.Kind),
+        JoinAudioSec = clip.JoinAudio.Kind == CutJoinAudioKind.None
+            ? null
+            : clip.JoinAudio.ResolvedSeconds,
         FountainTransition = clip.FountainTransition,
         Muted = clip.Muted ? true : null,
         Card = clip.Card.Enabled || !string.IsNullOrWhiteSpace(clip.Card.Text)
@@ -352,6 +359,15 @@ public static class CutProjectFile
         target.Fade = CutTextStyle.ParseFade(dto.Fade);
         target.Font = CutTextStyle.ParseFont(dto.Font);
         target.Align = CutTextStyle.ParseAlign(dto.Align);
+    }
+
+    private static CutJoinAudio ParseJoinAudio(string? wire, double? seconds)
+    {
+        var kind = CutJoinAudio.ParseKind(wire);
+        if (kind == CutJoinAudioKind.None)
+            return CutJoinAudio.None;
+        var sec = seconds is { } value && value > 0.05 ? value : CutJoinAudio.DefaultSeconds;
+        return new CutJoinAudio(kind, sec);
     }
 
     private static CutJoinKind? ParseJoinOverride(string? wire) =>
@@ -459,6 +475,8 @@ public static class CutProjectFile
         public double MarkOut { get; set; }
         public List<SpanDto>? RangeDeletes { get; set; }
         public string? JoinOut { get; set; }
+        public string? JoinAudio { get; set; }
+        public double? JoinAudioSec { get; set; }
         public string? FountainTransition { get; set; }
         public bool? Muted { get; set; }
         public CardDto? Card { get; set; }

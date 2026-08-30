@@ -434,7 +434,7 @@
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
     border-radius: 8px;
     background: #0c0e13;
 }
@@ -710,7 +710,7 @@
 .cut-tl-join-wrap {
     position: absolute;
     top: -2px;
-    z-index: 4;
+    z-index: 8;
     transform: translateX(-50%);
 }
 
@@ -732,6 +732,8 @@
 .cut-tl-join.is-white { background: #d8d8e0; color: #222; }
 .cut-tl-join.is-black { background: #000; color: #eee; }
 .cut-tl-join.is-cut { background: #2a2e38; }
+.cut-tl-join.is-jcut { box-shadow: inset 3px 0 0 #7cb8ff; }
+.cut-tl-join.is-lcut { box-shadow: inset 3px 0 0 #e0b05a; }
 
 .cut-tl-join-menu {
     display: grid;
@@ -741,7 +743,7 @@
     border: 1px solid var(--fs-border-color);
     border-radius: 8px;
     padding: 0.25rem;
-    min-width: 7.5rem;
+    min-width: 8.5rem;
 }
 
 .cut-tl-join-menu button {
@@ -760,6 +762,24 @@
 .cut-tl-join-menu button:hover {
     background: #4a3278;
     color: #f7f4ff;
+}
+
+.cut-tl-join-audio {
+    display: grid;
+    gap: 0.15rem;
+    margin-top: 0.2rem;
+    padding-top: 0.2rem;
+    border-top: 1px solid var(--fs-border-color);
+}
+
+.cut-tl-join-audio-sec {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    padding: 0.1rem 0.2rem;
+    color: var(--fs-text-secondary);
+    font-size: 0.72rem;
 }
 
 .cut-tl-music {
