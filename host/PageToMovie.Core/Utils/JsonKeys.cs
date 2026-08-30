@@ -17,4 +17,5 @@ public static class JsonKeys
     public const string LocationPrefix = "Loc_";
     public const string VisualMedium = "visual_medium";
     public const string RenderStyleLock = "render_style_lock";
+    public const string PerformanceLock = "performance_lock";
 }

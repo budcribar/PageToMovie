@@ -14,6 +14,8 @@ public sealed class CharacterEmotionArcClassifierTests
     {
         public bool IsConfigured => true;
         public string ResponseToReturn { get; set; } = "";
+        public string? LastUserPrompt { get; private set; }
+        public string? LastSystemPrompt { get; private set; }
 
         public Task<string> CompleteAsync(
             string systemPrompt,
@@ -23,6 +25,8 @@ public sealed class CharacterEmotionArcClassifierTests
             CancellationToken ct = default,
             string? mode = null, string? reasoningEffort = null)
         {
+            LastSystemPrompt = systemPrompt;
+            LastUserPrompt = userPrompt;
             return Task.FromResult(ResponseToReturn);
         }
     }
@@ -74,6 +78,50 @@ public sealed class CharacterEmotionArcClassifierTests
         Assert.Contains("wide-eyed stare", emotions["b1"].MicroExpression);
         Assert.Equal(9, emotions["b2"].Intensity);
         Assert.Contains("trembling lips", emotions["b2"].MicroExpression);
+    }
+
+    [Fact]
+    public async Task ClassifySceneEmotionAsync_UserPromptIncludesPerformanceLock()
+    {
+        var mockChat = new MockChatClient
+        {
+            ResponseToReturn = """
+            {
+              "emotions": [
+                {
+                  "beat_id": "b1",
+                  "intensity": 6,
+                  "micro_expression": "Haunted stare",
+                  "acting_prompt": "Acting intensity 6/10: Haunted stare, jaw clench"
+                }
+              ]
+            }
+            """
+        };
+
+        var opts = Options.Create(new PageToMovieOptions { ClassifyCharacterEmotionArcWithChat = true });
+        var classifier = new CharacterEmotionArcClassifier(mockChat, opts, NullLogger<CharacterEmotionArcClassifier>.Instance);
+
+        var scene = new Dictionary<string, object?>
+        {
+            ["scene_number"] = 1,
+            ["setting"] = "INT. BARE ROOM - NIGHT",
+            [PageToMovie.Core.Utils.JsonKeys.PerformanceLock] =
+                "PERFORMANCE LOCK: first-person confessional; address an implied listener when speaking.",
+        };
+        var beats = new List<Dictionary<string, object?>>
+        {
+            new() { ["beat_id"] = "b1", ["dialogue"] = "True!—nervous—very, very dreadfully nervous" },
+        };
+
+        var emotions = await classifier.ClassifySceneEmotionAsync(scene, beats);
+
+        Assert.NotNull(emotions);
+        Assert.NotNull(mockChat.LastUserPrompt);
+        Assert.Contains("FILM PERFORMANCE LOCK", mockChat.LastUserPrompt, StringComparison.Ordinal);
+        Assert.Contains("confessional", mockChat.LastUserPrompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PERFORMANCE LOCK", mockChat.LastSystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("only writer", mockChat.LastSystemPrompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

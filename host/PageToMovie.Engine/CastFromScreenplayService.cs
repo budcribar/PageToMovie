@@ -437,9 +437,12 @@ public sealed class CastFromScreenplayService
         try
         {
             if (normalized.TryGetValue(KeyPerformanceLock, out var perfObj) &&
-                perfObj?.ToString() is { Length: > 0 } perf &&
-                await _projectRules.EnsurePerformanceRuleFromLockAsync(projectId, perf, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
-                onProgress?.Invoke("Project performance/address rule updated from book/screenplay.");
+                perfObj?.ToString() is { Length: > 0 } perf)
+            {
+                PersistPerformanceLockToVisionMeta(projectId, perf);
+                if (await _projectRules.EnsurePerformanceRuleFromLockAsync(projectId, perf, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
+                    onProgress?.Invoke("Project performance/address rule updated from book/screenplay.");
+            }
         }
         catch (Exception ex)
         {
@@ -1184,6 +1187,25 @@ public sealed class CastFromScreenplayService
         if (parsed.TryGetValue(KeyPerformanceLock, out var pl) && pl is not null &&
             !string.IsNullOrWhiteSpace(pl.ToString()))
             outDoc[KeyPerformanceLock] = pl.ToString()!.Trim();
+    }
+
+    /// <summary>
+    /// Write extract lock onto an already-decided vision_meta. Do not create vision_meta
+    /// from extract alone (that would invent a medium). Do not overwrite a lock adaptation already set.
+    /// </summary>
+    private void PersistPerformanceLockToVisionMeta(string projectId, string performanceLock)
+    {
+        var dir = _projects.GetProjectDir(projectId);
+        var doc = ProjectVisionMeta.TryRead(dir);
+        if (doc is null || !ProjectVisionMeta.IsDecidedMedium(doc.VisualMedium))
+            return;
+        if (!string.IsNullOrWhiteSpace(doc.PerformanceLock))
+            return;
+        var normalized = ProjectRulesService.NormalizePerformanceRuleText(performanceLock);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
+        doc.PerformanceLock = normalized;
+        ProjectVisionMeta.Write(dir, doc);
     }
 
     private static Dictionary<string, object?> NormalizeCharacterSeeds(Dictionary<string, object?> seedsIn)

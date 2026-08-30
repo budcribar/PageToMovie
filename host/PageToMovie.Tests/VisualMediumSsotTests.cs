@@ -137,6 +137,33 @@ public sealed class VisualMediumSsotTests : IDisposable
     }
 
     [Fact]
+    public async Task Stage2_fails_when_project_has_no_performance_lock()
+    {
+        const string projectId = "Demo";
+        await OfflineTestModelConfig.ApplyAsync(_store, projectId, writeDecidedVision: false);
+        ProjectVisionMeta.Write(_store.GetProjectDir(projectId), new ProjectVisionMeta.Document
+        {
+            VisualMedium = ProjectVisionMeta.MediumIllustrated,
+            DecidedBy = "adaptation",
+        });
+        ScreenplayService.SaveDraft(_store, projectId, """
+            Title: Missing Performance Lock
+
+            INT. ROOM - DAY
+
+            HERO
+            Hello.
+            """);
+        var sign = ScreenplayService.SignOff(_store, projectId);
+        Assert.True(sign.Ok, sign.Error);
+
+        var planner = new Stage2PlannerService(_store, NullLogger<Stage2PlannerService>.Instance);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => planner.PlanAsync(projectId, resolution: "480p", scenes: "all"));
+        Assert.Equal(ProjectVisionMeta.MissingPerformanceLockMessage, ex.Message);
+    }
+
+    [Fact]
     public void ClipVideoPromptBuilder_does_not_invent_photoreal_or_3d_when_medium_missing()
     {
         var clip = JsonDocument.Parse(JsonSerializer.Serialize(new

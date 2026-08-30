@@ -224,6 +224,7 @@ public sealed class Stage2PlannerService
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var vision = ProjectVisionMeta.RequireDecided(projectDir);
+        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(projectDir);
         var styleLock = vision.RenderStyleLock;
         var visualMedium = vision.VisualMedium;
         var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null)
@@ -232,7 +233,7 @@ public sealed class Stage2PlannerService
         gpv[JsonKeys.VisualMedium] = visualMedium;
 
         var planned = await PlanScenesInParallelAsync(
-                scenesIn, charSeeds, styleLock, targetAspectRatio, visualMedium,
+                scenesIn, charSeeds, styleLock, targetAspectRatio, visualMedium, performanceLock,
                 durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                 extendMaxSpeakersPerClip, planningModel, onProgress, ct)
             .ConfigureAwait(false);
@@ -346,6 +347,7 @@ public sealed class Stage2PlannerService
         string? styleLock,
         string? targetAspectRatio,
         string? visualMedium,
+        string? performanceLock,
         int durMinSeconds,
         int durMaxSeconds,
         int durAbsMaxSeconds,
@@ -367,7 +369,7 @@ public sealed class Stage2PlannerService
         using (fanout.SceneGate)
         {
             var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
-                    s, charSeeds, styleLock, targetAspectRatio, visualMedium,
+                    s, charSeeds, styleLock, targetAspectRatio, visualMedium, performanceLock,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
                     extendMaxSpeakersPerClip, planningModel, fanout, ct))
                 .ToArray();
@@ -386,6 +388,7 @@ public sealed class Stage2PlannerService
         string? styleLock,
         string? targetAspectRatio,
         string? visualMedium,
+        string? performanceLock,
         int durMinSeconds,
         int durMaxSeconds,
         int durAbsMaxSeconds,
@@ -403,6 +406,8 @@ public sealed class Stage2PlannerService
             s[JsonKeys.VisualMedium] = visualMedium;
         if (!string.IsNullOrWhiteSpace(styleLock))
             s[JsonKeys.RenderStyleLock] = styleLock;
+        if (!string.IsNullOrWhiteSpace(performanceLock))
+            s[JsonKeys.PerformanceLock] = performanceLock;
 
         var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
         await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
@@ -2038,6 +2043,7 @@ public sealed class Stage2PlannerService
         // Lift them into their own slot rather than leaving them buried in the action.
         var (action, _) = SplitSoundCues(ve);
         action = CameraTagWriter.StripFromAction(action);
+        action = PerformanceTagWriter.StripEyelineFromAction(action);
 
         // Emit full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.

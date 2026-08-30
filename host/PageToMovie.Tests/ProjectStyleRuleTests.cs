@@ -81,8 +81,11 @@ public class ProjectStyleRuleTests : IDisposable
             "first-person confessional often addresses implied listener when speaking",
             approvedBy: "cast_extract");
         Assert.True(changed);
+        var doc = await _rules.LoadAsync("Demo");
+        var perf = Assert.Single(doc.Active, r => r.Id == ProjectRulesService.PerformanceRuleId);
+        Assert.Contains("confessional", perf.Text, StringComparison.OrdinalIgnoreCase);
+        // Generate reads vision_meta — the film lock is not a second house-rule writer.
         var block = await _rules.GetActiveRulesBlockAsync("Demo");
-        Assert.Contains("performance", block, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("confessional", block, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PERFORMANCE LOCK", block, StringComparison.OrdinalIgnoreCase);
     }
 }

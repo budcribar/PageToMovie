@@ -69,4 +69,28 @@ public sealed class ProjectVisionMetaTests
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
     }
+
+    [Fact]
+    public void RequirePerformanceLock_fails_when_vision_has_no_lock()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-perf-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(Path.Combine(dir, "source"));
+        try
+        {
+            ProjectVisionMeta.Write(dir, new ProjectVisionMeta.Document
+            {
+                VisualMedium = ProjectVisionMeta.MediumIllustrated,
+                DecidedBy = "adaptation",
+            });
+            Assert.Null(ProjectVisionMeta.TryGetPerformanceLock(dir));
+            var ex = Assert.Throws<InvalidOperationException>(() => ProjectVisionMeta.RequirePerformanceLock(dir));
+            Assert.Equal(ProjectVisionMeta.MissingPerformanceLockMessage, ex.Message);
+            Assert.Contains("out of date", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("performance lock", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
 }
