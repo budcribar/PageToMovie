@@ -22,10 +22,17 @@ public readonly record struct CutJoinAudio(CutJoinAudioKind Kind, double Seconds
 
     public bool IsActive => Kind != CutJoinAudioKind.None && Seconds > 0.05;
 
-    public double ResolvedSeconds =>
-        Kind == CutJoinAudioKind.None
-            ? 0
-            : (Seconds > 0.05 ? Seconds : DefaultSeconds);
+    public double ResolvedSeconds
+    {
+        get
+        {
+            if (Kind == CutJoinAudioKind.None)
+                return 0;
+            if (Seconds > 0.05)
+                return Seconds;
+            return DefaultSeconds;
+        }
+    }
 
     public static double ClampSeconds(double requested, double leftSec, double rightSec)
     {

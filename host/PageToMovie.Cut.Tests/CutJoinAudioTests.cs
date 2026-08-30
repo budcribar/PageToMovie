@@ -7,6 +7,17 @@ namespace PageToMovie.Cut.Tests;
 public class CutJoinAudioTests
 {
     [Fact]
+    public void ResolvedSeconds_none_is_zero_else_seconds_or_default()
+    {
+        Assert.Equal(0, CutJoinAudio.None.ResolvedSeconds);
+        Assert.Equal(0, new CutJoinAudio(CutJoinAudioKind.None, 1).ResolvedSeconds);
+        Assert.Equal(1, CutJoinAudio.JCut(1).ResolvedSeconds);
+        Assert.Equal(0.5, CutJoinAudio.LCut(0.5).ResolvedSeconds);
+        Assert.Equal(CutJoinAudio.DefaultSeconds, CutJoinAudio.JCut(0).ResolvedSeconds);
+        Assert.Equal(CutJoinAudio.DefaultSeconds, CutJoinAudio.LCut(0.01).ResolvedSeconds);
+    }
+
+    [Fact]
     public void Persist_round_trips_jcut_and_lcut_on_the_join()
     {
         var left = NewClip(1, 1, 8);
