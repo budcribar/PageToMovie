@@ -25,29 +25,6 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
-    public async Task CollectSceneMediaUrlsAsync_PreservesUserCustomSceneOverride_WhenIsUserOverrideIsTrue()
-    {
-        // Arrange: scene 1 has a custom user scene override
-        var projectId = "test-project";
-        var handler = new FakeHttpMessageHandler(req => new HttpResponseMessage(HttpStatusCode.NotFound));
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        var engineClient = new EngineApiClient(httpClient);
-        var stitchService = new ClientVideoStitchService(null!, engineClient);
-
-        var sceneSummaries = new List<SceneSummary>
-        {
-            new() { SceneNumber = 1, CompositeExists = true, IsUserOverride = true, ClipsOnDisk = 2 }
-        };
-
-        // Act
-        var urls = await stitchService.CollectSceneMediaUrlsAsync(projectId, new[] { 1 }, sceneSummaries, staleScenes: null);
-
-        // Assert: MUST return custom user composite URL (1 URL) to preserve editor scene overrides
-        Assert.Single(urls);
-        Assert.Contains("scenes/1/composite", urls[0]);
-    }
-
-    [Fact]
     public async Task CollectSceneMediaUrlsAsync_PrefersAtomicClips_PreventsStaleCompositeDuplication()
     {
         // Arrange: scene 1 has both a composite AND individual clips on disk
@@ -876,5 +853,36 @@ public class ClientVideoStitchServiceTests
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             return ValueTask.FromResult(value!);
         }
+    }
+
+    [Fact]
+    public void Play_resolves_the_take_the_Film_page_is_showing()
+    {
+        var row = new ClipSummary { ClipNumber = 1, FileName = "scene_01_clip_01_take_03.mp4" };
+
+        // The pointer is the current take, so it is tried first even when the server row names a
+        // different one — that drift is what had Review playing take 3 while Film showed take 5.
+        Assert.Equal(
+            new[] { "assets/video/scene_01_clip_01_take_05.mp4", "assets/video/scene_01_clip_01_take_03.mp4" },
+            ClientVideoStitchService.ClipPathCandidates("assets/video/scene_01_clip_01_take_05.mp4", row));
+    }
+
+    [Fact]
+    public void Without_a_pointer_the_row_take_is_the_fallback()
+    {
+        var row = new ClipSummary { ClipNumber = 1, FileName = "scene_01_clip_01_take_03.mp4" };
+
+        Assert.Equal(
+            new[] { "assets/video/scene_01_clip_01_take_03.mp4" },
+            ClientVideoStitchService.ClipPathCandidates(null, row));
+    }
+
+    [Fact]
+    public void The_canonical_alias_is_never_a_candidate()
+    {
+        // scene_SS_clip_CC.mp4 is a leftover from before takes; it is not a current take.
+        var row = new ClipSummary { ClipNumber = 1, FileName = "scene_01_clip_01.mp4" };
+
+        Assert.Empty(ClientVideoStitchService.ClipPathCandidates(null, row));
     }
 }

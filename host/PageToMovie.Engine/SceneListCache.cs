@@ -85,8 +85,8 @@ public sealed class SceneListCache
     }
 
     // JSON round-trip rather than a field-by-field copy: a manual copy silently drops any field the
-    // author forgets to list, and stays silent forever — SceneSummary.IsCredits, IsUserOverride,
-    // IsApproved, and HasBackgroundMusic were all missing here and got reset to their default
+    // author forgets to list, and stays silent forever — SceneSummary.IsCredits, IsApproved
+    // and HasBackgroundMusic were all missing here and got reset to their default
     // (false) on every cache read, e.g. an end-credits scene reporting IsCredits=false and never
     // being routed to client-side rendering. This can't drop a field again when SceneSummary grows
     // new ones later.

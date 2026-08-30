@@ -70,21 +70,8 @@ public sealed class ClientVideoStitchService
     {
         var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sn);
 
-        // 1. If scene has an explicit user/editor custom override, strictly use the custom scene composite
-        if (summary?.IsUserOverride == true)
-        {
-            urls.Add(_engine.CompositeVideoUrl(projectId, sn));
-            return;
-        }
-
-        // 2. Standard scene: cached scene details when the list fingerprint still matches
+        // Cached scene details when the list fingerprint still matches.
         var detail = await TryGetSceneDetailAsync(projectId, sn, summary, ct);
-
-        if (detail?.IsUserOverride == true)
-        {
-            urls.Add(_engine.CompositeVideoUrl(projectId, sn));
-            return;
-        }
 
         var skipped = await TryAppendAllPlayableClipUrlsAsync(urls, projectId, sn, detail, ct);
         if (skipped.Count > 0)
@@ -423,6 +410,16 @@ public sealed class ClientVideoStitchService
         return resolved;
     }
 
+    /// <summary>
+    /// The clip the operator is looking at on the Film page. <c>.current.json</c> decides which
+    /// take that is — the same pointer <c>ScenesPlayback</c> resolves — so Play and the clip
+    /// player never disagree about what "this clip" means.
+    /// <para>The scene row's file name is a fallback, not the answer. It comes from the server,
+    /// and the two drift by design in the cases the promote path already names out loud: promoted
+    /// on the server while the media folder was disconnected, or while it refused the pointer
+    /// write. Reading the row first meant Review played one take and the Film page showed another
+    /// for the same slot.</para>
+    /// </summary>
     private async Task<string?> TryLocalClipBlobUrlAsync(
         string projectId,
         int sceneNumber,
@@ -432,21 +429,38 @@ public sealed class ClientVideoStitchService
         if (_media is null)
             return null;
 
-        if (!string.IsNullOrWhiteSpace(clipRow.FileName)
-            && !ClipTakeNaming.IsCanonicalClipName(clipRow.FileName))
-        {
-            var fromRow = await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{clipRow.FileName}")
-                .ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(fromRow))
-                return fromRow;
-        }
-
         var currentRel = currentTakeRel
             ?? await _media.ResolveCurrentTakeRelativePathAsync(projectId, sceneNumber, clipRow.ClipNumber)
                 .ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(currentRel))
-            return null;
-        return await _media.GetLocalBlobUrlAsync(projectId, currentRel).ConfigureAwait(false);
+
+        foreach (var candidate in ClipPathCandidates(currentRel, clipRow))
+        {
+            var url = await _media.GetLocalBlobUrlAsync(projectId, candidate).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(url))
+                return url;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Where Play looks for a clip, in order. <c>.current.json</c> decides which take that is —
+    /// the same pointer the Film page's clip player resolves — so the two never disagree about
+    /// what "this clip" means.
+    /// <para>The scene row's file name is a fallback, not the answer. It comes from the server,
+    /// and the two drift in the cases the promote path already names out loud: promoted on the
+    /// server while the media folder was disconnected, or while it refused the pointer write.
+    /// Reading the row first meant Review played one take while the Film page showed another.
+    /// The canonical <c>scene_SS_clip_CC.mp4</c> name is never a candidate: it is a leftover
+    /// alias, not a take.</para>
+    /// </summary>
+    internal static IEnumerable<string> ClipPathCandidates(string? currentTakeRel, ClipSummary clipRow)
+    {
+        if (!string.IsNullOrWhiteSpace(currentTakeRel))
+            yield return currentTakeRel;
+        if (!string.IsNullOrWhiteSpace(clipRow.FileName)
+            && !ClipTakeNaming.IsCanonicalClipName(clipRow.FileName))
+            yield return $"{ClipTakeNaming.AssetsVideoPrefix}/{clipRow.FileName}";
     }
 
     /// <summary>Operator-facing copy when a clip has no local blob and no server mp4.</summary>

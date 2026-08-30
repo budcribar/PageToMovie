@@ -296,7 +296,6 @@ public sealed class PlayMediaIndex
             summary.ClipCount,
             summary.ClipsOnDisk,
             summary.CompositeExists ? 1 : 0,
-            summary.IsUserOverride ? 1 : 0,
             missing,
             summary.StaleClipCount,
             summary.HasStaleClips ? 1 : 0,
@@ -316,7 +315,6 @@ public sealed class PlayMediaIndex
             detail.ClipCount > 0 ? detail.ClipCount : detail.Clips?.Count ?? 0,
             detail.ClipsOnDisk,
             detail.CompositeExists ? 1 : 0,
-            detail.IsUserOverride ? 1 : 0,
             string.Join(',', missing),
             0,
             0,
@@ -332,7 +330,6 @@ public sealed class PlayMediaIndex
                 detail?.SceneNumber ?? 0,
                 detail?.ClipCount ?? 0,
                 detail?.CompositeExists == true ? 1 : 0,
-                detail?.IsUserOverride == true ? 1 : 0,
                 detail?.HasBackgroundMusic == true ? 1 : 0);
         }
 

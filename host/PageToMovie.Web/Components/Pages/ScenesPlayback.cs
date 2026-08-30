@@ -128,15 +128,14 @@ public partial class Scenes
                 catch { /* fallback to server URL */ }
             }
 
-            if (string.IsNullOrWhiteSpace(_clipVideoUrl))
+            if (string.IsNullOrWhiteSpace(_clipVideoUrl)
+                && S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == clip) is { } row)
             {
-                var row = S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == clip);
-                if (row is { ProviderLeadInSeconds: > 0.1 })
-                {
-                    // Provider copy is combined (previous clip at the head). Slice this
-                    // clip's own hop — do not play C-1's file or the raw combined URL.
-                    _clipServerVideoUrl = await S.Stitch.ResolveServerClipUrlAsync(S._projectId, scene, row);
-                }
+                // Same fallback Play uses, so both pages show the same clip when the media folder
+                // has not got it. ResolveServerClipUrlAsync slices the previous clip off a
+                // provider-combined copy when the row says so, and returns the plain URL
+                // otherwise — asking only for lead-in clips left this player blank for the rest.
+                _clipServerVideoUrl = await S.Stitch.ResolveServerClipUrlAsync(S._projectId, scene, row);
             }
         }
         finally

@@ -624,12 +624,6 @@ window.PageToMovieMedia = {
         }
     },
 
-    revokeBlobUrls: function () {
-        for (const k of Object.keys(this._blobUrls)) {
-            try { URL.revokeObjectURL(this._blobUrls[k]); } catch (_) { /* */ }
-        }
-        this._blobUrls = {};
-    },
 
     /**
      * Hash a blob: URL (stitched export) for registry + demo.

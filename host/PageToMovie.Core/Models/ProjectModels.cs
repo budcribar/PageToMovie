@@ -1000,7 +1000,6 @@ public sealed class SceneSummary
     /// <summary>Preferred display: actual if known, else planned.</summary>
     public double? DurationSeconds { get; set; }
     public bool CompositeExists { get; set; }
-    public bool IsUserOverride { get; set; }
     public List<string> CharactersOnScreen { get; set; } = new();
     public List<string> LocationIds { get; set; } = new();
     public string? PrimaryLocationId { get; set; }
@@ -1118,7 +1117,6 @@ public sealed class SceneDetail
     public bool CompositeExists { get; set; }
     public bool HasBackgroundMusic { get; set; }
     public MusicScoreInfo? MusicScore { get; set; }
-    public bool IsUserOverride { get; set; }
     public string? CompositeUrl { get; set; }
     public List<string> CharactersOnScreen { get; set; } = new();
     public List<string> LocationIds { get; set; } = new();
