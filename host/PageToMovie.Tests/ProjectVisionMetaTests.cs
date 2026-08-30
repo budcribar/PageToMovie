@@ -35,8 +35,11 @@ public sealed class ProjectVisionMetaTests
                 """{"schema_version":"extract_meta.v1","book_kind":"short","pages":12}""");
             Assert.Null(ProjectVisionMeta.TryGetDecided(dir));
             var ex = Assert.Throws<InvalidOperationException>(() => ProjectVisionMeta.RequireDecided(dir));
-            Assert.Contains("out of date", ex.Message, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("visual medium", ex.Message, StringComparison.OrdinalIgnoreCase);
+            // Says what is missing and where the operator fixes it — choosing the look is free,
+            // and the message used to send them back through a paid book/screenplay run.
+            Assert.Contains("no look yet", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("regen", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

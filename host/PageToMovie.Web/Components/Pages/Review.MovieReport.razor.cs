@@ -35,6 +35,12 @@ public partial class Review_MovieReport
 
     internal bool ShowMovieOverview => FilterSceneNumber is null;
 
+    /// <summary>Score for the scene in view: the groups covering it, averaged when it spans more.</summary>
+    internal int? SceneScore =>
+        ShowMovieOverview || VisibleGroups.Count == 0
+            ? null
+            : (int)Math.Round(VisibleGroups.Average(g => g.Score));
+
     internal bool ShowCard =>
         Report is not null && (ShowMovieOverview || VisibleGroups.Count > 0);
 

@@ -1,4 +1,5 @@
 using PageToMovie.Core.Models;
+using PageToMovie.Engine;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -62,6 +63,48 @@ public sealed class MovieAutoReviewSceneFilterTests
         Assert.Contains("DialogueNotes", razor, StringComparison.Ordinal);
         Assert.Contains("group.Evidence", razor, StringComparison.Ordinal);
         Assert.DoesNotContain("Audio &amp; Dialogue Alignment", razor, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_passing_group_flags_only_the_scenes_its_evidence_cites()
+    {
+        var cited = new MovieSceneGroupFeedback
+        {
+            SceneRange = "Scenes 1-4",
+            SceneNumbers = { 1, 2, 3, 4 },
+            Score = 8,
+            VisualConsistencyNotes = "background art jumps to 3D render",
+            Evidence = { new MovieReviewEvidence { Ref = "S03C01", Claim = "2D watercolor to 3D render" } },
+        };
+
+        Assert.Equal(new[] { 3 }, MovieAutoReviewService.CollectFlaggedScenes([cited]));
+    }
+
+    [Fact]
+    public void Praise_that_names_the_medium_does_not_flag_a_passing_group()
+    {
+        // The keyword scan cannot tell "stays photoreal throughout" from a complaint, so a group
+        // with no cite has nothing to send anyone back to.
+        var praise = new MovieSceneGroupFeedback
+        {
+            SceneRange = "Scenes 1-4",
+            SceneNumbers = { 1, 2, 3, 4 },
+            Score = 9,
+            VisualConsistencyNotes = "Character look stays photoreal throughout, no drift",
+        };
+
+        Assert.Empty(MovieAutoReviewService.CollectFlaggedScenes([praise]));
+    }
+
+    [Fact]
+    public void A_failing_group_still_flags_every_scene_it_covers()
+    {
+        var failing = new MovieSceneGroupFeedback
+        {
+            SceneRange = "Scenes 5-6", SceneNumbers = { 5, 6 }, Score = 4,
+        };
+
+        Assert.Equal(new[] { 5, 6 }, MovieAutoReviewService.CollectFlaggedScenes([failing]));
     }
 
     private static string ReviewPagePath(string fileName)

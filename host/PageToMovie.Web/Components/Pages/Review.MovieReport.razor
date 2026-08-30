@@ -19,9 +19,18 @@
                             <span>Scene review</span>
                         }
                     </span>
-                    <span class="badge fs-6 flex-shrink-0 @ScoreBadgeClass(Report.OverallScore)">
-                        <span class="d-none d-xl-inline">Overall Score: </span>@Report.OverallScore / 10 — @Report.Verdict
-                    </span>
+                    @* Scene view scores the scene, not the film: the movie's verdict under a
+                       "Scene review" title reads as this scene's. *@
+                    @if (ShowMovieOverview)
+                    {
+                        <span class="badge fs-6 flex-shrink-0 @ScoreBadgeClass(Report.OverallScore)">
+                            <span class="d-none d-xl-inline">Overall Score: </span>@Report.OverallScore / 10 — @Report.Verdict
+                        </span>
+                    }
+                    else if (SceneScore is int sceneScore)
+                    {
+                        <span class="badge fs-6 flex-shrink-0 @ScoreBadgeClass(sceneScore)">@sceneScore / 10</span>
+                    }
                     @if (ShowMovieOverview)
                     {
                         <span class="badge bg-dark border border-secondary text-white-50 d-none d-xxl-inline-block flex-shrink-0">

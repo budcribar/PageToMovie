@@ -426,14 +426,10 @@ evidence may be an empty array when there is no style/medium or continuity cite.
         }
         if (!HasStyleMediumIssue(f))
             yield break;
-        var fromEvidence = SceneNumbersFromEvidence(f.Evidence).ToList();
-        if (fromEvidence.Count > 0)
-        {
-            foreach (var n in fromEvidence)
-                yield return n;
-            yield break;
-        }
-        foreach (var n in f.SceneNumbers)
+        // A passing group only earns flags for the scenes it actually cites. The keyword scan
+        // reads praise ("stays photoreal throughout") the same as a complaint, so without a cite
+        // there is nothing to send anyone back to — flagging the whole group is noise.
+        foreach (var n in SceneNumbersFromEvidence(f.Evidence))
             yield return n;
     }
 

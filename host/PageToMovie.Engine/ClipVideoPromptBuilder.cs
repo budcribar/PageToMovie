@@ -1418,8 +1418,9 @@ public static class ClipVideoPromptBuilder
 
     /// <summary>
     /// Style lock carried by the plan itself, used when the project has no live style head.
-    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits, or the older prose
-    /// <c>STYLE LOCK: …</c> line still sitting in Mary19-era action text.
+    /// Reads the <c>&lt;StyleLock&gt;</c> block Stage 2 emits — a tagged field, not prose.
+    /// Loose <c>STYLE LOCK:</c> text in action is not a source: where that sentence ends is a
+    /// guess, and StripStyleLocksFromAction removes it from the action anyway.
     /// </summary>
     public static string? ExtractStyleHead(string visual)
     {
@@ -1428,13 +1429,7 @@ public static class ClipVideoPromptBuilder
             visual,
             $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        if (m.Success)
-            return StyleLockPrefix + m.Groups[1].Value.Trim();
-        var prose = CommonRegex.Match(
-            visual,
-            @"STYLE LOCK(?:\s*\(hard\))?:\s*(.+?)(?=\s*(?:<[A-Za-z]|INT\.|EXT\.|EST\.|$))",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return prose.Success ? (StyleLockPrefix + prose.Groups[1].Value.Trim()) : null;
+        return m.Success ? StyleLockPrefix + m.Groups[1].Value.Trim() : null;
     }
     public static List<string> FindCharacterRefPaths(
         JsonElement clipEl,
@@ -2236,7 +2231,7 @@ public static class ClipVideoPromptBuilder
             ? PromptTags.SanitizeValue(np.GetString()).Trim()
             : "";
         var global = (GlobalNegativePrompt ?? "").Trim();
-        var mediumNeg = ClipExplicitlyChangesMedium(clipEl)
+        var mediumNeg = ClipDeclaresDifferentMedium(clipEl, visualMedium)
             ? ""
             : VisualMediumStyles.NegativeFor(VisualMediumStyles.NormalizeMedium(visualMedium));
         if (global.Length == 0 && story.Length == 0 && mediumNeg.Length == 0)
@@ -2256,19 +2251,25 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// True when the clip's own prompt says the world or art medium changes in this beat
-    /// (dream, portal, flash to live-action, etc.). Those clips keep story negatives only.
+    /// True when the clip's plan declares a different visual medium than the film — a beat that
+    /// deliberately crosses over (dream, portal, flash to live-action). Those clips keep story
+    /// negatives only, since the film's opposite-medium negatives would fight the beat.
+    /// Read from the plan's <c>visual_medium</c> field, not from prose: sniffing the action for
+    /// "the look changes" flagged ordinary description and silently dropped the medium lock.
     /// </summary>
-    internal static bool ClipExplicitlyChangesMedium(JsonElement clipEl)
+    internal static bool ClipDeclaresDifferentMedium(JsonElement clipEl, string? filmMedium)
     {
-        var visual = ReadVisualPrompt(clipEl);
-        if (string.IsNullOrWhiteSpace(visual))
+        var film = VisualMediumStyles.NormalizeMedium(filmMedium);
+        if (!VisualMediumStyles.IsDecidedMedium(film))
             return false;
-        return CommonRegex.IsMatch(
-            visual,
-            @"\b(world|medium|art style|render(?:er|ing)?|look)\b.{0,40}\b(change|shift|become|turns? into|switch)\b" +
-            @"|\b(change|shift|become|turns? into|switch)\b.{0,40}\b(world|medium|art style|photoreal|live[- ]action|watercolor|illustration|3d)\b",
-            RegexOptions.IgnoreCase);
+        if (!clipEl.TryGetProperty(JsonKeys.VisualMedium, out var vm)
+            || vm.ValueKind != JsonValueKind.String)
+            return false;
+        var clip = vm.GetString();
+        if (!VisualMediumStyles.IsDecidedMedium(clip))
+            return false;
+        return !string.Equals(
+            VisualMediumStyles.NormalizeMedium(clip), film, StringComparison.Ordinal);
     }
 
     /// <summary>Project visual medium: explicit arg, else <see cref="ProjectVisionMeta"/> on disk.</summary>
@@ -2335,14 +2336,75 @@ public static class ClipVideoPromptBuilder
     internal static string StripStyleLocksFromAction(string? action)
     {
         if (string.IsNullOrWhiteSpace(action)) return action ?? "";
+        // Tagged lock: a real field, removed as a block.
         var text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(action, "");
-        text = CommonRegex.Replace(
-            text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "\n");
-        text = CommonRegex.Replace(
-            text,
-            @"(?is)\bSTYLE LOCK(?:\s*\(hard\))?\s*:\s*.+?(?=\s*<(?:Location|Characters|Wardrobe|Camera|Lighting|Audio|Continuity|StyleLock|Setting|Action)\b|\s*\b(?:INT\.|EXT\.|EST\.)\b|$)",
-            "");
-        return CollapseWhitespace(text).Trim();
+        // Loose "STYLE LOCK:" prose: scanned out by hand rather than matched. A regex here has to
+        // guess where the lock ends, and the unbounded form took the rest of the beat with it.
+        return CollapseWhitespace(RemoveLooseStyleLockSentences(text)).Trim();
+    }
+
+    /// <summary>
+    /// Remove each loose <c>STYLE LOCK:</c> run from <paramref name="text"/>, one at a time, each
+    /// ending at the first sentence end, line break, or opening tag after it — whichever comes
+    /// first. Bounded by construction: no single removal can pass the end of its own line.
+    /// </summary>
+    internal static string RemoveLooseStyleLockSentences(string text)
+    {
+        const string marker = "STYLE LOCK";
+        var sb = new StringBuilder(text.Length);
+        var i = 0;
+        while (i < text.Length)
+        {
+            var start = text.IndexOf(marker, i, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                sb.Append(text, i, text.Length - i);
+                break;
+            }
+            var colon = ColonOnSameLine(text, start + marker.Length);
+            if (colon < 0)
+            {
+                // "STYLE LOCK" with no colon on its line is prose about the lock, not a lock.
+                sb.Append(text, i, start + marker.Length - i);
+                i = start + marker.Length;
+                continue;
+            }
+            sb.Append(text, i, start - i);
+            i = LooseStyleLockEnd(text, colon + 1);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Colon closing "STYLE LOCK" / "STYLE LOCK (hard)" on the same line, else -1.</summary>
+    private static int ColonOnSameLine(string text, int from)
+    {
+        for (var i = from; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == ':')
+                return i;
+            if (c is '\r' or '\n')
+                return -1;
+            if (!char.IsWhiteSpace(c) && c is not ('(' or ')') && !char.IsLetter(c))
+                return -1;
+        }
+        return -1;
+    }
+
+    /// <summary>End of a loose lock: first sentence end, line break, or opening tag after it.</summary>
+    private static int LooseStyleLockEnd(string text, int from)
+    {
+        for (var i = from; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c is '\r' or '\n')
+                return i;
+            if (c == '<' && i + 1 < text.Length && char.IsLetter(text[i + 1]))
+                return i;
+            if (c is '.' or '!' or '?')
+                return Math.Min(text.Length, i + 1);
+        }
+        return text.Length;
     }
 
     /// <summary>
@@ -2353,7 +2415,7 @@ public static class ClipVideoPromptBuilder
     {
         var text = prompt ?? "";
         text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(text, "");
-        text = CommonRegex.Replace(text, @"(?im)^\s*STYLE LOCK(?:\s*\(hard\))?\s*:\s*.+\r?\n?", "");
+        text = RemoveLooseStyleLockSentences(text);
         // House "- Style:" bullets named example media and bypassed the STYLE LOCK: strip.
         text = CommonRegex.Replace(text, @"(?im)^\s*-\s*Style:\s*.+\r?\n?", "");
         text = text.Trim();
