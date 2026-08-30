@@ -2026,16 +2026,14 @@ public sealed class Stage2PlannerService
         ve = AttachSubjectIfMissing(ve, primary);
         ve = NormalizeCastMentionsToKeys(ve, visualCast, charSeeds);
 
-        var others = visualCast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
-        var othersBit = others.Count > 0 ? $"also on screen: {string.Join(", ", others)}" : "";
-        // CAST COUNT + CHARACTER VARIABLES owned by ClipVideoPromptBuilder at gen time.
+        // Roster SSoT is Characters + CastCount at gen time. Do not also emit <Cast>
+        // "also on screen" here — that was a fourth name list against the 4000-char cap.
+        // Beat must_not feeds clip negative_prompt → one <Negative> at gen time; no <MustNot>.
 
         ve = AppendBlockingNotes(ve, beat, isContinuation);
         var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var acv) ? acv : null) ?? "").ToLowerInvariant();
         ve = AppendActionClassMotion(ve, ac);
 
-        var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
-        var mustBit = mustNot.Count > 0 ? $"must not: {string.Join("; ", mustNot)}" : "";
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
         var ward = WardrobeContinuityClause(wardrobe, visualCast, primary);
 
@@ -2058,7 +2056,6 @@ public sealed class Stage2PlannerService
         {
             (0, PromptFieldTags.StyleLock, StripLabel(style, "STYLE LOCK:")),
             (2, PromptFieldTags.Setting, PlaceLockIfMissing(place, ve)),
-            (3, PromptFieldTags.Cast, StripLabel(othersBit, "also on screen:")),
             (5, PromptFieldTags.Action, action),
             // No <Sound>. The screenplay's own (SOUND: …) cue is parsed at Stage 1 into the
             // beat's ambient/sfx, reaches the clip as audio_payload, and ClipVideoPromptBuilder
@@ -2073,7 +2070,6 @@ public sealed class Stage2PlannerService
             // already being compressed, and two editable surfaces for one fact, only one of which
             // changed what was actually said. Same reasoning that moved continuity and
             // resolution/fps out to gen time (see PlanSingleClip) — keep visual_prompt visual.
-            (8, PromptFieldTags.MustNot, StripLabel(mustBit, "must not:")),
             (9, PromptFieldTags.Wardrobe, ward),
         };
         return JoinVisualPromptParts(parts);

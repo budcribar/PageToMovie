@@ -194,6 +194,69 @@ public class Stage2VisualPromptTests : IDisposable
     }
 
     [Fact]
+    public void BuildVisualPrompt_omits_Cast_and_MustNot_tags()
+    {
+        var prompt = Stage2PlannerService.BuildVisualPrompt(
+            new Dictionary<string, object?>
+            {
+                ["visual_event"] = "Character_Mary walks the lane.",
+                ["primary_subject"] = "Character_Mary",
+                ["must_not"] = new List<object?> { "no crowd extras", "no extra hats" },
+            },
+            new Dictionary<string, object?>
+            {
+                ["setting"] = "EXT. LANE - DAY",
+                ["characters_on_screen"] = new List<object?> { "Character_Mary", "Character_The_Lamb" },
+            },
+            new Dictionary<string, object?>
+            {
+                ["Character_Mary"] = new Dictionary<string, object?> { ["canonical_given_name"] = "Mary" },
+                ["Character_The_Lamb"] = new Dictionary<string, object?> { ["canonical_given_name"] = "The Lamb" },
+            },
+            new Dictionary<string, List<string>>());
+
+        Assert.DoesNotContain("<Cast>", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<MustNot>", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("must not:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Character_Mary walks", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildStoryNegativePrompt_is_the_only_must_not_copy()
+    {
+        var beat = new Dictionary<string, object?>
+        {
+            ["must_not"] = new List<object?> { "no crowd extras", "no extra hats" },
+            ["visual_event"] = "Character_Hero walks.",
+            ["primary_subject"] = "Character_Hero",
+        };
+        var scene = new Dictionary<string, object?>
+        {
+            ["setting"] = "INT. ROOM - DAY",
+            ["characters_on_screen"] = new List<object?> { "Character_Hero" },
+        };
+        var seeds = new Dictionary<string, object?>
+        {
+            ["Character_Hero"] = new Dictionary<string, object?> { ["canonical_given_name"] = "Hero" },
+        };
+        var wardrobe = new Dictionary<string, List<string>>
+        {
+            ["Character_Hero"] = new List<string> { "coat" },
+        };
+
+        var visual = Stage2PlannerService.BuildVisualPrompt(beat, scene, seeds, wardrobe);
+        var storyNeg = Stage2PlannerService.BuildStoryNegativePrompt(
+            beat, wardrobe, new List<string> { "Character_Hero" });
+
+        Assert.DoesNotContain("<MustNot>", visual, StringComparison.Ordinal);
+        Assert.DoesNotContain("no crowd extras", visual, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no crowd extras", storyNeg, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no extra hats", storyNeg, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(CommonRegex.Matches(storyNeg, "no crowd extras", RegexOptions.IgnoreCase));
+    }
+
+    [Fact]
     public async Task Stage2_visual_prompts_omit_resolution_fps_suffix()
     {
         const string projectId = "Demo";

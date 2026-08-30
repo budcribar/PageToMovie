@@ -769,7 +769,8 @@ public class ClipVideoPromptBuilderTests
         var clean = ClipVideoPromptBuilder.SanitizeActionText(raw, new[] { "Character_Narrator", "Character_Old_Man" });
         Assert.DoesNotContain("CAST COUNT", clean, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Character_Old_Man", clean);
-        Assert.Contains("Character_Narrator", clean);
+        // Roster lives in Characters + CastCount — do not restated-append the missing key.
+        Assert.DoesNotContain("is on screen", clean, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -1043,6 +1044,7 @@ public class ClipVideoPromptBuilderTests
         Assert.False(built.RefsAttachedToApi);
         Assert.Empty(built.ReferenceImagePaths);
         Assert.Contains("<Identity>Match locked plate", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("On-screen:", built.Prompt, StringComparison.Ordinal);
         Assert.Contains("Character_Old_Man", built.Prompt);
         Assert.Contains("EXTENSION", built.Prompt, StringComparison.OrdinalIgnoreCase);
 
@@ -1889,6 +1891,93 @@ public class PreviousClipQuoteRedactionTests
     {
         var block = InvokeContinuityBlock("fresh", null!);
         Assert.DoesNotContain("Positions come from that frame", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void House_Honor_CAST_COUNT_is_absent_from_retired_clip_gen_rules()
+    {
+        var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
+        Assert.False(string.IsNullOrWhiteSpace(rules));
+        Assert.DoesNotContain("Honor CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Honor the CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
+    }
+
+    [Fact]
+    public void Build_generate_prompt_has_one_roster_and_one_Negative()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "<Setting>EXT. LANE - DAY</Setting> <Cast>also on screen: Character_The_Lamb</Cast> <Action>Character_Mary walks. Character_The_Lamb is on screen.</Action> <MustNot>no crowd extras; no extra hats</MustNot>",
+              "characters_on_screen": ["Character_Mary", "Character_The_Lamb"],
+              "negative_prompt": "no crowd extras, no extra hats",
+              "veo_continuation_source": "none",
+              "audio_payload": { "speaker": "", "dialogue": "", "delivery": "none" }
+            }
+            """).RootElement;
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new() { Key = "Character_Mary", DisplayName = "Mary", Description = "school-age girl" },
+            ["Character_The_Lamb"] = new() { Key = "Character_The_Lamb", DisplayName = "The Lamb", Description = "tiny white lamb" },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, Path.GetTempPath(), profiles,
+            visualMedium: VisualMediumStyles.MediumIllustrated);
+
+        Assert.Equal(2, built.CastCount);
+        Assert.Contains("<CastCount>exactly 2 distinct on-screen character identity(ies) only — Character_Mary, Character_The_Lamb.", built.Prompt, StringComparison.Ordinal);
+        Assert.Single(CommonRegex.Matches(built.Prompt, "<CastCount>"));
+        Assert.Contains("<Characters", built.Prompt, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("<Cast>", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("On-screen:", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("is on screen", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<MustNot>", built.Prompt, StringComparison.Ordinal);
+
+        Assert.Contains("<Negative>", built.Prompt, StringComparison.Ordinal);
+        Assert.Single(CommonRegex.Matches(built.Prompt, "<Negative>"));
+        Assert.Single(CommonRegex.Matches(built.Prompt, "no crowd extras", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        Assert.Single(CommonRegex.Matches(built.Prompt, "no extra hats", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        Assert.Contains("no legible text", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("photoreal", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotMatch(@"\bC\d+\b", built.Prompt);
+    }
+
+    [Fact]
+    public void Build_extend_IdentityReinforce_has_no_On_screen_roster()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 2,
+              "visual_prompt": "<Action>Character_Mary walks. Character_The_Lamb follows.</Action>",
+              "characters_on_screen": ["Character_Mary", "Character_The_Lamb"],
+              "negative_prompt": "no crowd extras",
+              "audio_payload": { "speaker": "", "dialogue": "", "delivery": "none" }
+            }
+            """).RootElement;
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new() { Key = "Character_Mary", DisplayName = "Mary", Description = "school-age girl" },
+            ["Character_The_Lamb"] = new() { Key = "Character_The_Lamb", DisplayName = "The Lamb", Description = "tiny white lamb" },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, Path.GetTempPath(), profiles, previousClipExtendFileId: "file_prev");
+
+        Assert.Equal("video-extend", built.Mode);
+        Assert.Contains("<Identity>", built.Prompt, StringComparison.Ordinal);
+        Assert.Contains("do not drift", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("On-screen:", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("<Cast>", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("is on screen", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<CastCount>exactly 2", built.Prompt, StringComparison.Ordinal);
+        Assert.Contains("Character_Mary", built.CastCountLine, StringComparison.Ordinal);
+        Assert.Contains("Character_The_Lamb", built.CastCountLine, StringComparison.Ordinal);
     }
 
     private static string InvokeContinuityBlock(string mode, string previousClipVisualPrompt)

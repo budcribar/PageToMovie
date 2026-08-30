@@ -144,5 +144,35 @@ public class CastMentionKeyNormalizationTests
         Assert.DoesNotMatch(@"\bC\d+\b", prompt);
         Assert.DoesNotMatch(@"(?<![A-Za-z_])Mary(?![A-Za-z_])", prompt);
         Assert.DoesNotMatch(@"(?<![A-Za-z_])The Lamb(?![A-Za-z_])", prompt);
+        Assert.DoesNotContain("<Cast>", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<MustNot>", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeActionText_does_not_append_is_on_screen_when_key_is_already_in_roster()
+    {
+        var keys = new[] { "Character_Mary", "Character_The_Lamb" };
+        var clean = ClipVideoPromptBuilder.SanitizeActionText(
+            "Character_Mary walks the lane.", keys);
+        Assert.Equal("Character_Mary walks the lane.", clean);
+        Assert.DoesNotContain("is on screen", clean, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Character_The_Lamb", clean, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizeActionText_strips_leftover_Cast_MustNot_and_on_screen_fallback()
+    {
+        var keys = new[] { "Character_Mary", "Character_The_Lamb" };
+        var raw =
+            "<Cast>Character_Mary, Character_The_Lamb</Cast> " +
+            "<Action>also on screen: Character_The_Lamb. Character_Mary walks. Character_The_Lamb is on screen.</Action> " +
+            "<MustNot>no crowd extras</MustNot>";
+        var clean = ClipVideoPromptBuilder.SanitizeActionText(raw, keys);
+        Assert.DoesNotContain("<Cast>", clean, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen", clean, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("is on screen", clean, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<MustNot>", clean, StringComparison.Ordinal);
+        Assert.Contains("Character_Mary walks", clean, StringComparison.Ordinal);
     }
 }
