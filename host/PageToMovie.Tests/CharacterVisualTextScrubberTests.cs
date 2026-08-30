@@ -113,4 +113,30 @@ public class CharacterVisualTextScrubberTests
         Assert.False(CharacterVisualTextScrubber.IsGarmentOnlyClause("school-age girl with brown braids"));
     }
 
+
+    [Fact]
+    public void A_species_the_word_list_never_heard_of_keeps_its_clause()
+    {
+        // Decided by what survives the garments, not by recognising the animal. Under an
+        // identity-word list, "goat" and "duckling" were not identity, so the clause went and
+        // took the character with it.
+        Assert.Equal(
+            "A goat, always chewing",
+            CharacterVisualTextScrubber.StripGarmentsFromIdentityProse("A goat in a straw hat, always chewing"));
+
+        Assert.Equal(
+            "A duckling",
+            CharacterVisualTextScrubber.StripGarmentsFromIdentityProse("A duckling in a blue bonnet"));
+
+        Assert.False(CharacterVisualTextScrubber.IsGarmentOnlyClause("A goat in a straw hat"));
+    }
+
+    [Fact]
+    public void A_second_garment_hung_off_the_first_goes_with_it()
+    {
+        Assert.Equal(
+            "Tall gaunt man, deep-set pale blue eyes",
+            CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(
+                "Tall gaunt man, deep-set pale blue eyes, wearing a red wool coat over a grey waistcoat"));
+    }
 }

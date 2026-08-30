@@ -93,7 +93,7 @@ public static class CharacterVisualTextScrubber
     /// The noun is the end of the phrase — no guessed sentence tail.
     /// </summary>
     private static readonly Regex WearFrameGarment = new(
-        $@"\b(?:wearing|wears|wore|dressed(?:\s+in)?|in)\s+(?:a|an|the\s+)?(?:[\w'-]+\s+){{0,5}}(?:{IdentityGarmentNounAlt})\b",
+        $@"\b(?:wearing|wears|wore|dressed(?:\s+in)?|in|over|under|beneath|atop)\s+(?:a|an|the\s+)?(?:[\w'-]+\s+){{0,5}}(?:{IdentityGarmentNounAlt})\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
         CommonRegex.Timeout);
 
@@ -129,8 +129,13 @@ public static class CharacterVisualTextScrubber
     }
 
     /// <summary>
-    /// True when the clause names a garment and has no face / body / species / age anchor.
-    /// "a blue pinafore" goes; "one pale blue eye with a dull filmy veil" stays.
+    /// True when nothing but joining words survives the clause's garments — "in a cap" goes,
+    /// "A goat in a straw hat" keeps its goat.
+    /// <para>Decided by what is left, not by recognising the identity. A list of face / body /
+    /// species words has to name every animal a book might have, and the ones it misses lose
+    /// their species: "A goat in a straw hat" came back as "always chewing", and "A duckling in
+    /// a blue bonnet" came back empty. Getting "is this a garment" wrong drops a garment phrase;
+    /// getting "is this identity" wrong deletes the character.</para>
     /// </summary>
     public static bool IsGarmentOnlyClause(string? clause)
     {
@@ -138,8 +143,49 @@ public static class CharacterVisualTextScrubber
             return false;
         if (!IdentityGarmentNoun.IsMatch(clause))
             return false;
-        return !IdentityAnchor.IsMatch(clause);
+        return WithoutGarments(clause).Length == 0;
     }
+
+    /// <summary>
+    /// What the clause still says once its garments are taken out: wear-frames go whole, and a
+    /// bare garment noun takes the words describing it — "pale pinafore" is one thing, so "pale"
+    /// leaves with it, while "A goat" in "A goat in a straw hat" is not part of any garment and
+    /// keeps the clause alive.
+    /// </summary>
+    private static string WithoutGarments(string clause)
+    {
+        var words = WearFrameGarment.Replace(clause, " ")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim(GarmentWordTrim))
+            .Where(w => w.Length > 0)
+            .ToList();
+
+        var isGarment = new bool[words.Count];
+        for (var i = 0; i < words.Count; i++)
+        {
+            if (!IdentityGarmentNoun.IsMatch(words[i]))
+                continue;
+            isGarment[i] = true;
+            // Walk left over the words describing this garment, stopping at anything that joins
+            // the phrase rather than describes it ("a", "with", "in").
+            for (var j = i - 1; j >= 0 && !GarmentClauseFiller.Contains(words[j]); j--)
+                isGarment[j] = true;
+        }
+
+        return string.Join(' ', words
+            .Where((w, i) => !isGarment[i] && !GarmentClauseFiller.Contains(w)));
+    }
+
+    private static readonly char[] GarmentWordTrim = ['.', ',', ';', ':', '-'];
+
+    /// <summary>Words that describe or join a garment, so they never keep a clause alive alone.</summary>
+    private static readonly HashSet<string> GarmentClauseFiller =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "a", "an", "the", "and", "or", "with", "in", "on", "of", "to", "over", "under",
+            "beneath", "atop", "his", "her", "their", "its", "always", "default", "plain",
+            "same", "wears", "wearing", "wore", "dressed", "worn", "clad",
+        };
 
     /// <summary>
     /// Scrub description / visual_lock prose for Stage 1 seeds and portrait prompts.
