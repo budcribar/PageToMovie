@@ -302,8 +302,8 @@ public class ClipVideoPromptBuilderTests
         AssertFillNPacing(extend.Prompt, 9);
         AssertAudioOwnsClosedMouthPause(fresh.Prompt);
         AssertAudioOwnsClosedMouthPause(extend.Prompt);
-        Assert.Equal(CountOccurrences(fresh.Prompt, "This is a 9-second shot"), 1);
-        Assert.Equal(CountOccurrences(extend.Prompt, "This is a 9-second shot"), 1);
+        Assert.Equal(1, CountOccurrences(fresh.Prompt, "This is a 9-second shot"));
+        Assert.Equal(1, CountOccurrences(extend.Prompt, "This is a 9-second shot"));
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
     }
