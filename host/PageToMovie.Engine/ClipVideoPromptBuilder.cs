@@ -228,8 +228,10 @@ public static class ClipVideoPromptBuilder
             ClipSpokenLines.FromClipElement(clipEl).Select(line => line.Speaker),
             StringComparer.OrdinalIgnoreCase);
         var varBlock = BuildCharacterVariablesBlock(
-            allKeys, characters, imageTagByKey, useReferenceImages, activeKeys, wardrobeByKey,
-            speakers, audioTags);
+            allKeys, characters,
+            new CharacterVariablesContext(
+                imageTagByKey, useReferenceImages, activeKeys, wardrobeByKey,
+                speakers, audioTags));
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium, rawVisual);
@@ -1804,18 +1806,22 @@ public static class ClipVideoPromptBuilder
         return set;
     }
 
+    /// <summary>Identity-line inputs for <see cref="BuildCharacterVariablesBlock"/>.</summary>
+    private readonly record struct CharacterVariablesContext(
+        IReadOnlyDictionary<string, string> ImageTagByKey,
+        bool UseImageTags,
+        HashSet<string>? ActiveKeys,
+        IReadOnlyDictionary<string, List<string>>? WardrobeByKey,
+        IReadOnlySet<string>? Speakers,
+        IReadOnlyDictionary<string, string>? AudioTags);
+
     private static string BuildCharacterVariablesBlock(
         IReadOnlyList<string> keys,
         IReadOnlyDictionary<string, CharacterProfile> characters,
-        IReadOnlyDictionary<string, string> imageTagByKey,
-        bool useImageTags,
-        HashSet<string>? activeKeys = null,
-        IReadOnlyDictionary<string, List<string>>? wardrobeByKey = null,
-        IReadOnlySet<string>? speakers = null,
-        IReadOnlyDictionary<string, string>? audioTags = null)
+        CharacterVariablesContext ctx)
     {
         if (keys.Count == 0) return "";
-        speakers ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var speakers = ctx.Speakers ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sb = new StringBuilder();
         sb.AppendLine(PromptTags.OpenWithNote("Characters",
             "use these identities consistently; do not redesign faces or wardrobe"));
@@ -1823,14 +1829,16 @@ public static class ClipVideoPromptBuilder
         foreach (var key in keys)
         {
             var p = GetCharacterProfile(characters, key);
-            var worn = ResolveWardrobeItems(key, p, wardrobeByKey);
+            var worn = ResolveWardrobeItems(key, p, ctx.WardrobeByKey);
             if (p?.VoiceOnly == true || IsVoiceOnlyKey(key, characters))
-                sb.AppendLine(FormatVoiceOnlyLine(key, p, imageTagByKey, useImageTags, speakers, audioTags));
-            else if (IsNonFocusPresent(activeKeys, keys.Count, key))
-                sb.AppendLine(FormatCompactPresentLine(key, p, imageTagByKey, useImageTags, worn));
+                sb.AppendLine(FormatVoiceOnlyLine(
+                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, speakers, ctx.AudioTags));
+            else if (IsNonFocusPresent(ctx.ActiveKeys, keys.Count, key))
+                sb.AppendLine(FormatCompactPresentLine(
+                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, worn));
             else
                 sb.AppendLine(FormatFocusCharacterLine(
-                    key, p, imageTagByKey, useImageTags, worn, speakers, audioTags));
+                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, worn, speakers, ctx.AudioTags));
             any = true;
         }
         return any ? sb.ToString().TrimEnd() : "";
