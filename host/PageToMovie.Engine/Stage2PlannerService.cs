@@ -1146,7 +1146,7 @@ public sealed class Stage2PlannerService
         var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
         var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
-            vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, previousCamera, charSeeds,
+            vp, beat, wardrobe, clipCast, i, dlg, monologueStep, previousCamera, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
         vp = vpOut;
 
@@ -1214,7 +1214,6 @@ public sealed class Stage2PlannerService
             List<string> clipCast,
             int i,
             string? dlg,
-            string? spk,
             int monologueStep,
             string? previousCamera,
             Dictionary<string, object?> charSeeds,
@@ -1236,7 +1235,7 @@ public sealed class Stage2PlannerService
 
         string? cameraMoveToken;
         (vp, cameraMoveToken) = ApplyCameraDirective(
-            vp, beat, aiCamera, beatIdStr, dlg, spk, monologueStep, previousCamera, clipCast, charSeeds);
+            vp, beat, aiCamera, beatIdStr, dlg, monologueStep, previousCamera, clipCast, charSeeds);
         vp = ApplyEmotionDofColorDirectives(vp, aiEmotion, aiDof, aiColor, beatIdStr);
         return (vp, neg, cameraMoveToken, beatIdStr, sourceBeatIds);
     }
@@ -1254,7 +1253,6 @@ public sealed class Stage2PlannerService
         Dictionary<string, CameraDirective>? aiCamera,
         string beatIdStr,
         string? dlg,
-        string? spk,
         int monologueStep,
         string? previousCamera,
         List<string> clipCast,
