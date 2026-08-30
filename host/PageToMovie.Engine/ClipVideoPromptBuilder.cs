@@ -582,11 +582,11 @@ public static class ClipVideoPromptBuilder
 
     private static void AppendClipPacingAndClose(StringBuilder sb, JsonElement clipEl)
     {
-        // Unlike resolution/fps (pure technical spec, no effect on content — see below), duration
-        // genuinely changes how the described action should be PACED: the same camera move/action
-        // described for a 12s shot needs to unfold much more gradually than for a 3s one. The API's
-        // "duration" field controls actual render length; this line just tells the model how to
-        // pace what it's rendering within that length.
+        // Duration is the budget the API also gets as `duration`. One sentence owns visual
+        // pacing: fill the planned N seconds. Speech ending early must not cut the picture
+        // short — leftover time is still motivated action, not a freeze or a hard cut on
+        // the last syllable. Audio owns the ~0.5s closed-mouth pause after the last word;
+        // do not restate that pause (or "end when the line finishes") here.
         if (TryGetClipDurationSeconds(clipEl, out var clipDurSec))
         {
             sb.AppendLine(
@@ -594,17 +594,15 @@ public static class ClipVideoPromptBuilder
                 $"to unfold naturally across the full {clipDurSec} seconds; do not rush, compress, or " +
                 "pad with a static hold.");
         }
-        // This line used to be unconditional — telling the model to "end when the spoken line
-        // finishes" even on silent beats with empty audio_payload.dialogue. With no line ever
-        // specified, and CHARACTER VARIABLES listing every on-screen character's Voice profile
-        // right above it, that primed the model to invent speech/mouth movement on someone.
-        // Branch it so silent beats get an explicit "no dialogue, keep mouths neutral" cue instead.
-        sb.AppendLine(ClipHasSpokenDialogue(clipEl)
-            ? "End cleanly when the spoken line and primary action finish — " +
-              "do not hold a frozen pose or empty silence after dialogue."
-            : "Silent beat — no dialogue in this clip. Do not show any on-screen character " +
-              "speaking or mouthing words; keep mouths closed/neutral. " +
-              "End cleanly when the primary physical action finishes.");
+        // Silent beats used to share an "end when the spoken line finishes" closer, which
+        // primed invented speech. Keep the no-dialogue mouth cue only — not a second
+        // end-when-action-finishes pacing line (that fights the duration budget above).
+        if (!ClipHasSpokenDialogue(clipEl))
+        {
+            sb.AppendLine(
+                "Silent beat — no dialogue in this clip. Do not show any on-screen character " +
+                "speaking or mouthing words; keep mouths closed/neutral.");
+        }
     }
 
     private static bool ClipHasSpokenDialogue(JsonElement clipEl) =>
@@ -1287,6 +1285,9 @@ public static class ClipVideoPromptBuilder
         p = CommonRegex.Replace(p, @"\s*Match appearance of reference\s+(I\d+)\s+exactly\.?", " Match $1 exactly.");
         p = p.Replace("Start speaking immediately with ", "Start speaking: ");
         p = p.Replace(" — do not skip, delay, or swallow the opening word. After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring. Other mouths closed. Speech intelligible; never silent.", ".");
+        // Leftover closer from prompts built before duration became the only visual pacing
+        // writer. New builds no longer emit it; keep stripping it so a retry compress of an
+        // already-cached prompt does not resurrect the conflict with fill-N.
         p = p.Replace("End cleanly when the spoken line and primary action finish — do not hold a frozen pose or empty silence after dialogue.", "");
 
         // 5. Drop repeats. Saying the same thing twice costs budget and buys nothing; on a real
