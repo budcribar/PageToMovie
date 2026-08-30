@@ -176,7 +176,9 @@ public static class ClipVideoPromptBuilder
             .ToList();
 
         var rawVisual = ReadVisualPrompt(clipEl);
-        var actionText = DropWhatTheSourceVideoShows(SanitizeActionText(rawVisual, onScreenKeys), mode);
+        var displayNamesByKey = CollectDisplayNamesByKey(allKeys, characters);
+        var actionText = DropWhatTheSourceVideoShows(
+            SanitizeActionText(rawVisual, onScreenKeys, displayNamesByKey, allKeys), mode);
 
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
@@ -722,7 +724,11 @@ public static class ClipVideoPromptBuilder
     private static string CollapseWhitespace(string text) =>
         CommonRegex.Replace(text, @"[ 	]{2,}", " ");
 
-    public static string SanitizeActionText(string visual, IReadOnlyList<string>? onScreenKeys = null)
+    public static string SanitizeActionText(
+        string visual,
+        IReadOnlyList<string>? onScreenKeys = null,
+        IReadOnlyDictionary<string, string>? displayNamesByKey = null,
+        IReadOnlyList<string>? mentionKeys = null)
     {
         if (string.IsNullOrWhiteSpace(visual)) return "";
         var v = visual.Trim();
@@ -738,12 +744,50 @@ public static class ClipVideoPromptBuilder
         // Blueprint may embed lip-sync / says quotes with crushed dashes — speech-safe for gen
         v = SanitizeSpokenQuotesInVisual(v);
         v = SimplifyVisual(v);
+        // One spelling before the on-screen fallback: title-case / ALL-CAPS display names
+        // become Character_* so Contains(key) matches and we do not append a second form.
+        var toNormalize = mentionKeys is { Count: > 0 } ? mentionKeys : onScreenKeys;
+        if (toNormalize is { Count: > 0 })
+            v = Stage2PlannerService.NormalizeCastMentionsToKeys(v, toNormalize, displayNamesByKey: displayNamesByKey);
         if (onScreenKeys is { Count: > 0 })
         {
             foreach (var key in onScreenKeys.Where(k => !v.Contains(k, StringComparison.OrdinalIgnoreCase)))
                 v = $"{v} {key} is on screen.".Trim();
         }
         return v.Trim();
+    }
+
+    private static Dictionary<string, string> CollectDisplayNamesByKey(
+        IReadOnlyList<string> keys,
+        IReadOnlyDictionary<string, CharacterProfile> characters)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            var p = GetCharacterProfile(characters, key);
+            if (!string.IsNullOrWhiteSpace(p?.DisplayName))
+                map[key] = p.DisplayName.Trim();
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Display names still sitting in a legacy <c>&lt;Name&gt;</c> tag next to a Character_* key.
+    /// Compression aliases those to the same C-index as the key.
+    /// </summary>
+    private static Dictionary<string, string> CollectNameTagDisplayNames(string prompt)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in CommonRegex.Matches(
+                     prompt,
+                     @"\b(Character_[A-Za-z0-9_]+)\b[^<\n]{0,120}<Name>([^<]+)</Name>",
+                     RegexOptions.IgnoreCase))
+        {
+            var name = m.Groups[2].Value.Trim();
+            if (name.Length > 0)
+                map.TryAdd(m.Groups[1].Value, name);
+        }
+        return map;
     }
 
     /// <summary>
@@ -1186,14 +1230,22 @@ public static class ClipVideoPromptBuilder
         // "Character_Mom" vs "Character_Mom_Assistant") would otherwise mangle the longer key's
         // occurrences into "C1_Assistant" before it ever got its own turn to alias, silently
         // corrupting that character's identity references for the rest of the prompt.
+        // Leftover display names (Mary / MARY / The Lamb) become the SAME C-index so one person
+        // is never both Mary and C1 after compression.
         var matches = CommonRegex.Matches(p, @"\bCharacter_([A-Za-z0-9_]+)\b");
         var distinctKeys = matches.Select(m => m.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var aliasByKey = distinctKeys
             .Select((key, i) => (key, alias: $"C{i + 1}"))
             .ToDictionary(x => x.key, x => x.alias, StringComparer.OrdinalIgnoreCase);
+        var extraNames = CollectNameTagDisplayNames(p);
 
         foreach (var key in distinctKeys.OrderByDescending(k => k.Length))
             p = p.Replace(key, aliasByKey[key]);
+
+        var displayPairs = Stage2PlannerService.CollectCastMentionPairs(distinctKeys, displayNamesByKey: extraNames)
+            .Where(c => aliasByKey.ContainsKey(c.Key))
+            .Select(c => (c.Name, aliasByKey[c.Key]));
+        p = Stage2PlannerService.RewriteCastMentions(p, displayPairs);
 
         // 3. Compress image reference tags (<IMAGE_1> -> I1, <IMAGE_2> -> I2)
         p = CommonRegex.Replace(p, @"<IMAGE_(\d+)>", "I$1");
@@ -1839,9 +1891,9 @@ public static class ClipVideoPromptBuilder
         IReadOnlyDictionary<string, string> imageTagByKey,
         bool useImageTags)
     {
-        var (display, tag, _, _, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        var (_, tag, _, _, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         return
-            $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))} VOICE ONLY — not on screen." +
+            $"- {key}{tag} VOICE ONLY — not on screen." +
             (voice.Length > 0 ? $" {PromptTags.Wrap("Voice", voice)}" : "");
     }
 
@@ -1866,10 +1918,10 @@ public static class ClipVideoPromptBuilder
         // exceeds it — and that mechanism deliberately keeps the head (identity/action) intact
         // rather than blindly guillotining one character's identity clause on every appearance.
         // So: no fixed per-character cap here; let the full text through.
-        var (display, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
         var compactSource = vlock.Length > 0 ? vlock : desc;
         var compact =
-            $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))}: Also present (not shot focus); keep identity consistent: {compactSource}.";
+            $"- {key}{tag}: Also present (not shot focus); keep identity consistent: {compactSource}.";
         if (useImageTags && tag.Length > 0) compact += $" Match reference {tag.Trim()}.";
         return compact;
     }
@@ -1881,8 +1933,8 @@ public static class ClipVideoPromptBuilder
         bool useImageTags,
         IReadOnlyList<string>? wardrobeItems = null)
     {
-        var (display, tag, desc, vlock, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
-        var line = $"- {key}{tag} {PromptTags.Wrap(PromptFieldTags.Name, PromptTags.SanitizeValue(display))}:";
+        var (_, tag, desc, vlock, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var line = $"- {key}{tag}:";
         if (desc.Length > 0) line += $" {desc}";
         if (vlock.Length > 0) line += $" {PromptTags.Wrap("VisualLock", vlock)}";
         if (voice.Length > 0) line += $" {PromptTags.Wrap("Voice", voice)}";
