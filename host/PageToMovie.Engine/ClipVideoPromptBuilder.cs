@@ -1786,11 +1786,10 @@ public static class ClipVideoPromptBuilder
                 fromPrompt[key] = list;
             }
 
-            foreach (var item in p.WardrobeAlways)
-            {
-                if (!WardrobeState.AlreadyHas(list, item))
-                    list.Add(item);
-            }
+            // AlreadyHas is a contains-match against the growing list — keep the
+            // Where lazy so a later overlapping garment is skipped after an earlier add.
+            foreach (var item in p.WardrobeAlways.Where(item => !WardrobeState.AlreadyHas(list, item)))
+                list.Add(item);
         }
 
         return fromPrompt;
