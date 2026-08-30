@@ -560,6 +560,144 @@ public class ClientVideoStitchServiceTests
     }
 
     [Fact]
+    public async Task CollectSceneMediaUrlsAsync_second_call_reuses_cached_scene_details()
+    {
+        var detailHits = 0;
+        var (stitch, _) = CreateStitchWithSceneClipsOnDisk(
+            scene: 1, clipCount: 2, videoStatus: HttpStatusCode.OK, onSceneDetail: () => detailHits++);
+
+        var summaries = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 2, ClipsOnDisk = 2 }
+        };
+
+        var first = await stitch.CollectSceneMediaUrlsAsync("test-project", [1], summaries, staleScenes: null);
+        var firstMisses = stitch.LastCollectStats.SceneDetailMisses;
+        var firstHits = stitch.LastCollectStats.SceneDetailHits;
+
+        var second = await stitch.CollectSceneMediaUrlsAsync("test-project", [1], summaries, staleScenes: null);
+
+        Assert.Equal(2, first.Count);
+        Assert.Equal(first, second);
+        Assert.Equal(1, detailHits);
+        Assert.Equal(1, firstMisses);
+        Assert.Equal(0, firstHits);
+        Assert.Equal(0, stitch.LastCollectStats.SceneDetailMisses);
+        Assert.Equal(1, stitch.LastCollectStats.SceneDetailHits);
+        Assert.Equal(2, stitch.LastCollectStats.ClipUrlHits);
+    }
+
+    [Fact]
+    public async Task WarmSceneIndexAsync_then_collect_skips_scene_json_walk()
+    {
+        var detailHits = 0;
+        var (stitch, _) = CreateStitchWithSceneClipsOnDisk(
+            scene: 1, clipCount: 1, videoStatus: HttpStatusCode.OK, onSceneDetail: () => detailHits++);
+        var summaries = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 1, ClipsOnDisk = 1 }
+        };
+
+        await stitch.WarmSceneIndexAsync("test-project", summaries);
+        Assert.Equal(1, detailHits);
+
+        var urls = await stitch.CollectSceneMediaUrlsAsync("test-project", [1], summaries, staleScenes: null);
+
+        Assert.Single(urls);
+        Assert.Equal(1, detailHits);
+        Assert.Equal(1, stitch.LastCollectStats.SceneDetailHits);
+        Assert.Equal(0, stitch.LastCollectStats.SceneDetailMisses);
+    }
+
+    [Fact]
+    public async Task CollectAndMix_second_play_reuses_cached_scene_segment()
+    {
+        var concatCalls = 0;
+        var js = new StitchJsRuntime(identifier =>
+        {
+            if (identifier == "PageToMovieCut.concatVideosOptimizedAsync")
+            {
+                concatCalls++;
+                return """{"success":true,"url":"blob:mixed-s1","count":2}""";
+            }
+
+            throw new InvalidOperationException($"Unexpected JS call: {identifier}");
+        });
+        var (baseStitch, engine) = CreateStitchWithSceneClipsOnDisk(
+            scene: 1, clipCount: 2, videoStatus: HttpStatusCode.OK);
+        var stitch = new ClientVideoStitchService(js, engine);
+        var summaries = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 2, ClipsOnDisk = 2 }
+        };
+
+        var first = await stitch.CollectAndMixSceneSegmentInfosAsync(
+            "test-project", [1], summaries, staleScenes: null);
+        var second = await stitch.CollectAndMixSceneSegmentInfosAsync(
+            "test-project", [1], summaries, staleScenes: null);
+
+        Assert.Single(first);
+        Assert.Equal("blob:mixed-s1", first[0].Url);
+        Assert.Single(second);
+        Assert.Equal(first[0].Url, second[0].Url);
+        Assert.Equal(1, concatCalls);
+        Assert.Equal(1, stitch.LastCollectStats.SegmentHits);
+        Assert.Equal(0, stitch.LastCollectStats.SegmentMisses);
+    }
+
+    [Fact]
+    public async Task CollectSceneMediaUrlsAsync_take_change_invalidates_only_that_scene()
+    {
+        var scene1Details = 0;
+        var scene2Details = 0;
+        var scene1Json = SceneDetailJson(1, 1);
+        var scene1Take2Json = SceneDetailJson(1, 1, fileName: "scene_01_clip_01_take_02.mp4", sizeBytes: 99);
+        var scene2Json = SceneDetailJson(2, 1);
+        var useTake2 = false;
+
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri?.AbsolutePath ?? "";
+            if (path.Contains("/scenes/1/clips/", StringComparison.Ordinal) && path.EndsWith("/video", StringComparison.Ordinal))
+                return VideoOk();
+            if (path.Contains("/scenes/2/clips/", StringComparison.Ordinal) && path.EndsWith("/video", StringComparison.Ordinal))
+                return VideoOk();
+            if (path.Contains("/scenes/1", StringComparison.Ordinal) && !path.Contains("/clips/", StringComparison.Ordinal))
+            {
+                scene1Details++;
+                return JsonOk(useTake2 ? scene1Take2Json : scene1Json);
+            }
+
+            if (path.Contains("/scenes/2", StringComparison.Ordinal) && !path.Contains("/clips/", StringComparison.Ordinal))
+            {
+                scene2Details++;
+                return JsonOk(scene2Json);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var engine = new EngineApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") });
+        var stitch = new ClientVideoStitchService(null!, engine);
+        var summaries = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, ClipCount = 1, ClipsOnDisk = 1 },
+            new() { SceneNumber = 2, ClipCount = 1, ClipsOnDisk = 1 },
+        };
+
+        await stitch.CollectSceneMediaUrlsAsync("test-project", [1, 2], summaries, staleScenes: null);
+        Assert.Equal(1, scene1Details);
+        Assert.Equal(1, scene2Details);
+
+        useTake2 = true;
+        summaries[0] = new SceneSummary { SceneNumber = 1, ClipCount = 1, ClipsOnDisk = 1, HasStaleClips = true };
+        stitch.MediaIndex.SyncSceneList("test-project", summaries);
+
+        await stitch.CollectSceneMediaUrlsAsync("test-project", [1, 2], summaries, staleScenes: null);
+        Assert.Equal(2, scene1Details);
+        Assert.Equal(1, scene2Details);
+    }
+
+    [Fact]
     public async Task ConcatAsync_uses_shared_optimized_stitch_before_legacy_stitcher()
     {
         var js = new StitchJsRuntime(identifier => identifier switch
@@ -652,20 +790,9 @@ public class ClientVideoStitchServiceTests
     }
 
     private static (ClientVideoStitchService Stitch, EngineApiClient Engine) CreateStitchWithSceneClipsOnDisk(
-        int scene, int clipCount, HttpStatusCode videoStatus)
+        int scene, int clipCount, HttpStatusCode videoStatus, Action? onSceneDetail = null)
     {
-        var clips = Enumerable.Range(1, clipCount)
-            .Select(cn => new { clipNumber = cn, onDisk = true })
-            .ToArray();
-        var sceneDetailJson = JsonSerializer.Serialize(new
-        {
-            ok = true,
-            scene = new
-            {
-                sceneNumber = scene,
-                clips
-            }
-        });
+        var sceneDetailJson = SceneDetailJson(scene, clipCount);
 
         var handler = new FakeHttpMessageHandler(req =>
         {
@@ -682,10 +809,8 @@ public class ClientVideoStitchServiceTests
             if (path.Contains($"/scenes/{scene}", StringComparison.Ordinal)
                 && !path.Contains("/clips/", StringComparison.Ordinal))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(sceneDetailJson, System.Text.Encoding.UTF8, "application/json")
-                };
+                onSceneDetail?.Invoke();
+                return JsonOk(sceneDetailJson);
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -695,6 +820,43 @@ public class ClientVideoStitchServiceTests
         var engineClient = new EngineApiClient(httpClient);
         return (new ClientVideoStitchService(null!, engineClient), engineClient);
     }
+
+    private static string SceneDetailJson(
+        int scene, int clipCount, string? fileName = null, long sizeBytes = 0)
+    {
+        var clips = Enumerable.Range(1, clipCount)
+            .Select(cn => new
+            {
+                clipNumber = cn,
+                onDisk = true,
+                fileName = fileName ?? $"scene_{scene:D2}_clip_{cn:D2}_take_01.mp4",
+                sizeBytes,
+            })
+            .ToArray();
+        return JsonSerializer.Serialize(new
+        {
+            ok = true,
+            scene = new
+            {
+                sceneNumber = scene,
+                clipCount,
+                clipsOnDisk = clipCount,
+                clips
+            }
+        });
+    }
+
+    private static HttpResponseMessage JsonOk(string json) =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        };
+
+    private static HttpResponseMessage VideoOk() =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(new byte[] { 0 })
+        };
 
     private sealed class StitchJsRuntime(Func<string, string> resultJson) : IJSRuntime
     {

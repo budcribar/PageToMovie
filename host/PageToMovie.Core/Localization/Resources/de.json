@@ -420,7 +420,7 @@
     "UseEstimate": "Schätzung verwenden ({0} Min)"
   },
   "ReviewPage": {
-    "Subtitle": "Szenen genehmigen, Schnitt abspielen, veröffentlichen. Das Ziel ist die automatische Generierung — hier verfeinern Sie.",
+    "Subtitle": "Szenen genehmigen, Schnitt abspielen, veröffentlichen.",
     "ReviewAndApprove": "Prüfen und Genehmigen",
     "ShareAndExport": "Teilen und Exportieren",
     "Finish": "Fertigstellen",

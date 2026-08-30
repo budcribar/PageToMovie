@@ -420,7 +420,7 @@
     "UseEstimate": "Utiliser l'estimation ({0} min)"
   },
   "ReviewPage": {
-    "Subtitle": "Approuvez les scènes, lisez le montage, publiez. Le but est la génération automatique — perfectionnez ici.",
+    "Subtitle": "Approuvez les scènes, lisez le montage, publiez.",
     "ReviewAndApprove": "Réviser et approuver",
     "ShareAndExport": "Partager et exporter",
     "Finish": "Finition",

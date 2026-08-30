@@ -149,6 +149,8 @@ public partial class Review
             {
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
+                S.Stitch.MediaIndex.SyncSceneList(S._projectId, _scenes);
+                await S.Stitch.WarmSceneIndexAsync(S._projectId, _scenes);
                 var log = await S.Engine.GetEditLogAsync(S._projectId);
                 S.AutoReview._entries = log?.EditLog?.Entries ?? new();
                 var revs = await S.Engine.GetClipReviewsAsync(S._projectId);
@@ -178,6 +180,7 @@ public partial class Review
                 S.AutoReview._reviews = revs?.Reviews ?? new();
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
+                S.Stitch.MediaIndex.SyncSceneList(S._projectId, _scenes);
                 await S.Playback.RefreshWipMetaAsync();
                 if (_selectedScene is int snSelected)
                     await TryLoadDraftsForSceneAsync(snSelected);
@@ -211,6 +214,11 @@ public partial class Review
             {
                 var dto = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
                 _selectedDetail = dto?.Scene;
+                if (_selectedDetail is not null)
+                {
+                    var summary = _scenes.FirstOrDefault(s => s.SceneNumber == sn);
+                    S.Stitch.MediaIndex.RememberSceneDetail(S._projectId, _selectedDetail, summary);
+                }
             }
             catch
             {
