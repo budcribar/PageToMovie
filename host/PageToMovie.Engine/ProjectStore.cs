@@ -453,10 +453,10 @@ public sealed partial class ProjectStore
 
         var result = new List<ClipVersionItem>();
         var prefix = ClipTakeNaming.SceneClipPrefix(scene, clip);
-        var activeMp4 = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        // "The active file" is the take the pointer names — there is no bare alias to stand in.
+        var activeMp4 = ClipSidecarService.ResolveClipMediaPath(videoDir, scene, clip) ?? "";
         AddTakeSidecarVersions(result, videoDir, scene, clip);
         AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
-        AddCanonicalAliasIfNoTakes(result, activeMp4, scene, clip);
         await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
         MarkCurrentTake(result, videoDir, scene, clip);
         // Preserve the pointer-selected object before repairing duplicate/invalid display take
@@ -523,27 +523,6 @@ public sealed partial class ProjectStore
         }
         catch { /* best effort */ }
         return 0;
-    }
-
-    /// <summary>
-    /// Legacy trees with only a leftover alias (no <c>_take_NN</c> sidecars) still
-    /// need one card so compare/promote can surface the leftover.
-    /// </summary>
-    private static void AddCanonicalAliasIfNoTakes(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
-    {
-        if (result.Any(v => ClipTakeNaming.ParseTakeNumber(v.Mp4FileName) > 0
-                            || ClipTakeNaming.IsStableTakeName(v.Mp4FileName)
-                            || ClipTakeNaming.IsTimestampedTakeName(v.Mp4FileName)))
-            return;
-        if (!File.Exists(activeMp4))
-            return;
-        var fi = new FileInfo(activeMp4);
-        var activeSidecar = Path.ChangeExtension(activeMp4, StoreLit.ClipJsonSuffix);
-        var take = ClipTakeNaming.ResolveTakeNumber(Path.GetFileName(activeSidecar), ReadSidecarTakeField(activeSidecar));
-        if (take <= 0) take = 1;
-        var item = ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take, isCurrent: true, fi.LastWriteTimeUtc);
-        item.RelativePath = ClipTakeNaming.CanonicalRelativePath(scene, clip);
-        result.Add(item);
     }
 
     private static void AssignUniqueTakeNumbers(List<ClipVersionItem> result)
@@ -646,7 +625,10 @@ public sealed partial class ProjectStore
         if (registered.Count == 0)
             return;
 
-        var activeRelPath = MediaRegistryService.ClipRelativePath(scene, clip);
+        // Registry rows are written under the take's path, so "which row is the active one" is a
+        // question about the pointer — the alias path this used never matched a registered row.
+        var activeRelPath = ClipSidecarService.CurrentTakeRelativePath(
+            Path.GetDirectoryName(activeMp4) ?? "", scene, clip);
         var hasPhysicalActive = File.Exists(activeMp4);
         var knownFileNames = new HashSet<string>(result.Select(r => r.Mp4FileName), StringComparer.OrdinalIgnoreCase);
 
@@ -750,35 +732,19 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Archives a leftover bare alias (<c>scene_SS_clip_CC.mp4</c>) into history/ if one
-    /// still exists. Does not write or refresh that alias as the player file — the new
-    /// take is <c>take_NN</c> via <see cref="ClipSidecarService.PersistGeneratedTakeAsync"/>.
+    /// The take number a fresh generation should claim. Nothing is archived on the way: the
+    /// previous take stays on disk as itself, which is what the take history is. This used to copy
+    /// a leftover bare alias into history/ first, because that one file was about to be
+    /// overwritten — takes are never overwritten, so there is nothing to rescue.
     /// </summary>
     public string ArchiveActiveAndReplaceClipBytesAsync(string projectId, int scene, int clip, byte[] newBytes)
     {
-        var dir = GetProjectDir(projectId);
-        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
+        var videoDir = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video);
         Directory.CreateDirectory(videoDir);
-        var leftoverAlias = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
-
-        if (File.Exists(leftoverAlias))
-        {
-            var historyDir = Path.Combine(videoDir, StoreLit.History);
-            Directory.CreateDirectory(historyDir);
-            var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-            try { File.Copy(leftoverAlias, archiveMp4, overwrite: true); } catch { /* leftover archive is best-effort */ }
-            var leftoverSidecar = Path.ChangeExtension(leftoverAlias, StoreLit.ClipJsonSuffix);
-            if (File.Exists(leftoverSidecar))
-            {
-                var archiveSidecar = Path.ChangeExtension(archiveMp4, StoreLit.ClipJsonSuffix);
-                try { File.Copy(leftoverSidecar, archiveSidecar, overwrite: true); } catch { /* best effort */ }
-            }
-        }
-
         _ = newBytes;
         InvalidateSceneListCache(projectId);
-        return ClipTakeNaming.TakeMp4FileName(scene, clip, Math.Max(1, ClipSidecarService.ReadCurrentTake(videoDir, scene, clip) + 1));
+        return ClipTakeNaming.TakeMp4FileName(
+            scene, clip, Math.Max(1, ClipSidecarService.ReadCurrentTake(videoDir, scene, clip) + 1));
     }
 
     private static ClipVersionItem ParseClipSidecarOrMeta(string sidecarPath, string mp4Path, int scene, int clip, int take, bool isCurrent, DateTime lastWriteUtc)
@@ -5102,8 +5068,7 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Every mp4 belonging to one clip: its takes, and a leftover bare alias if the folder still
-    /// has one. Ordered so the newest take goes first.
+    /// Every mp4 belonging to one clip — its takes, newest first.
     /// </summary>
     private static IEnumerable<string> ClipMediaFiles(string videoDir, int scene, int clip)
     {
@@ -5115,9 +5080,6 @@ public sealed partial class ProjectStore
                      .OrderByDescending(File.GetLastWriteTimeUtc))
             yield return take;
 
-        var alias = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
-        if (File.Exists(alias))
-            yield return alias;
     }
 
     /// <summary>
@@ -6535,16 +6497,15 @@ public sealed partial class ProjectStore
         bool probeDurations,
         CancellationToken ct)
     {
-        var fileName = $"scene_{sceneNumber:D2}_clip_{cn:D2}.mp4";
         var onDisk = mediaPresence.IsPresent(sceneNumber, cn);
-        var size = ResolveClipSizeOnDisk(videoIndex, fileName, sceneNumber, cn, onDisk);
+        var size = ResolveClipSizeOnDisk(videoIndex, sceneNumber, cn, onDisk);
         var audio = ParseClipAudio(c);
         var dur = 0;
         if (c.TryGetProperty(StoreLit.DurationSeconds, out var dEl) && dEl.TryGetInt32(out var ds))
             dur = ds;
 
         var clipPath = onDisk ? ResolveClipVideoPath(projectId, sceneNumber, cn) : null;
-        var resolvedFileName = clipPath is not null ? Path.GetFileName(clipPath) : fileName;
+        var resolvedFileName = clipPath is not null ? Path.GetFileName(clipPath) : "";
         double? actualClip = null;
         if (probeDurations && onDisk && _duration is not null && clipPath is not null)
             actualClip = await _duration.GetDurationSecondsAsync(clipPath, ct).ConfigureAwait(false);
@@ -6620,12 +6581,12 @@ public sealed partial class ProjectStore
     }
 
     private static long ResolveClipSizeOnDisk(
-        Dictionary<string, long> videoIndex, string fileName, int sceneNumber, int cn, bool onDisk)
+        Dictionary<string, long> videoIndex, int sceneNumber, int cn, bool onDisk)
     {
         if (!onDisk)
             return 0;
-        if (videoIndex.TryGetValue(fileName, out var sz))
-            return sz;
+        // A take, since that is what the clip's file is. The bare alias was tried first here and
+        // never matched anything the index holds.
         var prefix = $"scene_{sceneNumber:D2}_clip_{cn:D2}_take_";
         var takeMatch = videoIndex.FirstOrDefault(kv =>
             kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&

@@ -148,26 +148,25 @@ public class ClipSidecarServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task WriteSidecarAsync_after_leftover_alias_becomes_take_02()
+    public async Task WriteSidecarAsync_numbers_the_next_take_after_the_ones_on_disk()
     {
-        var projects = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = _tempWorkspace }));
         var service = new ClipSidecarService();
-        var projectDir = Path.Combine(_tempWorkspace, "projects", "AliasThenRegen");
+        var projectDir = Path.Combine(_tempWorkspace, "projects", "TakeThenRegen");
         var videoDir = Path.Combine(projectDir, "assets", "video");
         Directory.CreateDirectory(videoDir);
 
-        var alias = Path.Combine(videoDir, "scene_03_clip_07.clip.json");
-        await File.WriteAllTextAsync(alias, """{"scene":3,"clip":7,"visual_prompt":"original prompt"}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(videoDir, ClipTakeNaming.TakeSidecarFileName(3, 7, 1)),
+            """{"scene":3,"clip":7,"take":1,"visual_prompt":"original prompt"}""");
 
-        Assert.True(ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(videoDir, 3, 7));
-        Assert.True(File.Exists(Path.Combine(videoDir, "scene_03_clip_07_take_01.clip.json")));
         Assert.Equal(2, ClipSidecarService.NextTakeNumber(videoDir, 3, 7));
 
         var written = await service.WriteSidecarAsync(
             projectDir, 3, 7, "new prompt", "", "test-model", "480p", 4, "", 0);
 
-        Assert.EndsWith("scene_03_clip_07_take_02.clip.json", written);
-        using var orig = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(videoDir, "scene_03_clip_07_take_01.clip.json")));
+        Assert.EndsWith(ClipTakeNaming.TakeSidecarFileName(3, 7, 2), written);
+        using var orig = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(videoDir, ClipTakeNaming.TakeSidecarFileName(3, 7, 1))));
         Assert.Equal("original prompt", orig.RootElement.GetProperty("visual_prompt").GetString());
         using var neu = JsonDocument.Parse(await File.ReadAllTextAsync(written));
         Assert.Equal(2, neu.RootElement.GetProperty("take").GetInt32());
@@ -319,7 +318,7 @@ public class ClipSidecarServiceTests : IDisposable
         var videoDir = Path.Combine(_tempWorkspace, "assets", "video");
         Directory.CreateDirectory(videoDir);
         File.WriteAllBytes(
-            Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(4, 2)), new byte[4096]);
+            Path.Combine(videoDir, "scene_04_clip_02.mp4"), new byte[4096]);
 
         Assert.Null(ClipSidecarService.ResolveClipMediaPath(videoDir, 4, 2));
     }

@@ -22,8 +22,15 @@ public static class ClipForkFallback
     public static string NeedFileName(int scene, int clip) =>
         $"scene_{scene:D2}_clip_{clip:D2}{NeedSuffix}";
 
+    /// <summary>
+    /// A pushed fork copy is the clip's first take, not a bare alias — so every resolver finds it
+    /// the same way it finds a generated one.
+    /// </summary>
     public static string Mp4FileName(int scene, int clip) =>
-        $"scene_{scene:D2}_clip_{clip:D2}.mp4";
+        ClipTakeNaming.TakeMp4FileName(scene, clip, ForkCopyTake);
+
+    /// <summary>A fork copy is one pushed rendition; it does not carry the owner's take history.</summary>
+    private const int ForkCopyTake = 1;
 
     public static void MarkNeeded(string projectDir, int scene, int clip)
     {
@@ -69,6 +76,8 @@ public static class ClipForkFallback
         var mp4 = Path.Combine(videoDir, Mp4FileName(scene, clip));
         File.WriteAllBytes(mp4, bytes);
         File.WriteAllText(mp4 + ProtectedSuffix, "fork-fallback\n");
+        // The pointer is what makes it the clip's video rather than a file that happens to be there.
+        ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, ForkCopyTake);
     }
 
     /// <summary>{project}/assets/video → project root. Null when the path is too short.</summary>

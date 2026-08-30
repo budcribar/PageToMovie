@@ -32,9 +32,9 @@ public class ScenePlayGateTests
     {
         var index = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
         {
-            ["scene_02_clip_01.mp4"] = 50_000,
-            ["scene_02_clip_02.mp4"] = 80_000,
-            ["scene_02_clip_03.mp4"] = 90_000,
+            [ClipTakeNaming.TakeMp4FileName(2, 1, 1)] = 50_000,
+            [ClipTakeNaming.TakeMp4FileName(2, 2, 1)] = 80_000,
+            [ClipTakeNaming.TakeMp4FileName(2, 3, 1)] = 90_000,
         };
         Assert.True(ScenePlayGate.HasServerMp4(index, 2, 1));
         Assert.Empty(ScenePlayGate.MissingServerVideoClips(index, 2, new[] { 1, 2, 3 }));

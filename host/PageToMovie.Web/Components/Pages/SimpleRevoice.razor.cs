@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
@@ -52,7 +53,9 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
         public string DialoguePreview =>
             Dialogue.Length <= 72 ? Dialogue : Dialogue[..69] + "…";
         public string? VideoUrl { get; set; }
-        public string RelativePath => $"assets/video/scene_{Scene:D2}_clip_{Clip:D2}.mp4";
+        /// <summary>Set from the media folder's pointer once the row is built; a clip has no path
+        /// until we know which take it is.</summary>
+        public string? RelativePath { get; set; }
         public string Status { get; set; } = "Queued";
 
         public bool WillRevoice => IsNarrator && !string.IsNullOrWhiteSpace(Dialogue);
@@ -198,6 +201,10 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
             Dialogue = dialogue,
             Speaker = string.IsNullOrEmpty(speaker) ? null : speaker,
             IsNarrator = isNarrator,
+            // The row's take, from the scene row's file name — the same take the player resolves.
+            RelativePath = ClipTakeNaming.ParseTakeNumber(c.FileName) is var take && take > 0
+                ? ClipTakeNaming.TakeRelativePath(sceneNumber, c.ClipNumber, take)
+                : null,
             VideoUrl = c.OnDisk ? Engine.ClipVideoUrl(_projectId, sceneNumber, c.ClipNumber) : null,
             Status = InitialClipStatus(isNarrator, dialogue, speaker),
         });
@@ -371,7 +378,7 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
 
     private async Task TrySaveMuxedClipToMediaFolderAsync(ClipRow row, string outUrl)
     {
-        if (!MediaFolder.IsConnected) return;
+        if (!MediaFolder.IsConnected || string.IsNullOrWhiteSpace(row.RelativePath)) return;
         try
         {
             var clientPath = $"{_projectId}/{row.RelativePath}";
@@ -436,7 +443,9 @@ public partial class SimpleRevoice : IAsyncDisposable, IPageSliceHost
         {
             try
             {
-                var local = await MediaFolder.GetCurrentBlobUrlAsync(_projectId, row.RelativePath, null);
+                var local = string.IsNullOrWhiteSpace(row.RelativePath)
+                    ? null
+                    : await MediaFolder.GetCurrentBlobUrlAsync(_projectId, row.RelativePath, null);
                 if (!string.IsNullOrWhiteSpace(local))
                     return local;
             }

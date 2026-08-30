@@ -83,7 +83,6 @@ public class ClipTakeNamingTests
         Assert.Equal("scene_03_clip_07_take_05.mp4", ClipTakeNaming.TakeMp4FileName(3, 7, 5));
         Assert.Equal("scene_03_clip_07_take_05.clip.json", ClipTakeNaming.TakeSidecarFileName(3, 7, 5));
         Assert.Equal("assets/video/scene_03_clip_07_take_05.mp4", ClipTakeNaming.TakeRelativePath(3, 7, 5));
-        Assert.Equal("assets/video/scene_03_clip_07.mp4", ClipTakeNaming.CanonicalRelativePath(3, 7));
         Assert.DoesNotContain("2026", ClipTakeNaming.TakeMp4FileName(3, 7, 5));
     }
 

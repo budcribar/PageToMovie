@@ -59,8 +59,11 @@ public sealed class ClipDeleteRecoverabilityTests : IDisposable
 
     private void WriteClipMedia(int clip)
     {
-        File.WriteAllBytes(Video($"scene_01_clip_{clip:D2}.mp4"), new byte[2048]);
-        File.WriteAllText(Video($"scene_01_clip_{clip:D2}.clip.json"), """{"source_file_id":"file_abc"}""");
+        // A clip is a take plus the pointer naming it — the shape generate writes.
+        File.WriteAllBytes(Video(ClipTakeNaming.TakeMp4FileName(1, clip, 1)), new byte[2048]);
+        File.WriteAllText(
+            Video(ClipTakeNaming.TakeSidecarFileName(1, clip, 1)), """{"source_file_id":"file_abc"}""");
+        ClipSidecarService.WriteCurrentTake(_videoDir, 1, clip, 1);
     }
 
     [Fact]
@@ -70,8 +73,8 @@ public sealed class ClipDeleteRecoverabilityTests : IDisposable
 
         Assert.True(_store.DeleteClip("Demo", scene: 1, clip: 2));
 
-        Assert.False(File.Exists(Video("scene_01_clip_02.mp4")));
-        Assert.True(File.Exists(Trash("scene_01_clip_02.mp4")));
+        Assert.False(File.Exists(Video(ClipTakeNaming.TakeMp4FileName(1, 2, 1))));
+        Assert.True(File.Exists(Trash(ClipTakeNaming.TakeMp4FileName(1, 2, 1))));
     }
 
     /// <summary>
@@ -85,8 +88,8 @@ public sealed class ClipDeleteRecoverabilityTests : IDisposable
 
         _store.DeleteClip("Demo", scene: 1, clip: 2);
 
-        Assert.True(File.Exists(Trash("scene_01_clip_02.clip.json")));
-        Assert.Contains("file_abc", File.ReadAllText(Trash("scene_01_clip_02.clip.json")));
+        Assert.True(File.Exists(Trash(ClipTakeNaming.TakeSidecarFileName(1, 2, 1))));
+        Assert.Contains("file_abc", File.ReadAllText(Trash(ClipTakeNaming.TakeSidecarFileName(1, 2, 1))));
     }
 
     [Fact]

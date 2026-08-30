@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -35,7 +36,9 @@ public sealed class ClipForkFallbackTests
         {
             var bytes = new byte[2048];
             ClipForkFallback.WriteProtectedMp4(dir, 1, 1, bytes);
-            var mp4 = Path.Combine(dir, "assets", "video", "scene_01_clip_01.mp4");
+            // A pushed fork copy is the clip's first take, like any other rendition.
+            var mp4 = Path.Combine(
+                dir, "assets", "video", ClipTakeNaming.TakeMp4FileName(1, 1, 1));
             Assert.True(File.Exists(mp4));
             Assert.True(ClipForkFallback.IsProtectedFromPrune(mp4));
         }

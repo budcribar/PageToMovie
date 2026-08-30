@@ -262,9 +262,11 @@ public sealed class ReviewIndexService
         var videoAbs = ClipSidecarService.ResolveClipMediaPath(
             Path.Combine(projectDir, AssetsFolder, "video"), scene, clip);
         var videoExists = videoAbs is not null;
+        // No media, no path. This used to fall back to the bare alias, handing out a location
+        // nothing writes and nothing reads.
         var videoRel = videoExists
             ? $"{ClipTakeNaming.AssetsVideoPrefix}/{Path.GetFileName(videoAbs)}"
-            : ClipTakeNaming.CanonicalRelativePath(scene, clip);
+            : "";
 
         draft ??= TryLoadDraft(projectDir, scene, clip);
         var draftRel = DraftRelPath(scene, clip);

@@ -38,14 +38,8 @@ public static class ClipTakeNaming
     public static string SceneClipPrefix(int scene, int clip) =>
         $"scene_{scene:D2}_clip_{clip:D2}";
 
-    public static string CanonicalMp4FileName(int scene, int clip) =>
-        $"{SceneClipPrefix(scene, clip)}.mp4";
 
-    public static string CanonicalRelativePath(int scene, int clip) =>
-        $"{AssetsVideoPrefix}/{CanonicalMp4FileName(scene, clip)}";
 
-    public static string CanonicalSidecarFileName(int scene, int clip) =>
-        $"{SceneClipPrefix(scene, clip)}{ClipJsonSuffix}";
 
     public static string CurrentTakePointerFileName(int scene, int clip) =>
         $"{SceneClipPrefix(scene, clip)}{CurrentTakePointerSuffix}";
@@ -155,6 +149,10 @@ public static class ClipTakeNaming
         return !string.IsNullOrEmpty(stem) && TimestampedTakeStemRx.IsMatch(stem);
     }
 
+    /// <summary>
+    /// The retired bare <c>scene_SS_clip_CC.mp4</c> name. Recognised so a leftover can be ignored
+    /// or swept; never constructed — a clip's file is a take, and nothing should mint this again.
+    /// </summary>
     public static bool IsCanonicalClipName(string? fileName)
     {
         var stem = ClipStem(fileName);

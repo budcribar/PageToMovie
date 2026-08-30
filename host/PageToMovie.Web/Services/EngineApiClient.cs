@@ -3131,7 +3131,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             var form = new MultipartFormDataContent();
             var byteContent = new ByteArrayContent(videoBytes);
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
-            form.Add(byteContent, "video", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+            // A label on a transient analysis upload; the server reads the stream, not the name.
+            form.Add(byteContent, "video", "clip.mp4");
             content = form;
         }
 
@@ -4888,7 +4889,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             using var form = new MultipartFormDataContent();
             var content = new ByteArrayContent(bytes);
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
-            form.Add(content, "file", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+            form.Add(content, "file", "clip.mp4");
             using var resp = await _http.PostAsync(
                 $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{scene}/clips/{clip}/fork-fallback",
                 form, ct);

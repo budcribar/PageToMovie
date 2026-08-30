@@ -417,7 +417,7 @@ public sealed class ProjectContributionService
     {
         int scene = ReadFirstProperty(clip, defaultScene, static e => e.GetInt32(), "scene_index", "scene");
         int clipIdx = ReadFirstProperty(clip, defaultClip, static e => e.GetInt32(), "clip_index", "clip");
-        string relPath = ReadRelativeVideoPath(clip, scene, clipIdx);
+        string relPath = ReadRelativeVideoPath(clip);
         string? cdnUrl = ReadHttpUrl(clip, "video_url", "source_video_url");
         var (size, sha) = FileSizeAndSha(
             projectDir,
@@ -447,15 +447,17 @@ public sealed class ProjectContributionService
         return fallback;
     }
 
-    private static string ReadRelativeVideoPath(JsonElement clip, int scene, int clipIdx)
+    /// <summary>
+    /// The path the contribution names. There is no computed fallback: a clip's file is whichever
+    /// take produced it, so a manifest with no relative_path does not tell us where its video is —
+    /// the bare alias this used to return named a file nothing writes.
+    /// </summary>
+    private static string ReadRelativeVideoPath(JsonElement clip)
     {
-        var relPath = $"assets/video/scene_{scene:D2}_clip_{clipIdx:D2}.mp4";
         if (!clip.TryGetProperty("relative_path", out var rp))
-            return relPath;
+            return "";
         var raw = rp.GetString();
-        if (string.IsNullOrWhiteSpace(raw))
-            return relPath;
-        return raw.Replace('\\', '/');
+        return string.IsNullOrWhiteSpace(raw) ? "" : raw.Replace('\\', '/');
     }
 
     private static string? ReadHttpUrl(JsonElement clip, string primary, string secondary)

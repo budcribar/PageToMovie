@@ -1200,8 +1200,10 @@ public sealed class ClientMediaFolderService
         var sent = 0;
         foreach (var (scene, clip) in needed)
         {
-            var rel = $"{projectId}/assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
-            var bytes = await ReadLocalBytesAsync(rel, minBytes: 1024);
+            // Push the take the folder actually has; the alias path found nothing to send.
+            var takeRel = await ResolveCurrentTakeRelativePathAsync(projectId, scene, clip);
+            if (string.IsNullOrWhiteSpace(takeRel)) continue;
+            var bytes = await ReadLocalBytesAsync($"{projectId}/{takeRel}", minBytes: 1024);
             if (bytes is null || bytes.Length < 1024) continue;
             if (await _api.UploadForkFallbackClipAsync(projectId, scene, clip, bytes))
                 sent++;

@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -53,7 +54,8 @@ public class ClipDeleteAndDialogueTests
         {
             var videoDir = Path.Combine(proj, "assets", "video");
             foreach (var n in new[] { 1, 2, 3 })
-                File.WriteAllBytes(Path.Combine(videoDir, $"scene_01_clip_{n:D2}.mp4"), new byte[2048]);
+                File.WriteAllBytes(
+                    Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, n, 1)), new byte[2048]);
 
             var wasInBlueprint = store.DeleteClip("Demo", scene: 1, clip: 2);
 
@@ -63,9 +65,9 @@ public class ClipDeleteAndDialogueTests
             Assert.Contains("clip one", json);
             Assert.Contains("clip three", json);
 
-            Assert.False(File.Exists(Path.Combine(videoDir, "scene_01_clip_02.mp4")));
-            Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_01.mp4")));
-            Assert.True(File.Exists(Path.Combine(videoDir, "scene_01_clip_03.mp4")));
+            Assert.False(File.Exists(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 2, 1))));
+            Assert.True(File.Exists(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1))));
+            Assert.True(File.Exists(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 3, 1))));
         }
         finally
         {
@@ -80,13 +82,13 @@ public class ClipDeleteAndDialogueTests
         try
         {
             var videoDir = Path.Combine(proj, "assets", "video");
-            File.WriteAllBytes(Path.Combine(videoDir, "scene_01_clip_01.mp4"), new byte[2048]);
-            File.WriteAllBytes(Path.Combine(videoDir, "scene_01_clip_01.mp4.native"), new byte[16]);
+            File.WriteAllBytes(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1)), new byte[2048]);
+            File.WriteAllBytes(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1) + ".native"), new byte[16]);
 
             store.DeleteClip("Demo", scene: 1, clip: 1);
 
-            Assert.False(File.Exists(Path.Combine(videoDir, "scene_01_clip_01.mp4")));
-            Assert.False(File.Exists(Path.Combine(videoDir, "scene_01_clip_01.mp4.native")));
+            Assert.False(File.Exists(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1))));
+            Assert.False(File.Exists(Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1) + ".native")));
         }
         finally
         {

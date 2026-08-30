@@ -70,10 +70,7 @@ public static class ScenePlayGate
         if (videoIndex is null || videoIndex.Count == 0)
             return false;
 
-        var fileName = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
-        if (videoIndex.TryGetValue(fileName, out var sz) && HasServerVideo(sz))
-            return true;
-
+        // Takes only. A bare scene_SS_clip_CC.mp4 in the index is a leftover, not this clip's video.
         var prefix = $"scene_{scene:D2}_clip_{clip:D2}_take_";
         foreach (var kv in videoIndex)
         {

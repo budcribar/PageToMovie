@@ -2525,10 +2525,6 @@ public sealed class FilmJobService
         if (resolved is not null && File.Exists(resolved))
             return resolved;
 
-        var leftover = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
-        if (File.Exists(leftover))
-            return leftover;
-
         throw new InvalidOperationException($"Scene {scene} clip {clip}: no clip on disk to edit.");
     }
 
@@ -5426,7 +5422,8 @@ public sealed class FilmJobService
             var videoDir = Path.GetDirectoryName(outPath) ?? ".";
             var backupDir = Path.Combine(videoDir, "_backup");
             Directory.CreateDirectory(backupDir);
-            var backupPath = Path.Combine(backupDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+            // Named for what it is a backup of, so two takes do not overwrite each other's copy.
+            var backupPath = Path.Combine(backupDir, Path.GetFileName(outPath));
             File.Copy(outPath, backupPath, overwrite: true);
 
             var sidecar = outPath + ".duration.json";
@@ -6022,7 +6019,6 @@ public sealed class FilmJobService
         // Migrate a legacy canonical-only clip before choosing the output name. Otherwise
         // WriteSidecarAsync performs the migration later and advances the take a second time,
         // leaving the downloaded MP4 and its sidecar with different take numbers.
-        ClipSidecarService.EnsureLegacyCanonicalHasTakeSidecar(ctx.VideoDir, ctx.Scene, ctx.Clip);
         var nextTake = ClipSidecarService.NextTakeNumber(ctx.VideoDir, ctx.Scene, ctx.Clip);
         var mp4Path = Path.Combine(ctx.VideoDir, ClipTakeNaming.TakeMp4FileName(ctx.Scene, ctx.Clip, nextTake));
         var overrunSec = await DownloadClipAndRecordTelemetryAsync(

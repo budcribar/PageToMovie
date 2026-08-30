@@ -79,8 +79,11 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         var store = _factory.Services.GetRequiredService<ProjectStore>();
         var videoDir = Path.Combine(store.GetProjectDir(_projectId), "assets", "video");
         Directory.CreateDirectory(videoDir);
-        var mp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        // A clip is a take plus the pointer naming it. Seeding the bare alias left the clip
+        // unresolvable, so the duration cap had nothing to read and the job ran anyway.
+        var mp4Path = Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(scene, clip, 1));
         File.WriteAllBytes(mp4Path, "original-clip-bytes"u8.ToArray());
+        ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, 1);
 
         var sidecarPath = Path.ChangeExtension(mp4Path, ".clip.json");
         var sidecar = new JsonObject
@@ -132,7 +135,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         SeedActiveClip(scene: 1, clip: 1, durationSeconds: 4.0);
         var store = _factory.Services.GetRequiredService<ProjectStore>();
         var videoDir = Path.Combine(store.GetProjectDir(_projectId), "assets", "video");
-        var activeMp4Path = Path.Combine(videoDir, "scene_01_clip_01.mp4");
+        var activeMp4Path = Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(1, 1, 1));
         var originalBytes = File.ReadAllBytes(activeMp4Path);
 
         var (status, error, job) = await RunJobToCompletionAsync("/api/jobs/video-edit", new
@@ -147,14 +150,9 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         Assert.Equal("done", status);
         Assert.Null(error);
 
-        // The prior active clip must be archived into history/, not silently discarded.
-        var historyDir = Path.Combine(videoDir, "history");
-        Assert.True(Directory.Exists(historyDir), $"expected a history/ dir; job: {job}");
-        var archived = Directory.GetFiles(historyDir, "scene_01_clip_01_*.mp4");
-        Assert.True(archived.Length >= 1, "expected the pre-edit clip archived into history/");
-        Assert.Equal(originalBytes, File.ReadAllBytes(archived[0]));
-
-        // Leftover bare alias is not refreshed as the player file.
+        // The pre-edit clip is not archived anywhere: it stays on disk as take 1, untouched.
+        // That is what the take history is — the copy into history/ existed only because the bare
+        // alias was about to be overwritten, and takes are never overwritten.
         Assert.Equal(originalBytes, File.ReadAllBytes(activeMp4Path));
         var take02Mp4 = Path.Combine(videoDir, "scene_01_clip_01_take_02.mp4");
         Assert.True(File.Exists(take02Mp4));
@@ -361,7 +359,7 @@ public class VideoEditApiTests : IClassFixture<PageToMovieApiFactory>, IAsyncLif
         Assert.StartsWith("/api/media/proxy/", url);
         Assert.False(string.Equals(
             job.GetProperty("clientRelativePath").GetString(),
-            ClipTakeNaming.CanonicalRelativePath(scene, clip),
+            $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4",
             StringComparison.OrdinalIgnoreCase));
     }
 }

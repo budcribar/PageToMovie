@@ -66,9 +66,6 @@ public sealed class MediaRegistryService
         }
     }
 
-    public static string ClipRelativePath(int scene, int clip) =>
-        ClipTakeNaming.CanonicalRelativePath(scene, clip);
-
     public static string TakeRelativePath(int scene, int clip, int take) =>
         ClipTakeNaming.TakeRelativePath(scene, clip, take);
 
@@ -205,13 +202,6 @@ public sealed class MediaRegistryService
             UserId = userId,
             CreatedAt = ts,
         };
-    }
-
-    public async Task<bool> HasClipAsync(string projectId, int scene, int clip, CancellationToken ct = default)
-    {
-        var path = ClipRelativePath(scene, clip);
-        var row = await TryGetAsync(projectId, path, ct).ConfigureAwait(false);
-        return row is not null;
     }
 
     /// <summary>Any background-music segment registered for this scene (client-synced — the

@@ -990,7 +990,9 @@ public static partial class SceneClipEndpoints
             current = new
             {
                 prompt = currentPrompt,
-                videoRelativePath = MediaRegistryService.ClipRelativePath(sceneNumber, clipNumber),
+                // The take this prompt produced — the alias path here named a file nothing writes.
+                videoRelativePath = ClipSidecarService.CurrentTakeRelativePath(
+                    Path.Combine(projectDir, "assets", "video"), sceneNumber, clipNumber),
             },
             history = history.Select(h => new
             {
