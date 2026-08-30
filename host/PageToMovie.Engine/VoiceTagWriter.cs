@@ -108,16 +108,11 @@ public static class VoiceTagWriter
         if (audioTags.ContainsKey(key))
             return true;
         var norm = Stage2PlannerService.NormalizeCharacterKey(key);
-        foreach (var tagged in audioTags.Keys)
-        {
-            if (string.Equals(
-                    Stage2PlannerService.NormalizeCharacterKey(tagged),
-                    norm,
-                    StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        return audioTags.Keys.Any(tagged =>
+            string.Equals(
+                Stage2PlannerService.NormalizeCharacterKey(tagged),
+                norm,
+                StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool IsSpokenKey(string? key, IReadOnlySet<string>? speakers)
@@ -127,16 +122,11 @@ public static class VoiceTagWriter
         if (speakers.Contains(key))
             return true;
         var norm = Stage2PlannerService.NormalizeCharacterKey(key);
-        foreach (var speaker in speakers)
-        {
-            if (string.Equals(
-                    Stage2PlannerService.NormalizeCharacterKey(speaker),
-                    norm,
-                    StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        return speakers.Any(speaker =>
+            string.Equals(
+                Stage2PlannerService.NormalizeCharacterKey(speaker),
+                norm,
+                StringComparison.OrdinalIgnoreCase));
     }
 
     public static int CountVoiceTags(string? prompt) => CountTag(prompt, VoiceTag);
