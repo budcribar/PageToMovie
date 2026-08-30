@@ -38,10 +38,11 @@ GOALS
    character, one seed, keyed on whichever spelling is more frequent. Do not create two
    seeds for a spelling variant of one identity.
 6. **BOOK-FIRST LOOKS:** When BOOK text is provided, mine it for age, build, hair,
-   eyes, face, clothing, era, and distinguishing traits. description + visual_lock
-   must be concrete enough to drive portrait generation and prevent role swaps
-   (e.g. confessor Narrator ≠ elderly Old Man). Never leave "as described in the
-   screenplay" or empty looks for on-screen roles when the book has cues.
+   eyes, face, clothing, era, and distinguishing traits. description must be concrete
+   enough to drive portrait generation and prevent role swaps (e.g. confessor Narrator ≠
+   elderly Old Man). Clothes belong in wardrobe_always; visual_lock is face / markings /
+   species / hair / eyes only. Never leave "as described in the screenplay" or empty
+   looks for on-screen roles when the book has cues.
 7. **ON-CAMERA POV:** First-person confessors / presenters who face the camera are
    display_name_policy ok_anytime (NOT never_on_screen). never_on_screen only for
    pure off-screen VO with no body on camera.
@@ -96,7 +97,7 @@ Return ONLY a JSON object (no markdown fences, no commentary):
   "character_seed_tokens": {
     "Character_Example": {
       "description": "filmable identity: species/age/build/hair/face + stable colors (omit shared uniform details if wardrobe_lock is set — see below)",
-      "visual_lock": "1–3 sentences of constants that must not drift between scenes",
+      "visual_lock": "1–3 sentences of face / markings / species / hair / eyes that must not drift — no clothes",
       "wardrobe_always": ["optional free-text sticky items — personal items only, not a shared uniform"],
       "wardrobe_lock": "optional: Wardrobe_<Group> key when this role shares a uniform with other cast (see wardrobe_lock_tokens)",
       "canonical_given_name": "Display name",
@@ -131,15 +132,17 @@ FIELD RULES:
 - Do not emit render_style_lock. Film-level medium is decided at book/screenplay.
 - description: 1–3 dense sentences of filmable identity (age band, build, face, hair,
   eyes, skin, wardrobe, era/medium). Enough for a portrait model with no other context.
-- visual_lock: 1–3 sentences of **constants that must not drift** (same face, hair,
-  signature garment/feature). Explicitly distinguish from other cast when similar.
+- visual_lock: 1–3 sentences of **face / markings / species / hair / eyes** that must
+  not drift. Do **not** restate clothes here — sticky garments belong in wardrobe_always.
+  Explicitly distinguish from other cast when similar.
 - wardrobe_always: sticky garments/colors only (not full plot costume changes). Do not
   duplicate a shared uniform here — use wardrobe_lock_tokens + wardrobe_lock instead
   (see SHARED UNIFORMS rule above).
 - wardrobe_lock_tokens / wardrobe_lock: only emit when 2+ on-screen characters genuinely
   share one professional uniform/costume. Omit entirely for casts with no shared uniform.
 - description / visual_lock / wardrobe_always: **filmable only** — species, size, age,
-  coat/hair colors, markings, face shape, real garments/props with color/shape.
+  coat/hair colors, markings, face shape. Real garments/props with color/shape go in
+  description (portrait) and wardrobe_always (sticky list), not visual_lock.
 - **FORBIDDEN in description/visual_lock:** "as described in the screenplay",
   "as in the book", "see screenplay", empty or name-only stubs for on-screen roles.
 - **NICKNAMES vs VISUAL (HARD):** Book titles, epithets, and personality labels belong in

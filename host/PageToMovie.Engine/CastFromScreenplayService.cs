@@ -619,8 +619,9 @@ public sealed class CastFromScreenplayService
         sb.AppendLine("transitions, camera directions, or bare action verbs. Those are staging, not people.");
         sb.AppendLine("Dialogue is not required for a silent lead who is clearly a character in action or book.");
         sb.AppendLine();
-        sb.AppendLine("CRITICAL: Fill description + visual_lock with concrete filmable appearance for every");
+        sb.AppendLine("CRITICAL: Fill description with concrete filmable appearance for every");
         sb.AppendLine("on-screen role (age, build, face, hair, eyes, wardrobe, era). Mine BOOK text when present.");
+        sb.AppendLine("visual_lock is face / markings / species / hair / eyes only — clothes go in wardrobe_always.");
         sb.AppendLine("Never use stubs like \"as described in the screenplay\".");
         sb.AppendLine("On-camera POV/confessor narrators = ok_anytime (not voice-only).");
         sb.AppendLine("Set species_kind from the story (human/animal/etc.) — do not guess from word lists.");

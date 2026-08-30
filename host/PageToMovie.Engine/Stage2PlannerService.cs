@@ -408,7 +408,7 @@ public sealed class Stage2PlannerService
         try
         {
             fanout.Report($"Scene {sn} of {fanout.TotalScenes}…");
-            var tasks = StartSceneClassifierTasks(s, sn, durMaxSeconds, planningModel, fanout, ct);
+            var tasks = StartSceneClassifierTasks(s, charSeeds, sn, durMaxSeconds, planningModel, fanout, ct);
             await Task.WhenAll(
                 tasks.Pacing, tasks.Lighting, tasks.Camera, tasks.Negative, tasks.Wardrobe,
                 tasks.Emotion, tasks.Sound, tasks.Dof, tasks.Color,
@@ -453,6 +453,7 @@ public sealed class Stage2PlannerService
     /// </summary>
     private SceneClassifierTasks StartSceneClassifierTasks(
         Dictionary<string, object?> s,
+        Dictionary<string, object?> charSeeds,
         int sn,
         int durMaxSeconds,
         string planningModel,
@@ -473,7 +474,8 @@ public sealed class Stage2PlannerService
             ? _negativeClassifier.ClassifySceneNegativeAsync(s, report, ct, model: planningModel)
             : Task.FromResult<string?>(null);
         var wardrobeTask = _wardrobeClassifier is not null
-            ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), report, ct, model: planningModel)
+            ? _wardrobeClassifier.ClassifySceneWardrobeAsync(
+                s, UnionCharactersOnScreen(s), report, ct, model: planningModel, charSeeds: charSeeds)
             : Task.FromResult<Dictionary<string, string>?>(null);
         var emotionTask = _emotionClassifier is not null
             ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
@@ -1039,18 +1041,10 @@ public sealed class Stage2PlannerService
         }
     }
 
-    private static void ApplyAiWardrobeOverrides(
+    internal static void ApplyAiWardrobeOverrides(
         Dictionary<string, List<string>> wardrobe,
         Dictionary<string, string>? aiWardrobe)
-    {
-        if (aiWardrobe is null || aiWardrobe.Count == 0)
-            return;
-        foreach (var (k, v) in aiWardrobe)
-        {
-            if (!string.IsNullOrWhiteSpace(v))
-                wardrobe[k] = new List<string> { v };
-        }
-    }
+        => WardrobeState.MergeOverrides(wardrobe, aiWardrobe);
 
     private static (string? ActiveSpeaker, int MonologueStep) UpdateMonologueTracking(
         string? dlg,
@@ -2813,18 +2807,7 @@ public sealed class Stage2PlannerService
     {
         var state = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var key in cast)
-        {
-            // Order: wardrobe_always (identity) then scene sticky; put_on prepends later
-            var items = new List<string>();
-            if (charSeeds.TryGetValue(key, out var s) && s is Dictionary<string, object?> seed)
-                items.AddRange(Stage1Normalizer.CoerceStringList(
-                    seed.TryGetValue("wardrobe_always", out var wa) ? wa : null));
-            if (scene.TryGetValue("wardrobe_by_character", out var wbc) &&
-                wbc is Dictionary<string, object?> map &&
-                map.TryGetValue(key, out var itemsObj))
-                items.AddRange(Stage1Normalizer.CoerceStringList(itemsObj));
-            state[key] = PrioritizeWardrobeItems(items).ToList();
-        }
+            state[key] = WardrobeState.IdentityItems(key, charSeeds, scene);
         return state;
     }
 
@@ -2845,16 +2828,8 @@ public sealed class Stage2PlannerService
             list = new List<string>();
             state[subject] = list;
         }
-        foreach (var r in remove)
-            list.RemoveAll(x => x.Contains(r, StringComparison.OrdinalIgnoreCase) ||
-                                r.Contains(x, StringComparison.OrdinalIgnoreCase));
-        // Newest put-on first (most important for current continuity)
-        for (var i = putOn.Count - 1; i >= 0; i--)
-        {
-            var p = putOn[i];
-            list.RemoveAll(x => x.Equals(p, StringComparison.OrdinalIgnoreCase));
-            list.Insert(0, p);
-        }
+        WardrobeState.RemoveItems(list, remove);
+        WardrobeState.PrependLayers(list, putOn);
         state[subject] = PrioritizeWardrobeItems(list).ToList();
     }
 

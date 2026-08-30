@@ -1,6 +1,6 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
+using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,13 +8,12 @@ using Microsoft.Extensions.Options;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
-/// AI Classifier acting as a Costume & Wardrobe Department Supervisor.
-/// Dynamically tracks and determines character attire per scene based on setting,
-/// time of day, location, and narrative beats, replacing static string-list lookups.
+/// AI classifier that proposes <em>delta</em> wardrobe layers (coat for rain, nightshirt
+/// at bed). Identity garments live on the Stage 1 list; this never replaces that list.
 /// </summary>
 public sealed class WardrobeContinuityClassifier
 {
-    public const string PromptVersion = "v1_product";
+    public const string PromptVersion = "v2_delta";
     private const string SceneNumberKey = "scene_number";
 
     private readonly IChatClient _chat;
@@ -39,15 +38,21 @@ public sealed class WardrobeContinuityClassifier
     public static string SystemPrompt() => """
         You are an expert film Costume Department Supervisor managing wardrobe continuity across scenes.
 
-        Your task: Given a scene's setting (location, time of day) and character list, determine the exact, contextually appropriate attire for each character appearing in the scene.
+        The CURRENT WARDROBE list per character is the single source of truth (signature garments
+        plus any scene sticky items). Your job is a DELTA: name only extra layers the beats
+        actually require. Do not invent a second outfit.
 
         RULES (HARD):
-        1. Contextual Attire:
-           - Night / Bedchamber scenes: Characters sleeping or in bed wear nightwear (e.g. "loose white cotton nightshirt, barefoot", "flannel nightgown").
-           - Parlor / Daytime / Professional scenes: Characters wear day clothes (e.g. "dark woolen waistcoat, plain dark shirtsleeves, tailored trousers").
-           - Outdoor / Travel: Characters wear outerwear (e.g. "heavy wool trench coat, leather boots, gloves").
-        2. Keep descriptions concise (5–15 words per character).
-        3. Do NOT omit any character keys provided in the prompt.
+        1. Keep every identity garment already listed. Do NOT drop, replace, or omit a signature
+           piece unless a beat wardrobe_remove says so (those removals are applied elsewhere).
+        2. You MAY add a layer the beats need:
+           - Going to bed / asleep: add nightwear (e.g. "loose white cotton nightshirt").
+           - Rain / travel / outdoor cold: add outerwear (e.g. "wool walking coat").
+           - Do not add a trench coat, waistcoat, or nightshirt just because the setting is
+             outdoor / day / night if the current list already covers the beat.
+        3. attire = only the added layer(s), 2–12 words. If no extra layer is needed, repeat
+           the current list (never substitute a different outfit).
+        4. Do NOT omit any character keys provided in the prompt.
 
         OUTPUT FORMAT:
         Return ONLY valid JSON matching this schema:
@@ -55,7 +60,7 @@ public sealed class WardrobeContinuityClassifier
           "wardrobe": [
             {
               "character_key": "Character_The_Narrator",
-              "attire": "plain dark waistcoat, white shirtsleeves, rolled cuffs"
+              "attire": "wool walking coat"
             },
             ...
           ]
@@ -67,7 +72,8 @@ public sealed class WardrobeContinuityClassifier
         List<string> cast,
         Action<string>? onProgress = null,
         CancellationToken ct = default,
-        string? model = null)
+        string? model = null,
+        Dictionary<string, object?>? charSeeds = null)
     {
         if (!IsEnabled || cast.Count == 0) return null;
 
@@ -75,7 +81,7 @@ public sealed class WardrobeContinuityClassifier
 
         try
         {
-            var userPrompt = BuildUserPrompt(scene, cast);
+            var userPrompt = BuildUserPrompt(scene, cast, charSeeds);
             var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.WardrobeContinuityClassifyModel;
             var requestedIds = cast.Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
@@ -114,15 +120,38 @@ public sealed class WardrobeContinuityClassifier
         }
     }
 
-    private static string BuildUserPrompt(Dictionary<string, object?> scene, List<string> cast)
+    internal static string BuildUserPrompt(
+        Dictionary<string, object?> scene,
+        List<string> cast,
+        Dictionary<string, object?>? charSeeds = null)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"SCENE {scene.GetValueOrDefault(SceneNumberKey)}: {scene.GetValueOrDefault("setting")}");
         sb.AppendLine($"CHARACTERS ON SCREEN: {string.Join(", ", cast)}");
-
+        AppendCurrentWardrobe(sb, scene, cast, charSeeds);
         ClassifierPromptParts.AppendSampleBeats(sb, scene);
-
         return sb.ToString();
+    }
+
+    private static void AppendCurrentWardrobe(
+        System.Text.StringBuilder sb,
+        Dictionary<string, object?> scene,
+        List<string> cast,
+        Dictionary<string, object?>? charSeeds)
+    {
+        sb.AppendLine("CURRENT WARDROBE (identity — do not drop unless a beat removes it):");
+        var any = false;
+        foreach (var key in cast)
+        {
+            var items = WardrobeState.IdentityItems(key, charSeeds, scene);
+            if (items.Count == 0)
+                continue;
+            sb.AppendLine($"  - {key}: {string.Join(", ", items)}");
+            any = true;
+        }
+
+        if (!any)
+            sb.AppendLine("  (none listed — do not invent a full replacement outfit)");
     }
 
     private Dictionary<string, string>? ParseWardrobeResponse(string rawJson)

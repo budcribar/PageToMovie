@@ -125,6 +125,31 @@ public static class CharacterVisualTextScrubber
         return CleanDebris(t);
     }
 
+    /// <summary>
+    /// Generate-time VisualLock: drop phrases that already live on the wardrobe list so
+    /// face / markings / species remain and clothes are not restated. Does not mutate seeds.
+    /// </summary>
+    public static string StripOutfitFromVisualLock(string? visualLock, IEnumerable<string>? wardrobeItems)
+    {
+        if (string.IsNullOrWhiteSpace(visualLock))
+            return visualLock ?? "";
+
+        var t = visualLock;
+        foreach (var raw in wardrobeItems ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+            foreach (var item in Stage1Normalizer.CoerceStringList(raw))
+            {
+                if (item.Length < 3)
+                    continue;
+                t = CommonRegex.Replace(t, $@"\b{Regex.Escape(item)}\b", "", RegexOptions.IgnoreCase);
+            }
+        }
+
+        return CleanDebris(t);
+    }
+
     /// <summary>Wardrobe list: drop pure nicknames; rewrite nickname-hat lines generically.</summary>
     public static List<string> ScrubWardrobeList(IEnumerable<string>? items)
     {
