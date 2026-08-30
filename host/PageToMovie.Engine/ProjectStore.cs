@@ -5073,18 +5073,51 @@ public sealed partial class ProjectStore
     private static bool DeleteClipMediaFiles(string projectDir, int scene, int clip)
     {
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
-        var videoPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-        var deletedVideo = File.Exists(videoPath);
-        TrashClipMediaFile(videoDir, videoPath);
-        TrashClipMediaFile(videoDir, videoPath + StoreLit.NativeSuffix);
-        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, StoreLit.ClipJsonSuffix));
-        TrashClipMediaFile(videoDir, Path.ChangeExtension(videoPath, StoreLit.MetaJsonSuffix));
+
+        // A clip is its takes. Trashing only scene_SS_clip_CC.mp4 left every take on disk, so a
+        // deleted clip came back the moment anything resolved it — and the pointer still named a
+        // take that was supposed to be gone.
+        var deletedVideo = false;
+        foreach (var mp4 in ClipMediaFiles(videoDir, scene, clip))
+        {
+            deletedVideo = true;
+            TrashClipMediaFile(videoDir, mp4);
+            TrashClipMediaFile(videoDir, mp4 + StoreLit.NativeSuffix);
+            TrashClipMediaFile(videoDir, Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix));
+            TrashClipMediaFile(videoDir, Path.ChangeExtension(mp4, StoreLit.MetaJsonSuffix));
+        }
+
+        // The pointer goes with them; it names a take that no longer exists.
+        var pointer = Path.Combine(videoDir, ClipTakeNaming.CurrentTakePointerFileName(scene, clip));
+        if (File.Exists(pointer))
+        {
+            try { File.Delete(pointer); } catch (IOException) { /* best effort */ }
+        }
 
         var verificationPath = ClipDialogueVerificationService.BuildVerificationPath(projectDir, scene, clip);
         if (File.Exists(verificationPath))
             File.Delete(verificationPath);
         DeleteStaleExtendSource(videoDir, scene, clip + 1);
         return deletedVideo;
+    }
+
+    /// <summary>
+    /// Every mp4 belonging to one clip: its takes, and a leftover bare alias if the folder still
+    /// has one. Ordered so the newest take goes first.
+    /// </summary>
+    private static IEnumerable<string> ClipMediaFiles(string videoDir, int scene, int clip)
+    {
+        if (!Directory.Exists(videoDir))
+            yield break;
+
+        foreach (var take in Directory
+                     .EnumerateFiles(videoDir, ClipTakeNaming.TakeMp4SearchPattern(scene, clip))
+                     .OrderByDescending(File.GetLastWriteTimeUtc))
+            yield return take;
+
+        var alias = Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(scene, clip));
+        if (File.Exists(alias))
+            yield return alias;
     }
 
     /// <summary>
@@ -5144,23 +5177,44 @@ public sealed partial class ProjectStore
             return;
         foreach (var clip in sceneAndClipNumbers)
         {
-            var name = $"scene_{scene:D2}_clip_{clip:D2}.mp4";
-            var active = Path.Combine(videoDir, name);
-            if (File.Exists(active))
+            // A clip already back on disk keeps what it has — a delete, a fresh generate on the
+            // same number, then a revert must not drop the old take over the new one.
+            if (ClipSidecarService.ResolveClipMediaPath(videoDir, scene, clip) is not null)
                 continue;
-            foreach (var suffix in new[] { "", StoreLit.NativeSuffix, StoreLit.ClipJsonSuffix, StoreLit.MetaJsonSuffix })
+
+            // Every take that was trashed with this clip, plus its pointer. Matching only
+            // scene_SS_clip_CC.mp4 restored nothing at all for a clip stored as takes.
+            var restored = false;
+            foreach (var trashedTake in Directory
+                         .EnumerateFiles(trashDir, ClipTakeNaming.TakeMp4SearchPattern(scene, clip)))
             {
-                var fileName = suffix switch
+                var takeName = Path.GetFileName(trashedTake);
+                foreach (var fileName in new[]
+                         {
+                             takeName,
+                             takeName + StoreLit.NativeSuffix,
+                             Path.ChangeExtension(takeName, StoreLit.ClipJsonSuffix),
+                             Path.ChangeExtension(takeName, StoreLit.MetaJsonSuffix),
+                         })
                 {
-                    "" => name,
-                    StoreLit.NativeSuffix => name + StoreLit.NativeSuffix,
-                    _ => Path.ChangeExtension(name, suffix),
-                };
-                var trashed = Path.Combine(trashDir, fileName);
-                if (!File.Exists(trashed))
-                    continue;
-                try { File.Move(trashed, Path.Combine(videoDir, fileName), overwrite: false); }
-                catch (IOException) { /* leave it in the trash rather than clobber */ }
+                    var trashed = Path.Combine(trashDir, fileName);
+                    if (!File.Exists(trashed))
+                        continue;
+                    try
+                    {
+                        File.Move(trashed, Path.Combine(videoDir, fileName), overwrite: false);
+                        restored = true;
+                    }
+                    catch (IOException) { /* leave it in the trash rather than clobber */ }
+                }
+            }
+
+            // Point at what came back: the newest take restored.
+            if (restored
+                && ClipSidecarService.ResolveClipMediaPath(videoDir, scene, clip) is { } back
+                && ClipTakeNaming.ParseTakeNumber(Path.GetFileName(back)) is var take && take > 0)
+            {
+                ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, take);
             }
         }
     }

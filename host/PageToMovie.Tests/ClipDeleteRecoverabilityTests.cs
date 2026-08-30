@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using Microsoft.Extensions.Options;
@@ -114,5 +115,27 @@ public sealed class ClipDeleteRecoverabilityTests : IDisposable
 
         Assert.False(File.Exists(verification));
         Assert.False(File.Exists(Trash(Path.GetFileName(verification))));
+    }
+
+    [Fact]
+    public void Deleting_a_clip_parks_every_take_and_drops_the_pointer()
+    {
+        // A clip is its takes. Trashing only scene_SS_clip_CC.mp4 left them all on disk, so the
+        // deleted clip resolved again the moment anything asked for it.
+        File.WriteAllBytes(Video(ClipTakeNaming.TakeMp4FileName(1, 2, 1)), new byte[2048]);
+        File.WriteAllBytes(Video(ClipTakeNaming.TakeMp4FileName(1, 2, 2)), new byte[2048]);
+        File.WriteAllText(Video(ClipTakeNaming.TakeSidecarFileName(1, 2, 2)), """{"source_file_id":"file_abc"}""");
+        ClipSidecarService.WriteCurrentTake(_videoDir, 1, 2, 2);
+
+        Assert.True(_store.DeleteClip("Demo", scene: 1, clip: 2));
+
+        Assert.Null(ClipSidecarService.ResolveClipMediaPath(_videoDir, 1, 2));
+        Assert.False(File.Exists(Video(ClipTakeNaming.TakeMp4FileName(1, 2, 1))));
+        Assert.False(File.Exists(Video(ClipTakeNaming.TakeMp4FileName(1, 2, 2))));
+        Assert.False(File.Exists(Video(ClipTakeNaming.CurrentTakePointerFileName(1, 2))));
+
+        Assert.True(File.Exists(Trash(ClipTakeNaming.TakeMp4FileName(1, 2, 1))));
+        Assert.True(File.Exists(Trash(ClipTakeNaming.TakeMp4FileName(1, 2, 2))));
+        Assert.True(File.Exists(Trash(ClipTakeNaming.TakeSidecarFileName(1, 2, 2))));
     }
 }
