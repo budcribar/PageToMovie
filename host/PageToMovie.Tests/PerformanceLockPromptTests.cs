@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using Xunit;
