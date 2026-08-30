@@ -99,7 +99,12 @@ public static class CutMergeCache
                 ? CutComposeContract.XfadeSecondsFor(left.WidthSec)
                 : 0;
             var hold = CutComposeContract.HoldSeconds(kind);
-            var fp = JoinFingerprint(clips, titles, left, right, kind, fade, hold, audio);
+            var fp = JoinFingerprint(
+                clips,
+                titles,
+                left,
+                right,
+                new CutJoinFingerprintArgs(kind, fade, hold, audio));
             joins.Add(new CutMergeJoin(
                 left.Scene,
                 right.Scene,
@@ -209,32 +214,29 @@ public static class CutMergeCache
         CutJoinKind kind,
         double fadeSec,
         double holdSec) =>
-        JoinFingerprint(clips, titles, left, right, kind, fadeSec, holdSec, CutJoinAudio.None);
+        JoinFingerprint(clips, titles, left, right, new CutJoinFingerprintArgs(kind, fadeSec, holdSec, CutJoinAudio.None));
 
     public static string JoinFingerprint(
         IReadOnlyList<CutClip> clips,
         IReadOnlyList<CutTextClip> titles,
         CutTimelineSceneBand left,
         CutTimelineSceneBand right,
-        CutJoinKind kind,
-        double fadeSec,
-        double holdSec,
-        CutJoinAudio audio)
+        CutJoinFingerprintArgs join)
     {
         var sb = new StringBuilder(CutComposeContract.RenderVersion);
         sb.Append('J').Append(left.Scene).Append('>').Append(right.Scene);
-        sb.Append(CutTransitionMap.WireName(kind));
-        sb.Append('H').Append(Num(holdSec)).Append('F').Append(Num(fadeSec));
-        if (audio.IsActive)
-            sb.Append('A').Append(CutJoinAudio.WireName(audio.Kind)).Append(Num(audio.Seconds));
+        sb.Append(CutTransitionMap.WireName(join.Kind));
+        sb.Append('H').Append(Num(join.HoldSec)).Append('F').Append(Num(join.FadeSec));
+        if (join.Audio.IsActive)
+            sb.Append('A').Append(CutJoinAudio.WireName(join.Audio.Kind)).Append(Num(join.Audio.Seconds));
         var last = clips[left.FirstIndex + left.ClipCount - 1];
         var first = clips[right.FirstIndex];
         AppendEdge(sb, 'L', last, outgoing: true);
         AppendEdge(sb, 'R', first, outgoing: false);
-        if (fadeSec > 0.05)
+        if (join.FadeSec > 0.05)
         {
-            AppendOverlappingTitles(sb, titles, left.StartSec + left.WidthSec - fadeSec, left.StartSec + left.WidthSec);
-            AppendOverlappingTitles(sb, titles, right.StartSec, right.StartSec + fadeSec);
+            AppendOverlappingTitles(sb, titles, left.StartSec + left.WidthSec - join.FadeSec, left.StartSec + left.WidthSec);
+            AppendOverlappingTitles(sb, titles, right.StartSec, right.StartSec + join.FadeSec);
         }
 
         return Hash(sb);
@@ -354,6 +356,13 @@ public readonly record struct CutMergeScene(
     double Seconds,
     string Fingerprint,
     string FileName);
+
+/// <summary>Picture join plus J/L audio hashed into a cached join segment.</summary>
+public readonly record struct CutJoinFingerprintArgs(
+    CutJoinKind Kind,
+    double FadeSec,
+    double HoldSec,
+    CutJoinAudio Audio);
 
 public readonly record struct CutMergeJoin(
     int FromScene,
