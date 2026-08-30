@@ -107,6 +107,26 @@ When debugging or implementing against a sample project (e.g. Buster / Buster2 /
    - Books, screenplays, locked plates, and clip videos that go to a Files / Responses / edit API must ride a **stable `file_id`** (content SHA-256 + expiry), not be pasted or base64'd on every call.
    - See **Provider file cache** below. A new chat/image/video path that inlines `book_full.txt`, `screenplay*.fountain`, or image bytes is a bug unless Files is unavailable (then fall back and log).
 
+12. **Taking one directive out of prose — drop the clause, never the phrase.**
+   - The tag writers (Camera, Performance, Lighting, StyleLock, wardrobe) each lift one kind of content
+     out of text a model wrote. A pattern that removes the *phrase* has to guess where it ends, and the
+     guess has now shipped six bugs: `"He steps into a close-up shot of the letter"` →
+     `"He steps into a of the letter"`, `"Nick looks into the camera and lifts the lantern"` →
+     `"Nick and lifts the lantern"`, a scene's lighting cut down to `"Warm golden"`, and an extend clip
+     left with no action at all. Each passed its own test, because the test used the one input shape
+     that removed cleanly.
+   - **Use `ProseClauses`** (`host/PageToMovie.Engine/ProseClauses.cs`). It splits on clause ends and
+     drops a clause only when the clause is *nothing but* the directive and the words joining it. A
+     directive welded into a sentence stays put — the tag owns it either way, and reading a framing or
+     an eyeline twice costs less than a beat the model cannot read.
+   - **Better: do not mix the two in one field.** Ask the classifier for separate fields
+     (`shot_scale` / `lens_spec` / `camera_movement`, `lighting_token` + `grade_note`,
+     `action` + `staging`) and read the one you want. When a field still arrives contaminated,
+     **reject it and fall back to the structured value** — never trim it back into shape.
+   - Detection is fine (“does this clause name an f-stop?” as a phrase list or literal match). What is
+     banned is a pattern that decides *how much* prose to delete. See also rule 8 — one canonical
+     helper, not a copy per writer.
+
 Buster (and other fixtures) are **eval / demo projects**, not product requirements.
 
 ---
