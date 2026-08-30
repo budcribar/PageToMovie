@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,7 +19,7 @@ public sealed record DepthOfFieldDirective(
 /// </summary>
 public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfFieldDirective>
 {
-    public const string PromptVersion = "v1_product";
+    public const string PromptVersion = "v2_fstop_only";
 
     public DepthOfFieldClassifier(
         IChatClient chat,
@@ -39,12 +41,13 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
         $"AI Focus Puller: Directing optical aperture & rack focus for {beatCount} beats…";
 
     public static string SystemPrompt() => """
-        You are an expert Focus Puller and Optical Cinematographer directing camera focus and depth of field.
+        You are an expert Focus Puller and Optical Cinematographer directing aperture.
 
-        Your task: Given a list of scene beats and camera directives, assign optical focus specifications per beat ID:
+        Your task: Given a list of scene beats, assign an f-stop per beat ID. Camera owns framing, lens, and move.
+        <Optics> is the f-stop only — do not describe depth of field or bokeh.
 
         DIRECTIVES TO ASSIGN PER BEAT:
-        1. aperture: f-stop spec (e.g. "f/1.4 shallow depth of field, creamy background bokeh", "f/2.8 moderate depth of field", "f/8 deep focus, sharp environment").
+        1. aperture: f-stop only (e.g. "f/1.4", "f/2.8", "f/8"). No prose.
         2. focal_plane: Primary subject focus target (e.g. "Foreground: lantern latch", "Midground: Narrator's eyes", "Background: closed bedroom door").
         3. rack_focus: Focus transition instruction, if any (e.g. "Rack focus from foreground lantern latch at t=0s to Old Man's eyes in background at t=2s", "Static focus on narrator").
 
@@ -54,7 +57,7 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
           "dof": [
             {
               "beat_id": "b1",
-              "aperture": "f/1.4 shallow depth of field, creamy soft bokeh",
+              "aperture": "f/1.4",
               "focal_plane": "Midground: Narrator's eyes",
               "rack_focus": "Static focus on narrator's eyes"
             },
@@ -78,5 +81,14 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
     }
 
     protected override Dictionary<string, DepthOfFieldDirective>? ParseResponse(string rawJson) =>
-        ClassifierDirectiveJson.ParseKeyedArray(rawJson, "dof", item => ClassifierDirectiveJson.MapThreeStringFields(item, "aperture", "focal_plane", "rack_focus", static (a, fp, rf) => new DepthOfFieldDirective(a, fp, rf)), _log, "depth of field");
+        ClassifierDirectiveJson.ParseKeyedArray(rawJson, "dof", item => ClassifierDirectiveJson.MapThreeStringFields(item, "aperture", "focal_plane", "rack_focus", static (a, fp, rf) => new DepthOfFieldDirective(SanitizeAperture(a), fp, rf)), _log, "depth of field");
+
+    /// <summary>Keep the f-stop; drop "shallow depth of field" / bokeh so Optics does not rewrite Camera.</summary>
+    public static string SanitizeAperture(string? aperture)
+    {
+        if (string.IsNullOrWhiteSpace(aperture))
+            return "";
+        var m = CommonRegex.Match(aperture, @"f\s*/\s*\d+(?:\.\d+)?", RegexOptions.IgnoreCase);
+        return m.Success ? CommonRegex.Replace(m.Value, @"\s+", "") : "";
+    }
 }

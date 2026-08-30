@@ -884,7 +884,7 @@ public sealed class Stage2PlannerService
     /// Build one scene’s clip plan. Returns null when the scene has nothing filmable
     /// (transition-only / phantom unspecified), so callers can omit it.
     /// </summary>
-    private static Dictionary<string, object?>? PlanScene(
+    internal static Dictionary<string, object?>? PlanScene(
         Dictionary<string, object?> scene,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
@@ -962,6 +962,7 @@ public sealed class Stage2PlannerService
         var t = 0;
         string? prevLid = null;
         Dictionary<string, object?>? prevBeat = null;
+        string? prevCamera = null;
 
         int monologueStep = 0;
         string? activeSpeaker = null;
@@ -970,7 +971,7 @@ public sealed class Stage2PlannerService
         {
             var planned = PlanSingleClip(
                 beats[i], i, durs[i], t, sceneWork, charSeeds, wardrobe, lids, primary,
-                prevBeat, prevLid, activeSpeaker, monologueStep,
+                prevBeat, prevLid, activeSpeaker, monologueStep, prevCamera,
                 aiLighting, aiNegative, aiCamera, aiEmotion, aiSound, aiDof, aiColor,
                 aiContinuationActions);
             clips.Add(planned.Clip);
@@ -980,6 +981,7 @@ public sealed class Stage2PlannerService
             prevBeat = beats[i];
             activeSpeaker = planned.ActiveSpeaker;
             monologueStep = planned.MonologueStep;
+            prevCamera = CameraTagWriter.ReadCameraTag(CoerceString(planned.Clip.TryGetValue("visual_prompt", out var vpObj) ? vpObj : null));
         }
 
         return BaseSceneShell(sceneWork, lids, primary, cast, total, clips, beatMap);
@@ -1119,6 +1121,7 @@ public sealed class Stage2PlannerService
         string? prevLid,
         string? activeSpeaker,
         int monologueStep,
+        string? previousCamera,
         string? aiLighting,
         string? aiNegative,
         Dictionary<string, CameraDirective>? aiCamera,
@@ -1148,7 +1151,7 @@ public sealed class Stage2PlannerService
         var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
         var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
-            vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, charSeeds,
+            vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, previousCamera, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
         vp = vpOut;
 
@@ -1218,6 +1221,7 @@ public sealed class Stage2PlannerService
             string? dlg,
             string? spk,
             int monologueStep,
+            string? previousCamera,
             Dictionary<string, object?> charSeeds,
             string? aiLighting,
             string? aiNegative,
@@ -1237,7 +1241,7 @@ public sealed class Stage2PlannerService
 
         string? cameraMoveToken;
         (vp, cameraMoveToken) = ApplyCameraDirective(
-            vp, aiCamera, beatIdStr, dlg, spk, monologueStep, clipCast, charSeeds);
+            vp, beat, aiCamera, beatIdStr, dlg, spk, monologueStep, previousCamera, clipCast, charSeeds);
         vp = ApplyEmotionDofColorDirectives(vp, aiEmotion, aiDof, aiColor, beatIdStr);
         return (vp, neg, cameraMoveToken, beatIdStr, sourceBeatIds);
     }
@@ -1251,29 +1255,47 @@ public sealed class Stage2PlannerService
 
     private static (string Vp, string? CameraMoveToken) ApplyCameraDirective(
         string vp,
+        Dictionary<string, object?> beat,
         Dictionary<string, CameraDirective>? aiCamera,
         string beatIdStr,
         string? dlg,
         string? spk,
         int monologueStep,
+        string? previousCamera,
         List<string> clipCast,
         Dictionary<string, object?> charSeeds)
     {
+        CameraDirective? camDir = null;
+        if (aiCamera is not null)
+            aiCamera.TryGetValue(beatIdStr, out camDir);
+
+        var actionAndBlocking = BeatActionAndBlocking(beat);
+        var sameSpeakerRun = monologueStep > 0;
+        var visualCastCount = clipCast.Count(t => !IsNeverOnScreenCharacter(t, charSeeds));
+        var framing = CameraTagWriter.Resolve(
+            camDir,
+            actionAndBlocking,
+            previousCamera,
+            sameSpeakerRun,
+            hasSpeech: !string.IsNullOrWhiteSpace(dlg),
+            onScreenCastCount: visualCastCount);
+        if (!string.IsNullOrWhiteSpace(framing))
+            vp = $"{vp} {PromptTags.Wrap(PromptFieldTags.Camera, PromptTags.SanitizeValue(framing))}";
+
         string? cameraMoveToken = null;
-        if (aiCamera is not null && aiCamera.TryGetValue(beatIdStr, out var camDir))
-        {
-            if (!string.IsNullOrWhiteSpace(camDir.FramingPrompt))
-                vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(camDir.FramingPrompt))}";
+        if (camDir is not null)
             cameraMoveToken = $"{camDir.LensSpec}, {camDir.CameraMovement}";
-        }
-        else if (!string.IsNullOrWhiteSpace(dlg))
-        {
-            var spkDisplay = !string.IsNullOrWhiteSpace(spk) ? DisplayNameForKey(spk, charSeeds) : JsonKeys.Speaker;
-            // OTS only when ≥2 on-screen — solo monologue must not invent a listener.
-            var framing = GetMonologueCameraFraming(monologueStep, spkDisplay, clipCast.Count);
-            vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(framing))}";
-        }
         return (vp, cameraMoveToken);
+    }
+
+    private static string BeatActionAndBlocking(Dictionary<string, object?> beat)
+    {
+        var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
+        var block = CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null) ?? "";
+        if (string.IsNullOrWhiteSpace(block) ||
+            ve.Contains(block, StringComparison.OrdinalIgnoreCase))
+            return ve;
+        return $"{ve}. {block}".Trim();
     }
 
     private static string ApplyEmotionDofColorDirectives(
@@ -1289,10 +1311,11 @@ public sealed class Stage2PlannerService
             vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
         }
 
-        if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir) &&
-            !string.IsNullOrWhiteSpace(dofDir.Aperture))
+        if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir))
         {
-            vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
+            var fstop = DepthOfFieldClassifier.SanitizeAperture(dofDir.Aperture);
+            if (!string.IsNullOrWhiteSpace(fstop))
+                vp = $"{vp} {PromptTags.Wrap(PromptFieldTags.Optics, PromptTags.SanitizeValue(fstop))}";
         }
 
         if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
@@ -1341,7 +1364,7 @@ public sealed class Stage2PlannerService
     {
         if (aiDof is null || !aiDof.TryGetValue(beatIdStr, out var dfd))
             return;
-        clipDict["aperture"] = dfd.Aperture;
+        clipDict["aperture"] = DepthOfFieldClassifier.SanitizeAperture(dfd.Aperture);
         clipDict["focal_plane"] = dfd.FocalPlane;
         if (!string.IsNullOrWhiteSpace(dfd.RackFocus))
             clipDict["rack_focus"] = dfd.RackFocus;
@@ -1943,28 +1966,18 @@ public sealed class Stage2PlannerService
     }
 
     /// <summary>
-    /// Cycle camera framing across continuous monologue beats.
-    /// Multi-cast: Medium → ECU eyes → OTS → Hands.
-    /// Solo: Medium → ECU eyes → three-quarter profile → Hands (never OTS — no invented listener).
+    /// Fallback Camera helper when the classifier has no row: medium hold, or a copy/vary
+    /// of the previous same-speaker Camera. Does not invent DoF, ECU eyes, macro hands,
+    /// or OTS without a second on-screen body. Does not run when action already named a
+    /// camera — call <see cref="CameraTagWriter.Resolve"/> for that gate.
     /// </summary>
     public static string GetMonologueCameraFraming(
         int step,
         string speakerDisplay = JsonKeys.Speaker,
-        int onScreenCastCount = 1)
+        int onScreenCastCount = 1,
+        string? previousCamera = null)
     {
-        var s = string.IsNullOrWhiteSpace(speakerDisplay) ? JsonKeys.Speaker : speakerDisplay;
-        var multi = onScreenCastCount >= 2;
-        return (step % 4) switch
-        {
-            0 => $"Medium shot, 35mm lens, slow push-in as {s} speaks",
-            1 => $"Extreme close-up on eyes and facial intensity of {s}, 85mm lens, shallow depth of field",
-            2 when multi =>
-                $"Over-the-shoulder shot, 50mm lens, listening perspective facing {s}",
-            2 =>
-                $"Three-quarter profile of {s}, 50mm lens, intimate confessional angle",
-            3 => $"Close-up on hands of {s}, 50mm macro lens, capturing subtle hand movements and gestures",
-            _ => $"Medium shot, 35mm lens, slow push-in as {s} speaks",
-        };
+        return CameraTagWriter.FallbackFraming(previousCamera, onScreenCastCount, speakerDisplay, step);
     }
 
     private static string ResolveVisualEvent(
@@ -2024,6 +2037,7 @@ public sealed class Stage2PlannerService
         // Sound cues arrive inside the beat's visual_event (Stage 1 fountain writes "(SOUND: …)").
         // Lift them into their own slot rather than leaving them buried in the action.
         var (action, _) = SplitSoundCues(ve);
+        action = CameraTagWriter.StripFromAction(action);
 
         // Emit full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.

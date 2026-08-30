@@ -63,7 +63,7 @@ public sealed class DepthOfFieldClassifierTests
         var dof = await classifier.ClassifySceneDepthOfFieldAsync(scene, beats);
 
         Assert.NotNull(dof);
-        Assert.Contains("f/1.4 shallow depth of field", dof!["b1"].Aperture);
+        Assert.Equal("f/1.4", dof!["b1"].Aperture);
         Assert.Equal("Foreground: tin lantern latch", dof["b1"].FocalPlane);
         Assert.Contains("Rack focus from foreground", dof["b1"].RackFocus);
     }
@@ -82,4 +82,22 @@ public sealed class DepthOfFieldClassifierTests
 
         Assert.Null(dof);
     }
+
+    [Fact]
+    public void SystemPrompt_aperture_is_fstop_only()
+    {
+        var prompt = DepthOfFieldClassifier.SystemPrompt();
+        Assert.Contains("f-stop only", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not describe depth of field or bokeh", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("creamy", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("shallow depth of field", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("f/1.4 shallow depth of field, creamy soft bokeh", "f/1.4")]
+    [InlineData("f / 2.8 moderate depth of field", "f/2.8")]
+    [InlineData("f/8", "f/8")]
+    [InlineData("creamy bokeh only", "")]
+    public void SanitizeAperture_keeps_fstop_drops_dof_prose(string raw, string expected) =>
+        Assert.Equal(expected, DepthOfFieldClassifier.SanitizeAperture(raw));
 }
