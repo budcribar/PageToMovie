@@ -19,6 +19,14 @@ public sealed class LocalizationTests
     }
 
     [Fact]
+    public void ReviewPage_Subtitle_is_the_short_approve_play_publish_line()
+    {
+        Assert.Equal("Approve scenes, play the cut, publish.", _localizer["ReviewPage.Subtitle"]);
+        Assert.DoesNotContain("north star", _localizer["ReviewPage.Subtitle"], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("automatic generation", _localizer["ReviewPage.Subtitle"], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void JsonAppLocalizer_FormatString_FillsPlaceholders()
     {
         var formatted = _localizer.Format("Scenes.ClipCount", 5);

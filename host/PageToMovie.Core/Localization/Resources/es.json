@@ -420,7 +420,7 @@
     "UseEstimate": "Usar estimación ({0} min)"
   },
   "ReviewPage": {
-    "Subtitle": "Aprueba escenas, reproduce el corte, publica. La meta es la generación automática — aquí la mejoras.",
+    "Subtitle": "Aprueba escenas, reproduce el corte, publica.",
     "ReviewAndApprove": "Revisar y aprobar",
     "ShareAndExport": "Compartir y exportar",
     "Finish": "Finalizar",

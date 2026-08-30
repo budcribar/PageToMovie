@@ -420,7 +420,7 @@
     "UseEstimate": "Use estimate ({0} min)"
   },
   "ReviewPage": {
-    "Subtitle": "Approve scenes, play the cut, publish. The north star is automatic generation — this is where you refine.",
+    "Subtitle": "Approve scenes, play the cut, publish.",
     "ReviewAndApprove": "Review and Approve",
     "ShareAndExport": "Share and Export",
     "Finish": "Finish",

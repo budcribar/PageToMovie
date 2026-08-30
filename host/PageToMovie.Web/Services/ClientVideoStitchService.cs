@@ -17,6 +17,13 @@ public sealed class ClientVideoStitchService
     private readonly IJSRuntime _js;
     private readonly EngineApiClient _engine;
     private readonly ClientMediaFolderService? _media;
+    private readonly object _skipLock = new();
+
+    /// <summary>Stable scene / clip-URL / segment index reused across Play clicks.</summary>
+    internal PlayMediaIndex MediaIndex { get; } = new();
+
+    /// <summary>Hit/miss counts for the last collect (tests + Play start-time notes).</summary>
+    internal PlayMediaCollectStats LastCollectStats { get; } = new();
 
     public ClientVideoStitchService(
         IJSRuntime js,
@@ -70,8 +77,8 @@ public sealed class ClientVideoStitchService
             return;
         }
 
-        // 2. Standard scene: fetch scene details and prefer atomic clip files for precision
-        var detail = await TryGetSceneDetailAsync(projectId, sn, ct);
+        // 2. Standard scene: cached scene details when the list fingerprint still matches
+        var detail = await TryGetSceneDetailAsync(projectId, sn, summary, ct);
 
         if (detail?.IsUserOverride == true)
         {
@@ -95,16 +102,76 @@ public sealed class ClientVideoStitchService
             urls.Add(_engine.CompositeVideoUrl(projectId, sn));
     }
 
-    private async Task<SceneDetail?> TryGetSceneDetailAsync(string projectId, int sn, CancellationToken ct)
+    private async Task<SceneDetail?> TryGetSceneDetailAsync(
+        string projectId,
+        int sn,
+        SceneSummary? summary,
+        CancellationToken ct)
     {
+        var summaryFp = PlayMediaIndex.FingerprintSummary(summary);
+        if (MediaIndex.TryGetSceneDetail(projectId, sn, summaryFp, out var cached))
+        {
+            LastCollectStats.AddDetailHit();
+            return cached;
+        }
+
+        LastCollectStats.AddDetailMiss();
         try
         {
-            return (await _engine.GetSceneDetailAsync(projectId, sn, ct))?.Scene;
+            var detail = (await _engine.GetSceneDetailAsync(projectId, sn, ct))?.Scene;
+            if (detail is not null)
+                MediaIndex.RememberSceneDetail(projectId, detail, summary);
+            return detail;
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Prefetch scene JSON + clip indexes after Review has loaded the scene list,
+    /// so the first Play does not walk every scene on click.
+    /// </summary>
+    public async Task WarmSceneIndexAsync(
+        string projectId,
+        IReadOnlyList<SceneSummary>? scenes,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(projectId) || scenes is not { Count: > 0 })
+            return;
+
+        MediaIndex.SyncSceneList(projectId, scenes);
+        await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
+        var missing = scenes
+            .Where(s => !MediaIndex.TryGetSceneDetail(
+                projectId, s.SceneNumber, PlayMediaIndex.FingerprintSummary(s), out _))
+            .ToList();
+        if (missing.Count > 0)
+        {
+            await Parallel.ForEachAsync(
+                missing,
+                new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },
+                async (summary, token) =>
+                {
+                    await TryGetSceneDetailAsync(projectId, summary.SceneNumber, summary, token)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+        }
+
+        if (MediaIndex.TryGetSceneGroup(projectId, scenes, out _))
+        {
+            LastCollectStats.AddGroupHit();
+            return;
+        }
+
+        LastCollectStats.AddGroupMiss();
+        var playable = scenes
+            .Where(s => s.CompositeExists || s.ClipsOnDisk > 0 || s.ClipCount > 0)
+            .OrderBy(s => s.SceneNumber)
+            .Select(s => s.SceneNumber)
+            .ToList();
+        MediaIndex.RememberSceneGroup(projectId, scenes, playable);
     }
 
     /// <summary>
@@ -194,26 +261,42 @@ public sealed class ClientVideoStitchService
 
     private void BeginSkippedCollect()
     {
-        LastCollectError = null;
-        _skippedClipLabels.Clear();
-        LastSkippedClipLabels = Array.Empty<string>();
+        lock (_skipLock)
+        {
+            LastCollectError = null;
+            _skippedClipLabels.Clear();
+            LastSkippedClipLabels = Array.Empty<string>();
+        }
+        LastCollectStats.Reset();
     }
 
     private void NoteSkippedClips(IEnumerable<string> labels)
     {
-        _skippedClipLabels.AddRange(
-            labels
-                .Where(label => !string.IsNullOrWhiteSpace(label))
-                .Distinct(StringComparer.Ordinal)
-                .Where(label => !_skippedClipLabels.Contains(label, StringComparer.Ordinal)));
-        LastSkippedClipLabels = _skippedClipLabels.ToList();
+        lock (_skipLock)
+        {
+            _skippedClipLabels.AddRange(
+                labels
+                    .Where(label => !string.IsNullOrWhiteSpace(label))
+                    .Distinct(StringComparer.Ordinal)
+                    .Where(label => !_skippedClipLabels.Contains(label, StringComparer.Ordinal)));
+            LastSkippedClipLabels = _skippedClipLabels.ToList();
+        }
     }
 
     private void FinishSkippedCollect()
     {
-        LastSkippedClipLabels = _skippedClipLabels.ToList();
-        if (_skippedClipLabels.Count > 0 && string.IsNullOrWhiteSpace(LastCollectError))
-            LastCollectError = FormatMissingClipPlayError(_skippedClipLabels, _media?.IsConnected == true);
+        lock (_skipLock)
+        {
+            LastSkippedClipLabels = _skippedClipLabels.ToList();
+            if (_skippedClipLabels.Count > 0 && string.IsNullOrWhiteSpace(LastCollectError))
+                LastCollectError = FormatMissingClipPlayError(_skippedClipLabels, _media?.IsConnected == true);
+        }
+    }
+
+    private void NoteCollectError(string error)
+    {
+        lock (_skipLock)
+            LastCollectError = error;
     }
 
     /// <summary>On-disk clip URLs for one scene (ordered).</summary>
@@ -236,7 +319,9 @@ public sealed class ClientVideoStitchService
         // Ensure a fresh ?mt= media token before any ClipVideoUrl fallback (see CollectSceneMediaUrlsAsync).
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
         if (detail is null)
-            detail = (await _engine.GetSceneDetailAsync(projectId, sceneNumber, ct))?.Scene;
+            detail = await TryGetSceneDetailAsync(projectId, sceneNumber, summary: null, ct).ConfigureAwait(false);
+        else
+            MediaIndex.RememberSceneDetail(projectId, detail);
         if (detail?.Clips is null || detail.Clips.Count == 0)
             return Array.Empty<string>();
 
@@ -286,21 +371,37 @@ public sealed class ClientVideoStitchService
         CancellationToken ct)
     {
         var resolved = new string?[rows.Count];
-        var serverCandidates = new List<(int Index, string Url)>();
+        var serverCandidates = new List<(int Index, string Url, string Fingerprint)>();
         for (var i = 0; i < rows.Count; i++)
         {
             var clipRow = rows[i];
-            var local = await TryLocalClipBlobUrlAsync(projectId, sceneNumber, clipRow).ConfigureAwait(false);
+            var currentRel = _media is not null
+                ? await _media.ResolveCurrentTakeRelativePathAsync(projectId, sceneNumber, clipRow.ClipNumber)
+                    .ConfigureAwait(false)
+                : null;
+            var takeFp = PlayMediaIndex.FingerprintClip(clipRow, currentRel);
+            if (MediaIndex.TryGetClipUrl(projectId, sceneNumber, clipRow.ClipNumber, takeFp, out var cached)
+                && !string.IsNullOrEmpty(cached))
+            {
+                LastCollectStats.AddClipUrlHit();
+                resolved[i] = cached;
+                continue;
+            }
+
+            LastCollectStats.AddClipUrlMiss();
+            var local = await TryLocalClipBlobUrlAsync(projectId, sceneNumber, clipRow, currentRel)
+                .ConfigureAwait(false);
             if (!string.IsNullOrEmpty(local))
             {
                 resolved[i] = local;
+                MediaIndex.RememberClipUrl(projectId, sceneNumber, clipRow.ClipNumber, takeFp, local);
                 continue;
             }
             if (!includeServerFallback)
                 continue;
             var server = await ResolveServerClipUrlAsync(projectId, sceneNumber, clipRow, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(server))
-                serverCandidates.Add((i, server));
+                serverCandidates.Add((i, server, takeFp));
         }
 
         // Range probes are independent network operations. Run them together so scene startup
@@ -311,13 +412,22 @@ public sealed class ClientVideoStitchService
             async (candidate, token) =>
             {
                 if (await _engine.MediaUrlReachableAsync(candidate.Url, token).ConfigureAwait(false))
+                {
                     resolved[candidate.Index] = candidate.Url;
+                    MediaIndex.RememberClipUrl(
+                        projectId, sceneNumber, rows[candidate.Index].ClipNumber,
+                        candidate.Fingerprint, candidate.Url);
+                }
             }).ConfigureAwait(false);
 
         return resolved;
     }
 
-    private async Task<string?> TryLocalClipBlobUrlAsync(string projectId, int sceneNumber, ClipSummary clipRow)
+    private async Task<string?> TryLocalClipBlobUrlAsync(
+        string projectId,
+        int sceneNumber,
+        ClipSummary clipRow,
+        string? currentTakeRel = null)
     {
         if (_media is null)
             return null;
@@ -331,8 +441,9 @@ public sealed class ClientVideoStitchService
                 return fromRow;
         }
 
-        var currentRel = await _media.ResolveCurrentTakeRelativePathAsync(projectId, sceneNumber, clipRow.ClipNumber)
-            .ConfigureAwait(false);
+        var currentRel = currentTakeRel
+            ?? await _media.ResolveCurrentTakeRelativePathAsync(projectId, sceneNumber, clipRow.ClipNumber)
+                .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(currentRel))
             return null;
         return await _media.GetLocalBlobUrlAsync(projectId, currentRel).ConfigureAwait(false);
@@ -456,33 +567,77 @@ public sealed class ClientVideoStitchService
         IReadOnlySet<int>? staleScenes,
         CancellationToken ct = default)
     {
-        var segments = new List<ClientWipSegment>();
+        var ordered = sceneNumbers.Distinct().OrderBy(x => x).ToList();
+        var segments = new List<ClientWipSegment>(ordered.Count);
         BeginSkippedCollect();
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
-        foreach (var sn in sceneNumbers.Distinct().OrderBy(x => x))
+        if (sceneList is { Count: > 0 })
+        {
+            MediaIndex.SyncSceneList(projectId, sceneList);
+            if (MediaIndex.TryGetSceneGroup(projectId, sceneList, out _))
+                LastCollectStats.AddGroupHit();
+            else
+            {
+                LastCollectStats.AddGroupMiss();
+                MediaIndex.RememberSceneGroup(projectId, sceneList, ordered);
+            }
+        }
+
+        // Resolve clip URLs for every scene together so workers are not waiting on a
+        // serial GetSceneDetail walk. Mix stays sequential (ffmpeg compose gate).
+        var urlsByIndex = new List<string>[ordered.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, ordered.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },
+            async (index, token) =>
+            {
+                var sceneUrls = new List<string>();
+                await AppendSceneMediaUrlsAsync(sceneUrls, projectId, ordered[index], sceneList, token)
+                    .ConfigureAwait(false);
+                urlsByIndex[index] = sceneUrls;
+            }).ConfigureAwait(false);
+
+        for (var i = 0; i < ordered.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var sceneUrls = new List<string>();
-            await AppendSceneMediaUrlsAsync(sceneUrls, projectId, sn, sceneList, ct);
+            var sn = ordered[i];
+            var sceneUrls = urlsByIndex[i] ?? new List<string>();
             if (sceneUrls.Count == 0)
                 continue;
 
+            var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sn);
+            MediaIndex.TryGetSceneDetail(
+                projectId, sn, PlayMediaIndex.FingerprintSummary(summary), out var detail);
+            var segmentFp = PlayMediaIndex.FingerprintSegment(summary, detail, sceneUrls.Count);
+            if (MediaIndex.TryGetSceneSegment(projectId, sn, segmentFp, out var cached)
+                && cached is not null)
+            {
+                LastCollectStats.AddSegmentHit();
+                segments.Add(cached);
+                continue;
+            }
+
+            LastCollectStats.AddSegmentMiss();
             var sceneUrl = await ConcatAndMixSceneAsync(projectId, sceneUrls, sn, ct: ct);
             if (string.IsNullOrWhiteSpace(sceneUrl))
             {
                 // Remember why: "no clips" and "could not stitch the clips" are different problems.
                 var why = LastCollectError ?? "browser stitch failed";
-                LastCollectError = why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
-                    ? why
-                    : $"S{sn:D2}: {why}";
+                NoteCollectError(
+                    why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
+                        ? why
+                        : $"S{sn:D2}: {why}");
                 continue;
             }
-            segments.Add(new ClientWipSegment
+
+            var segment = new ClientWipSegment
             {
                 SceneNumber = sn,
                 Url = sceneUrl,
                 RelativeSrc = $"assets/video/scene_{sn:D2}.mp4",
-            });
+            };
+            MediaIndex.RememberSceneSegment(projectId, sn, segmentFp, segment);
+            segments.Add(segment);
         }
         FinishSkippedCollect();
         return segments;
