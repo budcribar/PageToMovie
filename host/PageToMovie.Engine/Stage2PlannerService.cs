@@ -2296,8 +2296,8 @@ public sealed class Stage2PlannerService
             ve.Contains(block, StringComparison.OrdinalIgnoreCase))
             return ve;
         // On extend, Continuity owns position. A place note after the rewrite puts the
-        // teleport sentence back. Body-facing / eyeline that is not a room restage may stay;
-        // when in doubt drop the note rather than restage.
+        // teleport sentence back. Body-facing or eyeline that is not a room restage may
+        // stay. When in doubt drop the note rather than restage.
         if (isContinuation && !ContinuationActionClassifier.IsBodyFacingOnly(block))
             return ve;
         return $"{ve}. {block}".Trim();
