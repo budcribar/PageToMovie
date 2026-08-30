@@ -1969,11 +1969,10 @@ public sealed class Stage2PlannerService
     /// </summary>
     public static string GetMonologueCameraFraming(
         int step,
-        string speakerDisplay = JsonKeys.Speaker,
         int onScreenCastCount = 1,
         string? previousCamera = null)
     {
-        return CameraTagWriter.FallbackFraming(previousCamera, onScreenCastCount, speakerDisplay, step);
+        return CameraTagWriter.FallbackFraming(previousCamera, onScreenCastCount, step);
     }
 
     private static string ResolveVisualEvent(
