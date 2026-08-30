@@ -35,6 +35,19 @@ public class CameraAndWardrobeProseTests
     }
 
     [Fact]
+    public void A_punctuation_run_stays_on_the_clause_and_the_next_clause_still_starts_after_it()
+    {
+        // TidyProse does not collapse '!', so a split-per-mark would insert spaces: "walks! !"
+        Assert.Equal(
+            "Character walks!!",
+            CameraTagWriter.StripFromAction("Character walks!! Camera behind."));
+
+        Assert.Equal(
+            "Character walks to the door",
+            CameraTagWriter.StripFromAction("Wide shot... Character walks to the door."));
+    }
+
+    [Fact]
     public void Optics_language_leaves_with_its_own_clause_and_no_debris()
     {
         Assert.Equal(

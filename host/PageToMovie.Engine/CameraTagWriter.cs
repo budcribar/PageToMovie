@@ -225,17 +225,23 @@ public static class CameraTagWriter
     {
         var clauses = new List<Clause>();
         var start = 0;
-        for (var i = 0; i < text.Length; i++)
+        var i = 0;
+        while (i < text.Length)
         {
             if (text[i] is not ('.' or ',' or ';' or '!' or '?'))
+            {
+                i++;
                 continue;
+            }
+
             var stop = i;
             while (stop + 1 < text.Length && text[stop + 1] is '.' or ',' or ';' or '!' or '?')
                 stop++;
             clauses.Add(new Clause(text[start..i], text[i..(stop + 1)] + " "));
             start = stop + 1;
-            i = stop;
+            i = start;
         }
+
         if (start < text.Length)
             clauses.Add(new Clause(text[start..], ""));
         return clauses;
