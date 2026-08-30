@@ -74,10 +74,10 @@ public static class ProjectVisionMeta
 
     /// <summary>
     /// Operator-facing fail-fast when Stage 2 or video generate runs without a decided medium.
-    /// Do not invent photoreal / 3D CG — the project must re-run book/screenplay.
+    /// Do not invent photoreal / 3D CG — the operator picks the look on the screenplay page.
     /// </summary>
     public const string MissingMediumMessage =
-        "This project is out of date: it has no visual medium. Re-run book/screenplay (or regen).";
+        "This film has no look yet. Open Screenplay, choose how it should look, and save.";
 
     public static bool IsDecidedMedium(string? raw) => VisualMediumStyles.IsDecidedMedium(raw);
 
