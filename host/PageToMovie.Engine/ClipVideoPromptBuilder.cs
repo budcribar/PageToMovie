@@ -87,6 +87,8 @@ public static class ClipVideoPromptBuilder
         public IReadOnlyList<string> OnScreenKeys { get; init; } = Array.Empty<string>();
         public int CastCount { get; init; }
         public string StyleHead { get; init; } = "";
+        /// <summary>Film-level PERFORMANCE LOCK from vision_meta. Empty when the project has none.</summary>
+        public string PerformanceLock { get; init; } = "";
         public string CharacterVariables { get; init; } = "";
         public string AudioBlock { get; init; } = "";
         public string ContinuityBlock { get; init; } = "";
@@ -122,6 +124,7 @@ public static class ClipVideoPromptBuilder
             OnScreenKeys = OnScreenKeys,
             CastCount = CastCount,
             StyleHead = StyleHead,
+            PerformanceLock = PerformanceLock,
             CharacterVariables = CharacterVariables,
             AudioBlock = AudioBlock,
             ContinuityBlock = ContinuityBlock,
@@ -210,10 +213,13 @@ public static class ClipVideoPromptBuilder
 
         var resolvedMedium = ResolveVisualMedium(projectDir, visualMedium);
         var style = ResolveStyleLockForGeneration(projectDir, styleHead, rawVisual, resolvedMedium);
+        var performanceLock = ResolvePerformanceLockForGeneration(projectDir);
         // One StyleLock per prompt, from project render_style_lock / StyleLockFor.
         // Mary19 shipped house-rule watercolor at the head AND "STYLE LOCK: stylized 3D…"
         // still sitting in the action (prose, not a tag). Strip every lock from the action.
         actionText = StripStyleLocksFromAction(actionText);
+        // Performance owns gaze/address. Action is bodies / blocking only.
+        actionText = PerformanceTagWriter.StripEyelineFromAction(actionText);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var wardrobeByKey = CollectGenerateWardrobe(rawVisual, allKeys, characters);
         var varBlock = BuildCharacterVariablesBlock(
@@ -226,11 +232,13 @@ public static class ClipVideoPromptBuilder
         var castCountLine = FormatCastCountLine(onScreenKeys);
         var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
-        var assembled = EnsureSingleStyleLock(
-            AppendPromptSections(
-                style, varBlock, locationRefAttached, locationImageTag, locationKey,
-                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged, resolvedMedium),
-            style);
+        var assembled = PerformanceTagWriter.EnsureSinglePerformanceLock(
+            EnsureSingleStyleLock(
+                AppendPromptSections(
+                    style, varBlock, locationRefAttached, locationImageTag, locationKey,
+                    castCountLine, audioBlock, continuityBlock, clipEl, actionTagged, resolvedMedium),
+                style),
+            performanceLock);
         var prompt = FitPromptToVideoBudget(assembled, promptMaxLen);
         IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
 
@@ -244,6 +252,7 @@ public static class ClipVideoPromptBuilder
             OnScreenKeys = onScreenKeys,
             CastCount = onScreenKeys.Count,
             StyleHead = style,
+            PerformanceLock = performanceLock ?? "",
             CharacterVariables = varBlock,
             AudioBlock = audioBlock,
             ContinuityBlock = continuityBlock,
@@ -1324,6 +1333,7 @@ public static class ClipVideoPromptBuilder
         // Extra STYLE LOCK copies (house-rule line + stale plan prose) are stripped at build
         // time — one lock from VisualMediumStyles / project render_style_lock is the SSoT.
         p = DropLaterDuplicates(p, @"STYLE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
+        p = DropLaterDuplicates(p, @"PERFORMANCE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
         p = DropLaterDuplicates(p, $@"<{PromptFieldTags.StyleLock}>.*?</{PromptFieldTags.StyleLock}>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
         return p;
@@ -2337,6 +2347,17 @@ public static class ClipVideoPromptBuilder
                 return VisualMediumStyles.NormalizeMedium(vision.VisualMedium);
         }
         return "";
+    }
+
+    /// <summary>
+    /// Film address from vision_meta only. Empty when the project has none — do not invent
+    /// confessional vs objective, STYLE LOCK, or a visual-medium shim.
+    /// </summary>
+    internal static string? ResolvePerformanceLockForGeneration(string? projectDir)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir))
+            return null;
+        return ProjectVisionMeta.TryGetPerformanceLock(projectDir);
     }
 
     /// <summary>

@@ -5923,6 +5923,7 @@ public sealed class FilmJobService
         await LogContinuityOrReseedAsync(ctx).ConfigureAwait(false);
 
         var vision = ProjectVisionMeta.RequireDecided(ctx.ProjectDir);
+        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(ctx.ProjectDir);
         var styleHead = vision.RenderStyleLock;
         var sceneLocationKey = ResolveSceneLocationKey(ctx.BlueprintRoot, ctx.Scene);
 
@@ -5975,7 +5976,7 @@ public sealed class FilmJobService
             throw new InvalidOperationException("clip missing visual_prompt");
 
         EnsureClipRefsForMode(ctx, built);
-        built = await ApplyProjectRulesToPromptAsync(ctx.ProjectId, built, ctx.Ct).ConfigureAwait(false);
+        built = await ApplyProjectRulesToPromptAsync(ctx.ProjectId, built, performanceLock, ctx.Ct).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(ctx.Resolution))
             ctx.Resolution = await ResolveVideoResolutionAsync(ctx.ProjectId, null, ctx.Ct);
@@ -6178,20 +6179,22 @@ public sealed class FilmJobService
     private async Task<ClipVideoPromptBuilder.PromptBuildResult> ApplyProjectRulesToPromptAsync(
         string projectId,
         ClipVideoPromptBuilder.PromptBuildResult built,
+        string? performanceLock,
         CancellationToken ct)
     {
         // Approved project-scoped house rules (learning). Global clip_gen_rules.txt is
-        // retired — dedicated writers + STYLE LOCK own those concerns.
+        // retired — dedicated writers + STYLE LOCK / PERFORMANCE LOCK own those concerns.
         try
         {
             var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
+            var merged = built.Prompt;
             if (!string.IsNullOrWhiteSpace(rules))
-            {
-                var merged = built.Prompt.TrimEnd() + "\n\n" + rules.Trim();
-                built = built.WithPrompt(
-                    ClipVideoPromptBuilder.EnsureSingleStyleLock(merged, built.StyleHead),
-                    " · project-rules");
-            }
+                merged = built.Prompt.TrimEnd() + "\n\n" + rules.Trim();
+            var collapsed = PerformanceTagWriter.EnsureSinglePerformanceLock(
+                ClipVideoPromptBuilder.EnsureSingleStyleLock(merged, built.StyleHead),
+                performanceLock ?? built.PerformanceLock);
+            if (!string.Equals(collapsed, built.Prompt, StringComparison.Ordinal))
+                built = built.WithPrompt(collapsed, " · project-rules");
         }
         catch { /* non-fatal */ }
         return built;

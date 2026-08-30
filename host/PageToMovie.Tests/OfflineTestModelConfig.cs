@@ -48,6 +48,8 @@ internal static class OfflineTestModelConfig
         ProjectVisionMeta.Write(store.GetProjectDir(projectId), new ProjectVisionMeta.Document
         {
             VisualMedium = medium,
+            PerformanceLock =
+                "PERFORMANCE LOCK: objective; characters look at each other / scene action, not the viewer.",
             DecidedBy = "adaptation",
         });
     }

@@ -82,19 +82,12 @@ public sealed class ProjectRulesService
         var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var lines = doc.Active
             .Where(r => !string.IsNullOrWhiteSpace(r.Text))
+            .Where(r => !IsFilmPerformanceLockRule(r))
             .Select(r => $"- [{(string.IsNullOrWhiteSpace(r.Category) ? CategoryOther : r.Category.Trim())}] {r.Text.Trim()}")
             .ToList();
 
         // Film-level STYLE LOCK is ProjectVisionMeta — do not inject cast_seeds render_style_lock.
-
-        if (!doc.Active.Any(r =>
-                string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase)))
-        {
-            var perf = await TryReadCastFieldAsync(projectId, "performance_lock", ct).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(perf))
-                lines.Add($"- [performance] {NormalizePerformanceRuleText(perf)}");
-        }
+        // Film-level PERFORMANCE LOCK is vision_meta — do not inject cast_seeds performance_lock.
 
         if (lines.Count == 0) return "";
         return "PROJECT HOUSE RULES (approved):\n" + string.Join("\n", lines);
@@ -138,6 +131,14 @@ public sealed class ProjectRulesService
             maxTokens: 175,
             prefixWhenMissing: "PERFORMANCE LOCK: ",
             "PERFORMANCE", "address", "viewer", "camera", "confessional", "observ");
+
+    /// <summary>
+    /// Film-level address lock written from cast extract. Generate reads
+    /// <c>vision_meta.performance_lock</c> instead — do not inject this as a second writer.
+    /// </summary>
+    private static bool IsFilmPerformanceLockRule(ProjectRule r) =>
+        string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase) ||
+        (r.Text?.TrimStart().StartsWith("PERFORMANCE LOCK", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private async Task<bool> EnsureSystemRuleFromLockAsync(
         string projectId,
@@ -207,25 +208,6 @@ public sealed class ProjectRulesService
         if (!keywords.Any(k => t.Contains(k, StringComparison.OrdinalIgnoreCase)))
             t = prefixWhenMissing + t;
         return PromptTokenizer.TruncateToTokens(t, maxTokens);
-    }
-
-    private async Task<string?> TryReadCastFieldAsync(string projectId, string propertyName, CancellationToken ct = default)
-    {
-        try
-        {
-            var path = ScreenplayService.GetCastSeedsPath(_projects, projectId);
-            if (!File.Exists(path)) return null;
-            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(text);
-            if (doc.RootElement.TryGetProperty(propertyName, out var el) &&
-                el.ValueKind == JsonValueKind.String)
-                return el.GetString();
-        }
-        catch
-        {
-            /* ignore */
-        }
-        return null;
     }
 
     /// <summary>

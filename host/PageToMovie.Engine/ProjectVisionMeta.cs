@@ -79,6 +79,13 @@ public static class ProjectVisionMeta
     public const string MissingMediumMessage =
         "This film has no look yet. Open Screenplay, choose how it should look, and save.";
 
+    /// <summary>
+    /// Operator-facing fail-fast when Stage 2 or video generate runs without a film address lock.
+    /// Do not invent confessional vs objective — the project must re-run book/screenplay or cast extract.
+    /// </summary>
+    public const string MissingPerformanceLockMessage =
+        "This project is out of date: it has no performance lock. Re-run book/screenplay (or regen).";
+
     public static bool IsDecidedMedium(string? raw) => VisualMediumStyles.IsDecidedMedium(raw);
 
     /// <summary>
@@ -99,6 +106,26 @@ public static class ProjectVisionMeta
     public static Document RequireDecided(string projectDir) =>
         TryGetDecided(projectDir)
         ?? throw new InvalidOperationException(MissingMediumMessage);
+
+    /// <summary>
+    /// Film-level address lock from vision_meta (overlay, then extract_meta). Empty is missing —
+    /// do not invent confessional vs objective, STYLE LOCK, or a visual-medium shim.
+    /// </summary>
+    public static string? TryGetPerformanceLock(string projectDir)
+    {
+        var overlay = TryRead(projectDir);
+        if (!string.IsNullOrWhiteSpace(overlay?.PerformanceLock))
+            return overlay.PerformanceLock.Trim();
+        var extract = TryReadExtractMeta(projectDir);
+        return string.IsNullOrWhiteSpace(extract?.PerformanceLock)
+            ? null
+            : extract.PerformanceLock.Trim();
+    }
+
+    /// <summary>Stage 2 / generate: performance lock or throw <see cref="MissingPerformanceLockMessage"/>.</summary>
+    public static string RequirePerformanceLock(string projectDir) =>
+        TryGetPerformanceLock(projectDir)
+        ?? throw new InvalidOperationException(MissingPerformanceLockMessage);
 
     public static Document? TryRead(string projectDir)
     {
@@ -159,6 +186,7 @@ public static class ProjectVisionMeta
         {
             VisualMedium = med,
             RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
+            PerformanceLock = ReadOptionalString(root, "performance_lock"),
             DecidedBy = ResolveExtractDecidedBy(source),
             Notes = notes,
             DecidedAt = ReadOptionalString(root, "prepared_at"),
