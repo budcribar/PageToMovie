@@ -117,8 +117,8 @@ public class Stage2VisualPromptTests : IDisposable
         Assert.Equal(expected, result);
         Assert.DoesNotContain("Character_Narrator He", result, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Character_Mom She", result, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Narrator steadies", result, StringComparison.Ordinal);
-        Assert.DoesNotContain("Mom turns", result, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Narrator steadies", result);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Mom turns", result);
     }
 
     [Theory]

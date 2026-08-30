@@ -488,7 +488,7 @@ public class ClipVideoPromptBuilderTests
     {
         var input = "Character_Mary ON CAMERA lip-syncs EXACTLY: \"Mary had a little lamb.\".";
         var compressed = ClipVideoPromptBuilder.CompressPromptText(input);
-        Assert.Contains("C1 ON CAMERA", compressed, StringComparison.Ordinal);
+        Assert.Contains("C1 lip-syncs", compressed, StringComparison.Ordinal);
         Assert.Contains("\"Mary had a little lamb.\"", compressed, StringComparison.Ordinal);
     }
 

@@ -114,7 +114,7 @@ public class CastMentionKeyNormalizationTests
         var result = Stage2PlannerService.AttachPrimaryToVisual(
             "He steadies his hands on his knees.", "Character_Narrator", "Narrator");
         Assert.Equal("Character_Narrator steadies his hands on his knees.", result);
-        Assert.DoesNotContain("Narrator steadies", result, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Narrator steadies", result);
     }
 
     [Fact]
