@@ -128,7 +128,7 @@ public class CutJoinAudioTests
         Assert.DoesNotContain("jcut", CutTimelineLayout.EditableJoins.Select(CutTransitionMap.WireName));
         Assert.DoesNotContain("lcut", CutTimelineLayout.EditableJoins.Select(CutTransitionMap.WireName));
         Assert.Equal("J-cut", CutTransitionMap.TickLabel(CutJoinKind.Cut, left.JoinAudio));
-        Assert.Equal("Dissolve · L-cut", CutTransitionMap.TickLabel(CutJoinKind.Dissolve, CutJoinAudio.LCut()));
+        Assert.Equal("Dissolve · L", CutTransitionMap.TickLabel(CutJoinKind.Dissolve, CutJoinAudio.LCut()));
         Assert.False(CutTimelineLayout.ShowsJoinTick(CutJoinKind.Cut));
 
         var layout = CutTimelineLayout.Build([left, right], 10);

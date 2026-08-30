@@ -434,7 +434,7 @@
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
     border-radius: 8px;
     background: #0c0e13;
 }
@@ -710,7 +710,7 @@
 .cut-tl-join-wrap {
     position: absolute;
     top: -2px;
-    z-index: 4;
+    z-index: 8;
     transform: translateX(-50%);
 }
 
@@ -743,7 +743,7 @@
     border: 1px solid var(--fs-border-color);
     border-radius: 8px;
     padding: 0.25rem;
-    min-width: 7.5rem;
+    min-width: 8.5rem;
 }
 
 .cut-tl-join-menu button {

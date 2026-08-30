@@ -53,10 +53,11 @@ public static class CutTransitionMap
     public static string TickLabel(CutJoinKind kind, CutJoinAudio audio)
     {
         var look = TickLabel(kind);
-        var tag = CutJoinAudio.TickTag(audio.Kind);
-        if (tag.Length == 0)
+        if (audio.Kind == CutJoinAudioKind.None)
             return look;
-        return kind is CutJoinKind.Cut or CutJoinKind.Unset ? tag : look + " · " + tag;
+        if (kind is CutJoinKind.Cut or CutJoinKind.Unset)
+            return CutJoinAudio.TickTag(audio.Kind);
+        return look + (audio.Kind == CutJoinAudioKind.JCut ? " · J" : " · L");
     }
 
     public static string WireName(CutJoinKind kind) => kind switch
