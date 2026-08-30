@@ -5,9 +5,10 @@ namespace PageToMovie.Engine;
 
 /// <summary>
 /// Keeps character <em>visual</em> fields filmable across any book:
-/// nicknames/epithets out of description/visual_lock/wardrobe; cross-species
-/// "matching the hero animal's look" rewritten to shared <em>medium</em> language.
-/// Does not inject story-specific anti-patterns (no food-hat boilerplate).
+/// nicknames/epithets out of description/visual_lock/wardrobe; garments out of
+/// description/visual_lock at generate (<see cref="StripGarmentsFromIdentityProse"/>);
+/// cross-species "matching the hero animal's look" rewritten to shared <em>medium</em>
+/// language. Does not inject story-specific anti-patterns (no food-hat boilerplate).
 /// Dialogue/titles are out of scope — only visual seed fields.
 /// </summary>
 public static class CharacterVisualTextScrubber
@@ -55,6 +56,90 @@ public static class CharacterVisualTextScrubber
         "all characters are rendered as in a children's picture book (human — not an animal)";
 
 
+
+    /// <summary>
+    /// Face-adjacent / signature garments — same nouns <see cref="Stage2PlannerService.WardrobeImportanceRank"/>
+    /// uses for rank 0. One list; strip and rank both read it.
+    /// </summary>
+    public const string SignatureGarmentNounAlt =
+        "hat|cap|bonnet|hood|wig|glasses|spectacles|monocle|mask|veil|" +
+        "badge|collar|leash|nightshirt|nightgown|robe|uniform|armor|" +
+        "scarf|cravat|tie|eyepatch";
+
+    /// <summary>Body garments — rank 1 in <see cref="Stage2PlannerService.WardrobeImportanceRank"/>.</summary>
+    public const string BodyGarmentNounAlt =
+        "coat|cloak|jacket|dress|gown|suit|shirt|blouse|vest|waistcoat|" +
+        "trousers|pants|skirt|boots|shoes|slippers|pajamas|pyjamas|" +
+        "sweater|jumper|overalls|apron";
+
+    /// <summary>
+    /// Extra clothing words that show up in identity prose (pinafore, period clothing) but are
+    /// not a rank change for the live Wardrobe list.
+    /// </summary>
+    public const string ExtraIdentityGarmentNounAlt =
+        "pinafore|shirtsleeves|shirt-sleeves|ribbon|shawl|frock|cape|" +
+        "raincoat|overcoat|clothing|clothes|attire|outfit|costume";
+
+    private static readonly string IdentityGarmentNounAlt =
+        SignatureGarmentNounAlt + "|" + BodyGarmentNounAlt + "|" + ExtraIdentityGarmentNounAlt;
+
+    private static readonly Regex IdentityGarmentNoun = new(
+        $@"\b(?:{IdentityGarmentNounAlt})\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    /// <summary>
+    /// Wear-frame that ends on a garment noun: "in a pale pinafore", "wearing a wool coat".
+    /// The noun is the end of the phrase — no guessed sentence tail.
+    /// </summary>
+    private static readonly Regex WearFrameGarment = new(
+        $@"\b(?:wearing|wears|wore|dressed(?:\s+in)?|in)\s+(?:a|an|the\s+)?(?:[\w'-]+\s+){{0,5}}(?:{IdentityGarmentNounAlt})\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    /// <summary>
+    /// Face / body / species / age — a clause with one of these is identity, not clothes-only.
+    /// </summary>
+    private static readonly Regex IdentityAnchor = new(
+        @"\b(hair|eyes?|face|skin|cheek|brow|forehead|chin|nose|lips?|beard|mustache|moustache|" +
+        @"scar|freckle|braids?|girl|boy|man|woman|child|adult|human|lady|gentleman|" +
+        @"species|fur|mane|paw|tail|whisker|feather|scale|build|" +
+        @"tall|short|thin|stout|slender|years?|old|young|elderly|aged|" +
+        @"dog|cat|bear|fox|rabbit|bunny|mouse|bird|horse|pig|wolf|lamb|sheep|animal|creature|" +
+        @"terrier|hound|puppy|kitten)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    /// <summary>
+    /// Description / visual_lock are face, markings, species. Clothes live on the Wardrobe tag.
+    /// Drop clauses that are only garments; strip a wear-frame welded into an identity clause.
+    /// Does not rewrite wardrobe_always — that list is the writer.
+    /// </summary>
+    public static string StripGarmentsFromIdentityProse(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text ?? "";
+
+        var kept = ProseClauses.Split(text)
+            .Where(clause => !IsGarmentOnlyClause(clause.Text))
+            .Select(clause => clause.Text.Trim() + clause.Separator);
+        var t = ProseClauses.Tidy(string.Concat(kept));
+        t = WearFrameGarment.Replace(t, "");
+        return CleanDebris(t);
+    }
+
+    /// <summary>
+    /// True when the clause names a garment and has no face / body / species / age anchor.
+    /// "a blue pinafore" goes; "one pale blue eye with a dull filmy veil" stays.
+    /// </summary>
+    public static bool IsGarmentOnlyClause(string? clause)
+    {
+        if (string.IsNullOrWhiteSpace(clause))
+            return false;
+        if (!IdentityGarmentNoun.IsMatch(clause))
+            return false;
+        return !IdentityAnchor.IsMatch(clause);
+    }
 
     /// <summary>
     /// Scrub description / visual_lock prose for Stage 1 seeds and portrait prompts.

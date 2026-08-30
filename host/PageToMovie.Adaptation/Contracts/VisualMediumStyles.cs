@@ -105,13 +105,13 @@ public static class VisualMediumStyles
     public static string IdentityMediumDriftClause(string normalizedMedium) => normalizedMedium switch
     {
         MediumPhotoreal =>
-            "do not drift to illustration, anime, cartoon, or a different face/wardrobe",
+            "do not drift to illustration, anime, cartoon, or a different face",
         MediumIllustrated =>
-            "do not drift to photoreal, live-action, CGI realism, or a different face/wardrobe",
+            "do not drift to photoreal, live-action, CGI realism, or a different face",
         MediumStylized3d =>
-            "do not drift to photoreal live-action, flat 2D illustration, or a different face/wardrobe",
+            "do not drift to photoreal live-action, flat 2D illustration, or a different face",
         _ =>
-            "do not drift to a different art medium, face, or wardrobe",
+            "do not drift to a different art medium or face",
     };
 
     /// <summary>True when this medium is a drawn / picture-book family (image-edit illustrated flag).</summary>

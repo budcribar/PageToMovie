@@ -455,7 +455,7 @@ public class ClipVideoPromptBuilderTests
     [Fact]
     public void CompressPromptText_maps_character_keys_and_image_tags_to_compact_aliases()
     {
-        var input = "<Characters note=\"use these identities consistently; do not redesign faces or wardrobe\">\n" +
+        var input = "<Characters note=\"use these identities consistently; do not redesign faces\">\n" +
                     " Character_The_Narrator <IMAGE_1>: Lean man of middle years. <VisualLock>dark coat</VisualLock>.\n" +
                     " Character_Old_Man <IMAGE_2>: Elderly man with pale blue eye.\n" +
                     "<Clip>\n" +
@@ -483,7 +483,7 @@ public class ClipVideoPromptBuilderTests
     public void CompressPromptText_reduces_tell_tale_heart_prompt_significantly()
     {
         var original = "STYLE LOCK: Period gothic live-action, mid-19th-century interiors; candlelight and deep shadows; desaturated cool-gray palette; naturalistic skin and fabric texture; no illustration or stylized animation\n" +
-                       "<Characters note=\"use these identities consistently; do not redesign faces or wardrobe\">\n" +
+                       "<Characters note=\"use these identities consistently; do not redesign faces\">\n" +
                        " Character_The_Narrator <IMAGE_1> [The Narrator]: Lean man of middle years (about 40–50), pale sallow skin, hollow cheeks, dark disordered medium-length hair, bright intense dark eyes, thin tense mouth; plain dark wool waistcoat over white shirtsleeves, dark trousers; period clothing. <VisualLock>Same lean pale face, dark disordered hair, and bright intense dark eyes in every scene; always plain dark waistcoat and shirtsleeves as default; never elderly, never white-haired, never the filmed blue eye.</VisualLock> <Voice>Male, middle years; medium-high tense pitch; precise, controlled pace that sharpens into fevered urgency; intimate confessional energy, same voice on-camera and in V.O.</Voice> Match appearance of reference <IMAGE_1> exactly.\n" +
                        "<CastCount>exactly 1 distinct on-screen character identity(ies) only — Character_The_Narrator. Do not invent extra people, duplicate faces, or crowd extras not listed.</CastCount>\n" +
                        "<Audio>REQUIRED native Grok dialogue. Character_The_Narrator ON CAMERA lip-syncs EXACTLY: \"Passion there was none. I loved the old man. He had never wronged me.\". Start speaking immediately with \"Passion\" — do not skip, delay, or swallow the opening word. After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring. Other mouths closed. Speech intelligible; never silent. <Score>Melancholy warm strings undercut by unease</Score> <VoiceLock>Character_The_Narrator: Male, middle years; medium-high tense pitch; precise, controlled pace that sharpens into fevered urgency; intimate confessional energy, same voice on-camera and in V.O.</VoiceLock></Audio>\n" +
@@ -1249,6 +1249,45 @@ public class ClipVideoPromptBuilderTests
     }
 
     [Fact]
+    public void Build_strips_garments_from_description_so_a_put_on_coat_is_not_fought()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "<Setting>EXT. COUNTRY LANE - DAY</Setting> <Action>MARY walks.</Action> <Wardrobe>Character_Mary still wears pale pinafore, rose ribbon, tweed walking coat</Wardrobe>",
+              "characters_on_screen": ["Character_Mary"],
+              "primary_subject": "Character_Mary",
+              "audio_payload": { "speaker": "Character_Mary", "dialogue": "Hello.", "delivery": "spoken_on_camera" }
+            }
+            """).RootElement;
+
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new()
+            {
+                Key = "Character_Mary",
+                DisplayName = "Mary",
+                Description = "School-age girl with brown braids, a pale pinafore, and a rose ribbon.",
+                VisualLock = "brown braids, grey eyes, school-age girl, pale pinafore",
+            },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(clip, Path.GetTempPath(), profiles);
+        Assert.Contains("<Wardrobe>", built.ActionText, StringComparison.Ordinal);
+        Assert.Contains("tweed walking coat", built.ActionText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pale pinafore", built.ActionText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("brown braids", built.CharacterVariables, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", built.CharacterVariables, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ribbon", built.CharacterVariables, StringComparison.OrdinalIgnoreCase);
+        var lockInner = System.Text.RegularExpressions.Regex.Match(
+            built.CharacterVariables, @"<VisualLock>(.*?)</VisualLock>",
+            System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+        Assert.Contains("brown braids", lockInner, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", lockInner, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveFocusKeys_big_action_keeps_all_on_screen()
     {
         var keys = ClipVideoPromptBuilder.ResolveFocusKeys(
@@ -1883,6 +1922,8 @@ public class PreviousClipQuoteRedactionTests
         var block = InvokeContinuityBlock(mode, PrevClipPrompt);
         Assert.Contains("Positions come from that frame", block, StringComparison.Ordinal);
         Assert.Contains("not a new arrangement", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("wardrobe", block, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outfits", block, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1900,6 +1941,9 @@ public class PreviousClipQuoteRedactionTests
         Assert.DoesNotContain("Honor CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Honor the CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
         Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
+        Assert.DoesNotContain("wardrobe", rules, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Continuity:", rules, StringComparison.Ordinal);
+        Assert.DoesNotContain("outfit", rules, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1930,6 +1974,8 @@ public class PreviousClipQuoteRedactionTests
         Assert.Contains("<CastCount>exactly 2 distinct on-screen character identity(ies) only — Character_Mary, Character_The_Lamb.", built.Prompt, StringComparison.Ordinal);
         Assert.Single(CommonRegex.Matches(built.Prompt, "<CastCount>"));
         Assert.Contains("<Characters", built.Prompt, StringComparison.Ordinal);
+        Assert.Contains("do not redesign faces", built.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("do not redesign faces or wardrobe", built.Prompt, StringComparison.OrdinalIgnoreCase);
 
         Assert.DoesNotContain("<Cast>", built.Prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("also on screen", built.Prompt, StringComparison.OrdinalIgnoreCase);
@@ -1971,6 +2017,11 @@ public class PreviousClipQuoteRedactionTests
         Assert.Equal("video-extend", built.Mode);
         Assert.Contains("<Identity>", built.Prompt, StringComparison.Ordinal);
         Assert.Contains("do not drift", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        var identity = System.Text.RegularExpressions.Regex.Match(
+            built.Prompt, @"<Identity>(.*?)</Identity>",
+            System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+        Assert.DoesNotContain("wardrobe", identity, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outfit", identity, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("On-screen:", built.Prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("<Cast>", built.Prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("is on screen", built.Prompt, StringComparison.OrdinalIgnoreCase);
