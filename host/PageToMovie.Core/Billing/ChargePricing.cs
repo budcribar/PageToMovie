@@ -55,12 +55,4 @@ public static class ChargePricing
         var list = ResolveListUsd(storedUsd, listUsd, eventMultiplier);
         return ToCharge(list, currentMultiplier);
     }
-
-    /// <summary>Obsolete name — use <see cref="DisplayCharge"/>.</summary>
-    public static double ResolveChargeUsd(
-        double storedUsd,
-        double? listUsd,
-        double? eventMultiplier,
-        double currentMultiplier) =>
-        DisplayCharge(storedUsd, listUsd, eventMultiplier, currentMultiplier);
 }

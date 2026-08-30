@@ -174,13 +174,6 @@ public sealed class CutComposeService : IAsyncDisposable
         PrefixClipCount = 0;
     }
 
-    public void ClearMoviePreview()
-    {
-        InvalidateMovie();
-        Cache.Clear();
-        CurrentPlan = new([], [], "", "", "");
-    }
-
     public void AttachExistingMerge(string url, int clipCount)
     {
         if (string.IsNullOrWhiteSpace(url) || clipCount <= 0)

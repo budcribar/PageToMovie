@@ -145,13 +145,4 @@ public sealed class VoiceLockPromptTests
         Assert.Contains("<VoiceLock>", hop.Prompt, StringComparison.Ordinal);
         Assert.Contains("Adult female, 30s, bright soprano", hop.Prompt, StringComparison.Ordinal);
     }
-
-    [Fact]
-    public void House_Honor_VOICE_LOCK_is_absent_from_retired_clip_gen_rules()
-    {
-        var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
-        Assert.False(string.IsNullOrWhiteSpace(rules));
-        Assert.DoesNotContain("Honor VOICE LOCK", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
-    }
 }

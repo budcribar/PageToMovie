@@ -550,9 +550,6 @@ public static class ClipVideoPromptBuilder
         // "resolution", "duration"), so appending "/ 480p, 24fps" as prose was pure duplication
         // with no effect on what the API actually renders at.
         AppendTrailingBlock(sb, BuildNegativeBlock(clipEl, visualMedium));
-        // clip_gen_rules.txt is retired: every remaining house bullet restated a dedicated
-        // writer or named example media that fought STYLE LOCK. Do not append it.
-        AppendHouseRules(sb);
         return sb.ToString().Trim();
     }
 
@@ -626,33 +623,6 @@ public static class ClipVideoPromptBuilder
         sb.AppendLine();
         sb.AppendLine();
         sb.Append(text);
-    }
-
-    private static void AppendHouseRules(StringBuilder sb)
-    {
-        // Only a HOUSE RULES: body with real bullets is prompt text. Comment-only /
-        // retired files (current clip_gen_rules.txt) must not ride along as addenda.
-        var body = PromptBodyFromClipGenRules(TryLoadClipGenRules());
-        if (string.IsNullOrWhiteSpace(body)) return;
-        sb.AppendLine();
-        sb.AppendLine();
-        sb.Append(body);
-    }
-
-    /// <summary>
-    /// Prompt-ready house-rule body, or empty when the file is comments / blank.
-    /// </summary>
-    internal static string PromptBodyFromClipGenRules(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return "";
-        var sb = new StringBuilder();
-        foreach (var line in raw.Split('\n'))
-        {
-            var t = line.TrimEnd();
-            if (t.TrimStart().StartsWith('#')) continue;
-            sb.AppendLine(t);
-        }
-        return sb.ToString().Trim();
     }
 
     /// <summary>Reads a clip's planned duration_seconds (Stage2-assigned) for the pacing line in
@@ -1344,19 +1314,6 @@ public static class ClipVideoPromptBuilder
 
     private static string NormalizeForDedupe(string value) =>
         CommonRegex.Replace(value.Trim(), @"\s+", " ");
-
-    /// <summary>Clip gen house rules from <c>prompts/clip_gen_rules.txt</c> (embed or override dir).</summary>
-    public static string? TryLoadClipGenRules()
-    {
-        try
-        {
-            return PromptFiles.TryRead("prompts/clip_gen_rules.txt");
-        }
-        catch
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// Map free-form names in prose to Character_* keys using display names / key suffixes.

@@ -36,12 +36,6 @@ public sealed class CutFolderService : IAsyncDisposable
     public List<CutClip> Clips { get; private set; } = [];
     public List<CutTextClip> TextClips { get; } = [];
 
-    public async Task<bool> BrowserSupportsFolderPickerAsync()
-    {
-        var r = await _js.InvokeAsync<JsResult>("PageToMovieCut.supportsDirectoryPicker");
-        return r.Supported;
-    }
-
     public async Task PickFolderAsync()
     {
         FolderError = null;

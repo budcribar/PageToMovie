@@ -1197,40 +1197,6 @@ window.PageToMovieFfmpeg = {
     },
 
     /**
-     * Concatenate several kept take audio clips (blob/data URLs) into one mono 44.1 kHz WAV, returned
-     * as raw bytes (Uint8Array → C# byte[]) for the voice-clone sample. Uses the concat FILTER (decodes
-     * each) so mismatched containers/codecs still join cleanly. Throws on failure.
-     */
-    concatAudioToBytesAsync: async function (urls, onProgress) {
-        const list = Array.isArray(urls) ? urls.filter(Boolean) : [];
-        if (list.length === 0) throw new Error("no audio urls");
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) throw new Error(load.error || "ffmpeg load failed");
-            const ffmpeg = this._ffmpeg;
-            const names = [];
-            const outName = "cat_out.wav";
-            try {
-                const inputs = [];
-                for (let i = 0; i < list.length; i++) {
-                    const nm = "cat_in_" + i;
-                    await ffmpeg.writeFile(nm, await this._safeFetchFile(list[i]));
-                    names.push(nm);
-                    inputs.push("-i", nm);
-                }
-                const labels = names.map((_, i) => "[" + i + ":a]").join("");
-                const filter = labels + "concat=n=" + names.length + ":v=0:a=1[a]";
-                await ffmpeg.exec(["-hide_banner", "-y", ...inputs,
-                    "-filter_complex", filter, "-map", "[a]", "-ar", "44100", "-ac", "1", outName]);
-                return await ffmpeg.readFile(outName); // Uint8Array → C# byte[]
-            } finally {
-                for (const n of names) { try { await ffmpeg.deleteFile(n); } catch (_) { /* */ } }
-                try { await ffmpeg.deleteFile(outName); } catch (_) { /* */ }
-            }
-        });
-    },
-
-    /**
      * Turn a silencedetect log into non-silent [start,end] windows over [0,totalSec].
      * Silence runs are the complement of speech; a clip with no detected silence is one speech run.
      */
@@ -1551,14 +1517,6 @@ window.PageToMovieFfmpeg = {
             fromEnd: false,
             progressLabel: "Trimming head…",
         });
-    },
-
-    // Backward-compatible aliases for older browser bundles/callers.
-    trimTailAsync: async function (url, keepSeconds, onProgress) {
-        return this.keepLastSecondsAsync(url, keepSeconds, onProgress);
-    },
-    trimHeadAsync: async function (url, keepSeconds, onProgress) {
-        return this.keepFirstSecondsAsync(url, keepSeconds, onProgress);
     },
 
     discardSessionAsync: async function (token) {
@@ -1885,41 +1843,5 @@ window.PageToMovieFfmpeg = {
             await this._deleteMemfsFiles(ffmpeg, [inVideo, outName]);
             return { success: false, error: err.message || String(err) };
         }
-    },
-
-    /**
-     * Strip all audio from a video (silent picture). Used when a clip has no dialogue.
-     * @param {string} videoUrl
-     * @returns {{ success:boolean, url?:string, error?:string }}
-     */
-    stripVideoAudioAsync: async function (videoUrl, onProgress) {
-        if (!videoUrl) return { success: false, error: "No video URL" };
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) return load;
-            const ffmpeg = this._ffmpeg;
-            const inVideo = "sa_in.mp4";
-            const outName = "sa_out.mp4";
-            try {
-                reportProgress(onProgress, 20, "Loading picture…");
-                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
-                reportProgress(onProgress, 55, "Removing audio…");
-                await ffmpeg.exec([
-                    "-hide_banner", "-y",
-                    "-i", inVideo,
-                    "-map", "0:v", "-an",
-                    "-c:v", "copy",
-                    outName,
-                ]);
-                reportProgress(onProgress, 90, "Saving…");
-                const url = await this._readAndCleanupAsync(ffmpeg, outName, "video/mp4", [inVideo]);
-                reportProgress(onProgress, 100, "Ready");
-                return { success: true, url: url };
-            } catch (err) {
-                console.error("stripVideoAudioAsync failed:", err);
-                for (const n of [inVideo, outName]) { try { await ffmpeg.deleteFile(n); } catch (_) { /* */ } }
-                return { success: false, error: err.message || String(err) };
-            }
-        });
     },
 };

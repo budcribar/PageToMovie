@@ -1,16 +1,7 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace PageToMovie.Engine;
-
-public sealed record MeasuredTimingEntry(
-    [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("category")] string Category,
-    [property: JsonPropertyName("prompt")] string Prompt,
-    [property: JsonPropertyName("estimatedDurationSec")] double EstimatedDurationSec,
-    [property: JsonPropertyName("actualDurationSec")] double ActualDurationSec,
-    [property: JsonPropertyName("deltaSec")] double DeltaSec);
 
 public sealed record CompositeTimingEntry(
     string CameraId,

@@ -37,9 +37,6 @@ public static class CutPlayMerge
         return CutJitPlay.TimelineEndOf(clips, Math.Min(prefixClipCount, clips.Count) - 1);
     }
 
-    public static bool MergeCovers(IReadOnlyList<CutClip> clips, int prefixClipCount, double playhead) =>
-        MergeReadyThroughSec(clips, prefixClipCount) >= playhead - 0.001;
-
     public static bool MergeCoversTimeline(IReadOnlyList<CutClip> clips, int prefixClipCount)
     {
         if (clips.Count <= 0 || prefixClipCount <= 0)

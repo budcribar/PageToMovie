@@ -6178,8 +6178,8 @@ public sealed class FilmJobService
         string? performanceLock,
         CancellationToken ct)
     {
-        // Approved project-scoped house rules (learning). Global clip_gen_rules.txt is
-        // retired — dedicated writers + STYLE LOCK / PERFORMANCE LOCK own those concerns.
+        // Approved project-scoped house rules (learning). Dedicated writers + STYLE LOCK /
+        // PERFORMANCE LOCK own generate-prompt house concerns.
         try
         {
             var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
@@ -6828,37 +6828,6 @@ public sealed class FilmJobService
         public string Prompt { get; set; } = "";
         /// <summary>Relative path under the project dir — client checks its own media folder for this.</summary>
         public string VideoRelativePath { get; set; } = "";
-    }
-
-    /// <summary>
-    /// Probe final clip length (MP4 box parse) and write duration sidecar for cost ledger.
-    /// </summary>
-    private async Task<double?> EnsureClipDurationSidecarAsync(
-        string videoPath,
-        int scene,
-        int clip,
-        CancellationToken ct)
-    {
-        if (!File.Exists(videoPath))
-            return null;
-        try
-        {
-            var sec = await Mp4DurationReader.TryReadSecondsAsync(videoPath, ct).ConfigureAwait(false);
-            if (sec is > 0)
-            {
-                await MediaDurationProbe.WriteDurationSidecarAsync(videoPath, sec.Value, ct)
-                    .ConfigureAwait(false);
-                await AppendLogAsync(
-                    $"  [Duration] S{scene:D2}C{clip:D2} sidecar {sec.Value:F2}s");
-                return sec.Value;
-            }
-        }
-        catch (Exception ex)
-        {
-            await AppendLogAsync($"  [Duration] sidecar skip: {ex.Message}");
-        }
-
-        return null;
     }
 
     /// <summary>

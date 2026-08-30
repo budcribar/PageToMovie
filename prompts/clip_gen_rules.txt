@@ -1,5 +1,0 @@
-# Retired — not composed into clip generate prompts.
-#
-# Dialogue, silent-beat, continuity, CAST COUNT, VOICE LOCK, Performance, and
-# pacing are written by ClipVideoPromptBuilder. Medium is STYLE LOCK /
-# ProjectVisionMeta only. Do not name example media here.
