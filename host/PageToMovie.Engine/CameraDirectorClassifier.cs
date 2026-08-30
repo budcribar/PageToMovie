@@ -126,94 +126,94 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
-
-        var targetAspectRatio = scene.GetValueOrDefault("target_aspect_ratio")?.ToString();
-        var visualMedium = scene.GetValueOrDefault("visual_medium")?.ToString();
-        if (!string.IsNullOrWhiteSpace(targetAspectRatio) || !string.IsNullOrWhiteSpace(visualMedium))
-        {
-            sb.AppendLine("CANVAS & FORMAT:");
-            if (!string.IsNullOrWhiteSpace(targetAspectRatio))
-            {
-                var guideline = targetAspectRatio switch
-                {
-                    "4:3" => "Classic 4:3 storybook frame: maintain generous vertical headroom above characters' heads and full grounding for children/animals.",
-                    "1:1" => "Square 1:1 frame: balanced vertical/horizontal centering with ample top headroom.",
-                    "9:16" => "Vertical 9:16 frame: vertical breathing room with ample horizontal shoulder margins.",
-                    _ => "Widescreen 16:9 frame: wide horizontal staging with natural vertical headroom."
-                };
-                sb.AppendLine($"  Target Aspect Ratio: {targetAspectRatio} ({guideline})");
-            }
-            if (!string.IsNullOrWhiteSpace(visualMedium))
-                sb.AppendLine($"  Visual Medium: {visualMedium}");
-        }
-
+        AppendCanvasAndFormat(sb, scene);
         sb.AppendLine();
         sb.AppendLine(BeatsHeading);
 
-        string? prevId = null;
-        string? prevSpeaker = null;
-        var prevHadSpeech = false;
-        string? prevScale = null;
-        string? prevLens = null;
-        string? prevCamera = null;
-
+        var prior = default(PriorBeatFraming);
         foreach (var b in beats)
-        {
-            var (idObj, _, spkObj, dlgObj) = ReadBeatCore(b);
-            var id = idObj?.ToString() ?? "";
-            var spk = spkObj?.ToString() ?? "";
-            var dlg = dlgObj?.ToString() ?? "";
-            var sameSpeakerRun = prevHadSpeech
-                && !string.IsNullOrWhiteSpace(spk)
-                && !string.IsNullOrWhiteSpace(dlg)
-                && string.Equals(spk, prevSpeaker, StringComparison.OrdinalIgnoreCase);
-            AppendDirectedBeat(
-                sb, scene, b,
-                sameSpeakerRun ? prevId : null,
-                sameSpeakerRun ? prevScale : null,
-                sameSpeakerRun ? prevLens : null,
-                sameSpeakerRun ? prevCamera : null);
-
-            prevId = id;
-            prevHadSpeech = !string.IsNullOrWhiteSpace(dlg);
-            prevSpeaker = prevHadSpeech ? spk : null;
-            prevScale = b.GetValueOrDefault("shot_scale_hint")?.ToString();
-            prevLens = b.GetValueOrDefault("lens_spec")?.ToString();
-            prevCamera = b.GetValueOrDefault("framing_prompt")?.ToString()
-                         ?? b.GetValueOrDefault("camera")?.ToString();
-        }
+            prior = AppendDirectedBeatAndRemember(sb, scene, b, prior);
 
         return sb.ToString();
     }
 
     protected override void AppendBeat(System.Text.StringBuilder sb, Dictionary<string, object?> b) =>
-        AppendDirectedBeat(sb, scene: null, b, null, null, null, null);
+        AppendDirectedBeat(sb, scene: null, b, default);
+
+    private static PriorBeatFraming AppendDirectedBeatAndRemember(
+        System.Text.StringBuilder sb,
+        Dictionary<string, object?> scene,
+        Dictionary<string, object?> beat,
+        PriorBeatFraming prior)
+    {
+        var (idObj, _, spkObj, dlgObj) = ReadBeatCore(beat);
+        var id = idObj?.ToString() ?? "";
+        var speaker = spkObj?.ToString() ?? "";
+        var dialogue = dlgObj?.ToString() ?? "";
+        AppendDirectedBeat(sb, scene, beat, SameSpeakerPriorOrDefault(prior, speaker, dialogue));
+        return RememberPriorBeat(beat, id, speaker, dialogue);
+    }
+
+    private static PriorBeatFraming SameSpeakerPriorOrDefault(PriorBeatFraming prior, string speaker, string dialogue) =>
+        IsSameSpeakerRun(prior, speaker, dialogue) ? prior : default;
+
+    private static bool IsSameSpeakerRun(PriorBeatFraming prior, string speaker, string dialogue) =>
+        prior.HadSpeech
+        && !string.IsNullOrWhiteSpace(speaker)
+        && !string.IsNullOrWhiteSpace(dialogue)
+        && string.Equals(speaker, prior.Speaker, StringComparison.OrdinalIgnoreCase);
+
+    private static PriorBeatFraming RememberPriorBeat(
+        Dictionary<string, object?> beat,
+        string id,
+        string speaker,
+        string dialogue)
+    {
+        var hadSpeech = !string.IsNullOrWhiteSpace(dialogue);
+        return new PriorBeatFraming(
+            id,
+            hadSpeech ? speaker : null,
+            hadSpeech,
+            beat.GetValueOrDefault("shot_scale_hint")?.ToString(),
+            beat.GetValueOrDefault("lens_spec")?.ToString(),
+            beat.GetValueOrDefault("framing_prompt")?.ToString()
+                ?? beat.GetValueOrDefault("camera")?.ToString());
+    }
+
+    private static void AppendCanvasAndFormat(System.Text.StringBuilder sb, Dictionary<string, object?> scene)
+    {
+        var targetAspectRatio = scene.GetValueOrDefault("target_aspect_ratio")?.ToString();
+        var visualMedium = scene.GetValueOrDefault("visual_medium")?.ToString();
+        if (string.IsNullOrWhiteSpace(targetAspectRatio) && string.IsNullOrWhiteSpace(visualMedium))
+            return;
+
+        sb.AppendLine("CANVAS & FORMAT:");
+        if (!string.IsNullOrWhiteSpace(targetAspectRatio))
+            sb.AppendLine($"  Target Aspect Ratio: {targetAspectRatio} ({AspectRatioGuideline(targetAspectRatio)})");
+        if (!string.IsNullOrWhiteSpace(visualMedium))
+            sb.AppendLine($"  Visual Medium: {visualMedium}");
+    }
+
+    private static string AspectRatioGuideline(string targetAspectRatio) => targetAspectRatio switch
+    {
+        "4:3" => "Classic 4:3 storybook frame: maintain generous vertical headroom above characters' heads and full grounding for children/animals.",
+        "1:1" => "Square 1:1 frame: balanced vertical/horizontal centering with ample top headroom.",
+        "9:16" => "Vertical 9:16 frame: vertical breathing room with ample horizontal shoulder margins.",
+        _ => "Widescreen 16:9 frame: wide horizontal staging with natural vertical headroom."
+    };
 
     private static void AppendDirectedBeat(
         System.Text.StringBuilder sb,
         Dictionary<string, object?>? scene,
         Dictionary<string, object?> b,
-        string? previousBeatId,
-        string? previousScale,
-        string? previousLens,
-        string? previousCamera)
+        PriorBeatFraming prior)
     {
         var (id, action, spk, dlg) = ReadBeatCore(b);
         var ac = b.GetValueOrDefault("action_class") ?? "";
         var spk2 = b.GetValueOrDefault("secondary_speaker") ?? "";
         var dlg2 = b.GetValueOrDefault("secondary_dialogue") ?? "";
         sb.AppendLine($"Beat '{id}' (class: {ac}):");
-        if (!string.IsNullOrWhiteSpace(previousBeatId))
-        {
-            sb.AppendLine(
-                $"  Same-speaker run after beat '{previousBeatId}'. Vary shot_scale / lens / framing_prompt from that previous assignment (Medium → closer → hands) unless this beat's action already names the camera.");
-            if (!string.IsNullOrWhiteSpace(previousScale))
-                sb.AppendLine($"  Previous shot_scale: {previousScale}");
-            if (!string.IsNullOrWhiteSpace(previousLens))
-                sb.AppendLine($"  Previous lens: {previousLens}");
-            if (!string.IsNullOrWhiteSpace(previousCamera))
-                sb.AppendLine($"  Previous Camera: {previousCamera}");
-        }
+        AppendSameSpeakerPriorHints(sb, prior);
         var bodies = CountOnScreenBodies(scene, b);
         sb.AppendLine(bodies < 2
             ? $"  On-screen bodies: {bodies} (do not invent OTS — no listener)"
@@ -225,6 +225,21 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         var blocking = b.GetValueOrDefault("blocking_notes");
         if (!string.IsNullOrWhiteSpace(blocking?.ToString()))
             sb.AppendLine($"  Blocking: {blocking}");
+    }
+
+    private static void AppendSameSpeakerPriorHints(System.Text.StringBuilder sb, PriorBeatFraming prior)
+    {
+        if (string.IsNullOrWhiteSpace(prior.Id))
+            return;
+
+        sb.AppendLine(
+            $"  Same-speaker run after beat '{prior.Id}'. Vary shot_scale / lens / framing_prompt from that previous assignment (Medium → closer → hands) unless this beat's action already names the camera.");
+        if (!string.IsNullOrWhiteSpace(prior.Scale))
+            sb.AppendLine($"  Previous shot_scale: {prior.Scale}");
+        if (!string.IsNullOrWhiteSpace(prior.Lens))
+            sb.AppendLine($"  Previous lens: {prior.Lens}");
+        if (!string.IsNullOrWhiteSpace(prior.Camera))
+            sb.AppendLine($"  Previous Camera: {prior.Camera}");
     }
 
     internal static int CountOnScreenBodies(Dictionary<string, object?>? scene, Dictionary<string, object?> beat)
@@ -287,4 +302,12 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         "neon" or "neon_light" or "neonlight" => LightingCondition.NeonLight,
         _ => LightingCondition.Daylight
     };
+
+    private readonly record struct PriorBeatFraming(
+        string? Id,
+        string? Speaker,
+        bool HadSpeech,
+        string? Scale,
+        string? Lens,
+        string? Camera);
 }
