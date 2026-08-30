@@ -2289,15 +2289,17 @@ public sealed class Stage2PlannerService
         return AttachPrimaryToVisual(ve, primary);
     }
 
+    /// <summary>
+    /// Appends beat <c>blocking_notes</c> unless this is an extend clip and the note restages
+    /// position. Continuity already owns last-frame place. Body-facing or eyeline notes that
+    /// are not a room restage may stay. Drop the note rather than restage when the kind is unclear.
+    /// </summary>
     private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat, bool isContinuation)
     {
         var block = CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn) ? bn : null) ?? "";
         if (string.IsNullOrWhiteSpace(block) ||
             ve.Contains(block, StringComparison.OrdinalIgnoreCase))
             return ve;
-        // On extend, Continuity owns position. A place note after the rewrite puts the
-        // teleport sentence back. Body-facing / eyeline that is not a room restage may stay;
-        // when in doubt drop the note rather than restage.
         if (isContinuation && !ContinuationActionClassifier.IsBodyFacingOnly(block))
             return ve;
         return $"{ve}. {block}".Trim();
