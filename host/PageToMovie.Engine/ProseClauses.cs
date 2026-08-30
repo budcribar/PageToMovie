@@ -25,22 +25,34 @@ public static class ProseClauses
         ["a", "an", "the", "and", "or", "with", "in", "on", "at", "of", "to", "into", "from",
          "is", "are", "was", "were", "then", "there", "here"];
 
+    /// <summary>Sentence ends only, for callers that work a sentence at a time.</summary>
+    public static readonly char[] SentenceEnders = ['.', '!', '?'];
+
+    /// <summary>Clause ends only.</summary>
+    public static readonly char[] ClauseEnders = [',', ';', ':'];
+
     /// <summary>Split on clause and sentence ends, keeping each separator with its clause.</summary>
-    public static List<Clause> Split(string text)
+    public static List<Clause> Split(string text) => Split(text, Enders);
+
+    /// <summary>
+    /// Walk the text once, splitting on <paramref name="enders"/>. A run of punctuation stays with
+    /// the part it ended, and the next part starts after the run, so kept parts rejoin as written.
+    /// </summary>
+    public static List<Clause> Split(string text, char[] enders)
     {
         var clauses = new List<Clause>();
         var start = 0;
         var i = 0;
         while (i < text.Length)
         {
-            if (Array.IndexOf(Enders, text[i]) < 0)
+            if (Array.IndexOf(enders, text[i]) < 0)
             {
                 i++;
                 continue;
             }
 
             var stop = i;
-            while (stop + 1 < text.Length && Array.IndexOf(Enders, text[stop + 1]) >= 0)
+            while (stop + 1 < text.Length && Array.IndexOf(enders, text[stop + 1]) >= 0)
                 stop++;
             clauses.Add(new Clause(text[start..i], text[i..(stop + 1)] + " "));
             start = stop + 1;

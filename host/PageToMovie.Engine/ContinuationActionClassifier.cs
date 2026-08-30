@@ -110,8 +110,6 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
     private static readonly string[] BodyFacingWords =
         ["face", "faces", "facing", "eyeline", "looks", "look", "turns", "turn", "camera"];
 
-    private static readonly char[] SentenceEnders = ['.', '!', '?'];
-    private static readonly char[] ClauseEnders = [',', ';', ':'];
     private static readonly char[] WordTrim = ['.', ',', ';', ':', '!', '?', '-', '(', ')', '"'];
 
     /// <summary>
@@ -131,7 +129,7 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
             return "";
 
         var rebuilt = new StringBuilder();
-        foreach (var (sentence, ending) in SplitSentences(text))
+        foreach (var (sentence, ending) in ProseClauses.Split(text, ProseClauses.SentenceEnders))
         {
             rebuilt.Append(WithoutStaging(sentence).Trim()).Append(ending);
         }
@@ -141,7 +139,7 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
 
     private static string WithoutStaging(string sentence)
     {
-        var cut = sentence.IndexOfAny(ClauseEnders);
+        var cut = sentence.IndexOfAny(ProseClauses.ClauseEnders);
         if (cut >= 0 && !string.IsNullOrWhiteSpace(sentence[(cut + 1)..]) && IsPoseInAPlace(sentence[..cut]))
             return sentence[(cut + 1)..];
         return WithoutTrailingStaging(sentence);
@@ -188,40 +186,6 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
                && words.Any(w => PlaceWords.Contains(w, StringComparer.OrdinalIgnoreCase));
     }
 
-    /// <summary>Sentences with the punctuation that ended each one, so the prose rejoins as written.</summary>
-    private static List<(string Sentence, string Ending)> SplitSentences(string text) =>
-        SplitOn(text, SentenceEnders);
-
-    /// <summary>
-    /// Walk the text once. Drive the index in one place so a punctuation run stays on the
-    /// current part and the next start is the character after the run.
-    /// </summary>
-    private static List<(string Text, string Ending)> SplitOn(string text, char[] enders)
-    {
-        var parts = new List<(string, string)>();
-        var start = 0;
-        var i = 0;
-        while (i < text.Length)
-        {
-            if (!enders.Contains(text[i]))
-            {
-                i++;
-                continue;
-            }
-
-            var stop = i;
-            while (stop + 1 < text.Length && enders.Contains(text[stop + 1]))
-                stop++;
-            parts.Add((text[start..i], text[i..(stop + 1)] + " "));
-            start = stop + 1;
-            i = start;
-        }
-
-        if (start < text.Length)
-            parts.Add((text[start..], ""));
-        return parts;
-    }
-
     /// <summary>
     /// Body-facing / eyeline that is not a room restage may ride on an extend. When in doubt,
     /// treat the note as place and drop it — a teleport is worse than a missing eyeline.
@@ -242,10 +206,6 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
             .Select(w => w.Trim(WordTrim))
             .Where(w => w.Length > 0)
             .ToList();
-
-    /// <summary>Clauses with the punctuation that ended each one, so the prose rejoins cleanly.</summary>
-    private static List<(string Clause, string Separator)> SplitClauses(string text) =>
-        SplitOn(text, ClauseEnders);
 
     public Task<Dictionary<string, string>?> ClassifySceneContinuationActionsAsync(
         Dictionary<string, object?> scene,
