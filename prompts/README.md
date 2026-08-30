@@ -16,20 +16,13 @@ Paths are relative to the **workspace root** (repo root with `host/`, `projects/
 | `trim_scene.txt` | Optional: condense the **working** Fountain toward a target runtime (Fit length) |
 | `fountain_to_cast.txt` | **Product path:** Fountain (+ book) → `source/cast_seeds.json` closed cast |
 | `cast_visual_literalize.txt` | Cast post-pass: figurative/idiomatic looks → literal filmable prose |
-| `clip_gen_rules.txt` | **Retired:** not composed into clip prompts. Dialogue / continuity / VoiceLock / CastCount / Performance / pacing have dedicated writers; medium is STYLE LOCK only |
 | `clip_auto_review.txt` | **Product path:** QC checklist + JSON schema for clip auto-review |
-| `adaptation_v16.txt` | Full-film adaptation rules (optional learning append) |
-| `shared_rules.txt` | Rules Stage 2 + verifier must all respect |
-| `stage1_scene_bible.schema.json` | Optional schema for internal materialised scene lists (not an operator prompt) |
-| `stage2_shot_planner.txt` | Shot plan from approved screenplay build (+ multi-cast tokens, audio_payload) |
-| `verifier_clip.txt` | Clip QA verifier (routing hints for learning layers) |
-| `compare_json_to_book.txt` | Fidelity audit against book text |
 | `examples/scene_bible_minimal.json` | Minimal scene-list sample |
 | `examples/clip_plan_minimal.json` | Minimal Stage 2 sample |
 
 Embedded resources at build time via `AdaptationPromptPack` (Stage 1 + screenplay-tool prompts: `book_to_fountain`,
 `fountain_reskin`, `embellish_scene`, `trim_scene` — in `PageToMovie.Adaptation`) and equivalent Engine-side
-loaders (`fountain_to_cast`, `cast_visual_literalize`, `clip_gen_rules`, `clip_auto_review`). Edit in git →
+loaders (`fountain_to_cast`, `cast_visual_literalize`, `clip_auto_review`). Edit in git →
 redeploy (rebuild `PageToMovie.Adaptation` for the Stage 1 group). Optional local override:
 `PAGETOMOVIE_PROMPTS_DIR`.
 
@@ -48,7 +41,7 @@ Feedback is **routed** by layer — not sprayed into every prompt:
 | `clip` | This take / visual_prompt |
 | `stage2` | Stage 2 prompt + scene **dirty** for replan |
 | `stage1` | Stage 1 prompt + dirty **stage1→stage2** |
-| `verifier` | `verifier_clip.txt` (+ optional shared rules) |
+| `verifier` | Clip QA routing (project rules / admin learning) |
 | `engine` | `review_feedback/SCRIPT_NOTES.md` only |
 
 Dirty flags live in project `pipeline_state.json` → `scene_dirty`.  

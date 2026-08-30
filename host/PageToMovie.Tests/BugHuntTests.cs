@@ -337,11 +337,7 @@ public class BugHuntTests
     [Fact]
     public void Bug12_clip_prompt_files_are_embedded()
     {
-        var gen = PromptFiles.TryReadEmbedded("prompts/clip_gen_rules.txt");
         var ar = PromptFiles.TryReadEmbedded("prompts/clip_auto_review.txt");
-        Assert.False(string.IsNullOrWhiteSpace(gen));
-        Assert.DoesNotContain("picture-book CG", gen!, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("photoreal, etc.", gen!, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(ar));
         Assert.Contains("CHECKLIST", ar!, StringComparison.OrdinalIgnoreCase);
     }
@@ -1180,16 +1176,6 @@ public class BugHuntTests
         Assert.Contains("CHECKLIST", block, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("IDENTITY", block, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("suggestion", block, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Bug75_TryLoadClipGenRules_does_not_name_example_media()
-    {
-        var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
-        Assert.False(string.IsNullOrWhiteSpace(rules));
-        Assert.DoesNotContain("picture-book CG", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("photoreal, etc.", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
     }
 
     [Fact]

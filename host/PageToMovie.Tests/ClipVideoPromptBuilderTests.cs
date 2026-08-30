@@ -335,9 +335,6 @@ public class ClipVideoPromptBuilderTests
             });
 
         AssertFillNPacing(built.Prompt, 6);
-        Assert.True(string.IsNullOrWhiteSpace(
-            ClipVideoPromptBuilder.PromptBodyFromClipGenRules(
-                ClipVideoPromptBuilder.TryLoadClipGenRules())));
     }
 
     [Fact]
@@ -1931,19 +1928,6 @@ public class PreviousClipQuoteRedactionTests
     {
         var block = InvokeContinuityBlock("fresh", null!);
         Assert.DoesNotContain("Positions come from that frame", block, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void House_Honor_CAST_COUNT_is_absent_from_retired_clip_gen_rules()
-    {
-        var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
-        Assert.False(string.IsNullOrWhiteSpace(rules));
-        Assert.DoesNotContain("Honor CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Honor the CAST COUNT", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
-        Assert.DoesNotContain("wardrobe", rules, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Continuity:", rules, StringComparison.Ordinal);
-        Assert.DoesNotContain("outfit", rules, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

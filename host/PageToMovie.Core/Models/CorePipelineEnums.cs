@@ -16,25 +16,3 @@ public enum AnalyticsWindow
     Month,
     All
 }
-
-public enum HttpHeader
-{
-    Authorization,
-    ContentType,
-    XApiKey
-}
-
-public enum ContainerType
-{
-    Mp4,
-    WebM,
-    Mov,
-    Mkv
-}
-
-public enum Stage1JobType
-{
-    Parse,
-    Convert,
-    Sign
-}

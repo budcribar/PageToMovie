@@ -200,15 +200,6 @@ public sealed class CutTimelineLayout
     public static double ZoomOutPxPerSec(double pxPerSec) =>
         Math.Max(MinPxPerSec, ClampPxPerSec(pxPerSec) / ZoomFactor);
 
-    public static double TimelineToPx(double timelineSec, double pxPerSec) =>
-        timelineSec * Math.Clamp(pxPerSec, MinPxPerSec, MaxPxPerSec);
-
-    public static double PxToTimeline(double px, double pxPerSec)
-    {
-        var pps = Math.Clamp(pxPerSec, MinPxPerSec, MaxPxPerSec);
-        return pps <= 0 ? 0 : px / pps;
-    }
-
     /// <summary>Map a stitched-timeline second onto a clip's file time (keep windows).</summary>
     public static (CutClip Clip, int Index, double LocalSec)? HitTest(
         IReadOnlyList<CutClip> clips, double timelineSec)

@@ -102,9 +102,6 @@ public sealed class YouTubeAuthService
         return false;
     }
 
-    /// <summary>Legacy; prefer <see cref="TryConsumeState"/>.</summary>
-    public bool ConsumeState(string state) => TryConsumeState(state, out _);
-
     private static string NormalizeReturnPath(string? returnPath)
     {
         var p = (returnPath ?? "").Trim();

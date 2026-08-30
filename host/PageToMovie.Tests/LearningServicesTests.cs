@@ -43,12 +43,9 @@ public class LearningServicesTests : IDisposable
     }
 
     [Fact]
-    public void Clip_gen_and_auto_review_prompts_are_embedded()
+    public void Clip_auto_review_prompt_is_embedded()
     {
-        var gen = PromptFiles.TryReadEmbedded("prompts/clip_gen_rules.txt");
         var ar = PromptFiles.TryReadEmbedded("prompts/clip_auto_review.txt");
-        Assert.False(string.IsNullOrWhiteSpace(gen));
-        Assert.DoesNotContain("picture-book CG", gen!, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(ar));
         Assert.Contains("CHECKLIST", ar!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("IDENTITY", ar!, StringComparison.OrdinalIgnoreCase);

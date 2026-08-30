@@ -27,7 +27,7 @@ public sealed class CatalogUpdateProbeService
     private const string AuthBearer = "Bearer";
     private const string FormatFourDecimals = "0.####";
 
-    // Provider ids match AiProviderId.ToApiString() where that enum has a member.
+    // Provider ids match catalog provider strings (openai, anthropic, gemini, …).
     private const string ProviderOpenAi = "openai";
     private const string ProviderAnthropic = "anthropic";
     private const string ProviderGemini = "gemini";

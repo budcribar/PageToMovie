@@ -94,7 +94,7 @@ below.
 ### Prompts (`prompts/`)
 
 Operator/product prompts are plain text files embedded at Engine build time (`book_to_fountain`,
-`fountain_to_cast`, `cast_visual_literalize`, `clip_gen_rules`, `clip_auto_review` — edit in git and redeploy;
+`fountain_to_cast`, `cast_visual_literalize`, `clip_auto_review` — edit in git and redeploy;
 `PAGETOMOVIE_PROMPTS_DIR` overrides the directory locally). See `prompts/README.md` for the full file/role table
 and the feedback-routing model (clip/stage2/stage1/verifier/engine layers) used by the learning loop.
 

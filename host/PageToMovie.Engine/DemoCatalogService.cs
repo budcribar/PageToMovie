@@ -26,8 +26,6 @@ public sealed class DemoCatalogService
     private const string MetaFileName = "meta.json";
     /// <summary>Max demos a user may submit per rolling 24h window.</summary>
     public const int MaxPublishesPerUserPerDay = 20;
-    /// <summary>Legacy cap (no longer used for admin review queues).</summary>
-    public const int MaxPendingPerUser = 5;
     /// <summary>Max open report notes stored on one demo.</summary>
     public const int MaxReportNotes = 20;
 

@@ -18,7 +18,6 @@
     <EmbeddedResource Include="..\..\prompts\fountain_to_cast.txt" LogicalName="PageToMovie.Prompts.fountain_to_cast.txt" />
     <EmbeddedResource Include="..\..\prompts\cast_visual_literalize.txt" LogicalName="PageToMovie.Prompts.cast_visual_literalize.txt" />
     <EmbeddedResource Include="..\..\prompts\book_to_fountain.txt" LogicalName="PageToMovie.Prompts.book_to_fountain.txt" />
-    <EmbeddedResource Include="..\..\prompts\clip_gen_rules.txt" LogicalName="PageToMovie.Prompts.clip_gen_rules.txt" />
     <EmbeddedResource Include="..\..\prompts\clip_auto_review.txt" LogicalName="PageToMovie.Prompts.clip_auto_review.txt" />
   </ItemGroup>
 

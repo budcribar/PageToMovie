@@ -1,5 +1,0 @@
-Give a rigorous, focused, parallel review of the book versus the JSON specifically look for:
-1. Character details (Are they consistent with the text? E.g., Ma, Bobby, Steve, Sionna).
-2. Plot events and chronological continuity (Does the order of scenes match the book's narrative? E.g., the factory, the bar fights, the car theft, hospitalizations, funeral, and the conclusion).
-3. Specific setting descriptions (Are any other seasons or settings clashing?).
-4. Dialogue (Does the JSON's dialogue capture the exact spirit and tone of the characters as written?).

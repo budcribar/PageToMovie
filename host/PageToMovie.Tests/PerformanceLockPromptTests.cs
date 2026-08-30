@@ -126,14 +126,4 @@ public sealed class PerformanceLockPromptTests
         Assert.DoesNotContain("facial expression and gaze", built.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.True(string.IsNullOrWhiteSpace(built.PerformanceLock));
     }
-
-    [Fact]
-    public void House_Performance_bullet_is_absent_from_retired_clip_gen_rules()
-    {
-        var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
-        Assert.False(string.IsNullOrWhiteSpace(rules));
-        Assert.DoesNotContain("facial expression and gaze", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Honor VOICE LOCK", rules!, StringComparison.OrdinalIgnoreCase);
-        Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
-    }
 }

@@ -42,24 +42,4 @@
     <None Include="Fixtures\CastExtractGold\**\*.*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\TellTaleHeartV7\**\*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="ModelBoundsTests.cs" />
-    <Compile Remove="ClipEditRequestTests.cs" />
-    <Compile Remove="ClipEditServiceTests.cs" />
-    <!-- TEMP local-only exclusion, not committed: ProjectLeaseServiceTests.cs references an API
-         shape (Conflict tuple field, ProjectLease.ExpiresUtc, ListActiveAsync, ForceReleaseAsync,
-         a ProjectLeaseService(string root) ctor) that doesn't match the ProjectLeaseService actually
-         shipped on master (ProjectLeaseService(ProjectStore), 2-field tuple, no List/ForceRelease).
-         Excluded here only to unblock running the rest of the suite for verification. -->
-    <Compile Remove="ProjectLeaseServiceTests.cs" />
-  </ItemGroup>
-
-  <!-- Phantom tests: no source on GitHub; exclude if dual-compile or stale paths reintroduce them. -->
-  <ItemGroup>
-    <Compile Remove="**\SmartScriptBreakdownTests.cs" />
-    <Compile Remove="**\YouTubeUploadCallbackTests.cs" />
-    <Compile Remove="**/SmartScriptBreakdownTests.cs" />
-    <Compile Remove="**/YouTubeUploadCallbackTests.cs" />
-  </ItemGroup>
 </Project>

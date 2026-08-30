@@ -35,11 +35,6 @@ public static class CutMergeCache
         string.Equals(FileNameOf(path), "picture.mp4", StringComparison.OrdinalIgnoreCase)
         && IsUnderCacheDir(path);
 
-    public static bool IsCacheFileName(string? path) =>
-        IsPictureFileName(path)
-        || TryParseSceneFile(path, out _)
-        || TryParseJoinFile(path, out _);
-
     public static bool TryParseSceneFile(string? path, out int scene)
     {
         scene = 0;
