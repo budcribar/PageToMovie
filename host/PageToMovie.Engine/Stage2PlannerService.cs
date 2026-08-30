@@ -1148,8 +1148,8 @@ public sealed class Stage2PlannerService
         // Applied only when this clip really ends up continuing. The classifier judges beats, but
         // ResolveClipContinuation can still force a cut afterwards (big_action, location change) —
         // and a fresh shot needs its placement, because staging the shot is what it is for.
-        // Chat rewrite is preferred; EventsOnly always runs on the chosen Action so a miss
-        // (chat off / beat_id absent) cannot ship a restage.
+        // Chat rewrite is preferred; the deterministic staging pass covers a miss (chat off /
+        // beat_id absent) so neither path ships a restage.
         var isContinuation = string.Equals(cont, "extend_previous", StringComparison.OrdinalIgnoreCase);
         var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
         var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction, isContinuation);
@@ -1988,6 +1988,8 @@ public sealed class Stage2PlannerService
         beat.TryGetValue(Keys.VisualEvent, out var vev);
         var original = CoerceString(vev) ?? "";
         var chosen = !string.IsNullOrWhiteSpace(continuationAction) ? continuationAction : original;
+        // Runs on the chat rewrite as well as on a miss. Safe to re-run now that the pass only
+        // lifts a whole pose-in-place phrase and never reaches into an event.
         return isContinuation ? ContinuationActionClassifier.EventsOnly(chosen) : chosen;
     }
 

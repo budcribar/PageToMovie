@@ -209,7 +209,7 @@ public sealed class CameraDirectorClassifierTests
     }
 
     [Fact]
-    public async Task ClassifySceneCameraAsync_StripsDofFromFramingPrompt()
+    public async Task ClassifySceneCameraAsync_refuses_Optics_language_in_the_Camera_tag()
     {
         var mockChat = new MockChatClient
         {
@@ -235,9 +235,14 @@ public sealed class CameraDirectorClassifierTests
             new List<Dictionary<string, object?>> { new() { ["beat_id"] = "b1", ["dialogue"] = "Hi." } });
 
         Assert.NotNull(directives);
-        Assert.DoesNotContain("f/1.4", directives!["b1"].FramingPrompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("depth of field", directives["b1"].FramingPrompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("f/1.4", directives["b1"].LensSpec, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("85mm", directives["b1"].FramingPrompt, StringComparison.OrdinalIgnoreCase);
+        // The row keeps what the model said; the Camera tag is where Optics language is refused,
+        // by composing from shot_scale / lens / move instead of cutting the prose apart.
+        var camera = CameraTagWriter.Resolve(
+            directives!["b1"], actionAndBlocking: null, previousCameraTag: null,
+            sameSpeakerRun: false, hasSpeech: true, onScreenCastCount: 1);
+        Assert.DoesNotContain("f/1.4", camera, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("depth of field", camera, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Close-up", camera, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("85mm", camera, StringComparison.OrdinalIgnoreCase);
     }
 }

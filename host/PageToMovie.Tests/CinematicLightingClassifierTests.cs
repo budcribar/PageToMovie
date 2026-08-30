@@ -76,19 +76,20 @@ public sealed class CinematicLightingClassifierTests
     }
 
     [Theory]
-    [InlineData(
-        "Warm golden-hour sunlight at low angle, high contrast shadows with warm amber color grade.",
-        "color grade")]
-    [InlineData(
-        "Chiaroscuro candlelight, Kodak Vision3 500T film stock, deep shadows.",
-        "film stock")]
-    public void SanitizeLightingToken_strips_grade_and_stock(string raw, string banned)
+    [InlineData("Warm golden-hour sunlight at low angle, high contrast shadows with warm amber color grade.")]
+    [InlineData("Chiaroscuro candlelight, Kodak Vision3 500T film stock, deep shadows.")]
+    public void A_lighting_token_that_names_a_grade_or_stock_is_refused_whole(string raw)
     {
-        var clean = CinematicLightingClassifier.SanitizeLightingToken(raw);
-        Assert.NotNull(clean);
-        AssertNoGradeOrStock(clean);
-        Assert.DoesNotContain(banned, clean, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("shadow", clean, StringComparison.OrdinalIgnoreCase);
+        // grade_note is where that content belongs, so a token carrying it is a reply that broke
+        // the contract. Cutting it out is how "Warm golden-hour sunlight..." became "Warm golden".
+        Assert.Null(CinematicLightingClassifier.SanitizeLightingToken(raw));
+    }
+
+    [Fact]
+    public void A_lighting_token_that_stays_in_its_lane_is_kept_as_written()
+    {
+        const string light = "Chiaroscuro flickering candlelight with deep obsidian shadows and cool-gray fog";
+        Assert.Equal(light, CinematicLightingClassifier.SanitizeLightingToken(light));
     }
 
     private static void AssertNoGradeOrStock(string? text)
@@ -100,7 +101,7 @@ public sealed class CinematicLightingClassifierTests
     }
 
     [Fact]
-    public async Task ClassifySceneLightingAsync_strips_grade_clause_from_model_output()
+    public async Task ClassifySceneLightingAsync_refuses_a_token_with_a_grade_clause()
     {
         var mockChat = new MockChatClient
         {
@@ -119,9 +120,8 @@ public sealed class CinematicLightingClassifierTests
             ["setting"] = "EXT. LANE - DAY",
         });
 
-        Assert.NotNull(token);
-        Assert.Contains("golden-hour sunlight", token);
-        AssertNoGradeOrStock(token);
+        // The scene goes without a lighting directive rather than with a mangled one.
+        Assert.Null(token);
     }
 
     [Fact]

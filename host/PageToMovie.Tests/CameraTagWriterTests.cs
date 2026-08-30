@@ -46,15 +46,37 @@ public sealed class CameraTagWriterTests
     }
 
     [Fact]
-    public void SanitizeCameraProse_drops_fstop_and_dof()
+    public void Framing_prose_that_reaches_into_Optics_is_replaced_by_the_directives_own_fields()
     {
-        var clean = CameraTagWriter.SanitizeCameraProse(
+        var row = new CameraDirective(
+            ShotScale.Medium,
+            "85mm portrait lens",
+            "slow dolly push-in",
             "Medium shot, 85mm f/1.4 lens, shallow depth of field, creamy bokeh");
-        Assert.Contains("Medium shot", clean, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("85mm", clean, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("f/1.4", clean, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("depth of field", clean, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("bokeh", clean, StringComparison.OrdinalIgnoreCase);
+
+        var camera = CameraTagWriter.Resolve(
+            row, actionAndBlocking: null, previousCameraTag: null,
+            sameSpeakerRun: false, hasSpeech: true, onScreenCastCount: 1);
+
+        // Composed from shot_scale / lens_spec / camera_movement — no prose surgery.
+        Assert.Equal("Medium shot, 85mm portrait lens, slow dolly push-in", camera);
+        Assert.DoesNotContain("f/1.4", camera, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("depth of field", camera, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("bokeh", camera, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Clean_framing_prose_is_kept_as_written()
+    {
+        var row = new CameraDirective(
+            ShotScale.Wide,
+            "24mm anamorphic lens",
+            "locked tripod",
+            "Establishing wide shot, 24mm anamorphic lens, static locked camera, subject centred with headroom");
+
+        Assert.Equal(
+            "Establishing wide shot, 24mm anamorphic lens, static locked camera, subject centred with headroom",
+            CameraTagWriter.Resolve(row, null, null, false, true, 1));
     }
 
     [Fact]

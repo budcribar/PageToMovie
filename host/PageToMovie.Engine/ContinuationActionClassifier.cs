@@ -81,8 +81,9 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
         Do not add anything. Do not change who acts, or invent a new event. If a beat's action states
         no position at all, return it unchanged.
 
-        Return ONLY valid JSON:
-        {"actions":[{"beat_id":"b1","action":"..."}]}
+        Return ONLY valid JSON. Put the events in "action" and the placement you took out in
+        "staging" — staging has a home in the reply, so it never has to stay in the action:
+        {"actions":[{"beat_id":"b1","action":"...","staging":"..."}]}
         """;
 
     /// <summary>
@@ -97,52 +98,31 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
         string.Equals(
             beat.GetValueOrDefault(CutDecision)?.ToString()?.Trim(), Extend, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Stative location clause: "standing small among the ink desk legs". The participle plus a
-    /// place preposition is a PLACE, not an event — the measured teleport on extend.
-    /// </summary>
-    private static readonly Regex StativeLocationParticiple = new(
-        @"\b(?:standing|sitting|lying|waiting|perched|crouched|kneeling)(?:\s+\w+){0,3}?\s+" +
-        @"(?:among|amid(?:st)?|beside|behind|between|under|against|along|near|inside|outside|" +
-        @"in\s+front\s+of|at\s+the)\b[^.,;:]*",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
+    /// <summary>Participles that state a pose rather than an event.</summary>
+    private static readonly string[] StativeWords =
+        ["standing", "sitting", "lying", "waiting", "perched", "crouched", "kneeling", "seated"];
 
-    /// <summary>"is standing among the desks" — same restage, copula form.</summary>
-    private static readonly Regex CopulaStativeLocation = new(
-        @"\b(?:is|are|was|were)\s+(?:standing|sitting|lying|waiting)(?:\s+\w+){0,3}?\s+" +
-        @"(?:among|amid(?:st)?|beside|behind|between|under|against|along|near|inside|outside|" +
-        @"in\s+front\s+of|at\s+the)\b[^.,;:]*",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
+    /// <summary>Prepositions that place a body in the room.</summary>
+    private static readonly string[] PlaceWords =
+        ["among", "amid", "amidst", "beside", "behind", "between", "under", "against", "along",
+         "near", "inside", "outside", "atop", "across", "front", "back", "left", "right"];
 
-    private static readonly Regex BodyFacing = new(
-        @"\b(?:faces?|facing|eyeline|looks?\s+towards?|turns?\s+towards?|" +
-        @"back\s+to\s+(?:the\s+)?camera|never\s+faces)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
+    private static readonly string[] BodyFacingWords =
+        ["face", "faces", "facing", "eyeline", "looks", "look", "turns", "turn", "camera"];
 
-    private static readonly Regex PlaceRestage = new(
-        @"\b(?:standing|sitting|lying|waiting|among|amid(?:st)?|beside|behind|between|" +
-        @"under|against|along|near|inside|outside|in\s+front\s+of|" +
-        @"at\s+the\s+(?:back|front)|across\s+the)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
-
-    private static readonly Regex SpaceBeforePunct = new(
-        @"\s+([.,;:])", RegexOptions.Compiled, CommonRegex.Timeout);
-
-    private static readonly Regex RepeatedPunct = new(
-        @"([.,;:]){2,}", RegexOptions.Compiled, CommonRegex.Timeout);
-
-    private static readonly Regex HangingPrep = new(
-        @"\s+(?:at|to|toward|towards|of|from|among)\s*([.,;:]|$)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
+    private static readonly char[] SentenceEnders = ['.', '!', '?'];
+    private static readonly char[] ClauseEnders = [',', ';', ':'];
+    private static readonly char[] WordTrim = ['.', ',', ';', ':', '!', '?', '-', '(', ')', '"'];
 
     /// <summary>
-    /// Events-only Action for a clip that continues: keep what happens, drop where things are.
-    /// Always applied on extend so a chat miss cannot ship a restage.
+    /// Events-only Action for a continuation clip, used only when the classifier had no row for
+    /// the beat. Two shapes go, both decided without parsing grammar: a sentence that
+    /// <em>opens</em> with a pose in a place and then continues ("Standing small among the ink
+    /// desk legs, Mary looks up."), and a short pose-in-place phrase <em>trailing</em> a sentence
+    /// that already said something ("...clap at the lamb standing small among the ink desk legs").
+    /// A trailing phrase carrying a conjunction is left alone, because that is where an event
+    /// hides: "Nick is sitting behind the desk and slams the drawer shut" keeps its drawer.
+    /// Anything else stays as written and the Continuity block does the work at generate time.
     /// </summary>
     public static string EventsOnly(string? action)
     {
@@ -150,9 +130,83 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
         if (string.IsNullOrWhiteSpace(text))
             return "";
 
-        text = StativeLocationParticiple.Replace(text, "");
-        text = CopulaStativeLocation.Replace(text, "");
-        return TidyProse(text);
+        var rebuilt = new StringBuilder();
+        foreach (var (sentence, ending) in SplitSentences(text))
+        {
+            rebuilt.Append(WithoutStaging(sentence).Trim()).Append(ending);
+        }
+
+        return CommonRegex.WhitespaceCollapse.Replace(rebuilt.ToString(), " ").Trim();
+    }
+
+    private static string WithoutStaging(string sentence)
+    {
+        var cut = sentence.IndexOfAny(ClauseEnders);
+        if (cut >= 0 && !string.IsNullOrWhiteSpace(sentence[(cut + 1)..]) && IsPoseInAPlace(sentence[..cut]))
+            return sentence[(cut + 1)..];
+        return WithoutTrailingStaging(sentence);
+    }
+
+    /// <summary>
+    /// A pose-in-place phrase hung on the end of a sentence that already said something. Bounded
+    /// hard: it must start with a pose word, name a place, run to the sentence end, stay short,
+    /// and carry no conjunction — a conjunction is where the event would be.
+    /// </summary>
+    private static string WithoutTrailingStaging(string sentence)
+    {
+        var words = sentence.Split(' ', StringSplitOptions.None);
+        for (var i = 1; i < words.Length; i++)
+        {
+            var word = words[i].Trim(WordTrim);
+            if (!StativeWords.Contains(word, StringComparer.OrdinalIgnoreCase))
+                continue;
+            var tail = words[i..];
+            if (tail.Length > MaxTrailingStagingWords)
+                continue;
+            if (!tail.Any(w => PlaceWords.Contains(w.Trim(WordTrim), StringComparer.OrdinalIgnoreCase)))
+                continue;
+            if (tail.Any(w => Conjunctions.Contains(w.Trim(WordTrim), StringComparer.OrdinalIgnoreCase)))
+                continue;
+            return string.Join(' ', words[..i]);
+        }
+        return sentence;
+    }
+
+    private const int MaxTrailingStagingWords = 8;
+
+    /// <summary>Where an event hides in a trailing phrase, so its presence calls the cut off.</summary>
+    private static readonly string[] Conjunctions =
+        ["and", "but", "then", "as", "while", "before", "after", "when", "until", "so"];
+
+    /// <summary>Opens with a pose word and names a place: "Standing small among the desk legs".</summary>
+    private static bool IsPoseInAPlace(string clause)
+    {
+        var words = Words(clause);
+        if (words.Count == 0)
+            return false;
+        return StativeWords.Contains(words[0], StringComparer.OrdinalIgnoreCase)
+               && words.Any(w => PlaceWords.Contains(w, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Sentences with the punctuation that ended each one, so the prose rejoins as written.</summary>
+    private static List<(string Sentence, string Ending)> SplitSentences(string text)
+    {
+        var parts = new List<(string, string)>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (!SentenceEnders.Contains(text[i]))
+                continue;
+            var stop = i;
+            while (stop + 1 < text.Length && SentenceEnders.Contains(text[stop + 1]))
+                stop++;
+            parts.Add((text[start..i], text[i..(stop + 1)] + " "));
+            start = stop + 1;
+            i = stop;
+        }
+        if (start < text.Length)
+            parts.Add((text[start..], ""));
+        return parts;
     }
 
     /// <summary>
@@ -161,24 +215,40 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
     /// </summary>
     public static bool IsBodyFacingOnly(string? notes)
     {
-        var text = notes ?? "";
-        if (string.IsNullOrWhiteSpace(text))
+        var words = Words(notes ?? "");
+        if (words.Count == 0)
             return false;
-        if (PlaceRestage.IsMatch(text))
+        if (words.Any(w => StativeWords.Contains(w, StringComparer.OrdinalIgnoreCase)
+                           || PlaceWords.Contains(w, StringComparer.OrdinalIgnoreCase)))
             return false;
-        return BodyFacing.IsMatch(text);
+        return words.Any(w => BodyFacingWords.Contains(w, StringComparer.OrdinalIgnoreCase));
     }
 
-    private static string TidyProse(string text)
+    private static List<string> Words(string text) =>
+        text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim(WordTrim))
+            .Where(w => w.Length > 0)
+            .ToList();
+
+    /// <summary>Clauses with the punctuation that ended each one, so the prose rejoins cleanly.</summary>
+    private static List<(string Clause, string Separator)> SplitClauses(string text)
     {
-        text = CommonRegex.WhitespaceCollapse.Replace(text, " ");
-        text = SpaceBeforePunct.Replace(text, "$1");
-        text = RepeatedPunct.Replace(text, "$1");
-        text = HangingPrep.Replace(text, "$1");
-        text = CommonRegex.WhitespaceCollapse.Replace(text, " ");
-        text = SpaceBeforePunct.Replace(text, "$1");
-        text = CommonRegex.Replace(text, @"^[.,;:]+\s*", "");
-        return text.Trim();
+        var parts = new List<(string, string)>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (!ClauseEnders.Contains(text[i]))
+                continue;
+            var stop = i;
+            while (stop + 1 < text.Length && ClauseEnders.Contains(text[stop + 1]))
+                stop++;
+            parts.Add((text[start..i], text[i..(stop + 1)] + " "));
+            start = stop + 1;
+            i = stop;
+        }
+        if (start < text.Length)
+            parts.Add((text[start..], ""));
+        return parts;
     }
 
     public Task<Dictionary<string, string>?> ClassifySceneContinuationActionsAsync(

@@ -19,6 +19,15 @@ public static class ShotScaleExtensions
         _ => "medium"
     };
 
+    /// <summary>Prompt wording for the scale, used when a Camera tag is composed from fields.</summary>
+    public static string ToFramingPhrase(this ShotScale scale) => scale switch
+    {
+        ShotScale.Wide => "Wide shot",
+        ShotScale.CloseUp => "Close-up",
+        ShotScale.ExtremeCloseUp => "Extreme close-up",
+        _ => "Medium shot"
+    };
+
     public static ShotScale ParseShotScale(string? raw, ShotScale fallback = ShotScale.Medium)
     {
         if (string.IsNullOrWhiteSpace(raw)) return fallback;

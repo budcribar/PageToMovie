@@ -116,7 +116,8 @@ public static class CameraTagWriter
     /// </summary>
     public static string ReusePrevious(string previousCamera, int onScreenCastCount, int step = 1)
     {
-        var t = SanitizeCameraProse(previousCamera);
+        // The previous tag was written by this class, so it is already Optics-free.
+        var t = CollapseWs(previousCamera);
         if (onScreenCastCount < 2 && OtsRegex.IsMatch(t))
             return MediumHold();
         if (step > 0 && PushInRegex.IsMatch(t))
@@ -151,7 +152,7 @@ public static class CameraTagWriter
             .Select(m => m.Value.Trim(' ', ',', ';', '.'))
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        camera = SanitizeCameraProse(string.Join(", ", parts));
+        camera = CollapseWs(string.Join(", ", parts));
         return !string.IsNullOrWhiteSpace(camera);
     }
 
@@ -182,35 +183,7 @@ public static class CameraTagWriter
             .All(w => JoiningWords.Contains(w.Trim(WordTrim), StringComparer.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// Drop f-stop / DoF / bokeh so Camera does not compete with Optics. Whole clauses go, so a
-    /// trailing "with the lantern in frame" leaves with its depth-of-field clause instead of
-    /// stranding "frame" behind a comma.
-    /// </summary>
-    public static string SanitizeCameraProse(string? framing)
-    {
-        if (string.IsNullOrWhiteSpace(framing))
-            return "";
-        // f-stops carry their own period ("f/1.8"), so they go before anything splits on one.
-        var text = CommonRegex.Replace(
-            framing, @"\bf\s*/\s*\d+(?:\.\d+)?\b", "", RegexOptions.IgnoreCase);
-        var kept = text
-            .Split(CameraClauseSeparators, StringSplitOptions.TrimEntries)
-            .Where(clause => !OpticsClauseRegex.IsMatch(clause))
-            .Select(clause => clause.Trim(' ', ',', ';', '-'))
-            .Where(clause => clause.Length > 0);
-        return CollapseWs(string.Join(", ", kept));
-    }
-
-    private static readonly char[] CameraClauseSeparators = [',', ';'];
-
-    /// <summary>Aperture / depth language: Optics writes it, Camera must not.</summary>
-    private static readonly Regex OpticsClauseRegex = new(
-        @"\b(?:depth\s+of\s+field|bokeh|(?:deep|shallow)\s+focus)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        CommonRegex.Timeout);
-
-    private static readonly char[] WordSeparators = [' ', '	'];
+    private static readonly char[] WordSeparators = [' ', '\t'];
     private static readonly char[] WordTrim = ['.', ',', ';', ':', '-', '(', ')'];
 
     /// <summary>Articles and prepositions that carry no blocking on their own.</summary>
@@ -257,6 +230,27 @@ public static class CameraTagWriter
         return t.Trim(' ', ',', ';', '.', '-', ':');
     }
 
+    /// <summary>
+    /// True when framing prose reaches into what Optics owns — aperture, depth of field, bokeh,
+    /// focus. Only asked, never cut: deciding how far such a phrase reaches is guesswork, and the
+    /// directive carries scale / lens / move as fields we can compose from instead.
+    /// </summary>
+    public static bool NamesApertureOrDepth(string? framing)
+    {
+        if (string.IsNullOrWhiteSpace(framing))
+            return false;
+        if (OpticsPhrases.Any(phrase => framing.Contains(phrase, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        return FStopRegex.IsMatch(framing);
+    }
+
+    private static readonly string[] OpticsPhrases =
+        ["depth of field", "bokeh", "deep focus", "shallow focus", "aperture", "stopped down"];
+
+    /// <summary>"f/1.8" — a literal shape, matched only to answer yes or no.</summary>
+    private static readonly Regex FStopRegex = new(
+        @"\bf\s*/\s*\d", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+
     public static string? ReadCameraTag(string? visualPrompt)
     {
         foreach (var section in ClipPromptSections.Parse(visualPrompt))
@@ -287,14 +281,56 @@ public static class CameraTagWriter
         return null;
     }
 
+    /// <summary>
+    /// The classifier's prose framing when it stays in its lane, otherwise the same directive
+    /// rebuilt from its own fields. Prose that names an f-stop is not trimmed back into shape —
+    /// scale, lens and move are already structured, so there is nothing to salvage by cutting.
+    /// </summary>
     private static string? FramingFromDirective(CameraDirective row)
     {
-        var framing = SanitizeCameraProse(row.FramingPrompt);
-        if (!string.IsNullOrWhiteSpace(framing))
-            return framing;
-        var fallback = SanitizeCameraProse($"{row.LensSpec}, {row.CameraMovement}".Trim(' ', ','));
-        return string.IsNullOrWhiteSpace(fallback) ? null : fallback;
+        var framing = (row.FramingPrompt ?? "").Trim();
+        if (framing.Length > 0 && !NamesApertureOrDepth(framing))
+            return CollapseWs(framing);
+        return ComposeFromFields(row);
     }
+
+    /// <summary>Scale, lens, move — the directive's structured fields, in prompt order.</summary>
+    public static string? ComposeFromFields(CameraDirective row)
+    {
+        var parts = new[]
+        {
+            row.ShotScale.ToFramingPhrase(),
+            FieldOrEnum(row.LensSpec, LensPhrase(row.Lens)),
+            FieldOrEnum(row.CameraMovement, MovementPhrase(row.MovementKind)),
+        }.Where(part => !string.IsNullOrWhiteSpace(part));
+        var composed = CollapseWs(string.Join(", ", parts));
+        return string.IsNullOrWhiteSpace(composed) ? null : composed;
+    }
+
+    /// <summary>
+    /// The model's own words for a field, or the enum the same reply parsed to when those words
+    /// wandered into Optics. "85mm f/1.4 portrait lens" becomes "85mm lens" — from the parsed
+    /// lens, not by cutting the aperture out of the sentence.
+    /// </summary>
+    private static string FieldOrEnum(string? value, string fromEnum) =>
+        NamesApertureOrDepth(value) ? fromEnum : (value ?? "").Trim();
+
+    private static string LensPhrase(CameraLens lens) => lens switch
+    {
+        CameraLens.Lens24mm => "24mm lens",
+        CameraLens.Lens50mm => "50mm lens",
+        CameraLens.Lens85mm => "85mm lens",
+        _ => "35mm lens",
+    };
+
+    private static string MovementPhrase(CameraMovementKind kind) => kind switch
+    {
+        CameraMovementKind.DollyPush => "slow dolly push-in",
+        CameraMovementKind.PanLeft => "slow pan left",
+        CameraMovementKind.PanRight => "slow pan right",
+        CameraMovementKind.TiltUp => "slow tilt up",
+        _ => "locked tripod hold",
+    };
 
     private static string CollapseWs(string text)
     {

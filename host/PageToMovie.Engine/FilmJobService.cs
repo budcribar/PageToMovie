@@ -5902,7 +5902,6 @@ public sealed class FilmJobService
             DisplayName = prof?.DisplayName ?? key,
             Description = prof?.Description ?? "",
             VisualLock = prof?.VisualLock ?? "",
-            WardrobeAlways = prof?.WardrobeAlways ?? Array.Empty<string>(),
             VoiceProfile = prof?.VoiceProfile ?? "",
             VoiceLabel = prof?.VoiceLabel ?? "",
             ImagineVoiceId = imagineVoiceId,

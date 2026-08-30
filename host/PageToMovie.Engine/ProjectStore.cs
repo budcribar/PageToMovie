@@ -4296,7 +4296,6 @@ public sealed partial class ProjectStore
             DisplayName = display,
             Description = desc,
             VisualLock = vlock,
-            WardrobeAlways = ReadWardrobeAlways(info),
             VoiceProfile = profile,
             VoiceLabel = label,
             ImagineVoiceId = imagineVoiceId,

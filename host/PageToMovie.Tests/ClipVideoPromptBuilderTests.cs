@@ -1203,7 +1203,7 @@ public class ClipVideoPromptBuilderTests
     }
 
     [Fact]
-    public void Build_visual_lock_does_not_restate_wardrobe_outfit()
+    public void Build_keeps_the_visual_lock_whole_and_takes_wardrobe_from_the_plan()
     {
         var clip = JsonDocument.Parse("""
             {
@@ -1228,8 +1228,9 @@ public class ClipVideoPromptBuilderTests
                 Key = "Character_Mary",
                 DisplayName = "Mary",
                 Description = "School-age girl with brown braids",
-                VisualLock = "brown braids, pale pinafore, rose ribbon, school-age girl",
-                WardrobeAlways = new[] { "pale pinafore", "rose ribbon" },
+                // Face / markings only — clothes live on wardrobe_always and reach the model
+                // through the plan's Wardrobe clause, so nothing is cut back out here.
+                VisualLock = "brown braids, grey eyes, school-age girl",
             },
         };
 
@@ -1240,9 +1241,7 @@ public class ClipVideoPromptBuilderTests
             built.CharacterVariables, @"<VisualLock>(.*?)</VisualLock>",
             System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
         Assert.False(string.IsNullOrWhiteSpace(lockInner));
-        Assert.Contains("brown braids", lockInner, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("pinafore", lockInner, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("rose ribbon", lockInner, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("brown braids, grey eyes, school-age girl", lockInner.Trim());
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
     }

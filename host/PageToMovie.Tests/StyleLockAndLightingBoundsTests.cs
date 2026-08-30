@@ -47,22 +47,13 @@ public class StyleLockAndLightingBoundsTests
     }
 
     [Fact]
-    public void Lighting_keeps_its_light_when_a_stock_clause_is_dropped()
+    public void A_lighting_line_carrying_a_stock_is_refused_not_repaired()
     {
-        var clean = CinematicLightingClassifier.SanitizeLightingToken(
-            "Chiaroscuro candlelight, Kodak Vision3 500T film stock, deep obsidian shadows");
-
-        Assert.NotNull(clean);
-        Assert.Contains("Chiaroscuro candlelight", clean, StringComparison.Ordinal);
-        Assert.Contains("deep obsidian shadows", clean, StringComparison.Ordinal);
-        Assert.DoesNotContain("film stock", clean, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void A_lighting_line_that_is_only_a_stock_mention_is_dropped_whole()
-    {
-        // No lighting directive beats a mangled fragment: this once returned "Warm golden".
-        Assert.Null(CinematicLightingClassifier.SanitizeLightingToken("Shot on Kodak film stock"));
+        // Both of these once came back mangled: the second as the two words "Warm golden".
+        Assert.Null(CinematicLightingClassifier.SanitizeLightingToken(
+            "Chiaroscuro candlelight, Kodak Vision3 500T film stock, deep obsidian shadows"));
+        Assert.Null(CinematicLightingClassifier.SanitizeLightingToken(
+            "Warm golden-hour sunlight at low angle with hard shadows on Kodak film stock"));
     }
 
     [Fact]

@@ -259,9 +259,9 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         var moveStr = item.GetStringProp("camera_movement", "locked tripod");
         return (id, new CameraDirective(
             ShotScaleExtensions.ParseShotScale(scaleStr, ShotScale.Medium),
-            CameraTagWriter.SanitizeCameraProse(lensStr),
+            lensStr,
             moveStr,
-            CameraTagWriter.SanitizeCameraProse(item.GetStringProp("framing_prompt")),
+            item.GetStringProp("framing_prompt"),
             MediaEngineEnumExtensions.ParseCameraLens(lensStr),
             MediaEngineEnumExtensions.ParseCameraMovementKind(moveStr),
             ParseCameraAngle(item.GetStringProp("camera_angle", "eye_level")),

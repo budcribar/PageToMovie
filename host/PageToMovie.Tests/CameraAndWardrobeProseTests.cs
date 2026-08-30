@@ -48,42 +48,13 @@ public class CameraAndWardrobeProseTests
     }
 
     [Fact]
-    public void Optics_language_leaves_with_its_own_clause_and_no_debris()
+    public void Optics_language_is_answered_yes_or_no_never_cut_out()
     {
-        Assert.Equal(
-            "Medium close-up, 50mm lens",
-            CameraTagWriter.SanitizeCameraProse("Medium close-up, 50mm lens, shallow depth of field with the lantern in frame"));
-
-        // Used to leave "Wide shot, 24mm,, slow dolly in".
-        Assert.Equal(
-            "Wide shot, 24mm, slow dolly in",
-            CameraTagWriter.SanitizeCameraProse("Wide shot, 24mm, deep focus, slow dolly in"));
-
-        Assert.Equal(
-            "Close-up, 85mm",
-            CameraTagWriter.SanitizeCameraProse("Close-up, 85mm, f/1.8, creamy soft bokeh"));
-    }
-
-    [Fact]
-    public void A_wardrobe_clause_leaves_whole_and_the_face_stays()
-    {
-        var locked = CharacterVisualTextScrubber.StripOutfitFromVisualLock(
-            "Tall gaunt man, deep-set pale blue eyes, a livid scar over his left eye, "
-            + "wears a red wool coat over a grey waistcoat",
-            ["red wool coat", "grey waistcoat"]);
-
-        Assert.Equal(
-            "Tall gaunt man, deep-set pale blue eyes, a livid scar over his left eye",
-            locked);
-        Assert.DoesNotContain("wears a", locked, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Identity_in_the_same_clause_as_a_garment_survives_it()
-    {
-        Assert.Equal(
-            "green eyes",
-            CharacterVisualTextScrubber.StripOutfitFromVisualLock("green eyes and a red coat", ["red coat"]));
+        Assert.True(CameraTagWriter.NamesApertureOrDepth("Close-up, 85mm, f/1.8, creamy soft bokeh"));
+        Assert.True(CameraTagWriter.NamesApertureOrDepth("Wide shot, 24mm, deep focus, slow dolly in"));
+        Assert.True(CameraTagWriter.NamesApertureOrDepth(
+            "Medium close-up, 50mm lens, shallow depth of field with the lantern in frame"));
+        Assert.False(CameraTagWriter.NamesApertureOrDepth("Medium close-up, 50mm lens, slow dolly in"));
     }
 
     [Fact]

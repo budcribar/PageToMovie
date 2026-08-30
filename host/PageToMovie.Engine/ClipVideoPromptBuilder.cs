@@ -59,8 +59,6 @@ public static class ClipVideoPromptBuilder
         public string DisplayName { get; init; } = "";
         public string Description { get; init; } = "";
         public string VisualLock { get; init; } = "";
-        /// <summary>Sticky identity garments from the seed. Clothes belong here, not in VisualLock.</summary>
-        public IReadOnlyList<string> WardrobeAlways { get; init; } = Array.Empty<string>();
         public string VoiceProfile { get; init; } = "";
         public string VoiceLabel { get; init; } = "";
         /// <summary>Saved Imagine / catalog preset voice id (same cast_seeds store).</summary>
@@ -221,7 +219,6 @@ public static class ClipVideoPromptBuilder
         // Performance owns gaze/address. Action is bodies / blocking only.
         actionText = PerformanceTagWriter.StripEyelineFromAction(actionText);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
-        var wardrobeByKey = CollectGenerateWardrobe(rawVisual, allKeys, characters);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
         var speakers = new HashSet<string>(
@@ -230,8 +227,7 @@ public static class ClipVideoPromptBuilder
         var varBlock = BuildCharacterVariablesBlock(
             allKeys, characters,
             new CharacterVariablesContext(
-                imageTagByKey, useReferenceImages, activeKeys, wardrobeByKey,
-                speakers, audioTags));
+                imageTagByKey, useReferenceImages, activeKeys, speakers, audioTags));
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium, rawVisual);
@@ -1811,7 +1807,6 @@ public static class ClipVideoPromptBuilder
         IReadOnlyDictionary<string, string> ImageTagByKey,
         bool UseImageTags,
         HashSet<string>? ActiveKeys,
-        IReadOnlyDictionary<string, List<string>>? WardrobeByKey,
         IReadOnlySet<string>? Speakers,
         IReadOnlyDictionary<string, string>? AudioTags);
 
@@ -1829,57 +1824,17 @@ public static class ClipVideoPromptBuilder
         foreach (var key in keys)
         {
             var p = GetCharacterProfile(characters, key);
-            var worn = ResolveWardrobeItems(key, p, ctx.WardrobeByKey);
             if (p?.VoiceOnly == true || IsVoiceOnlyKey(key, characters))
                 sb.AppendLine(FormatVoiceOnlyLine(
                     key, p, ctx.ImageTagByKey, ctx.UseImageTags, speakers, ctx.AudioTags));
             else if (IsNonFocusPresent(ctx.ActiveKeys, keys.Count, key))
-                sb.AppendLine(FormatCompactPresentLine(
-                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, worn));
+                sb.AppendLine(FormatCompactPresentLine(key, p, ctx.ImageTagByKey, ctx.UseImageTags));
             else
                 sb.AppendLine(FormatFocusCharacterLine(
-                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, worn, speakers, ctx.AudioTags));
+                    key, p, ctx.ImageTagByKey, ctx.UseImageTags, speakers, ctx.AudioTags));
             any = true;
         }
         return any ? sb.ToString().TrimEnd() : "";
-    }
-
-    private static Dictionary<string, List<string>> CollectGenerateWardrobe(
-        string? visualPrompt,
-        IReadOnlyList<string> keys,
-        IReadOnlyDictionary<string, CharacterProfile> characters)
-    {
-        var fromPrompt = WardrobeState.ParseStillWears(visualPrompt);
-        foreach (var key in keys)
-        {
-            var p = GetCharacterProfile(characters, key);
-            if (p?.WardrobeAlways is not { Count: > 0 })
-                continue;
-            if (!fromPrompt.TryGetValue(key, out var list))
-            {
-                list = new List<string>();
-                fromPrompt[key] = list;
-            }
-
-            // AlreadyHas is a contains-match against the growing list — keep the
-            // Where lazy so a later overlapping garment is skipped after an earlier add.
-            foreach (var item in p.WardrobeAlways.Where(item => !WardrobeState.AlreadyHas(list, item)))
-                list.Add(item);
-        }
-
-        return fromPrompt;
-    }
-
-    private static IReadOnlyList<string> ResolveWardrobeItems(
-        string key,
-        CharacterProfile? p,
-        IReadOnlyDictionary<string, List<string>>? wardrobeByKey)
-    {
-        if (wardrobeByKey is not null &&
-            wardrobeByKey.TryGetValue(key, out var fromPrompt) &&
-            fromPrompt.Count > 0)
-            return fromPrompt;
-        return p?.WardrobeAlways ?? Array.Empty<string>();
     }
 
     private static bool IsNonFocusPresent(HashSet<string>? activeKeys, int keyCount, string key)
@@ -1892,8 +1847,7 @@ public static class ClipVideoPromptBuilder
         string key,
         CharacterProfile? p,
         IReadOnlyDictionary<string, string> imageTagByKey,
-        bool useImageTags,
-        IReadOnlyList<string>? wardrobeItems = null)
+        bool useImageTags)
     {
         var display = !string.IsNullOrWhiteSpace(p?.DisplayName)
             ? p.DisplayName
@@ -1902,8 +1856,9 @@ public static class ClipVideoPromptBuilder
         // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
         // source rather than at each tag-wrap call site below.
         var desc = PromptTags.SanitizeValue(p?.Description?.Trim());
-        var vlock = PromptTags.SanitizeValue(
-            CharacterVisualTextScrubber.StripOutfitFromVisualLock(p?.VisualLock?.Trim(), wardrobeItems));
+        // visual_lock is face / markings / species and wardrobe_always is the clothes — one writer
+        // each, decided at cast extract. Nothing to take back out here.
+        var vlock = PromptTags.SanitizeValue(p?.VisualLock?.Trim());
         var voice = PromptTags.SanitizeValue(p?.VoiceProfile?.Trim());
         return (display, tag, desc, vlock, voice);
     }
@@ -1927,8 +1882,7 @@ public static class ClipVideoPromptBuilder
         string key,
         CharacterProfile? p,
         IReadOnlyDictionary<string, string> imageTagByKey,
-        bool useImageTags,
-        IReadOnlyList<string>? wardrobeItems = null)
+        bool useImageTags)
     {
         // Multi-character compaction: non-focus on-screen cast get a short identity line.
         // Lead with visual_lock (not the general description) when present — it's the field
@@ -1944,7 +1898,7 @@ public static class ClipVideoPromptBuilder
         // exceeds it — and that mechanism deliberately keeps the head (identity/action) intact
         // rather than blindly guillotining one character's identity clause on every appearance.
         // So: no fixed per-character cap here; let the full text through.
-        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         var compactSource = vlock.Length > 0 ? vlock : desc;
         var compact =
             $"- {key}{tag}: Also present (not shot focus); keep identity consistent: {compactSource}.";
@@ -1957,11 +1911,10 @@ public static class ClipVideoPromptBuilder
         CharacterProfile? p,
         IReadOnlyDictionary<string, string> imageTagByKey,
         bool useImageTags,
-        IReadOnlyList<string>? wardrobeItems = null,
         IReadOnlySet<string>? speakers = null,
         IReadOnlyDictionary<string, string>? audioTags = null)
     {
-        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         var voice = VoiceTagWriter.VoiceProseForCharacterLine(
             key, p?.VoiceProfile,
             speakers ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
