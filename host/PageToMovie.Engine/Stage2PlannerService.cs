@@ -67,6 +67,7 @@ public sealed class Stage2PlannerService
         public const string GlobalProductionVariables = "global_production_variables";
         public const string CharacterSeedTokens = "character_seed_tokens";
         public const string SourceBookTitle = "source_book_title";
+        public const string BlockingNotes = "blocking_notes";
     }
 
     // No design-time length budget — send full visual prompts.
@@ -1285,7 +1286,7 @@ public sealed class Stage2PlannerService
     private static string BeatActionAndBlocking(Dictionary<string, object?> beat)
     {
         var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
-        var block = CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null) ?? "";
+        var block = CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn) ? bn : null) ?? "";
         if (string.IsNullOrWhiteSpace(block) ||
             ve.Contains(block, StringComparison.OrdinalIgnoreCase))
             return ve;
@@ -2203,7 +2204,7 @@ public sealed class Stage2PlannerService
 
     private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat)
     {
-        var block = CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null) ?? "";
+        var block = CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn) ? bn : null) ?? "";
         if (string.IsNullOrWhiteSpace(block) ||
             ve.Contains(block, StringComparison.OrdinalIgnoreCase))
             return ve;
@@ -2639,7 +2640,7 @@ public sealed class Stage2PlannerService
         AddCharacterKeysFromText(found, veText);
         AddCharacterKey(found, CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null));
         AddCharacterKey(found, CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sp) ? sp : null));
-        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
+        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn) ? bn : null));
 
         PromoteNamesFromCastSeeds(found, charSeeds, veText, beat);
 
@@ -2672,7 +2673,7 @@ public sealed class Stage2PlannerService
         var profiles = BuildClipCastProfiles(charSeeds);
         var prose = string.Join(" ",
             veText,
-            CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "");
+            CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn2) ? bn2 : null) ?? "");
         foreach (var key in ClipVideoPromptBuilder.InferKeysFromProse(prose, profiles))
             AddCharacterKey(found, key);
     }
