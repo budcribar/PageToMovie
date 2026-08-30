@@ -80,17 +80,18 @@ public static class PerformanceTagWriter
         return StripEyelineProse(action);
     }
 
-    public static string StripEyelineProse(string? action)
-    {
-        if (string.IsNullOrWhiteSpace(action))
-            return "";
-        var t = AddressCommandRegex.Replace(action, " ");
-        t = CommonRegex.WhitespaceCollapse.Replace(t, " ");
-        t = CommonRegex.Replace(t, @"\s*([,;])(?:\s*[,;])+", "$1");
-        t = CommonRegex.Replace(t, @"\s+\.", ".");
-        t = CommonRegex.DotCollapse.Replace(t, ".");
-        return t.Trim(' ', ',', ';', '.', '-', ':');
-    }
+    /// <summary>
+    /// Gaze and address leave when they stand as their own clause ("Confessional address."), and
+    /// stay when they are inside a sentence that also does something: cutting the phrase out of
+    /// "Nick looks into the camera and lifts the lantern" left "Nick and lifts the lantern", and
+    /// the beat is worth more than the repetition. Performance still owns the tag.
+    /// </summary>
+    public static string StripEyelineProse(string? action) =>
+        ProseClauses.DropClausesOnlyMatching(action, AddressCommandRegex, AddressJoiningWords);
+
+    /// <summary>Words that only ever join an address command, so they leave with it.</summary>
+    private static readonly string[] AddressJoiningWords =
+        ["camera", "lens", "viewer", "audience", "house", "eyeline", "confessional", "address"];
 
     /// <summary>
     /// After house / project rules are appended, keep exactly one PERFORMANCE LOCK

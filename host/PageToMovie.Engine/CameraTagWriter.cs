@@ -162,73 +162,11 @@ public static class CameraTagWriter
     /// shot of the letter") is load-bearing grammar: cutting it leaves "steps into a of the
     /// letter", and a beat the model cannot read is worse than a framing word it reads twice.
     /// </summary>
-    public static string StripFromAction(string? action)
-    {
-        if (string.IsNullOrWhiteSpace(action))
-            return "";
-        var kept = SplitClauses(action)
-            .Where(clause => !IsOnlyCameraOrders(clause.Text))
-            .Select(clause => clause.Text.Trim() + clause.Separator);
-        return TidyProse(string.Concat(kept));
-    }
+    public static string StripFromAction(string? action) =>
+        ProseClauses.DropClausesOnlyMatching(action, CameraOrderRegex, CameraJoiningWords);
 
-    /// <summary>True when the clause says nothing but camera orders and the words joining them.</summary>
-    private static bool IsOnlyCameraOrders(string clause)
-    {
-        if (!CameraOrderRegex.IsMatch(clause))
-            return false;
-        var residue = CameraOrderRegex.Replace(clause, " ");
-        return residue
-            .Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries)
-            .All(w => JoiningWords.Contains(w.Trim(WordTrim), StringComparer.OrdinalIgnoreCase));
-    }
-
-    private static readonly char[] WordSeparators = [' ', '\t'];
-    private static readonly char[] WordTrim = ['.', ',', ';', ':', '-', '(', ')'];
-
-    /// <summary>Articles and prepositions that carry no blocking on their own.</summary>
-    private static readonly string[] JoiningWords =
-        ["a", "an", "the", "and", "or", "with", "in", "on", "at", "of", "to", "into", "from",
-         "is", "are", "was", "were", "then", "camera", "shot"];
-
-    private readonly record struct Clause(string Text, string Separator);
-
-    /// <summary>Split on sentence and clause ends, keeping each separator with its clause.</summary>
-    private static List<Clause> SplitClauses(string text)
-    {
-        var clauses = new List<Clause>();
-        var start = 0;
-        var i = 0;
-        while (i < text.Length)
-        {
-            if (text[i] is not ('.' or ',' or ';' or '!' or '?'))
-            {
-                i++;
-                continue;
-            }
-
-            var stop = i;
-            while (stop + 1 < text.Length && text[stop + 1] is '.' or ',' or ';' or '!' or '?')
-                stop++;
-            clauses.Add(new Clause(text[start..i], text[i..(stop + 1)] + " "));
-            start = stop + 1;
-            i = start;
-        }
-
-        if (start < text.Length)
-            clauses.Add(new Clause(text[start..], ""));
-        return clauses;
-    }
-
-    /// <summary>Close the gaps a dropped clause leaves: doubled punctuation and loose spacing.</summary>
-    private static string TidyProse(string text)
-    {
-        var t = CommonRegex.WhitespaceCollapse.Replace(text, " ");
-        t = CommonRegex.Replace(t, @"\s*([,;])(?:\s*[,;])+", "$1");
-        t = CommonRegex.Replace(t, @"\s+([,;.])", "$1");
-        t = CommonRegex.DotCollapse.Replace(t, ".");
-        return t.Trim(' ', ',', ';', '.', '-', ':');
-    }
+    /// <summary>Words that only ever join camera orders together, so they leave with them.</summary>
+    private static readonly string[] CameraJoiningWords = ["camera", "shot"];
 
     /// <summary>
     /// True when framing prose reaches into what Optics owns — aperture, depth of field, bokeh,

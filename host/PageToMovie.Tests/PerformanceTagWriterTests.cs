@@ -104,4 +104,34 @@ public sealed class PerformanceTagWriterTests
         Assert.DoesNotContain("face to house", action, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("face the house", action, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void An_address_welded_into_a_sentence_stays_rather_than_break_the_beat()
+    {
+        // Removing the phrase in place left "Nick and lifts the lantern" / "She before turning
+        // away". Performance owns the tag; the beat keeps its grammar.
+        Assert.Equal(
+            "Nick looks into the camera and lifts the lantern",
+            PerformanceTagWriter.StripEyelineFromAction("Nick looks into the camera and lifts the lantern."));
+
+        Assert.Equal(
+            "She addresses the audience before turning away",
+            PerformanceTagWriter.StripEyelineFromAction("She addresses the audience before turning away."));
+
+        Assert.Equal(
+            "He gazes at the lens, then steps back from the bed",
+            PerformanceTagWriter.StripEyelineFromAction("He gazes at the lens, then steps back from the bed."));
+    }
+
+    [Fact]
+    public void An_address_standing_on_its_own_still_goes()
+    {
+        Assert.Equal(
+            "He sets the lantern down",
+            PerformanceTagWriter.StripEyelineFromAction("Confessional address. He sets the lantern down."));
+
+        Assert.Equal(
+            "He sets the lantern down",
+            PerformanceTagWriter.StripEyelineFromAction("He sets the lantern down. Looks into the lens."));
+    }
 }
