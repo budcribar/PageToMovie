@@ -69,13 +69,8 @@ public static class PerformanceTagWriter
     {
         if (string.IsNullOrWhiteSpace(action))
             return "";
-        if (action.Contains($"<{PromptFieldTags.Action}>", StringComparison.OrdinalIgnoreCase))
-        {
-            return CommonRegex.Replace(
-                action,
-                $@"(?is)<{PromptFieldTags.Action}>(.*?)</{PromptFieldTags.Action}>",
-                m => PromptTags.Wrap(PromptFieldTags.Action, StripEyelineProse(m.Groups[1].Value)));
-        }
+        if (ClipPromptTags.Find(action, PromptFieldTags.Action).Count > 0)
+            return ClipPromptTags.RewriteBlocks(action, PromptFieldTags.Action, StripEyelineProse);
 
         return StripEyelineProse(action);
     }

@@ -44,26 +44,25 @@ public static class PromptTags
     /// <summary>Shorten a tag's content to at most <paramref name="maxChars"/> characters (word boundary)
     /// instead of dropping the tag — for content that must survive compression.</summary>
     public static string Shorten(string text, string name, int maxChars) =>
-        System.Text.RegularExpressions.Regex.Replace(text, $@"<{name}>(.*?)</{name}>", m =>
+        ClipPromptTags.RewriteBlocks(text, name, value =>
         {
-            var c = m.Groups[1].Value.Trim();
-            if (c.Length <= maxChars) return m.Value;
+            var c = value.Trim();
+            if (c.Length <= maxChars) return value;
             var cut = c[..maxChars];
             var sp = cut.LastIndexOf(' ');
             if (sp > maxChars / 2) cut = cut[..sp];
-            return $"<{name}>{cut.TrimEnd(',', ';', ' ', '-')}</{name}>";
-        }, System.Text.RegularExpressions.RegexOptions.Singleline, CommonRegex.Timeout);
+            return cut.TrimEnd(',', ';', ' ', '-');
+        });
 
     /// <summary>True when <paramref name="text"/> already contains a complete &lt;Name&gt;…&lt;/Name&gt; block.</summary>
     public static bool Has(string? text, string name) =>
-        !string.IsNullOrWhiteSpace(text) &&
-        CommonRegex.IsMatch(text, $@"<{name}>.*?</{name}>", RegexOptions.Singleline);
+        !string.IsNullOrWhiteSpace(text) && ClipPromptTags.Find(text, name).Count > 0;
 
     /// <summary>Remove every &lt;Name&gt;...&lt;/Name&gt; span (and any leading whitespace) from
     /// text — used to fully drop non-essential tagged content during compression (e.g. per-character
     /// &lt;Voice&gt; descriptions; the speaker's &lt;VoiceLock&gt; is shortened, never dropped).</summary>
     public static string Strip(string text, string name) =>
-        CommonRegex.Replace(text, $@"\s*<{name}>.*?</{name}>", "", RegexOptions.Singleline);
+        ClipPromptTags.Remove(text, name);
 
     /// <summary>Drop every tag's "note" attribute — the full instructional wording is only needed
     /// in the uncompressed prompt; the bare tag name is enough once budget is tight.</summary>

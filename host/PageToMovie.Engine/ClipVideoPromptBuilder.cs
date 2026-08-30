@@ -469,9 +469,8 @@ public static class ClipVideoPromptBuilder
         {
             if (PromptTags.Has(currentClipVisualPrompt, tag))
                 continue;
-            var m = CommonRegex.Match(clean, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
-            if (m.Success)
-                parts.Add(m.Value.Trim());
+            if (ClipPromptTags.ReadFirstBlock(clean, tag) is { } block)
+                parts.Add(block.Trim());
         }
         return string.Join(" ", parts);
     }
@@ -694,7 +693,7 @@ public static class ClipVideoPromptBuilder
             return actionText;
         var trimmed = actionText;
         foreach (var tag in SourceVideoAlreadyShows)
-            trimmed = BlockRegexFor(tag).Replace(trimmed, "");
+            trimmed = ClipPromptTags.Remove(trimmed, tag);
         return CollapseWhitespace(trimmed).Trim();
     }
 
@@ -707,23 +706,6 @@ public static class ClipVideoPromptBuilder
         PromptFieldTags.Optics,
         PromptFieldTags.Grade,
     };
-
-    private static readonly Dictionary<string, Regex> BlockRegexCache = new(StringComparer.Ordinal);
-
-    private static Regex BlockRegexFor(string tag)
-    {
-        lock (BlockRegexCache)
-        {
-            if (!BlockRegexCache.TryGetValue(tag, out var re))
-            {
-                re = new Regex($@"<{tag}>.*?</{tag}>\s*",
-                    RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled,
-                    CommonRegex.Timeout);
-                BlockRegexCache[tag] = re;
-            }
-            return re;
-        }
-    }
 
     private static string CollapseWhitespace(string text) =>
         CommonRegex.Replace(text, @"[ 	]{2,}", " ");
@@ -742,12 +724,10 @@ public static class ClipVideoPromptBuilder
         v = ResFpsSuffixRegex3.Replace(v, "").Trim();
         v = CastCountRegex.Replace(v, "");
         v = NoExtraPeopleRegex.Replace(v, "");
-        v = LegacySpeechBlockRegex.Replace(v, "");
-        v = LegacySoundBlockRegex.Replace(v, "");
-        // Roster SSoT is Characters + CastCount. Leftover <Cast> / "also on screen" /
-        // "{key} is on screen." from older plans are a fourth name list — drop them.
-        v = LegacyCastBlockRegex.Replace(v, "");
-        v = LegacyMustNotBlockRegex.Replace(v, "");
+        // Roster SSoT is Characters + CastCount; the rest reach the model a second way now.
+        // Leftover "also on screen" prose from the retired Cast slot goes with them.
+        foreach (var tag in RetiredPlanTags)
+            v = ClipPromptTags.Remove(v, tag);
         v = AlsoOnScreenProseRegex.Replace(v, "");
         v = StripFountainLeakage(v);
         // Blueprint may embed lip-sync / says quotes with crushed dashes — speech-safe for gen
@@ -929,41 +909,29 @@ public static class ClipVideoPromptBuilder
     private static readonly Regex CastCountRegex = new(@"\bCAST COUNT:\s*exactly\s+\d+[^.]*\.\s*(?:No extra people\.\s*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex NoExtraPeopleRegex = new(@"\bNo extra people\.\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     /// <summary>
-    /// A <c>&lt;Speech&gt;</c> block baked into an older plan's <c>visual_prompt</c>. Stage 2 no
-    /// longer emits one — the spoken line rides in <c>audio_payload</c> and reaches the model
-    /// through the AUDIO block alone — but plans built before that still carry it, and left in
-    /// place it sends the same line to the model twice. Stripped here rather than migrating the
-    /// stored plans, so no existing project has to be rewritten to stop paying for the duplicate.
+    /// Tags older plans still carry that Stage 2 no longer writes, each of which reaches the model
+    /// a second way now — and sending both costs more than the duplicate.
+    /// <list type="bullet">
+    /// <item><c>Speech</c>: the spoken line rides in <c>audio_payload</c> and arrives in the AUDIO
+    /// block; left in place the model is asked for the same line twice.</item>
+    /// <item><c>Sound</c>: the cue arrives as <c>&lt;Foley&gt;</c>/<c>&lt;Score&gt;</c> in AUDIO.
+    /// Left in place it asks for the foley twice against one request for the narration, and the
+    /// foley wins the opening moment — adding this block alone to a working extend made the
+    /// narrator drop the line's first word.</item>
+    /// <item><c>Cast</c>: Characters + CastCount at generation time are the single roster.</item>
+    /// <item><c>MustNot</c>: the same items reach the model once inside <c>&lt;Negative&gt;</c>.</item>
+    /// </list>
+    /// Stripped at generation rather than by rewriting stored plans, so no project has to be
+    /// replanned to stop paying for the duplicate.
     /// </summary>
-    private static readonly Regex LegacySpeechBlockRegex = new(
-        $@"<{PromptFieldTags.Speech}>.*?</{PromptFieldTags.Speech}>\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
-    /// <summary>
-    /// A <c>&lt;Sound&gt;</c> block baked into an older plan's <c>visual_prompt</c>. Stage 2 no
-    /// longer emits one — the same cue already reaches the model as <c>&lt;Foley&gt;</c>/
-    /// <c>&lt;Score&gt;</c> inside the AUDIO block, built from <c>audio_payload</c>. Left in place
-    /// it asks for the foley twice against a single request for the narration, and the foley wins
-    /// the opening moment: adding this block alone to an otherwise-working extend made the narrator
-    /// drop the line's first word. Stripped here so existing plans stop losing words before they
-    /// are replanned.
-    /// </summary>
-    private static readonly Regex LegacySoundBlockRegex = new(
-        $@"<{PromptFieldTags.Sound}>.*?</{PromptFieldTags.Sound}>\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
-    /// <summary>
-    /// A <c>&lt;Cast&gt;</c> roster baked into an older plan's <c>visual_prompt</c>. Stage 2
-    /// no longer emits one — Characters + CastCount at generation time are the single list.
-    /// </summary>
-    private static readonly Regex LegacyCastBlockRegex = new(
-        $@"<{PromptFieldTags.Cast}>.*?</{PromptFieldTags.Cast}>\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
-    /// <summary>
-    /// A <c>&lt;MustNot&gt;</c> beat list baked into an older plan. Stage 2 no longer emits
-    /// one — the same items already reach the model once inside <c>&lt;Negative&gt;</c>.
-    /// </summary>
-    private static readonly Regex LegacyMustNotBlockRegex = new(
-        $@"<{PromptFieldTags.MustNot}>.*?</{PromptFieldTags.MustNot}>\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly string[] RetiredPlanTags =
+    {
+        PromptFieldTags.Speech,
+        PromptFieldTags.Sound,
+        PromptFieldTags.Cast,
+        PromptFieldTags.MustNot,
+    };
+
     /// <summary>Leftover "also on screen: …" prose from the retired Stage-2 Cast slot.</summary>
     private static readonly Regex AlsoOnScreenProseRegex = new(
         @"\balso on screen:\s*(?:Character_[A-Za-z0-9_]+|C\d+)(?:\s*,\s*(?:Character_[A-Za-z0-9_]+|C\d+))*\.?\s*",
@@ -1357,14 +1325,13 @@ public static class ClipVideoPromptBuilder
         var p = prompt;
 
         foreach (var tag in DedupableTags)
-            p = DropLaterDuplicates(p, $@"<{tag}>.*?</{tag}>", RegexOptions.Singleline);
+            p = ClipPromptTags.DropDuplicateBlocks(p, tag);
 
         // Extra STYLE LOCK copies (house-rule line + stale plan prose) are stripped at build
         // time — one lock from VisualMediumStyles / project render_style_lock is the SSoT.
         p = DropLaterDuplicates(p, @"STYLE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
         p = DropLaterDuplicates(p, @"PERFORMANCE LOCK(?:\s*\(hard\))?:\s*[^\n]+", RegexOptions.IgnoreCase);
-        p = DropLaterDuplicates(p, $@"<{PromptFieldTags.StyleLock}>.*?</{PromptFieldTags.StyleLock}>",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        p = ClipPromptTags.DropDuplicateBlocks(p, PromptFieldTags.StyleLock);
         return p;
     }
 
@@ -1518,11 +1485,9 @@ public static class ClipVideoPromptBuilder
     public static string? ExtractStyleHead(string visual)
     {
         if (string.IsNullOrWhiteSpace(visual)) return null;
-        var m = CommonRegex.Match(
-            visual,
-            $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return m.Success ? StyleLockPrefix + m.Groups[1].Value.Trim() : null;
+        return ClipPromptTags.ReadFirstInner(visual, PromptFieldTags.StyleLock) is { } inner
+            ? StyleLockPrefix + inner.Trim()
+            : null;
     }
     public static List<string> FindCharacterRefPaths(
         JsonElement clipEl,
@@ -2401,7 +2366,7 @@ public static class ClipVideoPromptBuilder
     {
         if (string.IsNullOrWhiteSpace(action)) return action ?? "";
         // Tagged lock: a real field, removed as a block.
-        var text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(action, "");
+        var text = ClipPromptTags.Remove(action, PromptFieldTags.StyleLock);
         // Loose "STYLE LOCK:" prose: scanned out by hand rather than matched. A regex here has to
         // guess where the lock ends, and the unbounded form took the rest of the beat with it.
         return CollapseWhitespace(RemoveLooseStyleLockSentences(text)).Trim();
@@ -2478,7 +2443,7 @@ public static class ClipVideoPromptBuilder
     public static string EnsureSingleStyleLock(string? prompt, string? styleLock)
     {
         var text = prompt ?? "";
-        text = BlockRegexFor(PromptFieldTags.StyleLock).Replace(text, "");
+        text = ClipPromptTags.Remove(text, PromptFieldTags.StyleLock);
         text = RemoveLooseStyleLockSentences(text);
         // House "- Style:" bullets named example media and bypassed the STYLE LOCK: strip.
         text = CommonRegex.Replace(text, @"(?im)^\s*-\s*Style:\s*.+\r?\n?", "");

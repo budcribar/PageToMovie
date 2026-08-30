@@ -121,10 +121,9 @@ public static class ShotPlanLint
             return null;
         // Tag only — Stage 2 emits it. A plan predating that simply does not report drift, which
         // is the right answer: rebuilding it is the fix for drift anyway.
-        var m = Regex.Match(
-            text, $@"<{PromptFieldTags.StyleLock}>(.*?)</{PromptFieldTags.StyleLock}>",
-            RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-        return m.Success ? Normalize(m.Groups[1].Value) : null;
+        return ClipPromptTags.ReadFirstInner(text, PromptFieldTags.StyleLock) is { } inner
+            ? Normalize(inner)
+            : null;
     }
 
     /// <summary>The live style head is prose and may or may not lead with the label.</summary>

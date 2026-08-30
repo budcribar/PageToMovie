@@ -110,7 +110,7 @@ public static class ClipPromptSections
 
         var spans = new List<Span>();
         foreach (var (tag, field) in TaggedFields)
-            AddSpans(spans, text, $@"<{tag}>(.*?)</{tag}>", field, LabelFor(field), $"<{tag}>", $"</{tag}>");
+            AddTagSpans(spans, text, tag, field);
 
         // Tags only. There is deliberately no prose fallback: Stage 2 tags every field, so
         // matching the old flattened form would be guesswork that quietly does nothing on any
@@ -138,6 +138,24 @@ public static class ClipPromptSections
 
     private static ClipPromptSection Free(string value) =>
         new(ClipPromptField.Action, LabelFor(ClipPromptField.Action), "", value, "");
+
+    /// <summary>
+    /// Claim each <c>&lt;Tag&gt;…&lt;/Tag&gt;</c> block for its field. Scanned by
+    /// <see cref="ClipPromptTags"/> rather than matched: we write this format, so finding a block
+    /// is an index walk, and one reading of it serves the editor and the prompt builder alike.
+    /// </summary>
+    private static void AddTagSpans(List<Span> spans, string text, string tag, ClipPromptField field)
+    {
+        foreach (var span in ClipPromptTags.Find(text, tag))
+        {
+            if (span.Length == 0)
+                continue;
+            if (spans.Any(s => span.Start < s.End && s.Start < span.End))
+                continue;   // already claimed by an earlier, more specific field
+            spans.Add(new Span(span.Start, span.Length, new ClipPromptSection(
+                field, LabelFor(field), $"<{tag}>", text[span.InnerStart..span.InnerEnd], $"</{tag}>")));
+        }
+    }
 
     private static void AddSpans(
         List<Span> spans, string text, string pattern, ClipPromptField field,

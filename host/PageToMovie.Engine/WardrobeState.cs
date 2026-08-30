@@ -140,14 +140,8 @@ internal static class WardrobeState
         if (string.IsNullOrWhiteSpace(text))
             return result;
 
-        var body = text;
-        var tagged = CommonRegex.Match(
-            text,
-            @"<Wardrobe>(.*?)</Wardrobe>",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase |
-            System.Text.RegularExpressions.RegexOptions.Singleline);
-        if (tagged.Success)
-            body = tagged.Groups[1].Value;
+        // The clause may arrive tagged or bare; the tag is ours, so it is scanned, not matched.
+        var body = ClipPromptTags.ReadFirstInner(text, PromptFieldTags.Wardrobe) ?? text;
 
         foreach (var groups in CommonRegex.Matches(
                      body,
