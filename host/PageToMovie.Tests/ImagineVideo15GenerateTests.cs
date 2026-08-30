@@ -212,6 +212,7 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
         Assert.Empty(fresh.ReferenceAudioVoiceIds);
         Assert.DoesNotContain("<AUDIO_0>", fresh.Prompt);
         Assert.Contains("<VoiceLock>", fresh.Prompt);
+        Assert.DoesNotContain("<Voice>", fresh.Prompt);
 
         var hop = ClipVideoPromptBuilder.Build(
             doc.RootElement, Path.GetTempPath(), profiles,
@@ -219,6 +220,8 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
             previousClipExtendFileId: "file-prev");
         Assert.Empty(hop.ReferenceAudioVoiceIds);
         Assert.DoesNotContain("<AUDIO_0>", hop.Prompt);
+        Assert.Contains("<VoiceLock>", hop.Prompt);
+        Assert.DoesNotContain("<Voice>", hop.Prompt);
     }
 
     [Fact]

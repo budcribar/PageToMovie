@@ -45,4 +45,18 @@ public class VoiceProfileLockTests
         Assert.Contains("age", PageToMovie.Core.Models.VoiceProfileGuard.UnlockedReason("Male, warm.")!);
         Assert.Equal("voice profile", PageToMovie.Core.Models.VoiceProfileGuard.UnlockedReason(""));
     }
+
+    [Fact]
+    public void StripIdentityTokens_leaves_manner()
+    {
+        var left = VoiceProfileGuard.StripIdentityTokens("Adult male, 40s, warm baritone storyteller.");
+        Assert.Contains("storyteller", left, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("male", left, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("40s", left, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("baritone", left, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void IsLocked_accepts_middle_years() =>
+        Assert.True(VoiceProfileGuard.IsLocked("Male, middle years, measured pace."));
 }

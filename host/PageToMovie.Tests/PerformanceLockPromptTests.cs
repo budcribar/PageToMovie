@@ -133,6 +133,7 @@ public sealed class PerformanceLockPromptTests
         var rules = ClipVideoPromptBuilder.TryLoadClipGenRules();
         Assert.False(string.IsNullOrWhiteSpace(rules));
         Assert.DoesNotContain("facial expression and gaze", rules!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Honor VOICE LOCK", rules!, StringComparison.OrdinalIgnoreCase);
         Assert.True(string.IsNullOrWhiteSpace(ClipVideoPromptBuilder.PromptBodyFromClipGenRules(rules)));
     }
 }

@@ -222,10 +222,14 @@ public static class ClipVideoPromptBuilder
         actionText = PerformanceTagWriter.StripEyelineFromAction(actionText);
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var wardrobeByKey = CollectGenerateWardrobe(rawVisual, allKeys, characters);
-        var varBlock = BuildCharacterVariablesBlock(
-            allKeys, characters, imageTagByKey, useReferenceImages, activeKeys, wardrobeByKey);
         var (audioTags, referenceAudioVoiceIds) = ResolveReferenceAudioTags(
             videoModel, clipEl, characters, hasPrevVideo);
+        var speakers = new HashSet<string>(
+            ClipSpokenLines.FromClipElement(clipEl).Select(line => line.Speaker),
+            StringComparer.OrdinalIgnoreCase);
+        var varBlock = BuildCharacterVariablesBlock(
+            allKeys, characters, imageTagByKey, useReferenceImages, activeKeys, wardrobeByKey,
+            speakers, audioTags);
         var audioBlock = BuildAudioBlock(clipEl, characters, correction, audioTags, mode);
         var continuityBlock = BuildContinuityBlock(
             mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt, resolvedMedium, rawVisual);
@@ -1806,9 +1810,12 @@ public static class ClipVideoPromptBuilder
         IReadOnlyDictionary<string, string> imageTagByKey,
         bool useImageTags,
         HashSet<string>? activeKeys = null,
-        IReadOnlyDictionary<string, List<string>>? wardrobeByKey = null)
+        IReadOnlyDictionary<string, List<string>>? wardrobeByKey = null,
+        IReadOnlySet<string>? speakers = null,
+        IReadOnlyDictionary<string, string>? audioTags = null)
     {
         if (keys.Count == 0) return "";
+        speakers ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sb = new StringBuilder();
         sb.AppendLine(PromptTags.OpenWithNote("Characters",
             "use these identities consistently; do not redesign faces or wardrobe"));
@@ -1818,11 +1825,12 @@ public static class ClipVideoPromptBuilder
             var p = GetCharacterProfile(characters, key);
             var worn = ResolveWardrobeItems(key, p, wardrobeByKey);
             if (p?.VoiceOnly == true || IsVoiceOnlyKey(key, characters))
-                sb.AppendLine(FormatVoiceOnlyLine(key, p, imageTagByKey, useImageTags));
+                sb.AppendLine(FormatVoiceOnlyLine(key, p, imageTagByKey, useImageTags, speakers, audioTags));
             else if (IsNonFocusPresent(activeKeys, keys.Count, key))
                 sb.AppendLine(FormatCompactPresentLine(key, p, imageTagByKey, useImageTags, worn));
             else
-                sb.AppendLine(FormatFocusCharacterLine(key, p, imageTagByKey, useImageTags, worn));
+                sb.AppendLine(FormatFocusCharacterLine(
+                    key, p, imageTagByKey, useImageTags, worn, speakers, audioTags));
             any = true;
         }
         return any ? sb.ToString().TrimEnd() : "";
@@ -1896,12 +1904,15 @@ public static class ClipVideoPromptBuilder
         string key,
         CharacterProfile? p,
         IReadOnlyDictionary<string, string> imageTagByKey,
-        bool useImageTags)
+        bool useImageTags,
+        IReadOnlySet<string> speakers,
+        IReadOnlyDictionary<string, string>? audioTags)
     {
-        var (_, tag, _, _, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        var (_, tag, _, _, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        var voice = VoiceTagWriter.VoiceProseForCharacterLine(key, p?.VoiceProfile, speakers, audioTags);
         return
             $"- {key}{tag} VOICE ONLY — not on screen." +
-            (voice.Length > 0 ? $" {PromptTags.Wrap("Voice", voice)}" : "");
+            (voice.Length > 0 ? $" {PromptTags.Wrap(VoiceTagWriter.VoiceTag, voice)}" : "");
     }
 
     private static string FormatCompactPresentLine(
@@ -1938,13 +1949,19 @@ public static class ClipVideoPromptBuilder
         CharacterProfile? p,
         IReadOnlyDictionary<string, string> imageTagByKey,
         bool useImageTags,
-        IReadOnlyList<string>? wardrobeItems = null)
+        IReadOnlyList<string>? wardrobeItems = null,
+        IReadOnlySet<string>? speakers = null,
+        IReadOnlyDictionary<string, string>? audioTags = null)
     {
-        var (_, tag, desc, vlock, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags, wardrobeItems);
+        var voice = VoiceTagWriter.VoiceProseForCharacterLine(
+            key, p?.VoiceProfile,
+            speakers ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            audioTags);
         var line = $"- {key}{tag}:";
         if (desc.Length > 0) line += $" {desc}";
         if (vlock.Length > 0) line += $" {PromptTags.Wrap("VisualLock", vlock)}";
-        if (voice.Length > 0) line += $" {PromptTags.Wrap("Voice", voice)}";
+        if (voice.Length > 0) line += $" {PromptTags.Wrap(VoiceTagWriter.VoiceTag, voice)}";
         if (useImageTags && tag.Length > 0)
             line += $" Match appearance of reference {tag.Trim()} exactly.";
         return line;
@@ -2019,7 +2036,10 @@ public static class ClipVideoPromptBuilder
         if (HasNoAudioContent(spoken.Dialogue, sfx, ambient, score))
             return "";
 
-        var voiceLock = BuildVoiceLock(characters, spoken.Speaker, audioTags);
+        var voiceLock = VoiceTagWriter.BuildVoiceLocks(
+            characters,
+            ClipSpokenLines.FromAudioPayload(audio).Select(line => line.Speaker),
+            audioTags);
 
         if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
             return BuildSpokenDialogueAudio(
@@ -2075,26 +2095,6 @@ public static class ClipVideoPromptBuilder
         !string.IsNullOrWhiteSpace(ambient) ||
         !string.IsNullOrWhiteSpace(sfx) ||
         !string.IsNullOrWhiteSpace(score);
-
-    private static string BuildVoiceLock(
-        IReadOnlyDictionary<string, CharacterProfile>? characters,
-        string speaker,
-        IReadOnlyDictionary<string, string>? audioTags = null)
-    {
-        if (audioTags is not null &&
-            !string.IsNullOrWhiteSpace(speaker) &&
-            audioTags.ContainsKey(speaker))
-            return "";
-        var prof = GetCharacterProfile(characters, speaker);
-        if (string.IsNullOrWhiteSpace(speaker) ||
-            prof is null ||
-            string.IsNullOrWhiteSpace(prof.VoiceProfile))
-            return "";
-        // Every clip is generated independently: the profile text is the only cross-clip voice
-        // identity. Say so, so the model does not re-cast the voice per clip.
-        return " " + PromptTags.Wrap("VoiceLock",
-            $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)} — exactly this one voice (same sex, age and timbre) as in every other clip of this film.");
-    }
 
     private static string SpeakerCue(string who, IReadOnlyDictionary<string, string>? audioTags)
     {

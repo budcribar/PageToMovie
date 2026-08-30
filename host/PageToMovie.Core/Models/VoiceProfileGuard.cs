@@ -19,7 +19,7 @@ public static class VoiceProfileGuard
         !string.IsNullOrWhiteSpace(voiceProfile) && SexTerms.IsMatch(voiceProfile);
 
     private static readonly Regex AgeTerms = new(
-        @"(\b\d{1,2}s\b|\b\d{1,2}[- ]year|\baged?\s+\d|\b(child|kid|toddler|boy|girl|teen|teenage|teenager|young|youthful|adult|grown|middle-aged|mature|elderly|old|older|aged|senior|grandfather|grandmother|twenties|thirties|forties|fifties|sixties|seventies|eighties)\b)",
+        @"(\b\d{1,2}s\b|\b\d{1,2}[- ]year|\bmiddle[- ]years\b|\baged?\s+\d|\b(child|kid|toddler|boy|girl|teen|teenage|teenager|young|youthful|adult|grown|middle-aged|mature|elderly|old|older|aged|senior|grandfather|grandmother|twenties|thirties|forties|fifties|sixties|seventies|eighties)\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     /// <summary>True when the profile names an age or age range (decade, "about 8", child/adult/elderly…).</summary>
@@ -40,6 +40,22 @@ public static class VoiceProfileGuard
         if (!sex) return "voice profile must state male/female";
         return "voice profile must state an age";
     }
+
+    /// <summary>
+    /// Drop sex, age, and sexed voice-type words. Leftover is pace / accent / manner, or empty.
+    /// Prompt writers use this when a catalog sample already owns timbre.
+    /// </summary>
+    public static string StripIdentityTokens(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+        var t = SexTerms.Replace(text, " ");
+        t = AgeTerms.Replace(t, " ");
+        t = Ws.Replace(t, " ").Trim(' ', ',', ';', '.', '-', ':');
+        return t;
+    }
+
+    private static readonly Regex Ws = new(@"\s+", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     public const string MissingSexWarning =
         "This voice doesn't say male or female — each clip may pick a different voice.";
