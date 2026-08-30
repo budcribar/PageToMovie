@@ -1,5 +1,7 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -22,10 +24,12 @@ namespace PageToMovie.Engine.ModelBacked;
 /// sentence in the continuity block does not: the action is content, and content beats direction
 /// for this model every time we have measured it. The only thing that works is not saying it.</para>
 ///
-/// <para>The rewrite is AI judgment rather than a phrase list, per AGENTS.md: which words state a
-/// position is a question about language, not a fixed vocabulary, and the next screenplay will
-/// phrase it differently. Only continuation clips are rewritten — a fresh clip needs its placement,
-/// because staging the shot is exactly its job.</para>
+/// <para>Chat is preferred judgment for which words state a position — the next screenplay will
+/// phrase it differently. A miss (chat off, beat_id absent, empty row) must still not ship a
+/// restage, so <see cref="EventsOnly"/> always runs on clips that actually continue
+/// (<c>veo_continuation_source</c> / extend_previous). Fresh / ForceNone / hard-cut clips keep
+/// full staging. After the rewrite, place-restating <c>blocking_notes</c> are not appended;
+/// body-facing / eyeline that is not a room restage may stay.</para>
 /// </remarks>
 public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string>
 {
@@ -92,6 +96,90 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
     private static bool IsContinuation(Dictionary<string, object?> beat) =>
         string.Equals(
             beat.GetValueOrDefault(CutDecision)?.ToString()?.Trim(), Extend, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Stative location clause: "standing small among the ink desk legs". The participle plus a
+    /// place preposition is a PLACE, not an event — the measured teleport on extend.
+    /// </summary>
+    private static readonly Regex StativeLocationParticiple = new(
+        @"\b(?:standing|sitting|lying|waiting|perched|crouched|kneeling)(?:\s+\w+){0,3}?\s+" +
+        @"(?:among|amid(?:st)?|beside|behind|between|under|against|along|near|inside|outside|" +
+        @"in\s+front\s+of|at\s+the)\b[^.,;:]*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    /// <summary>"is standing among the desks" — same restage, copula form.</summary>
+    private static readonly Regex CopulaStativeLocation = new(
+        @"\b(?:is|are|was|were)\s+(?:standing|sitting|lying|waiting)(?:\s+\w+){0,3}?\s+" +
+        @"(?:among|amid(?:st)?|beside|behind|between|under|against|along|near|inside|outside|" +
+        @"in\s+front\s+of|at\s+the)\b[^.,;:]*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    private static readonly Regex BodyFacing = new(
+        @"\b(?:faces?|facing|eyeline|looks?\s+towards?|turns?\s+towards?|" +
+        @"back\s+to\s+(?:the\s+)?camera|never\s+faces)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    private static readonly Regex PlaceRestage = new(
+        @"\b(?:standing|sitting|lying|waiting|among|amid(?:st)?|beside|behind|between|" +
+        @"under|against|along|near|inside|outside|in\s+front\s+of|" +
+        @"at\s+the\s+(?:back|front)|across\s+the)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    private static readonly Regex SpaceBeforePunct = new(
+        @"\s+([.,;:])", RegexOptions.Compiled, CommonRegex.Timeout);
+
+    private static readonly Regex RepeatedPunct = new(
+        @"([.,;:]){2,}", RegexOptions.Compiled, CommonRegex.Timeout);
+
+    private static readonly Regex HangingPrep = new(
+        @"\s+(?:at|to|toward|towards|of|from|among)\s*([.,;:]|$)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    /// <summary>
+    /// Events-only Action for a clip that continues: keep what happens, drop where things are.
+    /// Always applied on extend so a chat miss cannot ship a restage.
+    /// </summary>
+    public static string EventsOnly(string? action)
+    {
+        var text = action ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+
+        text = StativeLocationParticiple.Replace(text, "");
+        text = CopulaStativeLocation.Replace(text, "");
+        return TidyProse(text);
+    }
+
+    /// <summary>
+    /// Body-facing / eyeline that is not a room restage may ride on an extend. When in doubt,
+    /// treat the note as place and drop it — a teleport is worse than a missing eyeline.
+    /// </summary>
+    public static bool IsBodyFacingOnly(string? notes)
+    {
+        var text = notes ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        if (PlaceRestage.IsMatch(text))
+            return false;
+        return BodyFacing.IsMatch(text);
+    }
+
+    private static string TidyProse(string text)
+    {
+        text = CommonRegex.WhitespaceCollapse.Replace(text, " ");
+        text = SpaceBeforePunct.Replace(text, "$1");
+        text = RepeatedPunct.Replace(text, "$1");
+        text = HangingPrep.Replace(text, "$1");
+        text = CommonRegex.WhitespaceCollapse.Replace(text, " ");
+        text = SpaceBeforePunct.Replace(text, "$1");
+        text = CommonRegex.Replace(text, @"^[.,;:]+\s*", "");
+        return text.Trim();
+    }
 
     public Task<Dictionary<string, string>?> ClassifySceneContinuationActionsAsync(
         Dictionary<string, object?> scene,
