@@ -85,9 +85,7 @@ internal static class WardrobeState
         {
             if (string.IsNullOrWhiteSpace(r))
                 continue;
-            list.RemoveAll(x =>
-                x.Contains(r, StringComparison.OrdinalIgnoreCase) ||
-                r.Contains(x, StringComparison.OrdinalIgnoreCase));
+            list.RemoveAll(x => IsSameGarment(x, r));
         }
     }
 
@@ -95,11 +93,38 @@ internal static class WardrobeState
     {
         if (string.IsNullOrWhiteSpace(item))
             return false;
-        return list.Any(x =>
-            x.Equals(item, StringComparison.OrdinalIgnoreCase) ||
-            x.Contains(item, StringComparison.OrdinalIgnoreCase) ||
-            item.Contains(x, StringComparison.OrdinalIgnoreCase));
+        return list.Any(x => IsSameGarment(x, item));
     }
+
+    /// <summary>
+    /// Same garment when one name's words are all in the other's — "coat" is the "red winter
+    /// coat" already worn, and a "yellow raincoat" is not. Compared on whole words on purpose:
+    /// a substring test made a cape a cap, and swallowed every new layer whose name happens to
+    /// end in one already on the list.
+    /// </summary>
+    public static bool IsSameGarment(string? a, string? b)
+    {
+        var left = GarmentWords(a);
+        var right = GarmentWords(b);
+        if (left.Count == 0 || right.Count == 0)
+            return false;
+        return left.IsSupersetOf(right) || right.IsSupersetOf(left);
+    }
+
+    private static HashSet<string> GarmentWords(string? name) =>
+        (name ?? "")
+            .Split(GarmentWordSeparators, StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim(GarmentWordTrim).ToLowerInvariant())
+            .Where(w => w.Length > 0 && !GarmentFillerWords.Contains(w))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly char[] GarmentWordSeparators = [' ', '\t', '\n', '\r'];
+
+    private static readonly char[] GarmentWordTrim = ['.', ',', ';', ':', '\"', '\'', '(', ')'];
+
+    /// <summary>Words that do not identify a garment, so they never decide a match.</summary>
+    private static readonly HashSet<string> GarmentFillerWords =
+        new(StringComparer.OrdinalIgnoreCase) { "a", "an", "the", "his", "her", "their", "its", "of", "and" };
 
     /// <summary>Split a classifier attire string the same way Stage 1 coerces wardrobe lists.</summary>
     public static List<string> SplitAttire(string? attire) =>
