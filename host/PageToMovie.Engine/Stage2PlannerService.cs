@@ -1143,8 +1143,11 @@ public sealed class Stage2PlannerService
         // Applied only when this clip really ends up continuing. The classifier judges beats, but
         // ResolveClipContinuation can still force a cut afterwards (big_action, location change) —
         // and a fresh shot needs its placement, because staging the shot is what it is for.
+        // Chat rewrite is preferred; EventsOnly always runs on the chosen Action so a miss
+        // (chat off / beat_id absent) cannot ship a restage.
+        var isContinuation = string.Equals(cont, "extend_previous", StringComparison.OrdinalIgnoreCase);
         var continuationAction = ResolveContinuationAction(beat, cont, aiContinuationActions);
-        var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction);
+        var vp = BuildVisualPrompt(beat, sceneWork, charSeeds, wardrobe, continuationAction, isContinuation);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
             vp, beat, wardrobe, clipCast, i, dlg, monologueStep, previousCamera, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
@@ -1975,28 +1978,33 @@ public sealed class Stage2PlannerService
 
     private static string ResolveVisualEvent(
         Dictionary<string, object?> beat,
-        string? continuationAction)
+        string? continuationAction,
+        bool isContinuation)
     {
-        if (!string.IsNullOrWhiteSpace(continuationAction))
-            return continuationAction;
         beat.TryGetValue(Keys.VisualEvent, out var vev);
-        return CoerceString(vev) ?? "";
+        var original = CoerceString(vev) ?? "";
+        var chosen = !string.IsNullOrWhiteSpace(continuationAction) ? continuationAction : original;
+        return isContinuation ? ContinuationActionClassifier.EventsOnly(chosen) : chosen;
     }
 
     /// <param name="continuationAction">
-    /// For a clip that continues the previous one, the beat's action rewritten to events only —
-    /// see <see cref="ContinuationActionClassifier"/>. Null keeps the beat's own action, which is
-    /// what a fresh shot needs. Everything downstream is unchanged: the rewrite goes through the
-    /// same subject, cast-key, blocking and sound-cue handling the original would have.
+    /// Chat rewrite of a continuation beat to events only — see
+    /// <see cref="ContinuationActionClassifier"/>. Null means no chat row (off or beat_id miss).
+    /// </param>
+    /// <param name="isContinuation">
+    /// True when this clip actually continues (<c>veo_continuation_source</c> is extend_previous).
+    /// Action is then events-only even without a chat row. Fresh / ForceNone keep full staging,
+    /// including place-restating blocking notes.
     /// </param>
     internal static string BuildVisualPrompt(
         Dictionary<string, object?> beat,
         Dictionary<string, object?> scene,
         Dictionary<string, object?> charSeeds,
         Dictionary<string, List<string>> wardrobe,
-        string? continuationAction = null)
+        string? continuationAction = null,
+        bool isContinuation = false)
     {
-        var ve = ResolveVisualEvent(beat, continuationAction);
+        var ve = ResolveVisualEvent(beat, continuationAction, isContinuation);
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
         ve = CommonRegex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
         var cast = ClipCastTokens(scene, beat, charSeeds);
@@ -2018,7 +2026,7 @@ public sealed class Stage2PlannerService
         var othersBit = others.Count > 0 ? $"also on screen: {string.Join(", ", others)}" : "";
         // CAST COUNT + CHARACTER VARIABLES owned by ClipVideoPromptBuilder at gen time.
 
-        ve = AppendBlockingNotes(ve, beat);
+        ve = AppendBlockingNotes(ve, beat, isContinuation);
         var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var acv) ? acv : null) ?? "").ToLowerInvariant();
         ve = AppendActionClassMotion(ve, ac);
 
@@ -2200,11 +2208,16 @@ public sealed class Stage2PlannerService
         return AttachPrimaryToVisual(ve, primary, display);
     }
 
-    private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat)
+    private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat, bool isContinuation)
     {
         var block = CoerceString(beat.TryGetValue(Keys.BlockingNotes, out var bn) ? bn : null) ?? "";
         if (string.IsNullOrWhiteSpace(block) ||
             ve.Contains(block, StringComparison.OrdinalIgnoreCase))
+            return ve;
+        // On extend, Continuity owns position. A place note after the rewrite puts the
+        // teleport sentence back. Body-facing / eyeline that is not a room restage may stay;
+        // when in doubt drop the note rather than restage.
+        if (isContinuation && !ContinuationActionClassifier.IsBodyFacingOnly(block))
             return ve;
         return $"{ve}. {block}".Trim();
     }

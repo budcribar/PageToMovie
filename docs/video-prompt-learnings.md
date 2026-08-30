@@ -63,6 +63,8 @@ the animal well down the aisle; the action said "…standing small among the ink
 true; the extend moved it back to the front of the room.
 
 `ContinuationActionClassifier` rewrites a continuation beat's action to say only what *happens*.
+Chat is preferred; `EventsOnly` always runs on clips that actually continue so a miss cannot ship
+a restage. Place-restating `blocking_notes` are not appended after the rewrite.
 Note this was **not** sufficient on its own — see rule 1; the look blocks were the larger cause.
 
 ## 5. The model is stochastic. Single-trial A/B tests are worthless

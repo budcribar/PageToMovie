@@ -124,9 +124,20 @@ public sealed class ContinuationActionTests
 
     // ---- how the rewrite reaches the prompt ----------------------------------------------------
 
-    private static string BuildPrompt(string beatAction, string? rewrite) =>
-        Stage2PlannerService.BuildVisualPrompt(
-            Beat("b2", beatAction, "extend"),
+    private const string StandingAmongDesks =
+        "THE CHILDREN twist in their seats and point. They laugh and clap at the lamb standing small among the ink desk legs.";
+
+    private static string BuildPrompt(
+        string beatAction,
+        string? rewrite,
+        bool isContinuation,
+        string? blockingNotes = null)
+    {
+        var beat = Beat("b2", beatAction, isContinuation ? "extend" : "hard_cut");
+        if (blockingNotes is not null)
+            beat["blocking_notes"] = blockingNotes;
+        return Stage2PlannerService.BuildVisualPrompt(
+            beat,
             new Dictionary<string, object?>
             {
                 ["scene_number"] = 2,
@@ -135,43 +146,128 @@ public sealed class ContinuationActionTests
             },
             new Dictionary<string, object?>(),
             new Dictionary<string, List<string>>(),
-            rewrite);
+            rewrite,
+            isContinuation);
+    }
+
+    private static string ActionOf(string prompt) =>
+        ClipPromptSections.Parse(prompt).First(s => s.Field == ClipPromptField.Action).Value;
 
     [Fact]
     public void The_rewritten_action_replaces_the_beats_own_action()
     {
-        var prompt = BuildPrompt(
-            "THE CHILDREN twist in their seats and point. They laugh and clap at the lamb standing small among the ink desk legs.",
-            "THE CHILDREN twist in their seats and point. They laugh and clap.");
+        var action = ActionOf(BuildPrompt(
+            StandingAmongDesks,
+            "THE CHILDREN twist in their seats and point. They laugh and clap.",
+            isContinuation: true));
 
-        Assert.Contains("twist in their seats", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("among the ink desk legs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("twist in their seats", action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("laugh and clap", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("standing", action, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Without_a_rewrite_the_beats_own_action_is_used_unchanged()
+    public void Continuation_still_strips_placement_left_in_a_chat_rewrite()
     {
-        var prompt = BuildPrompt(
-            "THE CHILDREN twist in their seats and point. They laugh and clap at the lamb standing small among the ink desk legs.",
-            null);
+        var action = ActionOf(BuildPrompt(StandingAmongDesks, StandingAmongDesks, isContinuation: true));
 
-        Assert.Contains("among the ink desk legs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("twist in their seats", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Chat_miss_still_strips_placement_from_a_continuation_action()
+    {
+        var action = ActionOf(BuildPrompt(StandingAmongDesks, rewrite: null, isContinuation: true));
+
+        Assert.Contains("twist in their seats", action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("laugh and clap", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("standing small", action, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Fresh_clip_keeps_placement()
+    {
+        var action = ActionOf(BuildPrompt(StandingAmongDesks, rewrite: null, isContinuation: false));
+
+        Assert.Contains("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("standing small", action, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Place_blocking_notes_are_not_reapplied_on_a_continuation()
+    {
+        var action = ActionOf(BuildPrompt(
+            "THE CHILDREN twist in their seats and point. They laugh and clap.",
+            "THE CHILDREN twist in their seats and point. They laugh and clap.",
+            isContinuation: true,
+            blockingNotes: "the lamb standing small among the ink desk legs"));
+
+        Assert.Contains("twist in their seats", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("standing", action, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Fresh_clip_still_receives_place_blocking_notes()
+    {
+        var action = ActionOf(BuildPrompt(
+            "THE CHILDREN twist in their seats and point.",
+            rewrite: null,
+            isContinuation: false,
+            blockingNotes: "the lamb standing small among the ink desk legs"));
+
+        Assert.Contains("among the ink desk legs", action, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Body_facing_blocking_that_is_not_a_restage_may_stay_on_a_continuation()
+    {
+        var action = ActionOf(BuildPrompt(
+            "THE CHILDREN twist in their seats and point.",
+            "THE CHILDREN twist in their seats and point.",
+            isContinuation: true,
+            blockingNotes: "eyeline on the speaker; faces the window"));
+
+        Assert.Contains("eyeline on the speaker", action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("faces the window", action, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
     /// The rewrite goes through the same handling the beat's own action would: it lands in the
-    /// Action tag, not appended raw, so cast keys, blocking notes and sound cues still apply.
+    /// Action tag, not appended raw, so cast keys and sound cues still apply.
     /// </summary>
     [Fact]
     public void The_rewrite_still_lands_in_the_action_tag()
     {
         var prompt = BuildPrompt(
             "THE CHILDREN point at the lamb standing among the desk legs.",
-            "THE CHILDREN twist and point. (SOUND: children laughing)");
+            "THE CHILDREN twist and point. (SOUND: children laughing)",
+            isContinuation: true);
 
         Assert.Contains($"<{PromptFieldTags.Action}>", prompt, StringComparison.Ordinal);
         Assert.Contains("twist and point", prompt, StringComparison.OrdinalIgnoreCase);
         // Sound cues are still lifted out of the action into their own slot at plan time.
         Assert.DoesNotContain("(SOUND:", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EventsOnly_drops_the_standing_among_desks_clause_and_keeps_events()
+    {
+        var stripped = ContinuationActionClassifier.EventsOnly(StandingAmongDesks);
+
+        Assert.Contains("twist in their seats", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("laugh and clap", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("among the ink desk legs", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("standing small", stripped, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EventsOnly_leaves_action_with_no_place_clause_unchanged()
+    {
+        const string events = "THE CHILDREN twist in their seats and point. They laugh and clap.";
+        Assert.Equal(events, ContinuationActionClassifier.EventsOnly(events));
     }
 }
