@@ -69,6 +69,13 @@ public sealed class CutClip
 
     public List<CutRangeSpan> RangeDeletes { get; } = [];
     public CutJoinKind? JoinOverride { get; set; }
+
+    /// <summary>
+    /// J-cut / L-cut on the outgoing join. Picture kind stays on
+    /// <see cref="JoinOverride"/> — this is only the audio offset.
+    /// </summary>
+    public CutJoinAudio JoinAudio { get; set; }
+
     public string? FountainTransition { get; set; }
     public CutCard Card { get; } = new();
 

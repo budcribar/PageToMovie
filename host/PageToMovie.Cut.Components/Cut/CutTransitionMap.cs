@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace PageToMovie.Cut.Cut;
 
-/// <summary>Fountain sidecar line → join. UI override is cut / dissolve / dip only.</summary>
+/// <summary>Fountain sidecar line → visual join. J/L audio is <see cref="CutJoinAudio"/> on the same row.</summary>
 public static class CutTransitionMap
 {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
@@ -49,6 +49,15 @@ public static class CutTransitionMap
         CutJoinKind.CutToBlack => "Cut to black",
         _ => "Cut",
     };
+
+    public static string TickLabel(CutJoinKind kind, CutJoinAudio audio)
+    {
+        var look = TickLabel(kind);
+        var tag = CutJoinAudio.TickTag(audio.Kind);
+        if (tag.Length == 0)
+            return look;
+        return kind is CutJoinKind.Cut or CutJoinKind.Unset ? tag : look + " · " + tag;
+    }
 
     public static string WireName(CutJoinKind kind) => kind switch
     {

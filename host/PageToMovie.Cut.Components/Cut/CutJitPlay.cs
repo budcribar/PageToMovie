@@ -62,7 +62,10 @@ public static class CutJitPlay
         var right = clips[leftIndex + 1];
         if (right.Card.Enabled && right.IsFirstOfScene(clips))
             return false;
-        return !CutTimelineLayout.ShowsJoinTick(left.JoinToNext(right));
+        var kind = left.JoinToNext(right);
+        if (CutTimelineLayout.ShowsJoinTick(kind))
+            return false;
+        return !CutComposeContract.ResolveJoinAudio(left, right).IsActive;
     }
 
     /// <summary>

@@ -986,6 +986,63 @@ public partial class CutTimeline
         await OnEdited.InvokeAsync();
     }
 
+    private CutJoinAudio JoinAudioOf(int afterIndex) =>
+        afterIndex >= 0 && afterIndex < Clips.Count
+            ? Clips[afterIndex].JoinAudio
+            : CutJoinAudio.None;
+
+    private string JoinTickLabel(CutTimelineJoinTick tick) =>
+        CutTransitionMap.TickLabel(tick.Kind, JoinAudioOf(tick.AfterIndex));
+
+    private string JoinTickTitle(CutTimelineJoinTick tick)
+    {
+        var audio = JoinAudioOf(tick.AfterIndex);
+        if (!audio.IsActive)
+            return CutTransitionMap.TickLabel(tick.Kind);
+        var tag = audio.Kind == CutJoinAudioKind.JCut
+            ? "Next scene's sound starts before the picture"
+            : "This scene's sound hangs after the picture";
+        return CutTransitionMap.TickLabel(tick.Kind) + " · " + tag;
+    }
+
+    private async Task SetJoinAudioAsync(int afterIndex, CutJoinAudioKind kind)
+    {
+        if (afterIndex < 0 || afterIndex >= Clips.Count)
+            return;
+        var clip = Clips[afterIndex];
+        if (kind == CutJoinAudioKind.None)
+        {
+            clip.JoinAudio = CutJoinAudio.None;
+            await OnEdited.InvokeAsync();
+            return;
+        }
+
+        var keep = clip.JoinAudio.Kind == kind && clip.JoinAudio.Seconds > 0.05
+            ? clip.JoinAudio.Seconds
+            : CutJoinAudio.DefaultSeconds;
+        clip.JoinAudio = new CutJoinAudio(kind, keep);
+        var next = afterIndex + 1 < Clips.Count ? Clips[afterIndex + 1] : null;
+        if (next is not null)
+            clip.JoinAudio = CutComposeContract.ResolveJoinAudio(clip, next);
+        await OnEdited.InvokeAsync();
+    }
+
+    private async Task NudgeJoinAudioAsync(int afterIndex, double delta)
+    {
+        if (afterIndex < 0 || afterIndex >= Clips.Count)
+            return;
+        var clip = Clips[afterIndex];
+        if (clip.JoinAudio.Kind == CutJoinAudioKind.None)
+            return;
+        clip.JoinAudio = new CutJoinAudio(
+            clip.JoinAudio.Kind,
+            clip.JoinAudio.ResolvedSeconds + delta);
+        var next = afterIndex + 1 < Clips.Count ? Clips[afterIndex + 1] : null;
+        if (next is not null)
+            clip.JoinAudio = CutComposeContract.ResolveJoinAudio(clip, next);
+        await OnEdited.InvokeAsync();
+    }
+
     private async Task SeekToAsync(double timelineSec)
     {
         var total = Math.Max(TimelineTotalSec, 0);
@@ -1017,7 +1074,7 @@ public partial class CutTimeline
         }
     }
 
-    private static string JoinClass(CutTimelineJoinTick tick) =>
+    private string JoinClass(CutTimelineJoinTick tick) =>
         "cut-tl-join"
         + (tick.SceneChange ? " is-scene" : "")
         + tick.Kind switch
@@ -1027,7 +1084,13 @@ public partial class CutTimeline
             CutJoinKind.FadeWhite => " is-white",
             CutJoinKind.CutToBlack => " is-black",
             _ => " is-cut",
-        };
+        }
+        + (JoinAudioOf(tick.AfterIndex).Kind switch
+        {
+            CutJoinAudioKind.JCut => " is-jcut",
+            CutJoinAudioKind.LCut => " is-lcut",
+            _ => "",
+        });
 
     private TimelineRenderSnap CaptureRenderSnap() =>
         new(

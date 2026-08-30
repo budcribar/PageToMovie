@@ -302,6 +302,8 @@ public sealed class CutComposeService : IAsyncDisposable
                 Kind = CutTransitionMap.WireName(join.Kind),
                 Hold = join.HoldSec,
                 Fade = join.FadeSec,
+                Audio = join.AudioKind,
+                AudioSec = join.AudioSec,
                 Encodes = join.Encodes,
                 Url = join.Encodes ? Cache.JoinUrlIfFresh(join.FromScene, join.Fingerprint) : null,
             });
@@ -365,11 +367,19 @@ public sealed class CutComposeService : IAsyncDisposable
         var next = index + 1 < clips.Count ? clips[index + 1] : null;
         var joinOut = "cut";
         var joinHold = 0d;
+        var joinAudio = "";
+        var joinAudioSec = 0d;
         if (next is not null)
         {
             var join = c.JoinToNext(next);
             joinOut = CutTransitionMap.WireName(join);
             joinHold = CutComposeContract.HoldSeconds(join);
+            var audio = CutComposeContract.ResolveJoinAudio(c, next);
+            if (audio.IsActive)
+            {
+                joinAudio = CutJoinAudio.WireName(audio.Kind);
+                joinAudioSec = audio.Seconds;
+            }
         }
 
         return new JsExportClip
@@ -385,6 +395,8 @@ public sealed class CutComposeService : IAsyncDisposable
             Windows = c.KeepWindows().Select(w => new JsKeepWindow { Start = w.Start, End = w.End }).ToList(),
             JoinOut = joinOut,
             JoinHold = joinHold,
+            JoinAudio = joinAudio,
+            JoinAudioSec = joinAudioSec,
             Card = CardPayload(c, clips),
         };
     }

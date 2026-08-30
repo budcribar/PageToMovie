@@ -6,7 +6,7 @@ namespace PageToMovie.Cut.Cut;
 /// One video track, Film order. Width is the hop-aware sliced duration
 /// (keep windows after range-delete). The video track is one contiguous
 /// block per scene (S01 / S02) — no clip tiles or gaps inside a scene.
-/// Join ticks only on a visible scene-change look.
+/// Join ticks on every scene change (cut / dissolve / J-cut / L-cut).
 /// </summary>
 public sealed class CutTimelineLayout
 {
@@ -58,8 +58,6 @@ public sealed class CutTimelineLayout
             if (right.Scene == left.Scene)
                 continue;
             var kind = left.JoinToNext(right);
-            if (!ShowsJoinTick(kind))
-                continue;
             var at = lanes[i + 1].StartSec;
             joins.Add(new CutTimelineJoinTick(i, kind, SceneChange: true, at, at * px));
         }

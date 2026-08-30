@@ -129,6 +129,12 @@ public sealed class JsComposeJoin
     [JsonPropertyName("fade")]
     public double Fade { get; set; }
 
+    [JsonPropertyName("audio")]
+    public string Audio { get; set; } = "";
+
+    [JsonPropertyName("audioSec")]
+    public double AudioSec { get; set; }
+
     [JsonPropertyName("url")]
     public string? Url { get; set; }
 
@@ -228,6 +234,12 @@ public sealed class JsExportClip
 
     [JsonPropertyName("joinHold")]
     public double JoinHold { get; set; }
+
+    [JsonPropertyName("joinAudio")]
+    public string JoinAudio { get; set; } = "";
+
+    [JsonPropertyName("joinAudioSec")]
+    public double JoinAudioSec { get; set; }
 
     [JsonPropertyName("card")]
     public JsCard? Card { get; set; }

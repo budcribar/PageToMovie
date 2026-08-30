@@ -210,7 +210,9 @@ public class CutTimelineLayoutTests
 
         b.FountainTransition = "CUT TO:";
         layout = CutTimelineLayout.Build([a, b, c], pxPerSec: 10);
-        Assert.Empty(layout.Joins);
+        var cutTick = Assert.Single(layout.Joins);
+        Assert.Equal(CutJoinKind.Cut, cutTick.Kind);
+        Assert.Equal(8, cutTick.AtSec);
         Assert.Equal(2, layout.Scenes.Count);
 
         b.JoinOverride = CutJoinKind.FadeWhite;

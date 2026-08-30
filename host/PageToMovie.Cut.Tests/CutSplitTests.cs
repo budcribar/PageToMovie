@@ -95,6 +95,7 @@ public class CutSplitTests
         var clip = NewClip(1, 1, duration: 6);
         clip.FountainTransition = "DISSOLVE TO:";
         clip.JoinOverride = CutJoinKind.FadeWhite;
+        clip.JoinAudio = CutJoinAudio.JCut(0.75);
         var clips = new List<CutClip> { clip };
 
         Assert.False(CutSplit.CanAt(clips, 0));
@@ -105,8 +106,11 @@ public class CutSplitTests
         Assert.True(CutSplit.TryAt(clips, 3, out var right));
         Assert.Null(clip.FountainTransition);
         Assert.Null(clip.JoinOverride);
+        Assert.Equal(CutJoinAudioKind.None, clip.JoinAudio.Kind);
         Assert.Equal("DISSOLVE TO:", right!.FountainTransition);
         Assert.Equal(CutJoinKind.FadeWhite, right.JoinOverride);
+        Assert.Equal(CutJoinAudioKind.JCut, right.JoinAudio.Kind);
+        Assert.Equal(0.75, right.JoinAudio.Seconds);
     }
 
     [Fact]

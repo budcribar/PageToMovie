@@ -94,20 +94,23 @@ public static class CutMergeCache
             var last = clips[left.FirstIndex + left.ClipCount - 1];
             var first = clips[right.FirstIndex];
             var kind = last.JoinToNext(first);
+            var audio = CutComposeContract.ResolveJoinAudio(last, first);
             var fade = CutComposeContract.JoinIsXfade(kind)
                 ? CutComposeContract.XfadeSecondsFor(left.WidthSec)
                 : 0;
             var hold = CutComposeContract.HoldSeconds(kind);
-            var fp = JoinFingerprint(clips, titles, left, right, kind, fade, hold);
+            var fp = JoinFingerprint(clips, titles, left, right, kind, fade, hold, audio);
             joins.Add(new CutMergeJoin(
                 left.Scene,
                 right.Scene,
                 kind,
                 hold,
                 fade,
+                audio.IsActive ? audio.Seconds : 0,
+                CutJoinAudio.WireName(audio.Kind),
                 fp,
                 JoinFileName(left.Scene),
-                Encodes: kind != CutJoinKind.Cut));
+                Encodes: CutComposeContract.JoinEncodes(kind, audio)));
         }
 
         var picture = PictureFingerprint(scenes, joins);
@@ -205,12 +208,25 @@ public static class CutMergeCache
         CutTimelineSceneBand right,
         CutJoinKind kind,
         double fadeSec,
-        double holdSec)
+        double holdSec) =>
+        JoinFingerprint(clips, titles, left, right, kind, fadeSec, holdSec, CutJoinAudio.None);
+
+    public static string JoinFingerprint(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip> titles,
+        CutTimelineSceneBand left,
+        CutTimelineSceneBand right,
+        CutJoinKind kind,
+        double fadeSec,
+        double holdSec,
+        CutJoinAudio audio)
     {
         var sb = new StringBuilder(CutComposeContract.RenderVersion);
         sb.Append('J').Append(left.Scene).Append('>').Append(right.Scene);
         sb.Append(CutTransitionMap.WireName(kind));
         sb.Append('H').Append(Num(holdSec)).Append('F').Append(Num(fadeSec));
+        if (audio.IsActive)
+            sb.Append('A').Append(CutJoinAudio.WireName(audio.Kind)).Append(Num(audio.Seconds));
         var last = clips[left.FirstIndex + left.ClipCount - 1];
         var first = clips[right.FirstIndex];
         AppendEdge(sb, 'L', last, outgoing: true);
@@ -345,6 +361,8 @@ public readonly record struct CutMergeJoin(
     CutJoinKind Kind,
     double HoldSec,
     double FadeSec,
+    double AudioSec,
+    string AudioKind,
     string Fingerprint,
     string FileName,
     bool Encodes);
