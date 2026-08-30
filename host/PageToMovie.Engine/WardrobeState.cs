@@ -124,13 +124,14 @@ internal static class WardrobeState
         if (tagged.Success)
             body = tagged.Groups[1].Value;
 
-        foreach (System.Text.RegularExpressions.Match m in CommonRegex.Matches(
+        foreach (var groups in CommonRegex.Matches(
                      body,
                      @"(Character_[A-Za-z0-9_]+)\s+still wears\s+([^;]+)",
-                     System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                     .Select(m => m.Groups))
         {
-            var key = m.Groups[1].Value;
-            var items = SplitAttire(m.Groups[2].Value);
+            var key = groups[1].Value;
+            var items = SplitAttire(groups[2].Value);
             if (items.Count == 0)
                 continue;
             if (!result.TryGetValue(key, out var list))
@@ -139,11 +140,8 @@ internal static class WardrobeState
                 result[key] = list;
             }
 
-            foreach (var item in items)
-            {
-                if (!AlreadyHas(list, item))
-                    list.Add(item);
-            }
+            foreach (var item in items.Where(item => !AlreadyHas(list, item)))
+                list.Add(item);
         }
 
         return result;
