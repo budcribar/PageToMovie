@@ -61,4 +61,56 @@ public class CharacterVisualTextScrubberTests
         Assert.DoesNotContain("human adult", scrubbed, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void StripGarments_drops_a_pinafore_clause_and_keeps_face()
+    {
+        var scrubbed = CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(
+            "School-age girl with brown braids, a pale pinafore, and a rose ribbon.");
+        Assert.Contains("School-age girl", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("brown braids", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ribbon", scrubbed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StripGarments_drops_wear_frame_welded_into_identity()
+    {
+        var scrubbed = CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(
+            "School-age girl in a pale pinafore with brown braids");
+        Assert.Contains("School-age girl", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("brown braids", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", scrubbed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StripGarments_drops_nightshirt_clause_from_visual_lock()
+    {
+        var scrubbed = CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(
+            "Always elderly, white-haired, frail; signature constant is the single pale blue eye " +
+            "with dull filmy veil that must not drift to clear blue; wears a plain white period nightshirt.");
+        Assert.Contains("pale blue eye", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("filmy veil", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("nightshirt", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("wears", scrubbed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StripGarments_keeps_animal_fur_coat()
+    {
+        var scrubbed = CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(
+            "A small terrier with a white coat and brown patches.");
+        Assert.Contains("terrier", scrubbed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("white coat", scrubbed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void IsGarmentOnlyClause_pinafore_yes_eye_veil_no()
+    {
+        Assert.True(CharacterVisualTextScrubber.IsGarmentOnlyClause("a pale pinafore"));
+        Assert.True(CharacterVisualTextScrubber.IsGarmentOnlyClause("wears a plain white period nightshirt"));
+        Assert.False(CharacterVisualTextScrubber.IsGarmentOnlyClause(
+            "one pale blue eye with a dull filmy veil"));
+        Assert.False(CharacterVisualTextScrubber.IsGarmentOnlyClause("school-age girl with brown braids"));
+    }
+
 }

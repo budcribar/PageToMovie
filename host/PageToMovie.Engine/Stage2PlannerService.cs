@@ -2954,15 +2954,11 @@ public sealed class Stage2PlannerService
         if (t.Length == 0) return 9;
         // Face / silhouette / signature props — highest continuity value
         if (CommonRegex.IsMatch(t,
-                @"\b(hat|cap|bonnet|hood|wig|glasses|spectacles|monocle|mask|veil|" +
-                @"badge|collar|leash|nightshirt|nightgown|robe|uniform|armor|" +
-                @"scarf|cravat|tie|eyepatch)\b"))
+                $@"\b(?:{CharacterVisualTextScrubber.SignatureGarmentNounAlt})\b"))
             return 0;
         // Core clothing body
         if (CommonRegex.IsMatch(t,
-                @"\b(coat|cloak|jacket|dress|gown|suit|shirt|blouse|vest|waistcoat|" +
-                @"trousers|pants|skirt|boots|shoes|slippers|pajamas|pyjamas|" +
-                @"sweater|jumper|overalls|apron)\b"))
+                $@"\b(?:{CharacterVisualTextScrubber.BodyGarmentNounAlt})\b"))
             return 1;
         return 2;
     }

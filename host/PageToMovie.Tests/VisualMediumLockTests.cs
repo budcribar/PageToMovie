@@ -14,6 +14,19 @@ namespace PageToMovie.Tests;
 /// </summary>
 public class VisualMediumLockTests
 {
+    [Theory]
+    [InlineData(VisualMediumStyles.MediumPhotoreal, "do not drift to illustration, anime, cartoon, or a different face")]
+    [InlineData(VisualMediumStyles.MediumIllustrated, "do not drift to photoreal, live-action, CGI realism, or a different face")]
+    [InlineData(VisualMediumStyles.MediumStylized3d, "do not drift to photoreal live-action, flat 2D illustration, or a different face")]
+    [InlineData(VisualMediumStyles.MediumOther, "do not drift to a different art medium or face")]
+    public void IdentityMediumDriftClause_names_face_not_wardrobe(string medium, string expected)
+    {
+        var clause = VisualMediumStyles.IdentityMediumDriftClause(medium);
+        Assert.Equal(expected, clause);
+        Assert.DoesNotContain("wardrobe", clause, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outfit", clause, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Location_plate_prompt_uses_illustrated_medium_not_photoreal()
     {

@@ -390,19 +390,19 @@ public static class ClipVideoPromptBuilder
         {
             ModeVideoExtend => PromptTags.Wrap("Continuity",
                 "This is a seamless EXTENSION of the provided previous video. " +
-                "Pick up from its last frame. Same character identity, wardrobe, lighting, and location. " +
+                "Pick up from its last frame. Same character identity, lighting, and location. " +
                 sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
-                "Natural progressive motion only — do not invent a new establishing shot or redesign faces/outfits."),
+                "Natural progressive motion only — do not invent a new establishing shot or redesign faces."),
             ModeContinue => PromptTags.Wrap("Continuity",
                 "Continue seamlessly from the provided starting frame (end of previous clip). " +
-                "Same character identity, wardrobe, lighting, and location. " +
+                "Same character identity, lighting, and location. " +
                 sameMedium +
                 "Positions come from that frame: everyone and everything starts exactly where the previous " +
                 "clip left them, and the action below is what happens next from there — not a new arrangement. " +
                 "Natural progressive motion only — " +
-                "do not invent a new establishing shot or redesign faces/outfits."),
+                "do not invent a new establishing shot or redesign faces."),
             _ =>
                 "Follow the camera framing and location in this prompt exactly. " +
                 "Prioritize the PRIMARY subject and ONE clear action with visible motion; " +
@@ -410,7 +410,7 @@ public static class ClipVideoPromptBuilder
         };
 
         // video-extend cannot attach locked plates (API continues from previous video only).
-        // Reinforce identity from CHARACTER VARIABLES text so faces/wardrobe do not drift.
+        // Reinforce identity from CHARACTER VARIABLES text so faces do not drift.
         if (mode is ModeVideoExtend or ModeContinue)
             continuityBlock += IdentityReinforceBlock(onScreenKeys, useReferenceImages, visualMedium);
 
@@ -1846,7 +1846,7 @@ public static class ClipVideoPromptBuilder
         var speakers = ctx.Speakers ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sb = new StringBuilder();
         sb.AppendLine(PromptTags.OpenWithNote("Characters",
-            "use these identities consistently; do not redesign faces or wardrobe"));
+            "use these identities consistently; do not redesign faces"));
         var any = false;
         foreach (var key in keys)
         {
@@ -1882,10 +1882,12 @@ public static class ClipVideoPromptBuilder
         var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
         // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
         // source rather than at each tag-wrap call site below.
-        var desc = PromptTags.SanitizeValue(p?.Description?.Trim());
-        // visual_lock is face / markings / species and wardrobe_always is the clothes — one writer
-        // each, decided at cast extract. Nothing to take back out here.
-        var vlock = PromptTags.SanitizeValue(p?.VisualLock?.Trim());
+        var desc = PromptTags.SanitizeValue(
+            CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.Description?.Trim()));
+        // visual_lock is face / markings / species. Clothes live on the Wardrobe tag — strip
+        // leftover garments here so a frozen signature outfit cannot fight a later put_on.
+        var vlock = PromptTags.SanitizeValue(
+            CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.VisualLock?.Trim()));
         var voice = PromptTags.SanitizeValue(p?.VoiceProfile?.Trim());
         return (display, tag, desc, vlock, voice);
     }
@@ -2561,7 +2563,7 @@ public static class ClipVideoPromptBuilder
 
     /// <summary>
     /// When API cannot attach locked refs (video-extend), reinforce identity from CHARACTER VARIABLES text.
-    /// Face / wardrobe drift only — the on-screen name list lives in Characters + CastCount.
+    /// Face / medium drift only — clothes live on the Wardrobe tag; the name list is Characters + CastCount.
     /// </summary>
     private static string IdentityReinforceBlock(
         IReadOnlyList<string> onScreenKeys,
