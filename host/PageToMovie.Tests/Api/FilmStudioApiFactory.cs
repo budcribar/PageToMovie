@@ -98,17 +98,14 @@ public class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Api.Progr
         CreateUserClient(userId);
 
     /// <summary>
-    /// Stamp a decided visual medium on an HTTP-created harness project.
-    /// Stage 2 / generate fail-fast without it — tests know the truth; product does not guess.
+    /// Stamp a decided visual medium and performance lock on an HTTP-created harness project.
+    /// Stage 2 / generate fail-fast without them — tests know the truth; product does not guess.
     /// </summary>
     public void StampDecidedVision(string projectId, string? medium = null)
     {
         var store = Services.GetRequiredService<ProjectStore>();
-        ProjectVisionMeta.Write(store.GetProjectDir(projectId), new ProjectVisionMeta.Document
-        {
-            VisualMedium = medium ?? ProjectVisionMeta.MediumPhotoreal,
-            DecidedBy = "adaptation",
-        });
+        OfflineTestModelConfig.WriteDecidedVision(
+            store, projectId, medium ?? ProjectVisionMeta.MediumPhotoreal);
     }
 
     protected override void Dispose(bool disposing)
