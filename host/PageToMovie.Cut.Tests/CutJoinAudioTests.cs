@@ -39,7 +39,7 @@ public class CutJoinAudioTests
     [InlineData(0.75, 8, 8, 0.75)]
     [InlineData(1, 8, 8, 1)]
     [InlineData(10, 8, 8, 4)]
-    [InlineData(0.75, 0.6, 8, 0.25)]
+    [InlineData(0.75, 0.6, 8, 0.6)]
     [InlineData(0.75, 0.2, 8, 0)]
     public void Clamp_never_exceeds_the_shorter_adjacent_clip(
         double requested, double leftSec, double rightSec, double expected)
@@ -85,6 +85,8 @@ public class CutJoinAudioTests
             NewClip(2, 1, 8),
             NewClip(3, 1, 8),
         };
+        clips[0].JoinOverride = CutJoinKind.Cut;
+        clips[1].JoinOverride = CutJoinKind.Cut;
         var before = CutMergeCache.Build(clips, [], null, null);
         var saved = CutMergeCache.ManifestOf(before);
         var movie = CutPlayMerge.Fingerprint(clips, [], null);

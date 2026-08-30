@@ -30,7 +30,7 @@ public readonly record struct CutJoinAudio(CutJoinAudioKind Kind, double Seconds
     public static double ClampSeconds(double requested, double leftSec, double rightSec)
     {
         var shorter = Math.Min(Positive(leftSec), Positive(rightSec));
-        var max = Math.Min(MaxSeconds, Math.Max(0, shorter - MinSeconds));
+        var max = Math.Min(MaxSeconds, shorter);
         if (max < MinSeconds)
             return 0;
         var value = requested > 0.05 ? requested : DefaultSeconds;
