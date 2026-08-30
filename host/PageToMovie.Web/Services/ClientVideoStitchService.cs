@@ -571,20 +571,50 @@ public sealed class ClientVideoStitchService
         var segments = new List<ClientWipSegment>(ordered.Count);
         BeginSkippedCollect();
         await _engine.EnsureMediaAccessAsync(ct).ConfigureAwait(false);
-        if (sceneList is { Count: > 0 })
-        {
-            MediaIndex.SyncSceneList(projectId, sceneList);
-            if (MediaIndex.TryGetSceneGroup(projectId, sceneList, out _))
-                LastCollectStats.AddGroupHit();
-            else
-            {
-                LastCollectStats.AddGroupMiss();
-                MediaIndex.RememberSceneGroup(projectId, sceneList, ordered);
-            }
-        }
+        SyncPlayableSceneGroup(projectId, sceneList, ordered);
 
         // Resolve clip URLs for every scene together so workers are not waiting on a
         // serial GetSceneDetail walk. Mix stays sequential (ffmpeg compose gate).
+        var urlsByIndex = await ResolveSceneClipUrlListsAsync(projectId, ordered, sceneList, ct)
+            .ConfigureAwait(false);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var segment = await MixOrReuseSceneSegmentAsync(
+                projectId, ordered[i], urlsByIndex[i], sceneList, ct).ConfigureAwait(false);
+            if (segment is not null)
+                segments.Add(segment);
+        }
+        FinishSkippedCollect();
+        return segments;
+    }
+
+    private void SyncPlayableSceneGroup(
+        string projectId,
+        IReadOnlyList<SceneSummary>? sceneList,
+        IReadOnlyList<int> ordered)
+    {
+        if (sceneList is not { Count: > 0 })
+            return;
+
+        MediaIndex.SyncSceneList(projectId, sceneList);
+        if (MediaIndex.TryGetSceneGroup(projectId, sceneList, out _))
+        {
+            LastCollectStats.AddGroupHit();
+            return;
+        }
+
+        LastCollectStats.AddGroupMiss();
+        MediaIndex.RememberSceneGroup(projectId, sceneList, ordered);
+    }
+
+    private async Task<List<string>[]> ResolveSceneClipUrlListsAsync(
+        string projectId,
+        IReadOnlyList<int> ordered,
+        IReadOnlyList<SceneSummary>? sceneList,
+        CancellationToken ct)
+    {
         var urlsByIndex = new List<string>[ordered.Count];
         await Parallel.ForEachAsync(
             Enumerable.Range(0, ordered.Count),
@@ -596,51 +626,51 @@ public sealed class ClientVideoStitchService
                     .ConfigureAwait(false);
                 urlsByIndex[index] = sceneUrls;
             }).ConfigureAwait(false);
+        return urlsByIndex;
+    }
 
-        for (var i = 0; i < ordered.Count; i++)
+    private async Task<ClientWipSegment?> MixOrReuseSceneSegmentAsync(
+        string projectId,
+        int sceneNumber,
+        IReadOnlyList<string>? sceneUrls,
+        IReadOnlyList<SceneSummary>? sceneList,
+        CancellationToken ct)
+    {
+        if (sceneUrls is not { Count: > 0 })
+            return null;
+
+        var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sceneNumber);
+        MediaIndex.TryGetSceneDetail(
+            projectId, sceneNumber, PlayMediaIndex.FingerprintSummary(summary), out var detail);
+        var segmentFp = PlayMediaIndex.FingerprintSegment(summary, detail, sceneUrls.Count);
+        if (MediaIndex.TryGetSceneSegment(projectId, sceneNumber, segmentFp, out var cached)
+            && cached is not null)
         {
-            ct.ThrowIfCancellationRequested();
-            var sn = ordered[i];
-            var sceneUrls = urlsByIndex[i] ?? new List<string>();
-            if (sceneUrls.Count == 0)
-                continue;
-
-            var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sn);
-            MediaIndex.TryGetSceneDetail(
-                projectId, sn, PlayMediaIndex.FingerprintSummary(summary), out var detail);
-            var segmentFp = PlayMediaIndex.FingerprintSegment(summary, detail, sceneUrls.Count);
-            if (MediaIndex.TryGetSceneSegment(projectId, sn, segmentFp, out var cached)
-                && cached is not null)
-            {
-                LastCollectStats.AddSegmentHit();
-                segments.Add(cached);
-                continue;
-            }
-
-            LastCollectStats.AddSegmentMiss();
-            var sceneUrl = await ConcatAndMixSceneAsync(projectId, sceneUrls, sn, ct: ct);
-            if (string.IsNullOrWhiteSpace(sceneUrl))
-            {
-                // Remember why: "no clips" and "could not stitch the clips" are different problems.
-                var why = LastCollectError ?? "browser stitch failed";
-                NoteCollectError(
-                    why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
-                        ? why
-                        : $"S{sn:D2}: {why}");
-                continue;
-            }
-
-            var segment = new ClientWipSegment
-            {
-                SceneNumber = sn,
-                Url = sceneUrl,
-                RelativeSrc = $"assets/video/scene_{sn:D2}.mp4",
-            };
-            MediaIndex.RememberSceneSegment(projectId, sn, segmentFp, segment);
-            segments.Add(segment);
+            LastCollectStats.AddSegmentHit();
+            return cached;
         }
-        FinishSkippedCollect();
-        return segments;
+
+        LastCollectStats.AddSegmentMiss();
+        var sceneUrl = await ConcatAndMixSceneAsync(projectId, sceneUrls, sceneNumber, ct: ct);
+        if (string.IsNullOrWhiteSpace(sceneUrl))
+        {
+            // Remember why: "no clips" and "could not stitch the clips" are different problems.
+            var why = LastCollectError ?? "browser stitch failed";
+            NoteCollectError(
+                why.StartsWith("S", StringComparison.Ordinal) && why.Contains(" C", StringComparison.Ordinal)
+                    ? why
+                    : $"S{sceneNumber:D2}: {why}");
+            return null;
+        }
+
+        var segment = new ClientWipSegment
+        {
+            SceneNumber = sceneNumber,
+            Url = sceneUrl,
+            RelativeSrc = $"assets/video/scene_{sceneNumber:D2}.mp4",
+        };
+        MediaIndex.RememberSceneSegment(projectId, sceneNumber, segmentFp, segment);
+        return segment;
     }
 
     /// <summary>
