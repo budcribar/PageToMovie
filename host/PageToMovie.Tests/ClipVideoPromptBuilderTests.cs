@@ -1047,9 +1047,10 @@ public class ClipVideoPromptBuilderTests
         };
 
         var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
-        Assert.Contains("<Wardrobe>Character_Mary still wears pale pinafore, rose ribbon</Wardrobe>", built.Prompt);
+        Assert.Contains("pale pinafore", built.ActionText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rose ribbon", built.ActionText, StringComparison.OrdinalIgnoreCase);
         var lockInner = System.Text.RegularExpressions.Regex.Match(
-            built.Prompt, @"<VisualLock>(.*?)</VisualLock>",
+            built.CharacterVariables, @"<VisualLock>(.*?)</VisualLock>",
             System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
         Assert.False(string.IsNullOrWhiteSpace(lockInner));
         Assert.Contains("brown braids", lockInner, StringComparison.OrdinalIgnoreCase);
