@@ -159,34 +159,100 @@ public static class CameraTagWriter
         return !string.IsNullOrWhiteSpace(camera);
     }
 
-    /// <summary>Action is bodies / eyeline / blocking — drop lens, DoF, and shot-size camera orders.</summary>
+    /// <summary>
+    /// Action is bodies / eyeline / blocking, so camera orders come out of it — but only where
+    /// they stand as their own clause. A shot size welded into a sentence ("steps into a close-up
+    /// shot of the letter") is load-bearing grammar: cutting it leaves "steps into a of the
+    /// letter", and a beat the model cannot read is worse than a framing word it reads twice.
+    /// </summary>
     public static string StripFromAction(string? action)
     {
         if (string.IsNullOrWhiteSpace(action))
             return "";
-        var t = CameraOrderRegex.Replace(action, " ");
-        t = CommonRegex.WhitespaceCollapse.Replace(t, " ");
-        t = CommonRegex.Replace(t, @"\s*([,;])(?:\s*[,;])+", "$1");
-        t = CommonRegex.Replace(t, @"\s+\.", ".");
-        t = CommonRegex.DotCollapse.Replace(t, ".");
-        return t.Trim(' ', ',', ';', '.', '-', ':');
+        var kept = SplitClauses(action)
+            .Where(clause => !IsOnlyCameraOrders(clause.Text))
+            .Select(clause => clause.Text.Trim() + clause.Separator);
+        return TidyProse(string.Concat(kept));
     }
 
-    /// <summary>Drop f-stop / DoF / bokeh so Camera does not compete with Optics.</summary>
+    /// <summary>True when the clause says nothing but camera orders and the words joining them.</summary>
+    private static bool IsOnlyCameraOrders(string clause)
+    {
+        if (!CameraOrderRegex.IsMatch(clause))
+            return false;
+        var residue = CameraOrderRegex.Replace(clause, " ");
+        return residue
+            .Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries)
+            .All(w => JoiningWords.Contains(w.Trim(WordTrim), StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Drop f-stop / DoF / bokeh so Camera does not compete with Optics. Whole clauses go, so a
+    /// trailing "with the lantern in frame" leaves with its depth-of-field clause instead of
+    /// stranding "frame" behind a comma.
+    /// </summary>
     public static string SanitizeCameraProse(string? framing)
     {
         if (string.IsNullOrWhiteSpace(framing))
             return "";
-        var t = framing.Trim();
-        t = CommonRegex.Replace(t, @"\bf\s*/\s*\d+(?:\.\d+)?\b", "", RegexOptions.IgnoreCase);
-        t = CommonRegex.Replace(
-            t,
-            @"(?:,|;|\s+)?(?:with\s+)?(?:a\s+)?(?:shallow\s+)?depth\s+of\s+field\b(?:\s+\w+){0,4}",
-            "",
-            RegexOptions.IgnoreCase);
-        t = CommonRegex.Replace(t, @"(?:,|;|\s+)?(?:creamy\s+)?(?:soft\s+)?bokeh\b", "", RegexOptions.IgnoreCase);
-        t = CommonRegex.Replace(t, @"(?:,|;|\s+)?(?:deep|shallow)\s+focus\b", "", RegexOptions.IgnoreCase);
-        return CollapseWs(t);
+        // f-stops carry their own period ("f/1.8"), so they go before anything splits on one.
+        var text = CommonRegex.Replace(
+            framing, @"\bf\s*/\s*\d+(?:\.\d+)?\b", "", RegexOptions.IgnoreCase);
+        var kept = text
+            .Split(CameraClauseSeparators, StringSplitOptions.TrimEntries)
+            .Where(clause => !OpticsClauseRegex.IsMatch(clause))
+            .Select(clause => clause.Trim(' ', ',', ';', '-'))
+            .Where(clause => clause.Length > 0);
+        return CollapseWs(string.Join(", ", kept));
+    }
+
+    private static readonly char[] CameraClauseSeparators = [',', ';'];
+
+    /// <summary>Aperture / depth language: Optics writes it, Camera must not.</summary>
+    private static readonly Regex OpticsClauseRegex = new(
+        @"\b(?:depth\s+of\s+field|bokeh|(?:deep|shallow)\s+focus)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        CommonRegex.Timeout);
+
+    private static readonly char[] WordSeparators = [' ', '	'];
+    private static readonly char[] WordTrim = ['.', ',', ';', ':', '-', '(', ')'];
+
+    /// <summary>Articles and prepositions that carry no blocking on their own.</summary>
+    private static readonly string[] JoiningWords =
+        ["a", "an", "the", "and", "or", "with", "in", "on", "at", "of", "to", "into", "from",
+         "is", "are", "was", "were", "then", "camera", "shot"];
+
+    private readonly record struct Clause(string Text, string Separator);
+
+    /// <summary>Split on sentence and clause ends, keeping each separator with its clause.</summary>
+    private static List<Clause> SplitClauses(string text)
+    {
+        var clauses = new List<Clause>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] is not ('.' or ',' or ';' or '!' or '?'))
+                continue;
+            var stop = i;
+            while (stop + 1 < text.Length && text[stop + 1] is '.' or ',' or ';' or '!' or '?')
+                stop++;
+            clauses.Add(new Clause(text[start..i], text[i..(stop + 1)] + " "));
+            start = stop + 1;
+            i = stop;
+        }
+        if (start < text.Length)
+            clauses.Add(new Clause(text[start..], ""));
+        return clauses;
+    }
+
+    /// <summary>Close the gaps a dropped clause leaves: doubled punctuation and loose spacing.</summary>
+    private static string TidyProse(string text)
+    {
+        var t = CommonRegex.WhitespaceCollapse.Replace(text, " ");
+        t = CommonRegex.Replace(t, @"\s*([,;])(?:\s*[,;])+", "$1");
+        t = CommonRegex.Replace(t, @"\s+([,;.])", "$1");
+        t = CommonRegex.DotCollapse.Replace(t, ".");
+        return t.Trim(' ', ',', ';', '.', '-', ':');
     }
 
     public static string? ReadCameraTag(string? visualPrompt)
