@@ -1786,11 +1786,8 @@ public static class ClipVideoPromptBuilder
                 fromPrompt[key] = list;
             }
 
-            foreach (var item in p.WardrobeAlways)
-            {
-                if (!WardrobeState.AlreadyHas(list, item))
-                    list.Add(item);
-            }
+            foreach (var item in p.WardrobeAlways.Where(item => !WardrobeState.AlreadyHas(list, item)))
+                list.Add(item);
         }
 
         return fromPrompt;
