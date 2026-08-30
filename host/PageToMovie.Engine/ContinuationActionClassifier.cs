@@ -189,21 +189,34 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
     }
 
     /// <summary>Sentences with the punctuation that ended each one, so the prose rejoins as written.</summary>
-    private static List<(string Sentence, string Ending)> SplitSentences(string text)
+    private static List<(string Sentence, string Ending)> SplitSentences(string text) =>
+        SplitOn(text, SentenceEnders);
+
+    /// <summary>
+    /// Walk the text once. Drive the index in one place so a punctuation run stays on the
+    /// current part and the next start is the character after the run.
+    /// </summary>
+    private static List<(string Text, string Ending)> SplitOn(string text, char[] enders)
     {
         var parts = new List<(string, string)>();
         var start = 0;
-        for (var i = 0; i < text.Length; i++)
+        var i = 0;
+        while (i < text.Length)
         {
-            if (!SentenceEnders.Contains(text[i]))
+            if (!enders.Contains(text[i]))
+            {
+                i++;
                 continue;
+            }
+
             var stop = i;
-            while (stop + 1 < text.Length && SentenceEnders.Contains(text[stop + 1]))
+            while (stop + 1 < text.Length && enders.Contains(text[stop + 1]))
                 stop++;
             parts.Add((text[start..i], text[i..(stop + 1)] + " "));
             start = stop + 1;
-            i = stop;
+            i = start;
         }
+
         if (start < text.Length)
             parts.Add((text[start..], ""));
         return parts;
@@ -231,25 +244,8 @@ public sealed class ContinuationActionClassifier : BeatChatClassifierBase<string
             .ToList();
 
     /// <summary>Clauses with the punctuation that ended each one, so the prose rejoins cleanly.</summary>
-    private static List<(string Clause, string Separator)> SplitClauses(string text)
-    {
-        var parts = new List<(string, string)>();
-        var start = 0;
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (!ClauseEnders.Contains(text[i]))
-                continue;
-            var stop = i;
-            while (stop + 1 < text.Length && ClauseEnders.Contains(text[stop + 1]))
-                stop++;
-            parts.Add((text[start..i], text[i..(stop + 1)] + " "));
-            start = stop + 1;
-            i = stop;
-        }
-        if (start < text.Length)
-            parts.Add((text[start..], ""));
-        return parts;
-    }
+    private static List<(string Clause, string Separator)> SplitClauses(string text) =>
+        SplitOn(text, ClauseEnders);
 
     public Task<Dictionary<string, string>?> ClassifySceneContinuationActionsAsync(
         Dictionary<string, object?> scene,
