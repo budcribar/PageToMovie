@@ -1016,6 +1016,50 @@ public class ClipVideoPromptBuilderTests
     }
 
     [Fact]
+    public void Build_visual_lock_does_not_restate_wardrobe_outfit()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "<Setting>EXT. COUNTRY LANE - DAY</Setting> <Cast>Character_Mary</Cast> <Action>MARY walks.</Action> <Wardrobe>Character_Mary still wears pale pinafore, rose ribbon</Wardrobe>",
+              "characters_on_screen": ["Character_Mary"],
+              "primary_subject": "Character_Mary",
+              "audio_payload": { "speaker": "Character_Mary", "dialogue": "Hello.", "delivery": "spoken_on_camera" }
+            }
+            """).RootElement;
+
+        var tmp = Path.Combine(Path.GetTempPath(), "fs-vlock-wardrobe-" + Guid.NewGuid().ToString("N"));
+        var charDir = Path.Combine(tmp, "assets", "characters");
+        Directory.CreateDirectory(charDir);
+        File.WriteAllBytes(Path.Combine(charDir, "character_mary_ref.png"), new byte[512]);
+
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new()
+            {
+                Key = "Character_Mary",
+                DisplayName = "Mary",
+                Description = "School-age girl with brown braids",
+                VisualLock = "brown braids, pale pinafore, rose ribbon, school-age girl",
+                WardrobeAlways = new[] { "pale pinafore", "rose ribbon" },
+            },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
+        Assert.Contains("<Wardrobe>Character_Mary still wears pale pinafore, rose ribbon</Wardrobe>", built.Prompt);
+        var lockInner = System.Text.RegularExpressions.Regex.Match(
+            built.Prompt, @"<VisualLock>(.*?)</VisualLock>",
+            System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+        Assert.False(string.IsNullOrWhiteSpace(lockInner));
+        Assert.Contains("brown braids", lockInner, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", lockInner, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("rose ribbon", lockInner, StringComparison.OrdinalIgnoreCase);
+
+        try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+    }
+
+    [Fact]
     public void ResolveFocusKeys_big_action_keeps_all_on_screen()
     {
         var keys = ClipVideoPromptBuilder.ResolveFocusKeys(

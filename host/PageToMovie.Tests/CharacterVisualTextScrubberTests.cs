@@ -60,4 +60,17 @@ public class CharacterVisualTextScrubberTests
         Assert.Contains("not an animal", scrubbed, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("human adult", scrubbed, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void StripOutfitFromVisualLock_drops_wardrobe_phrases_keeps_face()
+    {
+        var stripped = CharacterVisualTextScrubber.StripOutfitFromVisualLock(
+            "brown braids, pale pinafore, rose ribbon, school-age girl",
+            new[] { "pale pinafore", "rose ribbon" });
+
+        Assert.Contains("brown braids", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("school-age girl", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pinafore", stripped, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("rose ribbon", stripped, StringComparison.OrdinalIgnoreCase);
+    }
 }

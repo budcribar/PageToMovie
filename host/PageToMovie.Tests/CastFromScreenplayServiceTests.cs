@@ -26,6 +26,8 @@ public class CastFromScreenplayServiceTests
         Assert.Contains("AUDIENCE", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cast_kind", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("GROUP", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wardrobe_always", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no clothes", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -307,6 +309,17 @@ public class CastFromScreenplayServiceTests
         Assert.Contains("scene headings", text, StringComparison.OrdinalIgnoreCase);
         // Must not reintroduce product-code name discovery contract
         Assert.DoesNotContain("DETECTED ON-SCREEN", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildUserPrompt_puts_clothes_in_wardrobe_always_not_visual_lock()
+    {
+        var prompt = CastFromScreenplayService.BuildUserPrompt(
+            "Title: Test\n\nINT. ROOM - DAY\n\nHERO\nHello.",
+            book: null);
+        Assert.Contains("wardrobe_always", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("face / markings / species", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("clothes go in wardrobe_always", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FindRepoWithPrompts()
