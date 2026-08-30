@@ -2228,10 +2228,6 @@ public sealed class Stage2PlannerService
             !ve.Contains("continuous", StringComparison.OrdinalIgnoreCase))
             ve = $"{ve}. ONE continuous take no cut; unbroken cause-to-effect motion";
 
-        // Establishing shots otherwise describe only a static composition — a known AI-video
-        // failure mode where the "opening wide shot" of a scene looks like a frozen photo. Nudge
-        // in setting-appropriate ambient background life (the model invents specifics; no new
-        // classifier call), mirroring how big_action gets its own action_class-specific guidance.
         if (ac == "establishing" &&
             !ve.Contains("subtle", StringComparison.OrdinalIgnoreCase) &&
             !ve.Contains("ambient motion", StringComparison.OrdinalIgnoreCase))
