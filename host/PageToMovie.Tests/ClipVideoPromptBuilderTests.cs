@@ -1681,6 +1681,41 @@ public class ClipVideoPromptBuilderTests
             try { Directory.Delete(dir, true); } catch { }
         }
     }
+
+    private static void AssertFillNPacing(string prompt, int seconds)
+    {
+        Assert.Contains($"This is a {seconds}-second shot", prompt, StringComparison.Ordinal);
+        Assert.Contains($"full {seconds} seconds", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("End cleanly when the spoken line", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("End cleanly when the primary physical action finishes", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("tight action", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("avoid long empty holds", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Prefer tight action after speech", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertAudioOwnsClosedMouthPause(string prompt)
+    {
+        const string pause =
+            "After the last word, hold a brief natural pause with a closed mouth (about half a second)";
+        Assert.Contains(pause, prompt, StringComparison.Ordinal);
+        var clipIdx = prompt.IndexOf("<Clip>", StringComparison.Ordinal);
+        Assert.True(clipIdx >= 0, "expected a <Clip> section");
+        var clipSection = prompt[clipIdx..];
+        Assert.DoesNotContain("half a second", clipSection, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("closed mouth", clipSection, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var n = 0;
+        var i = 0;
+        while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0)
+        {
+            n++;
+            i += needle.Length;
+        }
+        return n;
+    }
 }
 
 
@@ -1819,29 +1854,6 @@ public class PreviousClipQuoteRedactionTests
 
         var padded = withNote + " " + new string('y', 4000);
         Assert.DoesNotContain("note=", ClipVideoPromptBuilder.FitPromptToVideoBudget(padded, 300), StringComparison.Ordinal);
-    }
-
-    private static void AssertFillNPacing(string prompt, int seconds)
-    {
-        Assert.Contains($"This is a {seconds}-second shot", prompt, StringComparison.Ordinal);
-        Assert.Contains($"full {seconds} seconds", prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("End cleanly when the spoken line", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("End cleanly when the primary physical action finishes", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("tight action", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("avoid long empty holds", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Prefer tight action after speech", prompt, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void AssertAudioOwnsClosedMouthPause(string prompt)
-    {
-        const string pause =
-            "After the last word, hold a brief natural pause with a closed mouth (about half a second)";
-        Assert.Contains(pause, prompt, StringComparison.Ordinal);
-        var clipIdx = prompt.IndexOf("<Clip>", StringComparison.Ordinal);
-        Assert.True(clipIdx >= 0, "expected a <Clip> section");
-        var clipSection = prompt[clipIdx..];
-        Assert.DoesNotContain("half a second", clipSection, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("closed mouth", clipSection, StringComparison.OrdinalIgnoreCase);
     }
 
     private static int CountOccurrences(string haystack, string needle)
