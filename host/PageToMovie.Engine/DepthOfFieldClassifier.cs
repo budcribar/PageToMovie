@@ -44,7 +44,7 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
         You are an expert Focus Puller and Optical Cinematographer directing aperture.
 
         Your task: Given a list of scene beats, assign an f-stop per beat ID. Camera owns framing, lens, and move.
-        <Optics> is the f-stop only — do not describe depth of field, bokeh, or creamy backgrounds.
+        <Optics> is the f-stop only — do not describe depth of field or bokeh.
 
         DIRECTIVES TO ASSIGN PER BEAT:
         1. aperture: f-stop only (e.g. "f/1.4", "f/2.8", "f/8"). No prose.

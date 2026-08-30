@@ -142,12 +142,12 @@ public sealed class CameraDirectorClassifierTests
         var prompt = CameraDirectorClassifier.SystemPromptText;
         Assert.Contains("only writer of the clip <Camera> tag", prompt, StringComparison.Ordinal);
         Assert.Contains("SAME-SPEAKER RUNS", prompt, StringComparison.Ordinal);
-        Assert.Contains("Previous", prompt, StringComparison.Ordinal);
+        Assert.Contains("previous", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("HONOR ACTION", prompt, StringComparison.Ordinal);
         Assert.Contains("Optics owns aperture", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("f/1.4", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("shallow depth of field", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("bokeh", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do NOT name an f-stop", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -88,6 +88,7 @@ public sealed class DepthOfFieldClassifierTests
     {
         var prompt = DepthOfFieldClassifier.SystemPrompt();
         Assert.Contains("f-stop only", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not describe depth of field or bokeh", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("creamy", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("shallow depth of field", prompt, StringComparison.OrdinalIgnoreCase);
     }
