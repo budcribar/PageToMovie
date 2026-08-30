@@ -81,6 +81,20 @@ public sealed class PlayMediaIndexTests
     }
 
     [Fact]
+    public void Remember_detail_without_summary_keeps_warm_summary_fingerprint()
+    {
+        var index = new PlayMediaIndex();
+        var summary = new SceneSummary { SceneNumber = 1, ClipCount = 1, ClipsOnDisk = 1, Status = "complete" };
+        var detail = Detail(1, (1, "scene_01_clip_01_take_01.mp4", 1000));
+        index.RememberSceneDetail("p", detail, summary);
+
+        index.RememberSceneDetail("p", detail, summary: null);
+
+        Assert.True(index.TryGetSceneDetail("p", 1, PlayMediaIndex.FingerprintSummary(summary), out var hit));
+        Assert.Same(detail, hit);
+    }
+
+    [Fact]
     public void Scene_group_hits_until_the_scene_list_fingerprint_changes()
     {
         var index = new PlayMediaIndex();

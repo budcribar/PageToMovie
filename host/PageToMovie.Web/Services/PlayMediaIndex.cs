@@ -78,11 +78,19 @@ public sealed class PlayMediaIndex
 
         lock (_gate)
         {
-            if (_scenes.TryGetValue((projectId, detail.SceneNumber), out var prior)
-                && !string.Equals(prior.DetailFingerprint, detailFp, StringComparison.Ordinal))
+            if (_scenes.TryGetValue((projectId, detail.SceneNumber), out var prior))
             {
-                RemoveClipUrlsLocked(projectId, detail.SceneNumber);
-                _segments.Remove((projectId, detail.SceneNumber));
+                if (!string.Equals(prior.DetailFingerprint, detailFp, StringComparison.Ordinal))
+                {
+                    RemoveClipUrlsLocked(projectId, detail.SceneNumber);
+                    _segments.Remove((projectId, detail.SceneNumber));
+                }
+                else if (summary is null && !string.IsNullOrEmpty(prior.SummaryFingerprint))
+                {
+                    // Caller had no scene-list row (clip Play). Keep the warm
+                    // summary fingerprint so the next full-movie Play still hits.
+                    summaryFp = prior.SummaryFingerprint;
+                }
             }
 
             _scenes[(projectId, detail.SceneNumber)] = new SceneEntry
