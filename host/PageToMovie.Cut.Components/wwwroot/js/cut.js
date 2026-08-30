@@ -1096,7 +1096,7 @@
             // Always normalize dimensions and audio layout. Passing an
             // untouched silent credits MP4 into an audio-bearing concat can
             // make the final scene disappear even when no trim is requested.
-            const trimmed = await trimRangeWithApiAsync(api, c.url, start, end, onProgress);
+            const trimmed = await trimRangeWithApiAsync(api, c.url, start, end, onProgress, !!c.muted);
             if (!trimmed.success)
                 return { error: label + ": " + (trimmed.error || "trim failed") };
             urls.push(trimmed.url);
@@ -2194,6 +2194,7 @@
         if (!incoming) return Promise.resolve({ success: false });
         const t = Number(seconds);
         const seek = Number.isFinite(t) && t >= 0 ? t : 0;
+        incoming._cutMuted = !!muted;
         if (incoming === s.front && playUrlOf(incoming) === url && incoming.readyState >= 1) {
             incoming._cutAdvanceSent = false;
             try {
@@ -2201,10 +2202,12 @@
             } catch (err) {
                 console.debug("Cut: playUrlAt seek", err);
             }
+            // Resuming the clip already on screen still has to follow a mute toggled since the
+            // last swap — this path never reloads the source, so nothing else would apply it.
+            incoming.muted = !!muted;
             cut.playVideo(incoming);
             return Promise.resolve({ success: true });
         }
-        incoming._cutMuted = !!muted;
         return swapPlayTo(incoming, url, seconds, true);
     };
 
@@ -2220,9 +2223,10 @@
 
     /**
      * Trim [startSec, endSec) using the same encode args as PageToMovieFfmpeg.encodeSliceAsync /
-     * _trimKeepSecondsAsync. Serialized on the shared ffmpeg queue.
+     * _trimKeepSecondsAsync. Serialized on the shared ffmpeg queue. `silent` replaces the source
+     * audio with silence, which is how a muted clip renders: picture untouched, music still heard.
      */
-    async function trimRangeWithApiAsync(api, url, startSec, endSec, onProgress) {
+    async function trimRangeWithApiAsync(api, url, startSec, endSec, onProgress, silent) {
         if (!api) return { success: false, error: "ffmpeg helper missing" };
         if (!url) return { success: false, error: "No URL" };
         return api._runExclusiveAsync(async function () {
@@ -2250,11 +2254,16 @@
                 const total = probe.success && probe.seconds > 0 ? probe.seconds : 0;
                 const window = clampTrimWindow(startSec, endSec, total);
                 onProgress?.(55, "Trimming…");
-                try {
-                    await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, false));
-                } catch (audioErr) {
-                    console.debug("Cut: trim native audio missing, pad silence", audioErr);
+                if (silent) {
+                    // Asked for silence outright, so skip the native-audio attempt entirely.
                     await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, true));
+                } else {
+                    try {
+                        await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, false));
+                    } catch (audioErr) {
+                        console.debug("Cut: trim native audio missing, pad silence", audioErr);
+                        await execChecked(ffmpeg, buildTrimArgs(inName, outName, window.start, window.keep, true));
+                    }
                 }
                 const out = await ffmpeg.readFile(outName);
                 const blob = new Blob([out.buffer], { type: "video/mp4" });

@@ -1958,8 +1958,15 @@ h1:focus {
     }
 }
 @media (max-width: 640px) {
+    /* Two across beats a sideways scroll on a phone, so undo the wide-screen row above:
+       grid-template-columns alone would be ignored while the strip is still a flex box. */
     .ptm-step-strip--studio {
+        display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow-x: visible;
+    }
+    .ptm-step-strip--studio .ptm-step {
+        min-width: 0;
     }
     .ptm-process-nav {
         justify-content: space-between;

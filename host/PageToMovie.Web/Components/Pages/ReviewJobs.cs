@@ -25,6 +25,51 @@ public partial class Review
             string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(_job?.Status, "queued", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Job whose retire wake-up is already pending, so one job arms one timer.</summary>
+        private string? _cardRetireFor;
+
+        /// <summary>
+        /// Should the page draw the job progress card, and if it is a success still inside its
+        /// linger, wake the page again when that linger runs out. A page renders on events only,
+        /// so without the wake-up the card would outlive its two minutes until something else
+        /// happened to redraw — on an idle page, indefinitely.
+        /// </summary>
+        internal bool ShowProgressCard()
+        {
+            if (_job is not { } job)
+                return false;
+            var now = DateTimeOffset.UtcNow;
+            if (!job.DeservesProgressCard(now))
+                return false;
+            ArmProgressCardRetire(job, now);
+            return true;
+        }
+
+        private void ArmProgressCardRetire(JobSnapshot job, DateTimeOffset now)
+        {
+            if (!job.IsFinished || !job.IsSuccess)
+                return;
+            if ((job.FinishedAt ?? job.StartedAt) is not { } completed)
+                return;
+            var key = job.JobId is { Length: > 0 } id ? id : completed.ToString("O");
+            if (string.Equals(_cardRetireFor, key, StringComparison.Ordinal))
+                return;
+            _cardRetireFor = key;
+            var left = JobSnapshot.ProgressCardLinger - (now - completed);
+            _ = RetireProgressCardAsync(left > TimeSpan.Zero ? left : TimeSpan.Zero);
+        }
+
+        private async Task RetireProgressCardAsync(TimeSpan delay)
+        {
+            try
+            {
+                await Task.Delay(delay);
+                await S.InvokeAsync(S.StateHasChanged);
+            }
+            catch (ObjectDisposedException) { /* page left before the card expired */ }
+            catch (TaskCanceledException) { /* same */ }
+        }
+
 
         internal void OnJobUpdated(JobSnapshot snap)
         {
