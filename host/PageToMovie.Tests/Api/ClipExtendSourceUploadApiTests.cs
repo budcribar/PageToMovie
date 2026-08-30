@@ -1,3 +1,5 @@
+using PageToMovie.Engine;
+using PageToMovie.Core.Utils;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -62,22 +64,24 @@ public class ClipExtendSourceUploadApiTests : IClassFixture<PageToMovieApiFactor
     }
 
     [Fact]
-    public async Task Upload_without_kind_still_uses_default_naming()
+    public async Task Upload_without_kind_is_stored_as_a_take_not_under_the_uploaded_name()
     {
         var client = _factory.CreateUserClient("extend-src-user-2");
         var projectId = await CreateProjectAsync(client);
 
+        // The uploaded name is the client's, not the store's. It used to be written verbatim, so a
+        // clip uploaded as the bare scene_SS_clip_CC.mp4 alias landed under a name nothing reads.
         using var form = BuildVideoForm(fileName: "scene_01_clip_02.mp4");
         var resp = await client.PostAsync(
             $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/1/clips/2/upload", form);
         Assert.True(resp.IsSuccessStatusCode, await resp.Content.ReadAsStringAsync());
 
-        var expectedPath = Path.Combine(
-            _factory.WorkspaceRoot, "projects", projectId, "assets", "video", "scene_01_clip_02.mp4");
-        Assert.True(File.Exists(expectedPath));
+        var videoDir = Path.Combine(_factory.WorkspaceRoot, "projects", projectId, "assets", "video");
+        Assert.False(File.Exists(Path.Combine(videoDir, "scene_01_clip_02.mp4")));
+        Assert.False(File.Exists(Path.Combine(videoDir, "_extend_src_s01c02.mp4")));
 
-        var extendSourcePath = Path.Combine(
-            _factory.WorkspaceRoot, "projects", projectId, "assets", "video", "_extend_src_s01c02.mp4");
-        Assert.False(File.Exists(extendSourcePath));
+        var stored = ClipSidecarService.ResolveClipMediaPath(videoDir, 1, 2);
+        Assert.NotNull(stored);
+        Assert.Equal(1, ClipTakeNaming.ParseTakeNumber(Path.GetFileName(stored)));
     }
 }

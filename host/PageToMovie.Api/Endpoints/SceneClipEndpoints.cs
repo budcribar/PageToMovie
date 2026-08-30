@@ -581,33 +581,31 @@ public static partial class SceneClipEndpoints
     // live on the server, so relay the bytes through IVideoClient (catalog-routed) and keep
     // only the file_id (+ duration) in a small marker. Fakes / no stored-file upload fall
     // back to the on-disk file below.
-    if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase)
-        && await TryUploadExtendSourceAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false) is { } uploaded)
-        return uploaded;
-
-    // ffmpeg credits generator (and any other client-rendered clip) — same take persist as regen.
-    if (string.Equals(kind, "credits", StringComparison.OrdinalIgnoreCase))
-        return await PersistUploadedGeneratedTakeAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false);
-
-    var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
-    Directory.CreateDirectory(destDir);
-    var fileName = ChooseUploadDestFileName(kind, file.FileName, scene, clip);
-    var destPath = Path.Combine(destDir, fileName);
-
-    using (var stream = File.Create(destPath))
+    if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
     {
-        await file.CopyToAsync(stream, ct).ConfigureAwait(false);
+        if (await TryUploadExtendSourceAsync(id, scene, clip, seconds, file, svc, ct).ConfigureAwait(false)
+            is { } uploaded)
+            return uploaded;
+
+        // Fakes, or a provider with no stored-file upload: keep the bytes as the single-use
+        // continuation input. Not a take — nothing plays it and nothing should promote it.
+        var scratchDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+        Directory.CreateDirectory(scratchDir);
+        var scratchPath = Path.Combine(scratchDir, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+        using (var stream = File.Create(scratchPath))
+        {
+            await file.CopyToAsync(stream, ct).ConfigureAwait(false);
+        }
+
+        return Results.Ok(new { ok = true, projectId = id, scene, clip, path = scratchPath });
     }
 
-    // Every other clip-writing path (generation, remux, stage2) invalidates the scene-list/dir-index
-    // read cache after writing — this client-render upload path (credits card, extend-source) didn't,
-    // so a clip written here could sit invisible to OnDisk/listing checks for the rest of the cache's
-    // TTL. A generated clip's own multi-second API round trip usually outlasts that window; a fast
-    // client-side canvas render (the credits card) does not, so it reliably hit the stale window.
-    if (!string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
-        store.InvalidateSceneListCache(id);
-
-    return Results.Ok(new { ok = true, projectId = id, scene, clip, path = destPath });
+    // Every other client-rendered clip — the credits card, a re-uploaded local take — persists the
+    // same way a generated one does: a new take plus the pointer that names it. This used to write
+    // whatever file name the upload happened to carry, and the client sent the bare
+    // scene_SS_clip_CC.mp4 alias, so a stored clip landed under a name nothing reads back.
+    return await PersistUploadedGeneratedTakeAsync(id, scene, clip, seconds, file, svc, ct)
+        .ConfigureAwait(false);
 }
 
     // Catalog-routed stored-file upload. Ok when a file_id is issued; null → on-disk fallback.
@@ -696,15 +694,6 @@ public static partial class SceneClipEndpoints
             clientRelativePath = ClipTakeNaming.TakeRelativePath(scene, clip, take),
             currentTake = take,
         });
-    }
-
-    private static string ChooseUploadDestFileName(string? kind, string? uploadedFileName, int scene, int clip)
-    {
-        if (string.Equals(kind, "extend-source", StringComparison.OrdinalIgnoreCase))
-            return $"_extend_src_s{scene:D2}c{clip:D2}.mp4";
-        if (!string.IsNullOrWhiteSpace(uploadedFileName) && uploadedFileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-            return Path.GetFileName(uploadedFileName);
-        return $"scene_{scene:D2}_clip_{clip:D2}_take_01.mp4";
     }
 
     private static async Task<IResult> PostProjectsIdScenesSceneClipsClipAutoReviewApply(string id, int scene, int clip, ApplyClipAutoReviewRequest? body, ClipAutoReviewService reviews, CancellationToken ct)

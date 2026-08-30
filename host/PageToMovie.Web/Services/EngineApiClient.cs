@@ -3183,7 +3183,9 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             using var form = new MultipartFormDataContent();
             using var byteContent = new ByteArrayContent(videoBytes);
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("video/mp4");
-            form.Add(byteContent, "video", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+            // The server names what it stores — a take, or the extend-source scratch file. This
+            // used to send scene_SS_clip_CC.mp4 and the server wrote that name verbatim.
+            form.Add(byteContent, "video", "clip.mp4");
 
             var url = ClipUploadUrl(projectId, scene, clip, kind);
             if (seconds is { } s && !string.IsNullOrEmpty(kind))
