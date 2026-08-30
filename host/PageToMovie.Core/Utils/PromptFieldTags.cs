@@ -9,6 +9,13 @@ public static class PromptFieldTags
 {
     public const string StyleLock = "StyleLock";
     public const string Setting = "Setting";
+
+    /// <summary>
+    /// Legacy only. Stage 2 no longer writes a <c>&lt;Cast&gt;</c> roster — Characters +
+    /// CastCount at generation time are the single on-screen list. The tag stays because
+    /// older plans still contain one, and generation-time sanitize plus the clip editor
+    /// have to recognise it so the same names are not sent twice.
+    /// </summary>
     public const string Cast = "Cast";
     public const string Action = "Action";
     public const string Sound = "Sound";
@@ -21,6 +28,14 @@ public static class PromptFieldTags
     /// being sent — or edited — twice.
     /// </summary>
     public const string Speech = "Speech";
+
+    /// <summary>
+    /// Legacy only. Stage 2 no longer writes a <c>&lt;MustNot&gt;</c> tag — beat
+    /// <c>must_not</c> feeds the clip's <c>negative_prompt</c> and reaches the model
+    /// once, as the generation-time <c>&lt;Negative&gt;</c> block (with global + medium
+    /// negatives). The tag stays so leftover plan copies can be stripped instead of
+    /// billed again.
+    /// </summary>
     public const string MustNot = "MustNot";
     public const string Wardrobe = "Wardrobe";
     public const string Lighting = "Lighting";

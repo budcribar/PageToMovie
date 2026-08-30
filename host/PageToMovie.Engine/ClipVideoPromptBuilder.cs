@@ -671,11 +671,6 @@ public static class ClipVideoPromptBuilder
     }
 
     /// <summary>
-    /// Remove Stage2-embedded CAST COUNT so the builder owns a single count line, and the legacy
-    /// <c>&lt;Speech&gt;</c> block so the AUDIO block owns the spoken line.
-    /// Ensures each on-screen key appears at least once in action prose.
-    /// </summary>
-    /// <summary>
     /// On a continuation, removes the blocks describing what the source video already shows.
     /// </summary>
     /// <remarks>
@@ -749,21 +744,35 @@ public static class ClipVideoPromptBuilder
         v = NoExtraPeopleRegex.Replace(v, "");
         v = LegacySpeechBlockRegex.Replace(v, "");
         v = LegacySoundBlockRegex.Replace(v, "");
+        // Roster SSoT is Characters + CastCount. Leftover <Cast> / "also on screen" /
+        // "{key} is on screen." from older plans are a fourth name list — drop them.
+        v = LegacyCastBlockRegex.Replace(v, "");
+        v = LegacyMustNotBlockRegex.Replace(v, "");
+        v = AlsoOnScreenProseRegex.Replace(v, "");
         v = StripFountainLeakage(v);
         // Blueprint may embed lip-sync / says quotes with crushed dashes — speech-safe for gen
         v = SanitizeSpokenQuotesInVisual(v);
         v = SimplifyVisual(v);
-        // One spelling before the on-screen fallback: title-case / ALL-CAPS display names
-        // become Character_* so Contains(key) matches and we do not append a second form.
+        // Title-case / ALL-CAPS display names become Character_* so action uses one spelling.
         var toNormalize = mentionKeys is { Count: > 0 } ? mentionKeys : onScreenKeys;
         if (toNormalize is { Count: > 0 })
             v = Stage2PlannerService.NormalizeCastMentionsToKeys(v, toNormalize, displayNamesByKey: displayNamesByKey);
+        // Do not append "{key} is on screen." — CastCount already named the roster.
         if (onScreenKeys is { Count: > 0 })
-        {
-            foreach (var key in onScreenKeys.Where(k => !v.Contains(k, StringComparison.OrdinalIgnoreCase)))
-                v = $"{v} {key} is on screen.".Trim();
-        }
+            v = StripRosterOnScreenFallback(v, onScreenKeys);
         return v.Trim();
+    }
+
+    /// <summary>
+    /// Drop leftover Action "{key} is on screen." when that key is already in the
+    /// Characters / CastCount roster. Older plans still carry the sentence.
+    /// </summary>
+    private static string StripRosterOnScreenFallback(string text, IReadOnlyList<string> onScreenKeys)
+    {
+        var v = text;
+        foreach (var key in onScreenKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
+            v = CommonRegex.Replace(v, $@"\s*{Regex.Escape(key)}\s+is on screen\.", "", RegexOptions.IgnoreCase);
+        return v;
     }
 
     private static Dictionary<string, string> CollectDisplayNamesByKey(
@@ -941,6 +950,24 @@ public static class ClipVideoPromptBuilder
     private static readonly Regex LegacySoundBlockRegex = new(
         $@"<{PromptFieldTags.Sound}>.*?</{PromptFieldTags.Sound}>\s*",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>
+    /// A <c>&lt;Cast&gt;</c> roster baked into an older plan's <c>visual_prompt</c>. Stage 2
+    /// no longer emits one — Characters + CastCount at generation time are the single list.
+    /// </summary>
+    private static readonly Regex LegacyCastBlockRegex = new(
+        $@"<{PromptFieldTags.Cast}>.*?</{PromptFieldTags.Cast}>\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>
+    /// A <c>&lt;MustNot&gt;</c> beat list baked into an older plan. Stage 2 no longer emits
+    /// one — the same items already reach the model once inside <c>&lt;Negative&gt;</c>.
+    /// </summary>
+    private static readonly Regex LegacyMustNotBlockRegex = new(
+        $@"<{PromptFieldTags.MustNot}>.*?</{PromptFieldTags.MustNot}>\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled, CommonRegex.Timeout);
+    /// <summary>Leftover "also on screen: …" prose from the retired Stage-2 Cast slot.</summary>
+    private static readonly Regex AlsoOnScreenProseRegex = new(
+        @"\balso on screen:\s*(?:Character_[A-Za-z0-9_]+|C\d+)(?:\s*,\s*(?:Character_[A-Za-z0-9_]+|C\d+))*\.?\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex UnicodeDashesRegex = new(@"\s*[\u2012\u2013\u2014\u2015]\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex DoubleHyphenRegex = new(@"\s*--\s*", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly Regex PunctuationDashRegex = new(@"([!?.;:])\s*-+\s*", RegexOptions.Compiled, CommonRegex.Timeout);
@@ -2534,6 +2561,7 @@ public static class ClipVideoPromptBuilder
 
     /// <summary>
     /// When API cannot attach locked refs (video-extend), reinforce identity from CHARACTER VARIABLES text.
+    /// Face / wardrobe drift only — the on-screen name list lives in Characters + CastCount.
     /// </summary>
     private static string IdentityReinforceBlock(
         IReadOnlyList<string> onScreenKeys,
@@ -2544,8 +2572,7 @@ public static class ClipVideoPromptBuilder
         var medium = VisualMediumStyles.NormalizeMedium(visualMedium);
         return " " + PromptTags.Wrap("Identity",
             "Match locked plate descriptions in Characters exactly — " +
-            VisualMediumStyles.IdentityMediumDriftClause(medium) + ". " +
-            "On-screen: " + string.Join(", ", onScreenKeys) + ".");
+            VisualMediumStyles.IdentityMediumDriftClause(medium) + ".");
     }
 
     private static bool IsVoiceOnlyKey(string key, IReadOnlyDictionary<string, CharacterProfile>? characters)
