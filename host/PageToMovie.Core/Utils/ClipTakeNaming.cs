@@ -109,6 +109,10 @@ public static class ClipTakeNaming
     public static string TakeSidecarSearchPattern(int scene, int clip) =>
         $"{SceneClipPrefix(scene, clip)}_take_*{ClipJsonSuffix}";
 
+    /// <summary>Every rendered take of one clip: <c>scene_SS_clip_CC_take_*.mp4</c>.</summary>
+    public static string TakeMp4SearchPattern(int scene, int clip) =>
+        $"{SceneClipPrefix(scene, clip)}_take_*.mp4";
+
     /// <summary>
     /// Take number from a take-named file (<c>…_take_NN[…].mp4|.clip.json</c>).
     /// Timestamped leftovers still parse. Returns 0 when the name has no take.

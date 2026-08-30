@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Options;
@@ -280,5 +281,64 @@ public class ClipSidecarServiceTests : IDisposable
         var current = ClipSidecarService.CurrentTakePath(videoDir, 3, 4);
         Assert.Equal(Path.Combine(videoDir, "scene_03_clip_04_take_02.mp4"), current);
         Assert.NotEqual(Path.Combine(videoDir, "scene_03_clip_04.mp4"), current);
+    }
+
+    [Fact]
+    public void Resolve_clip_media_takes_the_pointer_take()
+    {
+        var videoDir = Path.Combine(_tempWorkspace, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        WriteClip(videoDir, 1, 1, take: 1);
+        WriteClip(videoDir, 1, 1, take: 2);
+        ClipSidecarService.WriteCurrentTake(videoDir, 1, 1, 1);
+
+        Assert.Equal(
+            ClipTakeNaming.TakeMp4FileName(1, 1, 1),
+            Path.GetFileName(ClipSidecarService.ResolveClipMediaPath(videoDir, 1, 1)));
+    }
+
+    [Fact]
+    public void Resolve_clip_media_falls_back_to_the_newest_take_without_a_pointer()
+    {
+        var videoDir = Path.Combine(_tempWorkspace, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        WriteClip(videoDir, 2, 3, take: 1);
+        var newer = WriteClip(videoDir, 2, 3, take: 4);
+        File.SetLastWriteTimeUtc(newer, DateTime.UtcNow.AddMinutes(5));
+
+        Assert.Equal(
+            ClipTakeNaming.TakeMp4FileName(2, 3, 4),
+            Path.GetFileName(ClipSidecarService.ResolveClipMediaPath(videoDir, 2, 3)));
+    }
+
+    [Fact]
+    public void Resolve_clip_media_never_answers_with_the_bare_alias()
+    {
+        // scene_SS_clip_CC.mp4 is a leftover from before takes. A clip whose only file is that
+        // alias has no media — answering with it is how a stale copy got played.
+        var videoDir = Path.Combine(_tempWorkspace, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllBytes(
+            Path.Combine(videoDir, ClipTakeNaming.CanonicalMp4FileName(4, 2)), new byte[4096]);
+
+        Assert.Null(ClipSidecarService.ResolveClipMediaPath(videoDir, 4, 2));
+    }
+
+    [Fact]
+    public void Resolve_clip_media_ignores_a_stub_too_small_to_play()
+    {
+        var videoDir = Path.Combine(_tempWorkspace, "assets", "video");
+        Directory.CreateDirectory(videoDir);
+        File.WriteAllBytes(
+            Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(5, 1, 1)), new byte[16]);
+
+        Assert.Null(ClipSidecarService.ResolveClipMediaPath(videoDir, 5, 1));
+    }
+
+    private static string WriteClip(string videoDir, int scene, int clip, int take)
+    {
+        var path = Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(scene, clip, take));
+        File.WriteAllBytes(path, new byte[2048]);
+        return path;
     }
 }

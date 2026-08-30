@@ -1,3 +1,4 @@
+using PageToMovie.Core.Utils;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
@@ -40,11 +41,15 @@ public class ReviewIndexServiceTests : IDisposable
         File.WriteAllText(Path.Combine(dir, "project.json"),
             """{"id":"Demo","name":"Demo"}""");
         File.WriteAllText(Path.Combine(dir, "pipeline_state.json"), "{}");
+        var videoDir = Path.Combine(dir, "assets", "video");
         foreach (var (scene, clip) in clips)
         {
-            var path = Path.Combine(dir, "assets", "video",
-                $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-            File.WriteAllBytes(path, new byte[2048]);
+            // A clip's media is a take plus the pointer naming it — what generate writes. The bare
+            // scene_SS_clip_CC.mp4 this used to create is a leftover the product no longer reads.
+            File.WriteAllBytes(
+                Path.Combine(videoDir, ClipTakeNaming.TakeMp4FileName(scene, clip, 1)),
+                new byte[2048]);
+            ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, 1);
         }
         return dir;
     }

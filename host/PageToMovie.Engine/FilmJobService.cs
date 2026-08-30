@@ -4766,8 +4766,7 @@ public sealed class FilmJobService
     {
         var cn = ClipKeying.ClipNumber(c);
         if (cn <= 0) return;
-        var path = Path.Combine(projectDir, AssetsFolder, VideoFolder, $"scene_{sn:D2}_clip_{cn:D2}.mp4");
-        var missing = !ClipPresentOnServerOrClient(path);
+        var missing = !ClipHasMedia(Path.Combine(projectDir, AssetsFolder, VideoFolder), sn, cn);
         if (!onlyMissing || missing)
             work.Add((Scene: sn, Clip: cn, ClipEl: c.Clone()));
     }
@@ -5026,8 +5025,7 @@ public sealed class FilmJobService
         if (cn <= 0) return;
         if (req.Clip is int onlyClip && onlyClip > 0 && cn != onlyClip)
             return;
-        var path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{cn:D2}.mp4");
-        var missing = !ClipPresentOnServerOrClient(path);
+        var missing = !ClipHasMedia(videoDir, req.Scene, cn);
         if (!req.OnlyMissing || missing)
             todo.Add((cn, c.Clone()));
     }
@@ -5566,8 +5564,7 @@ public sealed class FilmJobService
         var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
 
         // H1/H2: whether this scene+clip already has media (regen vs first take).
-        var existingClipPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-        var hadVideoBefore = ClipPresentOnServerOrClient(existingClipPath);
+        var hadVideoBefore = ClipHasMedia(videoDir, scene, clip);
 
         // Previous clip in this scene — Imagine /videos/extensions continues from that video.
         // Cast-set changes reseed fresh+refs (PR2).
@@ -7760,6 +7757,30 @@ public sealed class FilmJobService
         (File.Exists(mp4Path) && new FileInfo(mp4Path).Length >= 1024) ||
         File.Exists(mp4Path + ".client.json") ||
         SidecarHasProviderSource(mp4Path);
+
+    /// <summary>
+    /// Does this clip have media — as the take <c>.current.json</c> names, or as any take on disk?
+    /// <para>Ask about the clip, not about one file name. Probing the bare
+    /// <c>scene_SS_clip_CC.mp4</c> answered "no media" for every clip stored as a take, which is
+    /// how clips are stored: batch generate then treats a finished clip as missing, and a regen
+    /// reports itself as a first take. Both mistakes end at a paid render.</para>
+    /// </summary>
+    internal static bool ClipHasMedia(string videoDir, int scene, int clip)
+    {
+        if (string.IsNullOrWhiteSpace(videoDir) || scene <= 0 || clip <= 0)
+            return false;
+
+        if (ClipSidecarService.CurrentTakePath(videoDir, scene, clip) is { } current
+            && ClipPresentOnServerOrClient(current))
+            return true;
+
+        if (!Directory.Exists(videoDir))
+            return false;
+
+        return Directory
+            .EnumerateFiles(videoDir, ClipTakeNaming.TakeMp4SearchPattern(scene, clip))
+            .Any(ClipPresentOnServerOrClient);
+    }
 
     internal static bool SidecarHasProviderSource(string mp4Path) =>
         ClipProviderSource.ReadForMp4(mp4Path)?.HasProviderCopy == true;

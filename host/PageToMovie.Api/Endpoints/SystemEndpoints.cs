@@ -142,15 +142,21 @@ public static class SystemEndpoints
     {
         if (sceneNumber is not int sn || sn <= 0)
             return null;
-        if (clipNumber is int cn && cn > 0)
+        var videoDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
+        if (clipNumber is int cn && cn > 0
+            && ClipSidecarService.ResolveClipMediaPath(videoDir, sn, cn) is { } clipPath)
+            return clipPath;
+
+        // Scene composite. Both names here were unreachable: three-digit scene numbers, which
+        // nothing writes, and a "_composite" stem that does not exist — so "open in editor"
+        // silently handed over movie.mp4 instead of the scene or clip asked for.
+        foreach (var name in new[] { $"scene_{sn:D2}.mp4", $"scene_{sn:D2}_complete.mp4" })
         {
-            var cPath = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, $"scene_{sn:D3}_clip_{cn:D2}.mp4");
-            if (File.Exists(cPath))
-                return cPath;
+            var compPath = Path.Combine(videoDir, name);
+            if (File.Exists(compPath))
+                return compPath;
         }
-        var compPath = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, $"scene_{sn:D3}_composite.mp4");
-        if (File.Exists(compPath))
-            return compPath;
+
         return null;
     }
 

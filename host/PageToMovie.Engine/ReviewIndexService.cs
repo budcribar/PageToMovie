@@ -257,10 +257,14 @@ public sealed class ReviewIndexService
         CancellationToken ct = default)
     {
         var key = $"S{scene:D2}C{clip:D2}";
-        var videoRel = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
-        var videoAbs = Path.Combine(projectDir, AssetsFolder, "video",
-            $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-        var videoExists = File.Exists(videoAbs) && new FileInfo(videoAbs).Length >= 512;
+        // The clip's media is a take; asking for the bare alias reported every stored clip as
+        // having no video, so the review index listed finished clips as unrenderable.
+        var videoAbs = ClipSidecarService.ResolveClipMediaPath(
+            Path.Combine(projectDir, AssetsFolder, "video"), scene, clip);
+        var videoExists = videoAbs is not null;
+        var videoRel = videoExists
+            ? $"{ClipTakeNaming.AssetsVideoPrefix}/{Path.GetFileName(videoAbs)}"
+            : ClipTakeNaming.CanonicalRelativePath(scene, clip);
 
         draft ??= TryLoadDraft(projectDir, scene, clip);
         var draftRel = DraftRelPath(scene, clip);

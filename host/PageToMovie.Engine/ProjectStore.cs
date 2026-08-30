@@ -6694,30 +6694,11 @@ public sealed partial class ProjectStore
             ct);
     }
 
-    public string? ResolveClipVideoPath(string projectId, int sceneNumber, int clipNumber)
-    {
-        var videoDir = Path.Combine(
-            GetProjectDir(projectId),
-            StoreLit.Assets,
-            StoreLit.Video);
-
-        if (!Directory.Exists(videoDir)) return null;
-
-        var current = ClipSidecarService.CurrentTakePath(videoDir, sceneNumber, clipNumber);
-        if (current is not null && File.Exists(current) && new FileInfo(current).Length >= 1024)
-            return current;
-
-        // No pointer (or take bytes not on this machine): newest take_NN file.
-        // Leftover bare aliases are ignored when a take file exists.
-        var takePrefix = ClipTakeNaming.SceneClipPrefix(sceneNumber, clipNumber) + "_take_";
-        var latestTake = new DirectoryInfo(videoDir)
-            .EnumerateFiles($"{takePrefix}*.mp4")
-            .Where(fi => fi.Length >= 1024 && !fi.Name.StartsWith('_'))
-            .OrderByDescending(fi => fi.LastWriteTimeUtc)
-            .FirstOrDefault();
-
-        return latestTake?.FullName;
-    }
+    public string? ResolveClipVideoPath(string projectId, int sceneNumber, int clipNumber) =>
+        ClipSidecarService.ResolveClipMediaPath(
+            Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video),
+            sceneNumber,
+            clipNumber);
 
     /// <summary>
     /// xAI Files <c>file_id</c> from the clip sidecar, even when the .mp4 was never copied
@@ -7993,10 +7974,12 @@ public sealed partial class ProjectStore
             return;
         foreach (var cn in allowed.OrderBy(c => c))
         {
-            var name = $"scene_{sceneNum:D2}_clip_{cn:D2}.mp4";
-            if (names.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
-            var path = Path.Combine(videoDir, name);
-            if (File.Exists(path) && new FileInfo(path).Length >= 1024)
+            // Whichever take this clip resolves to — the bare name is a leftover, and looking for
+            // it left planned clips out of the scene's file list even when they were rendered.
+            if (ClipSidecarService.ResolveClipMediaPath(videoDir, sceneNum, cn) is not { } path)
+                continue;
+            var name = Path.GetFileName(path);
+            if (!names.Contains(name, StringComparer.OrdinalIgnoreCase))
                 names.Add(name);
         }
     }
