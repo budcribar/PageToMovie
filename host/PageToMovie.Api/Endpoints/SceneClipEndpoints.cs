@@ -69,6 +69,10 @@ public static partial class SceneClipEndpoints
         app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}", GetProjectsIdScenesSceneNumber);
         app.MapMethods("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/video",
             new[] { "GET", "HEAD" }, GetProjectsIdScenesSceneNumberClipsClipNumberVideo);
+        // <summary>One named take of a clip. The caller says which; the server does not choose,
+        // so it cannot answer with a take the caller did not ask for.</summary>
+        app.MapMethods("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/takes/{take:int}/video",
+            new[] { "GET", "HEAD" }, GetProjectsIdScenesSceneNumberClipsClipNumberTakeVideo);
 
         app.MapGet("/api/projects/{id}/clips/fork-fallback-needed", GetProjectsIdClipsForkFallbackNeeded);
         app.MapPost("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/fork-fallback", PostProjectsIdScenesClipForkFallback);
@@ -813,6 +817,62 @@ public static partial class SceneClipEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    /// <summary>
+    /// Serve exactly the take asked for. No provider fallback and no substitution: a request for
+    /// take 3 that cannot be answered with take 3 is a 404, because quietly returning a different
+    /// take is how two surfaces came to disagree about what a clip is.
+    /// </summary>
+    private static async Task<IResult> GetProjectsIdScenesSceneNumberClipsClipNumberTakeVideo(
+        string id, int sceneNumber, int clipNumber, int take,
+        HttpRequest req,
+        [AsParameters] ClipVideoServices svc,
+        CancellationToken ct)
+    {
+        if (AuthGate.RequireLogin(svc.User, svc.Opts) is { } denied)
+            return denied;
+        try
+        {
+            var path = await ResolveTakeVideoPathAsync(svc.Store, id, sceneNumber, clipNumber, take, ct);
+            if (HttpMethods.IsHead(req.Method))
+                return path is not null ? Results.Ok() : Results.NotFound();
+            return path is not null
+                ? Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true)
+                : Results.NotFound(new { ok = false, error = "take not found" });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>This take's file, in the project or the one it was forked from.</summary>
+    private static async Task<string?> ResolveTakeVideoPathAsync(
+        ProjectStore store, string id, int sceneNumber, int clipNumber, int take, CancellationToken ct)
+    {
+        if (take <= 0)
+            return null;
+
+        var fileName = ClipTakeNaming.TakeMp4FileName(sceneNumber, clipNumber, take);
+        var own = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "video", fileName);
+        if (File.Exists(own) && new FileInfo(own).Length >= ClipSidecarService.MinPlayableBytes)
+            return own;
+
+        try
+        {
+            var proj = await store.GetProjectAsync(id, ct);
+            if (proj?.ParentProjectId is { Length: > 0 } parentId)
+            {
+                var forked = Path.Combine(
+                    await store.GetProjectDirAsync(parentId, ct), "assets", "video", fileName);
+                if (File.Exists(forked) && new FileInfo(forked).Length >= ClipSidecarService.MinPlayableBytes)
+                    return forked;
+            }
+        }
+        catch { /* a missing parent is simply no second place to look */ }
+
+        return null;
+    }
 
     private static async Task<(string? Path, string? ParentId)> ResolveClipVideoPathWithParentAsync(
         ProjectStore store, string id, int sceneNumber, int clipNumber, CancellationToken ct)

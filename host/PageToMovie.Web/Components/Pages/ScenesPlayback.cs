@@ -735,9 +735,13 @@ public partial class Scenes
             return await ResolveProviderTakeCompareUrlAsync(v);
         if (v.IsCurrent)
             return await ResolveCurrentTakeCompareUrlAsync();
-        if (!string.IsNullOrEmpty(v.Mp4FileName))
-            return S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/{v.Mp4FileName}");
-        return null;
+        // This exact take, through the route that serves takes. The old URL pointed at
+        // /assets/video/<file>, which nothing routes — so comparing an older take against the
+        // server never loaded anything; it only worked when the take was in the media folder.
+        var take = ClipTakeNaming.ParseTakeNumber(v.Mp4FileName);
+        return take > 0
+            ? S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber, take)
+            : null;
     }
 
     private async Task<string?> ResolveCurrentTakeCompareUrlAsync()

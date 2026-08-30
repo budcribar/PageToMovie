@@ -2433,9 +2433,16 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             JsonOpts,
             ct);
 
-    public string ClipVideoUrl(string projectId, int sceneNumber, int clipNumber) =>
+    /// <summary>
+    /// A clip's video. Name the <paramref name="take"/> whenever it is known — the server then
+    /// serves that take or nothing, instead of resolving "current" a second time and possibly
+    /// landing on a different one than the caller believes is current.
+    /// </summary>
+    public string ClipVideoUrl(string projectId, int sceneNumber, int clipNumber, int? take = null) =>
         BrowserMediaPath(
-            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}/video");
+            $"{ProjectIdRouting.ProjectApi(projectId)}/scenes/{sceneNumber}/clips/{clipNumber}"
+            + (take is > 0 ? $"/takes/{take}" : "")
+            + "/video");
 
     /// <summary>True if the clip/media URL returns 2xx. GET + Range so we never HEAD (405).</summary>
     public async Task<bool> MediaUrlReachableAsync(string url, CancellationToken ct = default)
