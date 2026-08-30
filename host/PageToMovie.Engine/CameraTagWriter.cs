@@ -107,11 +107,8 @@ public static class CameraTagWriter
         return null;
     }
 
-    public static string MediumHold(string? speakerDisplay = null)
-    {
-        _ = speakerDisplay;
-        return MediumHoldFraming;
-    }
+    /// <summary>The one framing that is always safe: no invented lens, move, or second body.</summary>
+    public static string MediumHold() => MediumHoldFraming;
 
     /// <summary>
     /// Copy the previous Camera, strip DoF, refuse invented OTS without a second body,
@@ -132,12 +129,11 @@ public static class CameraTagWriter
     public static string FallbackFraming(
         string? previousCamera,
         int onScreenCastCount,
-        string? speakerDisplay = null,
         int step = 0)
     {
         if (!string.IsNullOrWhiteSpace(previousCamera))
             return ReusePrevious(previousCamera, onScreenCastCount, step);
-        return MediumHold(speakerDisplay);
+        return MediumHold();
     }
 
     public static bool HasCameraLanguage(string? action) =>

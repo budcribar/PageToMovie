@@ -136,7 +136,7 @@ public sealed class CameraTagWriterTests
     {
         for (var step = 0; step < 8; step++)
         {
-            var framing = Stage2PlannerService.GetMonologueCameraFraming(step, "Narrator", 1);
+            var framing = Stage2PlannerService.GetMonologueCameraFraming(step, 1);
             Assert.Equal(CameraTagWriter.MediumHoldFraming, framing);
             Assert.DoesNotContain("shallow depth of field", framing, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Extreme close-up", framing, StringComparison.OrdinalIgnoreCase);
