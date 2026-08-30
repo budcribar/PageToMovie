@@ -170,6 +170,7 @@ public class ClipVideoPromptBuilderTests
         var clip = JsonDocument.Parse("""
             {
               "clip_number": 1,
+              "duration_seconds": 8,
               "visual_prompt": "Character_OldMan sleeps. Character_Narrator watches from the shadows.",
               "characters_on_screen": ["Character_OldMan", "Character_Narrator"],
               "veo_continuation_source": "none",
@@ -201,19 +202,22 @@ public class ClipVideoPromptBuilderTests
 
         var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
 
+        AssertFillNPacing(built.Prompt, 8);
         Assert.Contains("Silent beat", built.Prompt);
         Assert.Contains("do not show any on-screen character", built.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("the spoken line", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("half a second", built.Prompt, StringComparison.OrdinalIgnoreCase);
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
     }
 
     [Fact]
-    public void Build_clip_with_dialogue_still_uses_spoken_line_closing()
+    public void Build_dialogue_clip_fills_planned_duration_audio_owns_end_pause()
     {
         var clip = JsonDocument.Parse("""
             {
               "clip_number": 1,
+              "duration_seconds": 11,
               "visual_prompt": "Character_OldMan speaks.",
               "characters_on_screen": ["Character_OldMan"],
               "veo_continuation_source": "none",
@@ -242,10 +246,98 @@ public class ClipVideoPromptBuilderTests
 
         var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
 
-        Assert.Contains("the spoken line and primary action finish", built.Prompt, StringComparison.OrdinalIgnoreCase);
+        AssertFillNPacing(built.Prompt, 11);
         Assert.DoesNotContain("Silent beat", built.Prompt);
+        AssertAudioOwnsClosedMouthPause(built.Prompt);
 
         try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+    }
+
+    [Fact]
+    public void Build_extend_dialogue_uses_same_fill_n_pacing_as_fresh()
+    {
+        var clipJson = """
+            {
+              "clip_number": 2,
+              "duration_seconds": 9,
+              "visual_prompt": "Character_OldMan speaks.",
+              "characters_on_screen": ["Character_OldMan"],
+              "veo_continuation_source": "extend_previous",
+              "audio_payload": {
+                "speaker": "Character_OldMan",
+                "dialogue": "Come closer.",
+                "delivery": "spoken_on_camera"
+              }
+            }
+            """;
+        var clip = JsonDocument.Parse(clipJson).RootElement;
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_OldMan"] = new()
+            {
+                Key = "Character_OldMan",
+                DisplayName = "Old Man",
+                Description = "frail elderly man",
+                VoiceProfile = "raspy whisper",
+            },
+        };
+
+        var tmp = Path.Combine(Path.GetTempPath(), "fs-clip-pacing-ext-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        var prevVideo = Path.Combine(tmp, "scene_01_clip_01.mp4");
+        File.WriteAllBytes(prevVideo, new byte[2048]);
+
+        var fresh = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 3);
+        var extend = ClipVideoPromptBuilder.Build(
+            clip,
+            tmp,
+            profiles,
+            previousClipVisualPrompt: "Character_OldMan stands in the doorway.",
+            previousClipVideoPath: prevVideo,
+            maxRefs: 3);
+
+        Assert.Equal("video-extend", extend.Mode);
+        AssertFillNPacing(fresh.Prompt, 9);
+        AssertFillNPacing(extend.Prompt, 9);
+        AssertAudioOwnsClosedMouthPause(fresh.Prompt);
+        AssertAudioOwnsClosedMouthPause(extend.Prompt);
+        Assert.Equal(1, CountOccurrences(fresh.Prompt, "This is a 9-second shot"));
+        Assert.Equal(1, CountOccurrences(extend.Prompt, "This is a 9-second shot"));
+
+        try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+    }
+
+    [Fact]
+    public void Build_live_prompt_has_no_tight_action_house_line()
+    {
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "duration_seconds": 6,
+              "visual_prompt": "Character_OldMan walks across the room.",
+              "characters_on_screen": ["Character_OldMan"],
+              "audio_payload": { "speaker": "", "dialogue": "", "delivery": "none" }
+            }
+            """).RootElement;
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip,
+            Path.GetTempPath(),
+            new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Character_OldMan"] = new()
+                {
+                    Key = "Character_OldMan",
+                    DisplayName = "Old Man",
+                    Description = "frail elderly man",
+                },
+            });
+
+        AssertFillNPacing(built.Prompt, 6);
+        Assert.True(string.IsNullOrWhiteSpace(
+            ClipVideoPromptBuilder.PromptBodyFromClipGenRules(
+                ClipVideoPromptBuilder.TryLoadClipGenRules())));
     }
 
     [Fact]
@@ -1588,6 +1680,41 @@ public class ClipVideoPromptBuilderTests
         {
             try { Directory.Delete(dir, true); } catch { }
         }
+    }
+
+    private static void AssertFillNPacing(string prompt, int seconds)
+    {
+        Assert.Contains($"This is a {seconds}-second shot", prompt, StringComparison.Ordinal);
+        Assert.Contains($"full {seconds} seconds", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("End cleanly when the spoken line", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("End cleanly when the primary physical action finishes", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("tight action", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("avoid long empty holds", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Prefer tight action after speech", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertAudioOwnsClosedMouthPause(string prompt)
+    {
+        const string pause =
+            "After the last word, hold a brief natural pause with a closed mouth (about half a second)";
+        Assert.Contains(pause, prompt, StringComparison.Ordinal);
+        var clipIdx = prompt.IndexOf("<Clip>", StringComparison.Ordinal);
+        Assert.True(clipIdx >= 0, "expected a <Clip> section");
+        var clipSection = prompt[clipIdx..];
+        Assert.DoesNotContain("half a second", clipSection, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("closed mouth", clipSection, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var n = 0;
+        var i = 0;
+        while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0)
+        {
+            n++;
+            i += needle.Length;
+        }
+        return n;
     }
 }
 
