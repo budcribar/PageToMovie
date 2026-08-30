@@ -104,19 +104,21 @@ public class Stage2VisualPromptTests : IDisposable
 
     [Theory]
     [InlineData("He steadies his hands on his knees. A thin smile.", "Character_Narrator", "Narrator",
-        "Narrator steadies his hands on his knees. A thin smile.")]
-    [InlineData("She turns toward the door.", "Character_Mom", "Mom", "Mom turns toward the door.")]
-    [InlineData("His eyes widen.", "Character_Hero", "Hero", "Hero's eyes widen.")]
+        "Character_Narrator steadies his hands on his knees. A thin smile.")]
+    [InlineData("She turns toward the door.", "Character_Mom", "Mom", "Character_Mom turns toward the door.")]
+    [InlineData("His eyes widen.", "Character_Hero", "Hero", "Character_Hero's eyes widen.")]
     [InlineData("Candlelight fills the room.", "Character_Narrator", "Narrator",
-        "Narrator Candlelight fills the room.")]
+        "Character_Narrator Candlelight fills the room.")]
     [InlineData("Narrator leans forward.", "Character_Narrator", "Narrator", "Narrator leans forward.")]
-    public void AttachPrimaryToVisual_uses_display_name_not_token_plus_pronoun(
+    public void AttachPrimaryToVisual_uses_catalog_key_not_display_name_or_pronoun(
         string visual, string key, string display, string expected)
     {
         var result = Stage2PlannerService.AttachPrimaryToVisual(visual, key, display);
         Assert.Equal(expected, result);
         Assert.DoesNotContain("Character_Narrator He", result, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Character_Mom She", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Narrator steadies", result);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Mom turns", result);
     }
 
     [Theory]

@@ -464,6 +464,101 @@ public class ClipVideoPromptBuilderTests
     }
 
     [Fact]
+    public void CompressPromptText_aliases_leftover_display_names_to_the_same_C_index()
+    {
+        var input =
+            "<Characters>Character_Mary <Name>Mary</Name>: school-age girl. Character_The_Lamb: tiny white lamb.</Characters>\n" +
+            "<CastCount>exactly 2 — Character_Mary, Character_The_Lamb.</CastCount>\n" +
+            "<Action>Mary walks. THE LAMB follows. Character_Mary still wears a pale pinafore.</Action>";
+
+        var compressed = ClipVideoPromptBuilder.CompressPromptText(input);
+
+        Assert.DoesNotContain("Character_Mary", compressed, StringComparison.Ordinal);
+        Assert.DoesNotContain("Character_The_Lamb", compressed, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])Mary(?![A-Za-z_])", compressed);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])THE LAMB(?![A-Za-z_])", compressed);
+        Assert.DoesNotMatch(@"(?<![A-Za-z_])The Lamb(?![A-Za-z_])", compressed);
+        Assert.Contains("C1 walks", compressed, StringComparison.Ordinal);
+        Assert.Contains("C2 follows", compressed, StringComparison.Ordinal);
+        Assert.Contains("C1 still wears", compressed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompressPromptText_does_not_rewrite_quoted_display_names()
+    {
+        var input = "Character_Mary ON CAMERA lip-syncs EXACTLY: \"Mary had a little lamb.\".";
+        var compressed = ClipVideoPromptBuilder.CompressPromptText(input);
+        Assert.Contains("C1 lip-syncs", compressed, StringComparison.Ordinal);
+        Assert.Contains("\"Mary had a little lamb.\"", compressed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FitPromptToVideoBudget_under_cap_keeps_Character_keys_and_never_emits_C_index()
+    {
+        var prompt =
+            "<Characters>Character_Mary: school-age girl. Character_The_Lamb: tiny white lamb.</Characters>\n" +
+            "<CastCount>exactly 2 — Character_Mary, Character_The_Lamb.</CastCount>\n" +
+            "<Identity>On-screen: Character_Mary, Character_The_Lamb.</Identity>\n" +
+            "<VoiceLock>Character_Mary: bright child.</VoiceLock>\n" +
+            "<Action>Character_Mary walks. Character_The_Lamb follows.</Action>";
+
+        Assert.True(prompt.Length < ClipVideoPromptBuilder.VideoPromptHardCapChars);
+        var fitted = ClipVideoPromptBuilder.FitPromptToVideoBudget(prompt);
+        Assert.Equal(prompt, fitted);
+        Assert.DoesNotMatch(@"\bC\d+\b", fitted);
+        Assert.Contains("Character_Mary", fitted, StringComparison.Ordinal);
+        Assert.Contains("Character_The_Lamb", fitted, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Changing_on_screen_set_does_not_leave_stale_C3_in_fresh_or_extend()
+    {
+        var prevThree =
+            "<Setting>INT. SCHOOLROOM - DAY</Setting> " +
+            "<Cast>Character_Mary, Character_The_Lamb, Character_Teacher</Cast> " +
+            "<Action>also on screen: C3, C2. Character_Teacher watches.</Action> " +
+            "<Lighting>Soft warm daylight.</Lighting>";
+        var look = ClipVideoPromptBuilder.PreviousClipLookOnly(
+            prevThree, new[] { "Character_Mary", "Character_The_Lamb" });
+        Assert.DoesNotContain("C3", look, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen", look, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Character_Teacher", look, StringComparison.Ordinal);
+
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 3,
+              "visual_prompt": "<Setting>INT. SCHOOLROOM - DAY</Setting> <Cast>Character_Mary, Character_The_Lamb</Cast> <Action>Mary and The Lamb wait by the door.</Action>",
+              "characters_on_screen": ["Character_Mary", "Character_The_Lamb"],
+              "audio_payload": { "speaker": "Character_Narrator", "delivery": "voiceover_internal", "dialogue": "And so the teacher turned him out." }
+            }
+            """).RootElement;
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_Mary"] = new() { Key = "Character_Mary", DisplayName = "Mary", Description = "girl" },
+            ["Character_The_Lamb"] = new() { Key = "Character_The_Lamb", DisplayName = "The Lamb", Description = "lamb" },
+            ["Character_Teacher"] = new() { Key = "Character_Teacher", DisplayName = "Teacher", Description = "adult" },
+            ["Character_Narrator"] = new() { Key = "Character_Narrator", DisplayName = "Narrator", Description = "voice", VoiceOnly = true },
+        };
+
+        var fresh = ClipVideoPromptBuilder.Build(
+            clip, Path.GetTempPath(), profiles, previousClipVisualPrompt: prevThree);
+        Assert.Equal("fresh", fresh.Mode);
+        Assert.DoesNotMatch(@"\bC\d+\b", fresh.Prompt);
+        Assert.DoesNotContain("C3", fresh.Prompt, StringComparison.Ordinal);
+        Assert.Contains("Character_Mary", fresh.Prompt, StringComparison.Ordinal);
+        Assert.Contains("Character_The_Lamb", fresh.Prompt, StringComparison.Ordinal);
+
+        var extend = ClipVideoPromptBuilder.Build(
+            clip, Path.GetTempPath(), profiles, previousClipExtendFileId: "file_prev");
+        Assert.Equal("video-extend", extend.Mode);
+        Assert.DoesNotMatch(@"\bC\d+\b", extend.Prompt);
+        Assert.DoesNotContain("C3", extend.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("also on screen: C3", extend.Prompt, StringComparison.Ordinal);
+        Assert.Contains("Character_Mary", extend.Prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FitPromptToVideoBudget_strips_house_rules_before_first_send()
     {
         var core = "CHARACTER VARIABLES\n- Character_Hero: pale man\n\nTHIS CLIP:\nHe walks.\n";

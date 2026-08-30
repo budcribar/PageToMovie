@@ -2018,7 +2018,7 @@ public sealed class Stage2PlannerService
         var visualCast = cast.Where(t => !IsNeverOnScreenCharacter(t, charSeeds)).ToList();
         if (IsNeverOnScreenCharacter(primary, charSeeds))
             primary = visualCast.Count > 0 ? visualCast[0] : "";
-        ve = AttachSubjectIfMissing(ve, primary, charSeeds);
+        ve = AttachSubjectIfMissing(ve, primary);
         ve = NormalizeCastMentionsToKeys(ve, visualCast, charSeeds);
 
         var others = visualCast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
@@ -2076,18 +2076,17 @@ public sealed class Stage2PlannerService
     /// <summary>
     /// Rewrite screenplay-cased cast mentions in action prose to their <c>Character_*</c> keys —
     /// "THE CHILDREN twist in their seats" becomes "Character_The_Children twist in their seats".
+    /// Title-case "Mary" / "The Lamb" become the same key as ALL-CAPS MARY / THE LAMB.
     /// </summary>
     /// <remarks>
-    /// Every structured block in a clip prompt names cast by key (and CompressPromptText aliases
-    /// those to C1/C2), while the action named them in screenplay caps. One prompt therefore
-    /// carried two naming schemes for the same person with nothing linking them — measured on real
-    /// Mary19 traffic: &lt;Characters&gt;, &lt;CastCount&gt; and "On-screen:" all said C1/C2 while
-    /// the action said MARY and THE LAMB. It also made SanitizeActionText's "{key} is on screen."
-    /// fallback fire on every single clip, because Contains(key) could never match a caps mention.
+    /// Every structured block in a clip prompt names cast by the catalog key. CompressPromptText
+    /// may alias those to C1/C2 when the prompt is over the char cap — and only then. Leaving
+    /// display names in the action (Mary / MARY) beside Character_* (or C1 after compression)
+    /// is a contradiction for the video model: C-indices remap per clip.
     ///
-    /// <para>Only ALL-CAPS mentions are rewritten. That is the screenplay convention the planner
-    /// and the fountain both use for a character, and it is what keeps a generic lowercase noun
-    /// out of it — "to see a lamb at school" is not THE LAMB.</para>
+    /// <para>ALL-CAPS and title-case mentions are rewritten. All-lowercase is generic prose, not
+    /// a cue — "to see a lamb at school" is not THE LAMB. Quoted dialogue is left alone so a
+    /// spoken "Mary" is not rewritten to a key.</para>
     ///
     /// <para>This does NOT retire ClipVideoPromptBuilder.InferKeysFromProse. That maps Stage 1
     /// fountain prose to keys and has consumers in the on-screen-cast classifier, Stage 2 cast
@@ -2097,33 +2096,61 @@ public sealed class Stage2PlannerService
     internal static string NormalizeCastMentionsToKeys(
         string? actionText,
         IReadOnlyList<string> cast,
-        Dictionary<string, object?> charSeeds)
+        Dictionary<string, object?>? charSeeds = null,
+        IReadOnlyDictionary<string, string>? displayNamesByKey = null)
     {
         var text = actionText ?? "";
         if (text.Length == 0 || cast is not { Count: > 0 })
             return text;
 
-        // Longest form first, so "THE OLD MAN" is not half-consumed by "MAN".
-        var candidates = cast
+        var pairs = CollectCastMentionPairs(cast, charSeeds, displayNamesByKey)
+            .Select(c => (c.Name, c.Key));
+        return RewriteCastMentions(text, pairs);
+    }
+
+    /// <summary>
+    /// Mention form → catalog key, longest form first so "The Old Man" is not half-eaten by "Man".
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Name)> CollectCastMentionPairs(
+        IReadOnlyList<string> cast,
+        Dictionary<string, object?>? charSeeds = null,
+        IReadOnlyDictionary<string, string>? displayNamesByKey = null)
+    {
+        return cast
             .Where(k => !string.IsNullOrWhiteSpace(k))
-            .SelectMany(key => CastMentionForms(key, charSeeds).Select(name => (Key: key, Name: name)))
+            .SelectMany(key =>
+            {
+                string? extra = null;
+                if (displayNamesByKey is not null &&
+                    displayNamesByKey.TryGetValue(key, out var found))
+                    extra = found;
+                return CastMentionForms(key, charSeeds, extra).Select(name => (Key: key, Name: name));
+            })
             .Where(c => c.Name.Length >= 3)
+            .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
             .OrderByDescending(c => c.Name.Length)
             .ToList();
-
-        foreach (var (key, name) in candidates)
-        {
-            // Case-SENSITIVE against the upper form: lowercase use is generic prose, not a cue.
-            // The lookarounds keep it off word fragments and off an already-written key.
-            var pattern =
-                $@"(?<![A-Za-z_]){System.Text.RegularExpressions.Regex.Escape(name.ToUpperInvariant())}(?![A-Za-z_])";
-            text = CommonRegex.Replace(text, pattern, key);
-        }
-        return text;
     }
 
     /// <summary>Ways a screenplay might name this cast key: "The Lamb", "Lamb", its given name.</summary>
-    private static IEnumerable<string> CastMentionForms(string key, Dictionary<string, object?> charSeeds)
+    internal static IEnumerable<string> CastMentionForms(
+        string key,
+        Dictionary<string, object?>? charSeeds = null,
+        string? extraDisplayName = null)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var form in EnumerateCastMentionForms(key, charSeeds, extraDisplayName))
+        {
+            if (form.Length >= 3 && seen.Add(form))
+                yield return form;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateCastMentionForms(
+        string key,
+        Dictionary<string, object?>? charSeeds,
+        string? extraDisplayName)
     {
         var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
             .Replace('_', ' ').Trim();
@@ -2137,10 +2164,69 @@ public sealed class Stage2PlannerService
                 yield return bare;
         }
 
-        if (charSeeds.TryGetValue(key, out var raw) && raw is Dictionary<string, object?> seed
-            && seed.TryGetValue("canonical_given_name", out var gn)
-            && CoerceString(gn) is { Length: > 0 } given)
-            yield return given.Trim();
+        if (charSeeds is not null &&
+            charSeeds.TryGetValue(key, out var raw) &&
+            raw is Dictionary<string, object?> seed)
+        {
+            if (seed.TryGetValue("canonical_given_name", out var gn) &&
+                CoerceString(gn) is { Length: > 0 } given)
+                yield return given.Trim();
+            if (seed.TryGetValue("display_name", out var dn) &&
+                CoerceString(dn) is { Length: > 0 } display)
+                yield return display.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(extraDisplayName))
+            yield return extraDisplayName.Trim();
+    }
+
+    /// <summary>
+    /// Replace leftover display-name mentions with <paramref name="pairs"/> replacements.
+    /// Skips all-lowercase generic nouns and quoted dialogue. Used by plan-time normalize
+    /// (mention → Character_*) and by CompressPromptText (mention → C1).
+    /// </summary>
+    internal static string RewriteCastMentions(
+        string? text,
+        IEnumerable<(string Mention, string Replacement)> pairs)
+    {
+        var result = text ?? "";
+        if (result.Length == 0)
+            return result;
+
+        foreach (var (mention, replacement) in pairs)
+        {
+            if (mention.Length < 3 ||
+                string.IsNullOrEmpty(replacement) ||
+                string.Equals(mention, replacement, StringComparison.Ordinal))
+                continue;
+
+            var escaped = Regex.Escape(mention);
+            var pattern = $@"""[^""]*""|(?<![A-Za-z_]){escaped}(?![A-Za-z_])";
+            result = CommonRegex.Replace(result, pattern, m =>
+            {
+                if (m.Value.Length > 0 && m.Value[0] == '"')
+                    return m.Value;
+                if (IsGenericLowercaseMention(m.Value))
+                    return m.Value;
+                return replacement;
+            }, RegexOptions.IgnoreCase);
+        }
+        return result;
+    }
+
+    /// <summary>All-lowercase is generic prose ("a lamb at school"), not a character cue.</summary>
+    internal static bool IsGenericLowercaseMention(string value)
+    {
+        var letters = 0;
+        foreach (var ch in value)
+        {
+            if (!char.IsLetter(ch))
+                continue;
+            if (!char.IsLower(ch))
+                return false;
+            letters++;
+        }
+        return letters > 0;
     }
 
     /// <summary>Pull every <c>(SOUND: …)</c> cue out of the action prose. Returns (action, cues).</summary>
@@ -2195,16 +2281,12 @@ public sealed class Stage2PlannerService
     private static string? SceneVisualMedium(Dictionary<string, object?> scene) =>
         CoerceString(scene.TryGetValue(JsonKeys.VisualMedium, out var vm) ? vm : null);
 
-    private static string AttachSubjectIfMissing(
-        string ve,
-        string primary,
-        Dictionary<string, object?> charSeeds)
+    private static string AttachSubjectIfMissing(string ve, string primary)
     {
-        // Attach subject as readable display name — never "Character_X He steadies…"
+        // Attach the catalog key — never a display name that later fights Character_* / C1.
         if (string.IsNullOrEmpty(primary) || VisualMentionsSubject(ve, primary))
             return ve;
-        var display = DisplayNameForKey(primary, charSeeds);
-        return AttachPrimaryToVisual(ve, primary, display);
+        return AttachPrimaryToVisual(ve, primary);
     }
 
     private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat, bool isContinuation)
@@ -2272,14 +2354,16 @@ public sealed class Stage2PlannerService
     }
 
     /// <summary>
-    /// Join primary subject into action prose as a display name.
-    /// Pronoun leads (He/She/They…) become named subjects — never <c>Character_* He …</c>.
+    /// Join primary subject into action prose as the catalog key.
+    /// Pronoun leads (He/She/They…) become named subjects — never <c>Character_* He …</c>
+    /// and never a display name that later fights the key.
     /// </summary>
     public static string AttachPrimaryToVisual(
         string? visualEvent,
         string primaryKey,
         string? displayName = null)
     {
+        _ = displayName; // ignored — one spelling, the catalog key
         var ve = (visualEvent ?? "").Trim();
         if (ve.Length == 0)
             return ve;
@@ -2288,14 +2372,7 @@ public sealed class Stage2PlannerService
         if (VisualMentionsSubject(ve, primaryKey))
             return ve;
 
-        var name = (displayName ?? "").Trim();
-        if (name.Length == 0)
-        {
-            var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
-                ? primaryKey[JsonKeys.CharacterPrefix.Length..]
-                : primaryKey;
-            name = bare.Replace('_', ' ').Trim();
-        }
+        var name = primaryKey.Trim();
         if (name.Length == 0)
             return ve;
 
@@ -2315,28 +2392,7 @@ public sealed class Stage2PlannerService
         if (m.Success)
             return $"{name}'s {m.Groups["rest"].Value.Trim()}".Trim();
 
-        // Prefer human-readable name in action (CAST COUNT / variables still use Character_*)
         return $"{name} {ve}".Trim();
-    }
-
-    private static string DisplayNameForKey(
-        string primaryKey,
-        Dictionary<string, object?> charSeeds)
-    {
-        if (charSeeds.TryGetValue(primaryKey, out var seed) &&
-            seed is Dictionary<string, object?> d)
-        {
-            var cn = CoerceString(d.TryGetValue("canonical_given_name", out var c) ? c : null);
-            if (!string.IsNullOrWhiteSpace(cn))
-                return cn;
-            var vl = CoerceString(d.TryGetValue("voice_label", out var v) ? v : null);
-            if (!string.IsNullOrWhiteSpace(vl))
-                return vl.Replace('_', ' ');
-        }
-        var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
-            ? primaryKey[JsonKeys.CharacterPrefix.Length..]
-            : primaryKey;
-        return bare.Replace('_', ' ').Trim();
     }
 
     /// <summary>

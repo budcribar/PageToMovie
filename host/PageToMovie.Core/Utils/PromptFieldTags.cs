@@ -30,9 +30,9 @@ public static class PromptFieldTags
     public const string Grade = "Grade";
 
     /// <summary>
-    /// A cast member's human display name inside a <c>&lt;Characters&gt;</c> line. Compression
-    /// drops it once the keys are aliased to C1/C2 — a tag makes that an exact strip instead of a
-    /// bracket match that had to run after aliasing and silently skipped the voice-only line.
+    /// Legacy only. Character lines no longer emit a display-name tag — the catalog key is the
+    /// one spelling. Compression still strips leftover <c>&lt;Name&gt;</c> from older prompts
+    /// after aliasing the name to the same C-index as the key.
     /// </summary>
     public const string Name = "Name";
 }
