@@ -582,11 +582,11 @@ public static class ClipVideoPromptBuilder
 
     private static void AppendClipPacingAndClose(StringBuilder sb, JsonElement clipEl)
     {
-        // Duration is the budget the API also gets as `duration`. One sentence owns visual
+        // Duration is the budget the API also gets as duration. One sentence owns visual
         // pacing: fill the planned N seconds. Speech ending early must not cut the picture
-        // short — leftover time is still motivated action, not a freeze or a hard cut on
-        // the last syllable. Audio owns the ~0.5s closed-mouth pause after the last word;
-        // do not restate that pause (or "end when the line finishes") here.
+        // short. Leftover time is still motivated action, not a freeze or a hard cut on
+        // the last syllable. Audio owns the half-second closed-mouth pause after the last
+        // word. Do not restate that pause or "end when the line finishes" here.
         if (TryGetClipDurationSeconds(clipEl, out var clipDurSec))
         {
             sb.AppendLine(
