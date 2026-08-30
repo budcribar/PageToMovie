@@ -776,14 +776,15 @@ public static class ClipVideoPromptBuilder
     private static Dictionary<string, string> CollectNameTagDisplayNames(string prompt)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in CommonRegex.Matches(
+        foreach (var groups in CommonRegex.Matches(
                      prompt,
                      @"\b(Character_[A-Za-z0-9_]+)\b[^<\n]{0,120}<Name>([^<]+)</Name>",
-                     RegexOptions.IgnoreCase))
+                     RegexOptions.IgnoreCase)
+                     .Select(m => m.Groups))
         {
-            var name = m.Groups[2].Value.Trim();
+            var name = groups[2].Value.Trim();
             if (name.Length > 0)
-                map.TryAdd(m.Groups[1].Value, name);
+                map.TryAdd(groups[1].Value, name);
         }
         return map;
     }
