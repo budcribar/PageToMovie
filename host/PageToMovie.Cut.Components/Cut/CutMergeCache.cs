@@ -245,6 +245,9 @@ public static class CutMergeCache
         sb.Append('@').Append(Num(clip.MarkIn)).Append('-').Append(Num(clip.MarkOut));
         if (clip.HoldsPicture)
             sb.Append('H');
+        // A cached scene piece carries its own audio, so muting has to rebuild it.
+        if (clip.Muted)
+            sb.Append('M');
         foreach (var span in clip.RangeDeletes)
             sb.Append('~').Append(Num(span.Start)).Append('-').Append(Num(span.End));
         if (clip.Card.Enabled)
@@ -259,6 +262,9 @@ public static class CutMergeCache
     {
         sb.Append(side).Append(clip.Scene).Append(':').Append(clip.Clip);
         sb.Append('@').Append(Num(outgoing ? clip.MarkOut : clip.MarkIn));
+        // A cross-fade keeps the edge clips' own audio, so it too is stale once muted.
+        if (clip.Muted)
+            sb.Append('M');
         var windows = clip.KeepWindows();
         if (windows.Count == 0)
             return;

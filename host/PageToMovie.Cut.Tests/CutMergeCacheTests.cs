@@ -73,6 +73,24 @@ public class CutMergeCacheTests
     }
 
     [Fact]
+    public void Muting_a_clip_rebuilds_its_scene_and_the_joins_that_carry_its_audio()
+    {
+        var clips = FeatureClips(52);
+        var plan = CutMergeCache.Build(clips, [], null, null);
+        var saved = CutMergeCache.ManifestOf(plan);
+
+        clips[39].Muted = true;
+        var dirty = CutMergeCache.Diff(CutMergeCache.Build(clips, [], null, null), saved);
+
+        // A cached scene piece and a cross-fade both carry the clip's own audio, so silencing it
+        // has to invalidate them — otherwise Make movie hands back the old sound.
+        Assert.Equal(new[] { 40 }, dirty.RebuildScenes);
+        Assert.Equal(new[] { 39, 40 }, dirty.RebuildJoins);
+        Assert.False(dirty.MovieFresh);
+        Assert.False(dirty.PictureFresh);
+    }
+
+    [Fact]
     public void Moving_the_score_remixes_cached_picture_and_does_not_rebuild_scenes()
     {
         var clips = FeatureClips(8);

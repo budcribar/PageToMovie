@@ -109,7 +109,7 @@ else
    good, costing a fixed slice of every screen for news the page already tells. *@
 @if (Jobs._job is not null &&
      (Jobs._job.Status is "running" or "done" or "error" or "cancelled") &&
-     Jobs._job.DeservesProgressCard(DateTimeOffset.UtcNow) &&
+     Jobs.ShowProgressCard() &&
      (Jobs._job.Kind is "remux" or "scene" or "batch" or "book_prepare" or "book_import" or "stage1" or "stage2"))
 {
     var reviewJobMsg = string.Join(" ", new[]

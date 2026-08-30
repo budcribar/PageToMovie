@@ -475,7 +475,9 @@ public partial class Review
                 var mediaUrl = await EnsureShareableMovieUrlAsync();
                 if (string.IsNullOrWhiteSpace(mediaUrl))
                 {
-                    // Keep a specific reason (e.g. music/titles not composed yet) if one was set.
+                    // Keep a specific reason (e.g. music/titles not composed yet) if one was set,
+                    // and drop the "preparing…" line so the page is not saying both at once.
+                    S._message = null;
                     S._error ??= "Could not build a movie to upload — generate scene clips first.";
                     return;
                 }
