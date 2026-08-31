@@ -182,32 +182,4 @@ public class ScreenplayBeatDepthTests
         }
         finally { await ctx.CloseAsync(); }
     }
-
-    [Fact]
-    public async Task Screenplay_menu_opens_story_characters_and_locations_modals()
-    {
-        var (ctx, page) = await _fx.NewPageAsync();
-        try
-        {
-            await PipelineFlow.CreateFreshProjectAsync(page, _fx.BaseUrl, "MenuModals_" + Guid.NewGuid().ToString("N")[..6]);
-            await PipelineFlow.SelectFakeModelsAsync(page);
-            await PipelineFlow.ImportFountainAsync(page, _fx.BaseUrl, "mary_had_a_lamb.fountain");
-
-            await Assertions.Expect(page.GetByTestId("screenplay-structured-editor")).ToBeVisibleAsync(new() { Timeout = 60_000 });
-
-            var menuBtn = page.GetByTestId("screenplay-menu");
-            await Assertions.Expect(menuBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
-
-            // Click Edit Story Characters
-            await menuBtn.ClickAsync();
-            var charMenuItem = page.Locator(".dropdown-item", new() { HasText = "Edit story characters" });
-            await Assertions.Expect(charMenuItem).ToBeVisibleAsync(new() { Timeout = 10_000 });
-            await charMenuItem.ClickAsync();
-
-            // Navigates to Characters / Cast hub
-            await Assertions.Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/characters"), new() { Timeout = 15_000 });
-            await Assertions.Expect(page.Locator("h1", new() { HasText = "Cast" })).ToBeVisibleAsync(new() { Timeout = 15_000 });
-        }
-        finally { await ctx.CloseAsync(); }
-    }
 }

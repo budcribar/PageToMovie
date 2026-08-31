@@ -628,8 +628,6 @@
     "StorySetup": "Configuration de l'histoire",
     "CreateDraftFromBook": "Créer un brouillon à partir du livre…",
     "RewriteDraftFromBook": "Réécrire le brouillon à partir du livre…",
-    "EditStoryCharacters": "Éditer les personnages de l'histoire…",
-    "EditStoryLocations": "Éditer les lieux de l'histoire…",
     "ExportFountain": "Exporter en Fountain…",
     "ExportPdf": "Exporter en PDF…",
     "ToCast": "Distribution →",
