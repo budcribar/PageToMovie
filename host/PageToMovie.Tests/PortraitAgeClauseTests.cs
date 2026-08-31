@@ -1,60 +1,72 @@
+using System.Text.Json;
 using PageToMovie.Engine;
 using Xunit;
 
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Annette appears as a child, in her twenties, and in middle age. The portrait prompt recognised
-/// only child and teen bands, so her early-twenties seed fell through to "HUMAN adult" — the same
-/// words her forties-to-sixties seed got, and the two came back as the same person.
+/// Annette is written at three ages, and the seed says so in prose the extraction wrote for her:
+/// "Human woman in her early twenties … fuller youthful cheeks than the later adult, no silver in
+/// the hair". With no reference image that sentence is the character, so it leads the prompt.
+/// It used to sit last, behind a paragraph of IGNORE rules, while a category synthesised from
+/// age_band led instead — and that category knew only "child" and "teen", so her twenties seed
+/// was handed the same word as her forties-to-sixties seed.
 /// </summary>
 public class PortraitAgeClauseTests
 {
-    [Fact]
-    public void A_young_adult_is_not_told_it_is_an_adult()
-    {
-        var clause = CharacterDesignService.BuildAgeClause("young_adult_20s", "Character_Young_Woman");
+    private const string YoungWomanDesc =
+        "Human woman in her early twenties, lean student build, sun-warmed tan skin, smoother unlined face.";
+    private const string YoungWomanLock =
+        "Early-twenties face: fuller youthful cheeks than the later adult, no silver in the hair.";
 
-        Assert.Contains("YOUNG ADULT", clause, StringComparison.Ordinal);
-        Assert.Contains("(20s)", clause, StringComparison.Ordinal);
-        Assert.Contains("younger than the middle-aged version", clause, StringComparison.OrdinalIgnoreCase);
-        // The stage the adult seed gets, and the one this seed used to be given instead.
-        Assert.NotEqual(
-            CharacterDesignService.BuildAgeClause("adult", "Character_Woman"), clause);
-        Assert.DoesNotContain("mature adult face", clause, StringComparison.OrdinalIgnoreCase);
+    private static JsonElement Seed(string ageBand, string description, string visualLock) =>
+        JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            canonical_given_name = "Annette",
+            age_band = ageBand,
+            description,
+            visual_lock = visualLock,
+            variant_of = "Character_Woman",
+        })).RootElement.Clone();
+
+    [Fact]
+    public void Without_a_reference_image_the_seeds_own_words_lead()
+    {
+        var (prompt, _) = CharacterDesignService.BuildDesignPrompt(
+            "Character_Young_Woman",
+            Seed("young_adult_20s", YoungWomanDesc, YoungWomanLock),
+            hasImageHints: false);
+
+        var look = prompt.IndexOf("early twenties", StringComparison.OrdinalIgnoreCase);
+        var ignore = prompt.IndexOf("IGNORE in the text notes", StringComparison.Ordinal);
+        Assert.True(look >= 0, prompt);
+        Assert.True(ignore >= 0, prompt);
+        Assert.True(look < ignore, $"the description must lead, not trail the IGNORE block:\n{prompt}");
     }
 
     [Fact]
-    public void A_child_carries_the_years_its_seed_names()
+    public void No_age_category_is_synthesised_over_a_description_that_states_the_age()
     {
-        var clause = CharacterDesignService.BuildAgeClause("child_8_12", "Character_Girl");
+        var (prompt, _) = CharacterDesignService.BuildDesignPrompt(
+            "Character_Young_Woman",
+            Seed("young_adult_20s", YoungWomanDesc, YoungWomanLock),
+            hasImageHints: false);
 
-        Assert.Contains("CHILD", clause, StringComparison.Ordinal);
-        Assert.Contains("(8-12)", clause, StringComparison.Ordinal);
-        Assert.Contains("not adult", clause, StringComparison.OrdinalIgnoreCase);
+        // The old clause asserted a stage of its own here; the sentence says it better.
+        Assert.DoesNotContain("SPECIES/AGE:", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("AGE: young adult", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void The_middle_aged_seed_says_so_without_claiming_the_other_stages()
+    public void A_seed_with_no_description_still_gets_its_age_band_verbatim()
     {
-        var clause = CharacterDesignService.BuildAgeClause("adult", "Character_Woman");
-
-        Assert.Contains("ADULT human", clause, StringComparison.Ordinal);
-        Assert.Contains("not a twenty-year-old", clause, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData("teen_13_17", "TEEN")]
-    [InlineData("elderly_70s", "ELDERLY")]
-    [InlineData("senior", "ELDERLY")]
-    public void Other_bands_reach_the_model_as_themselves(string band, string expected)
-    {
-        Assert.Contains(expected, CharacterDesignService.BuildAgeClause(band, "Character_X"), StringComparison.Ordinal);
+        Assert.Equal("AGE: child 8 12. ", CharacterDesignService.BuildAgeFallbackClause("child_8_12", ""));
+        Assert.Equal("AGE: ageless spirit. ", CharacterDesignService.BuildAgeFallbackClause("ageless_spirit", null));
     }
 
     [Fact]
-    public void A_band_this_code_has_never_seen_says_nothing_rather_than_guessing()
+    public void A_description_that_states_the_age_needs_no_fallback()
     {
-        Assert.Equal("", CharacterDesignService.BuildAgeClause("ageless_spirit", "Character_X"));
+        Assert.Equal("", CharacterDesignService.BuildAgeFallbackClause("young_adult_20s", YoungWomanDesc));
     }
 }

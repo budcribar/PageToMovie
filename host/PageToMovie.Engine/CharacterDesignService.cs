@@ -1684,7 +1684,7 @@ public sealed class CharacterDesignService
         CommonRegex.IsMatch(
             text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    private static (string Prompt, bool Illustrated) BuildDesignPrompt(
+    internal static (string Prompt, bool Illustrated) BuildDesignPrompt(
         string charKey,
         JsonElement seedInfo,
         bool hasImageHints,
@@ -1706,8 +1706,9 @@ public sealed class CharacterDesignService
         var illustrated = PrefersIllustratedPortraitStyle(
             projectRenderStyleLock, hasImageHints, species.IsAnimal, hasBookSource: false);
 
-        var speciesClause = BuildSpeciesClause(species, illustrated, charKey, ageBand);
-        var familyClause = BuildFamilyClause(variantOf);
+        var speciesClause = BuildSpeciesClause(species, illustrated, charKey, ageBand)
+                            + BuildAgeFallbackClause(ageBand, description);
+        var familyClause = BuildFamilyClause(variantOf, display);
         // Shared uniform group (see wardrobe_lock_tokens / CharacterDesignService.EnsureWardrobeReferenceAsync):
         // authoritative wardrobe text lives on the group, not repeated/re-invented per character.
         var wardrobeClause = BuildWardrobeClause(wardrobeLockDescription);
@@ -1790,12 +1791,23 @@ public sealed class CharacterDesignService
         return new PortraitSpeciesFlags(isAnimalDog, isAnimalOther, isHumanAdult);
     }
 
+    /// <summary>
+    /// What this character is — animal or person — and the medium it is drawn in. Not how old.
+    /// <para>The age used to be synthesised here from <c>age_band</c>, which meant re-deriving a
+    /// fact the seed already states better: "Human woman in her early twenties … fuller youthful
+    /// cheeks than the later adult, no silver in the hair". A category built from a token can only
+    /// be vaguer than that sentence, and when the token and the sentence disagree it argues with
+    /// it. The sentence is the instruction; see <see cref="BuildPromptWithoutImageHints"/> for
+    /// where it sits.</para>
+    /// </summary>
     private static string BuildSpeciesClause(
         PortraitSpeciesFlags species,
         bool illustrated,
         string charKey,
         string ageBand)
     {
+        _ = charKey;
+        _ = ageBand;
         if (species.IsAnimalDog)
             return IllustratedOrLive(
                 illustrated,
@@ -1810,67 +1822,24 @@ public sealed class CharacterDesignService
                 "SPECIES: animal character, not a person. Match the book-art creature; " +
                 "not photoreal wildlife photography. No costume unless clearly in refs. ",
                 "SPECIES: animal character, not a person. Photoreal anatomy matching the project medium. ");
-
-        var age = BuildAgeClause(ageBand, charKey);
-        if (age.Length > 0)
-            return age + HumanMediumClause(illustrated);
         if (species.IsHumanAdult)
-            return "SPECIES/AGE: ADULT human — a person, not an animal. " + HumanMediumClause(illustrated);
+            return "SPECIES: HUMAN — a person, not an animal. " + HumanMediumClause(illustrated);
         return "";
     }
 
     /// <summary>
-    /// The life stage from the seed's own <c>age_band</c>, with the years it names.
-    /// <para>Only <c>child</c> and <c>teen</c> used to be recognised, so every other stage fell
-    /// through to a clause that told the image model "HUMAN adult" — Annette's early-twenties
-    /// seed and her forties-to-sixties seed were handed the same word and came back the same
-    /// person. The stage is derived from the token, so a band this code has never seen still
-    /// reaches the model instead of being flattened to "adult".</para>
+    /// The seed's age band, stated plainly, for a character whose description says nothing about
+    /// age. Not a category — the band as written, so a stage this code has never heard of still
+    /// reaches the model. Empty when the description already covers it.
     /// </summary>
-    internal static string BuildAgeClause(string? ageBand, string charKey)
+    internal static string BuildAgeFallbackClause(string? ageBand, string? description)
     {
+        if (!string.IsNullOrWhiteSpace(description))
+            return "";
         var band = (ageBand ?? "").Trim();
         if (band.Length == 0)
-        {
-            if (charKey.EndsWith("_Young", StringComparison.OrdinalIgnoreCase))
-                return "SPECIES/AGE: CHILD human — child proportions, youthful face; not adult, not aged-up. ";
-            if (charKey.EndsWith("_Teen", StringComparison.OrdinalIgnoreCase))
-                return "SPECIES/AGE: TEEN human — younger than the adult version; not middle-aged. ";
             return "";
-        }
-
-        var years = AgeYearsPhrase(band);
-        if (band.StartsWith("child", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("kid", StringComparison.OrdinalIgnoreCase))
-            return $"SPECIES/AGE: CHILD human{years} — child proportions and a child's face; " +
-                   "not adult, not aged-up. ";
-        if (band.StartsWith("teen", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("adolescent", StringComparison.OrdinalIgnoreCase))
-            return $"SPECIES/AGE: TEEN human{years} — younger than the adult version; not a child, " +
-                   "not middle-aged. ";
-        if (band.StartsWith("young", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("student", StringComparison.OrdinalIgnoreCase))
-            return $"SPECIES/AGE: YOUNG ADULT human{years} — a smooth unlined young face; " +
-                   "not a child, and clearly younger than the middle-aged version: no grey, no lines. ";
-        if (band.StartsWith("elder", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("senior", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("old", StringComparison.OrdinalIgnoreCase))
-            return $"SPECIES/AGE: ELDERLY human{years} — an aged face; older than the middle-aged version. ";
-        if (band.StartsWith("adult", StringComparison.OrdinalIgnoreCase)
-            || band.StartsWith("middle", StringComparison.OrdinalIgnoreCase))
-            return $"SPECIES/AGE: ADULT human{years} — a mature adult face; not a child, " +
-                   "not a twenty-year-old, not elderly. ";
-        return "";
-    }
-
-    /// <summary>The years an age band names — <c>child_8_12</c> → " (8-12)", <c>young_adult_20s</c> → " (20s)".</summary>
-    private static string AgeYearsPhrase(string band)
-    {
-        var years = band
-            .Split('_', StringSplitOptions.RemoveEmptyEntries)
-            .SkipWhile(p => !char.IsDigit(p[0]))
-            .ToList();
-        return years.Count == 0 ? "" : $" ({string.Join("-", years)})";
+        return $"AGE: {band.Replace('_', ' ')}. ";
     }
 
     private static string HumanMediumClause(bool illustrated) =>
@@ -1882,13 +1851,18 @@ public sealed class CharacterDesignService
     private static string IllustratedOrLive(bool illustrated, string illustratedText, string liveText) =>
         illustrated ? illustratedText : liveText;
 
-    private static string BuildFamilyClause(string variantOf)
+    /// <summary>
+    /// This portrait is one life stage of a person the film also shows at another. Named by the
+    /// person, not by the seed key: the clause used to read "younger version of
+    /// Character_Woman", handing an internal token to an image model.
+    /// </summary>
+    private static string BuildFamilyClause(string variantOf, string display)
     {
         if (string.IsNullOrWhiteSpace(variantOf))
             return "";
         return
-            $"FAMILY: younger version of {variantOf} " +
-            "(same ethnicity/hair family, recognizable related features). ";
+            $"FAMILY: a younger {display} — the same person at an earlier age " +
+            "(same ethnicity and hair family, recognizably the same face). ";
     }
 
     private static string BuildWardrobeClause(string? wardrobeLockDescription)
@@ -2032,16 +2006,21 @@ public sealed class CharacterDesignService
         bool isAnimal,
         bool illustrated)
     {
+        // No reference image, so these words are the character — they lead. They used to sit at
+        // the end, behind a paragraph of IGNORE rules, while a clause synthesised from age_band
+        // sat up here; that is how an early-twenties seed and a forties-to-sixties seed came back
+        // as the same woman. Where an image exists the order is the other way round on purpose —
+        // see BuildPromptWithImageHints.
         return
             $"CHARACTER CONTINUITY PORTRAIT of {display}. " +
             styleLock +
+            $"WHO THIS IS: {lookNotes} " +
             "BASE LOOK ONLY — default everyday appearance for a faceplate/lock, not a story beat. " +
             speciesClause +
             familyClause +
             wardrobeClause +
             ignoreRules +
             BuildNoHintsClothingClause(isAnimal, illustrated) +
-            $"LOOK: {lookNotes} " +
             outputRules;
     }
 
