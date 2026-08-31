@@ -444,9 +444,14 @@ public static class AdaptationEndpoints
     try
     {
         var text = await ReadOptionalScreenplayTextAsync(req, ct);
-        var result = ScreenplayService.SignOff(store, id, text);
-        if (!result.Ok)
-            return Results.BadRequest(new { ok = false, error = result.Error });
+        // Persist the draft first so extract reads the text being approved — but do not
+        // mark signed until Cast from the screenplay has persisted a performance lock.
+        if (text is not null)
+        {
+            var save = ScreenplayService.SaveDraft(store, id, text);
+            if (!save.Ok)
+                return Results.BadRequest(new { ok = false, error = save.Error });
+        }
 
         var cast = await TryExtractCastAsync(id, castService, chat, ct);
         var projectDir = await store.GetProjectDirAsync(id, ct);
@@ -454,10 +459,11 @@ public static class AdaptationEndpoints
         var lockOk = !string.IsNullOrWhiteSpace(performanceLock);
         // One line per sign-off with the project it landed on (the UI suite reads this to tell a
         // "sign-off went to project A, shot plan ran on project B" race from a real extraction failure).
-        await Console.Error.WriteLineAsync($"[sign-off] {id}: ok scenes={result.SceneCount} characters={result.CharacterCount} user={user.UserId} lock={(lockOk ? "yes" : "missing")} cast={System.Text.Json.JsonSerializer.Serialize(cast)}");
+        await Console.Error.WriteLineAsync($"[sign-off] {id}: extract ok={cast.Ok} lock={(lockOk ? "yes" : "missing")} user={user.UserId} cast={System.Text.Json.JsonSerializer.Serialize(cast)}");
 
         // The Screenplay page treats HTTP 200 / ok:true as approved and navigates onward.
-        // It does not read cast.ok. Fail closed here — do not invent a performance lock.
+        // It does not read cast.ok. Fail closed here — do not invent a performance lock,
+        // and do not mark the draft signed if extract did not persist one.
         if (!cast.Ok || !lockOk)
         {
             return Results.BadRequest(new
@@ -467,15 +473,14 @@ public static class AdaptationEndpoints
                     ? CastFromScreenplayService.SignOffMissingPerformanceLockMessage
                     : cast.Error,
                 projectId = id,
-                title = result.Title,
-                sceneCount = result.SceneCount,
-                characterCount = result.CharacterCount,
-                locationCount = result.LocationCount,
-                hashChanged = result.HashChanged,
-                screenplay = result.Status,
+                screenplay = ScreenplayService.Get(store, id).Status,
                 cast,
             });
         }
+
+        var result = ScreenplayService.SignOffIfPerformanceLockPresent(store, id);
+        if (!result.Ok)
+            return Results.BadRequest(new { ok = false, error = result.Error, cast });
 
         return Results.Ok(new
         {
@@ -548,7 +553,7 @@ public static class AdaptationEndpoints
             // an existing cast_seeds.json (voice clones, portrait locks, curated looks) just
             // because the Fountain changed — unless that file left vision_meta without a lock
             // (ExtractAsync then rebuilds instead of reporting success).
-            var castResult = await castService.ExtractAsync(id, force: false, ct: ct);
+            var castResult = await castService.ExtractRequiringPerformanceLockAsync(id, force: false, ct: ct);
             return new SignOffCastResult(
                 Ok: castResult.Ok,
                 CharacterCount: castResult.CharacterCount,

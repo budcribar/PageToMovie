@@ -30,6 +30,7 @@ public sealed class Stage1Service
     private readonly PageToMovie.Core.Abstractions.IBookFileSessionFactory? _bookFileSessionFactory;
     private readonly PageToMovie.Core.Abstractions.IFountainFileSessionFactory? _fountainFileSessionFactory;
     private readonly XaiResponsesClient? _xaiResponses;
+    private readonly CastFromScreenplayService _castExtract;
 
     public Stage1Service(
         ProjectStore projects,
@@ -38,6 +39,7 @@ public sealed class Stage1Service
         CharacterBookPlateService plates,
         IOptions<PageToMovieOptions> opts,
         ILogger<Stage1Service> log,
+        CastFromScreenplayService castExtract,
         BookTextRegistryService? bookRegistry = null,
         IUserContext? user = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
@@ -55,6 +57,7 @@ public sealed class Stage1Service
         _bookFileSessionFactory = bookFileSessionFactory;
         _xaiResponses = xaiResponses;
         _fountainFileSessionFactory = fountainFileSessionFactory;
+        _castExtract = castExtract;
     }
 
     /// <summary>
@@ -170,8 +173,17 @@ public sealed class Stage1Service
         if (!draft.Ok)
             throw new InvalidOperationException(draft.Error ?? "Could not create Fountain draft from book.");
 
+        // Same Cast extract as Screenplay approve. Do not mark signed until the lock is persisted —
+        // otherwise book_import auto-sign-off skips the only extract the operator would have clicked.
+        onProgress?.Invoke("Building cast from screenplay…");
+        var cast = await _castExtract.ExtractRequiringPerformanceLockAsync(
+            projectId, force: false, onProgress: onProgress, ct: ct).ConfigureAwait(false);
+        if (!cast.Ok)
+            throw new InvalidOperationException(
+                cast.Error ?? CastFromScreenplayService.SignOffMissingPerformanceLockMessage);
+
         onProgress?.Invoke("Fountain draft saved — approving screenplay…");
-        var sign = ScreenplayService.SignOff(_projects, projectId);
+        var sign = ScreenplayService.SignOffIfPerformanceLockPresent(_projects, projectId);
         if (!sign.Ok)
             throw new InvalidOperationException(sign.Error ?? "Could not approve screenplay from Fountain.");
     }

@@ -41,6 +41,7 @@ public sealed class ScreenplaySignOffCastLockApiTests : IClassFixture<PageToMovi
 
         var store = _factory.Services.GetRequiredService<ProjectStore>();
         Assert.Null(ProjectVisionMeta.TryGetPerformanceLock(store.GetProjectDir(projectId)));
+        Assert.False(ScreenplayService.Get(store, projectId).Status.Signed);
     }
 
     [Fact]

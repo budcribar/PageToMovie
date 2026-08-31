@@ -249,6 +249,26 @@ public sealed class CastFromScreenplayService
         };
     }
 
+    /// <summary>
+    /// Same as <see cref="ExtractAsync"/>, then fail if <c>vision_meta.performance_lock</c>
+    /// is still empty. Used by book-import auto-approve and HTTP sign-off.
+    /// </summary>
+    public async Task<ExtractResult> ExtractRequiringPerformanceLockAsync(
+        string projectId,
+        string? model = null,
+        bool force = false,
+        Action<string>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        var result = await ExtractAsync(projectId, model, force, onProgress, ct).ConfigureAwait(false);
+        if (!result.Ok)
+            return result;
+        var dir = _projects.GetProjectDir(projectId);
+        if (!string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
+            return result;
+        return new ExtractResult { Ok = false, Error = SignOffMissingPerformanceLockMessage };
+    }
+
     private async Task<ExtractResult?> TryLoadExistingCastAsync(
         string projectId,
         string outPath,
