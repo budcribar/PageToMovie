@@ -40,7 +40,7 @@ public class ScenesIndexEmptyStateTests
 
         Assert.Contains("IsSceneListPending(list._scenes)", razor, StringComparison.Ordinal);
         Assert.Contains("Loading scenes…", razor, StringComparison.Ordinal);
-        Assert.Contains("TestId=\"scenes-loading\"", razor, StringComparison.Ordinal);
+        Assert.Contains("scenes-loading", razor, StringComparison.Ordinal);
         Assert.Contains("No shot plan yet", razor, StringComparison.Ordinal);
         Assert.Contains("scenes-empty-shotplan", razor, StringComparison.Ordinal);
 
@@ -58,6 +58,8 @@ public class ScenesIndexEmptyStateTests
 
         var pendingBlock = razor[pendingAt..emptyBranchAt];
         Assert.Contains("Loading scenes…", pendingBlock, StringComparison.Ordinal);
+        Assert.Contains("scenes-loading", pendingBlock, StringComparison.Ordinal);
+        Assert.Contains("spinner-border", pendingBlock, StringComparison.Ordinal);
         Assert.DoesNotContain("Host._busy", pendingBlock);
         Assert.DoesNotContain("No shot plan yet", pendingBlock, StringComparison.Ordinal);
         Assert.DoesNotContain("No scenes", pendingBlock, StringComparison.Ordinal);

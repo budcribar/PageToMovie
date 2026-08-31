@@ -63,7 +63,10 @@
     }
     else
     {
-        <EmptyState Message="Loading scenes…" TestId="scenes-loading" CssClass="text-muted" />
+        <div class="card p-4 text-center my-3 bg-dark bg-opacity-25 border-secondary border-opacity-25" data-testid="scenes-loading">
+            <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+            <h5 class="fw-semibold mb-1">Loading scenes…</h5>
+        </div>
     }
 }
 else if (Scenes.ScenesListState.IsEmptyShotPlan(list._scenes))
