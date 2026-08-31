@@ -129,14 +129,28 @@ public class LocationJobWatchTests
 
     private static string ReadLocationsCodeBehind()
     {
-        var d = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (d != null)
+        var besideDll = Path.Combine(AppContext.BaseDirectory, "Locations.razor.cs");
+        if (File.Exists(besideDll))
+            return File.ReadAllText(besideDll);
+
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            var candidate = Path.Combine(
-                d.FullName, "host", "PageToMovie.Web", "Components", "Pages", "Locations.razor.cs");
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            d = d.Parent;
+            var d = new DirectoryInfo(start);
+            while (d != null)
+            {
+                foreach (var rel in new[]
+                {
+                    Path.Combine("host", "PageToMovie.Web", "Components", "Pages", "Locations.razor.cs"),
+                    Path.Combine("PageToMovie.Web", "Components", "Pages", "Locations.razor.cs"),
+                    Path.Combine("Components", "Pages", "Locations.razor.cs"),
+                })
+                {
+                    var candidate = Path.Combine(d.FullName, rel);
+                    if (File.Exists(candidate))
+                        return File.ReadAllText(candidate);
+                }
+                d = d.Parent;
+            }
         }
 
         throw new FileNotFoundException("Locations.razor.cs");
