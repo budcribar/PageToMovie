@@ -164,6 +164,11 @@ public sealed class Stage2PlannerService
         using var operationTrace = ModelOperationTraceScope.Begin();
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
+        // Fail-fast at job start: decided look + performance lock before paid classifiers.
+        // Cast extract writes performance_lock — do not invent a fallback here.
+        var vision = ProjectVisionMeta.RequireDecided(projectDir);
+        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(projectDir);
+
         // Clip-duration bounds for whichever video model this project is actually configured to
         // generate with — planning must not assume Grok's limits when a different model is selected.
         var videoModelId = await ResolveVideoModelIdAsync(projectId, ct).ConfigureAwait(false);
@@ -223,8 +228,6 @@ public sealed class Stage2PlannerService
         NormalizeCharPlaceholders(charSeeds);
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
-        var vision = ProjectVisionMeta.RequireDecided(projectDir);
-        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(projectDir);
         var styleLock = vision.RenderStyleLock;
         var visualMedium = vision.VisualMedium;
         var targetAspectRatio = CoerceString(gpv.TryGetValue("target_aspect_ratio", out var tar) ? tar : null)

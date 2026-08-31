@@ -81,10 +81,12 @@ public static class ProjectVisionMeta
 
     /// <summary>
     /// Operator-facing fail-fast when Stage 2 or video generate runs without a film address lock.
-    /// Do not invent confessional vs objective — the project must re-run book/screenplay or cast extract.
+    /// Do not invent confessional vs objective. The writer is the Characters "Build cast" /
+    /// "Rebuild cast from screenplay" job (<c>cast-extract</c>), not Plan looks and not
+    /// book/screenplay VISION_META.
     /// </summary>
     public const string MissingPerformanceLockMessage =
-        "This project is out of date: it has no performance lock. Re-run book/screenplay (or regen).";
+        "This film has no performance lock. Run Cast from the screenplay.";
 
     public static bool IsDecidedMedium(string? raw) => VisualMediumStyles.IsDecidedMedium(raw);
 

@@ -87,6 +87,36 @@ public class ScreenplayServiceTests : IDisposable
     }
 
     [Fact]
+    public void SignOffIfPerformanceLockPresent_does_not_approve_without_a_lock()
+    {
+        const string projectId = "Demo";
+        Assert.True(ScreenplayService.SaveDraft(_store, projectId, """
+            Title: No Lock
+
+            INT. ROOM - DAY
+
+            HERO
+            Hello.
+            """).Ok);
+
+        var denied = ScreenplayService.SignOffIfPerformanceLockPresent(_store, projectId);
+        Assert.False(denied.Ok);
+        Assert.Equal(CastFromScreenplayService.SignOffMissingPerformanceLockMessage, denied.Error);
+        Assert.False(ScreenplayService.Get(_store, projectId).Status.Signed);
+
+        ProjectVisionMeta.Write(_store.GetProjectDir(projectId), new ProjectVisionMeta.Document
+        {
+            VisualMedium = ProjectVisionMeta.MediumIllustrated,
+            PerformanceLock = "PERFORMANCE LOCK: objective; characters look at each other, not the viewer.",
+            DecidedBy = "adaptation",
+        });
+
+        var signed = ScreenplayService.SignOffIfPerformanceLockPresent(_store, projectId);
+        Assert.True(signed.Ok, signed.Error);
+        Assert.True(signed.Status.Signed);
+    }
+
+    [Fact]
     public void SetSceneJoin_writes_dissolve_then_cut_removes_it()
     {
         const string projectId = "Demo";

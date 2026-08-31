@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
+using PageToMovie.Engine.Abstractions;
+using PageToMovie.Engine.ModelBacked;
 using Xunit;
 
 namespace PageToMovie.Tests;
@@ -157,10 +159,56 @@ public sealed class VisualMediumSsotTests : IDisposable
         var sign = ScreenplayService.SignOff(_store, projectId);
         Assert.True(sign.Ok, sign.Error);
 
-        var planner = new Stage2PlannerService(_store, NullLogger<Stage2PlannerService>.Instance);
+        var progress = new List<string>();
+        var chat = new RecordingChat();
+        var classifyOpts = Options.Create(new PageToMovieOptions
+        {
+            ClassifyExtendCutWithChat = true,
+            SilentBeatClassifyMaxAttempts = 1,
+            SilentBeatClassifyBackoffBaseMs = 0,
+        });
+        var planner = new Stage2PlannerService(
+            _store,
+            NullLogger<Stage2PlannerService>.Instance,
+            silentBeatClassifier: new SilentBeatActionClassifier(
+                chat, classifyOpts, NullLogger<SilentBeatActionClassifier>.Instance),
+            ambientSfxClassifier: new AmbientSfxClassifier(
+                chat, classifyOpts, NullLogger<AmbientSfxClassifier>.Instance),
+            onScreenCastClassifier: new OnScreenCastClassifier(
+                chat, classifyOpts, NullLogger<OnScreenCastClassifier>.Instance),
+            extendCutClassifier: new ExtendCutClassifier(
+                chat, classifyOpts, NullLogger<ExtendCutClassifier>.Instance),
+            speciesKindClassifier: new SpeciesKindClassifier(
+                chat, classifyOpts, NullLogger<SpeciesKindClassifier>.Instance));
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => planner.PlanAsync(projectId, resolution: "480p", scenes: "all"));
+            () => planner.PlanAsync(projectId, resolution: "480p", scenes: "all", onProgress: progress.Add));
         Assert.Equal(ProjectVisionMeta.MissingPerformanceLockMessage, ex.Message);
+        Assert.Contains("cast from the screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("book/screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("plan looks", ex.Message, StringComparison.OrdinalIgnoreCase);
+        // Fail-fast at job start: no classifier progress and no chat calls.
+        Assert.Empty(chat.Prompts);
+        Assert.DoesNotContain(progress, line =>
+            line.Contains("Classifying", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Extend/cut", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("silent beat", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Loading screenplay", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class RecordingChat : IChatClient
+    {
+        public List<string> Prompts { get; } = new();
+        public bool IsConfigured => true;
+
+        public Task<string> CompleteAsync(
+            string systemPrompt, string userPrompt, string model = "grok-4.5",
+            double temperature = 0.2, CancellationToken ct = default,
+            string? mode = null, string? reasoningEffort = null)
+        {
+            lock (Prompts)
+                Prompts.Add(userPrompt);
+            return Task.FromResult("");
+        }
     }
 
     [Fact]

@@ -444,14 +444,44 @@ public static class AdaptationEndpoints
     try
     {
         var text = await ReadOptionalScreenplayTextAsync(req, ct);
-        var result = ScreenplayService.SignOff(store, id, text);
-        if (!result.Ok)
-            return Results.BadRequest(new { ok = false, error = result.Error });
+        // Persist the draft first so extract reads the text being approved — but do not
+        // mark signed until Cast from the screenplay has persisted a performance lock.
+        if (text is not null)
+        {
+            var save = ScreenplayService.SaveDraft(store, id, text);
+            if (!save.Ok)
+                return Results.BadRequest(new { ok = false, error = save.Error });
+        }
 
         var cast = await TryExtractCastAsync(id, castService, chat, ct);
+        var projectDir = await store.GetProjectDirAsync(id, ct);
+        var performanceLock = ProjectVisionMeta.TryGetPerformanceLock(projectDir);
+        var lockOk = !string.IsNullOrWhiteSpace(performanceLock);
         // One line per sign-off with the project it landed on (the UI suite reads this to tell a
         // "sign-off went to project A, shot plan ran on project B" race from a real extraction failure).
-        await Console.Error.WriteLineAsync($"[sign-off] {id}: ok scenes={result.SceneCount} characters={result.CharacterCount} user={user.UserId} cast={(cast is null ? "n/a" : System.Text.Json.JsonSerializer.Serialize(cast))}");
+        await Console.Error.WriteLineAsync($"[sign-off] {id}: extract ok={cast.Ok} lock={(lockOk ? "yes" : "missing")} user={user.UserId} cast={System.Text.Json.JsonSerializer.Serialize(cast)}");
+
+        // The Screenplay page treats HTTP 200 / ok:true as approved and navigates onward.
+        // It does not read cast.ok. Fail closed here — do not invent a performance lock,
+        // and do not mark the draft signed if extract did not persist one.
+        if (!cast.Ok || !lockOk)
+        {
+            return Results.BadRequest(new
+            {
+                ok = false,
+                error = string.IsNullOrWhiteSpace(cast.Error)
+                    ? CastFromScreenplayService.SignOffMissingPerformanceLockMessage
+                    : cast.Error,
+                projectId = id,
+                screenplay = ScreenplayService.Get(store, id).Status,
+                cast,
+            });
+        }
+
+        var result = ScreenplayService.SignOffIfPerformanceLockPresent(store, id);
+        if (!result.Ok)
+            return Results.BadRequest(new { ok = false, error = result.Error, cast });
+
         return Results.Ok(new
         {
             ok = true,
@@ -493,7 +523,15 @@ public static class AdaptationEndpoints
         return null;
     }
 
-    private static async Task<object?> TryExtractCastAsync(
+    private sealed record SignOffCastResult(
+        bool Ok,
+        int CharacterCount = 0,
+        IReadOnlyList<string>? Characters = null,
+        string? Error = null,
+        string? Path = null,
+        string? Skipped = null);
+
+    private static async Task<SignOffCastResult> TryExtractCastAsync(
         string id, CastFromScreenplayService castService, PageToMovie.Core.Abstractions.IChatClient chat, CancellationToken ct)
     {
         // AI cast sidecar after approve (closed cast for Characters / plates)
@@ -503,28 +541,29 @@ public static class AdaptationEndpoints
             // project with an approved screenplay and no cast (seen intermittently in UI runs while
             // the per-project config write is still in flight). Say so instead of returning nothing.
             await Console.Error.WriteLineAsync($"[sign-off] {id}: cast extraction skipped — chat client not configured");
-            return new { ok = false, skipped = "chat_not_configured", error = "Cast extraction skipped: no chat model configured at sign-off." };
+            return new SignOffCastResult(
+                Ok: false,
+                Skipped: "chat_not_configured",
+                Error: CastFromScreenplayService.SignOffMissingPerformanceLockMessage);
         }
         try
         {
             // force:false — respects ExtractAsync's own skip-if-present guard. Sign-off still
             // auto-populates cast the first time (file doesn't exist yet), but never blows away
             // an existing cast_seeds.json (voice clones, portrait locks, curated looks) just
-            // because the Fountain changed. Use the explicit "Extract Cast" button/endpoint
-            // (force:true) to intentionally rebuild after adding a character.
-            var castResult = await castService.ExtractAsync(id, force: false, ct: ct);
-            return new
-            {
-                ok = castResult.Ok,
-                characterCount = castResult.CharacterCount,
-                characters = castResult.CharacterKeys,
-                error = castResult.Error,
-                path = castResult.OutPath,
-            };
+            // because the Fountain changed — unless that file left vision_meta without a lock
+            // (ExtractAsync then rebuilds instead of reporting success).
+            var castResult = await castService.ExtractRequiringPerformanceLockAsync(id, force: false, ct: ct);
+            return new SignOffCastResult(
+                Ok: castResult.Ok,
+                CharacterCount: castResult.CharacterCount,
+                Characters: castResult.CharacterKeys,
+                Error: castResult.Error,
+                Path: castResult.OutPath);
         }
         catch (Exception ex)
         {
-            return new { ok = false, error = ex.Message };
+            return new SignOffCastResult(Ok: false, Error: ex.Message);
         }
     }
 

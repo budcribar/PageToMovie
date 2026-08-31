@@ -70,6 +70,13 @@ internal sealed class CastExtractionValidator : IModelResultValidator<Dictionary
             !string.Equals(schema?.ToString(), "cast_seeds.v1", StringComparison.Ordinal))
             issues.Add(new("invalid_schema", "schema_version must be cast_seeds.v1.", "$.schema_version"));
 
+        if (!result.TryGetValue("performance_lock", out var perfLock) ||
+            string.IsNullOrWhiteSpace(perfLock?.ToString()))
+            issues.Add(new(
+                "missing_performance_lock",
+                "performance_lock is required (film-level audience/performance conventions). Empty is not allowed.",
+                "$.performance_lock"));
+
         var seeds = FindSeeds(result);
         if (seeds is null || seeds.Count == 0)
         {

@@ -23,6 +23,7 @@ public class CastFromScreenplayServiceTests
         Assert.Contains("BOOK-FIRST", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("FORBIDDEN", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("performance_lock", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Empty only if", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AUDIENCE", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cast_kind", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("GROUP", text, StringComparison.OrdinalIgnoreCase);

@@ -1723,6 +1723,29 @@ public static string NormalizeText(string text)
         return (title, author);
     }
 
+    /// <summary>
+    /// Approve only after Cast from the screenplay has persisted a performance lock.
+    /// Book-import auto-sign-off and HTTP approve must not count as approved without that lock.
+    /// Does not invent a lock, medium, or STYLE LOCK.
+    /// </summary>
+    public static SignOffResult SignOffIfPerformanceLockPresent(
+        ProjectStore store, string projectId, string? text = null)
+    {
+        var saveFail = SaveDraftBeforeSignOff(store, projectId, text);
+        if (saveFail is not null)
+            return saveFail;
+
+        var dir = store.GetProjectDir(projectId);
+        if (string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
+            return new SignOffResult
+            {
+                Ok = false,
+                Error = CastFromScreenplayService.SignOffMissingPerformanceLockMessage,
+            };
+
+        return SignOff(store, projectId, text: null);
+    }
+
     public static SignOffResult SignOff(ProjectStore store, string projectId, string? text = null)
     {
         var saveFail = SaveDraftBeforeSignOff(store, projectId, text);
