@@ -52,7 +52,7 @@ public static class LocationJobWatch
 
     public static Finish Classify(JobSnapshot? job, string? projectId)
     {
-        if (!IsTrackedForProject(job, projectId) || job is null)
+        if (!IsTrackedForProject(job, projectId))
             return Finish.Ignore;
         if (JobLostOnRestart.IsInFlight(job.Status))
             return Finish.StillRunning;
