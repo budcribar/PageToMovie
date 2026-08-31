@@ -2833,6 +2833,7 @@ public sealed partial class ProjectStore
             BookRefs = voiceOnly ? new List<CharacterImageRef>() : CollectBookRefImages(projectId, projectDir, key, bookRefs),
             Variants = voiceOnly ? new List<CharacterImageRef>() : CollectCharacterVariants(projectId, projectDir, key),
             AgeBand = ReadAgeBand(info),
+            AgeBandToken = JsonStrOrNull(info, "age_band"),
             Gender = ReadGender(info),
             VariantOf = JsonStrOrNull(info, "variant_of"),
             UsedInPlan = true, // filled below from shot plan

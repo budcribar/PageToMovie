@@ -1796,18 +1796,6 @@ public sealed class CharacterDesignService
         string charKey,
         string ageBand)
     {
-        if (ageBand.StartsWith("child", StringComparison.OrdinalIgnoreCase) ||
-            charKey.EndsWith("_Young", StringComparison.OrdinalIgnoreCase))
-        {
-            return
-                "SPECIES/AGE: CHILD human — child proportions, youthful face; not adult, not aged-up. ";
-        }
-        if (ageBand.StartsWith("teen", StringComparison.OrdinalIgnoreCase) ||
-            charKey.EndsWith("_Teen", StringComparison.OrdinalIgnoreCase))
-        {
-            return
-                "SPECIES/AGE: TEEN human — younger than adult version; not middle-aged. ";
-        }
         if (species.IsAnimalDog)
             return IllustratedOrLive(
                 illustrated,
@@ -1822,15 +1810,74 @@ public sealed class CharacterDesignService
                 "SPECIES: animal character, not a person. Match the book-art creature; " +
                 "not photoreal wildlife photography. No costume unless clearly in refs. ",
                 "SPECIES: animal character, not a person. Photoreal anatomy matching the project medium. ");
+
+        var age = BuildAgeClause(ageBand, charKey);
+        if (age.Length > 0)
+            return age + HumanMediumClause(illustrated);
         if (species.IsHumanAdult)
-            return IllustratedOrLive(
-                illustrated,
-                "SPECIES: HUMAN adult — a person, not an animal. " +
-                "All characters are rendered as in a children's picture book; not photoreal stock photography. ",
-                "SPECIES: HUMAN adult — a real person, not an animal, not a drawing. " +
-                "Photoreal skin texture and period wardrobe matching the project medium. ");
+            return "SPECIES/AGE: ADULT human — a person, not an animal. " + HumanMediumClause(illustrated);
         return "";
     }
+
+    /// <summary>
+    /// The life stage from the seed's own <c>age_band</c>, with the years it names.
+    /// <para>Only <c>child</c> and <c>teen</c> used to be recognised, so every other stage fell
+    /// through to a clause that told the image model "HUMAN adult" — Annette's early-twenties
+    /// seed and her forties-to-sixties seed were handed the same word and came back the same
+    /// person. The stage is derived from the token, so a band this code has never seen still
+    /// reaches the model instead of being flattened to "adult".</para>
+    /// </summary>
+    internal static string BuildAgeClause(string? ageBand, string charKey)
+    {
+        var band = (ageBand ?? "").Trim();
+        if (band.Length == 0)
+        {
+            if (charKey.EndsWith("_Young", StringComparison.OrdinalIgnoreCase))
+                return "SPECIES/AGE: CHILD human — child proportions, youthful face; not adult, not aged-up. ";
+            if (charKey.EndsWith("_Teen", StringComparison.OrdinalIgnoreCase))
+                return "SPECIES/AGE: TEEN human — younger than the adult version; not middle-aged. ";
+            return "";
+        }
+
+        var years = AgeYearsPhrase(band);
+        if (band.StartsWith("child", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("kid", StringComparison.OrdinalIgnoreCase))
+            return $"SPECIES/AGE: CHILD human{years} — child proportions and a child's face; " +
+                   "not adult, not aged-up. ";
+        if (band.StartsWith("teen", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("adolescent", StringComparison.OrdinalIgnoreCase))
+            return $"SPECIES/AGE: TEEN human{years} — younger than the adult version; not a child, " +
+                   "not middle-aged. ";
+        if (band.StartsWith("young", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("student", StringComparison.OrdinalIgnoreCase))
+            return $"SPECIES/AGE: YOUNG ADULT human{years} — a smooth unlined young face; " +
+                   "not a child, and clearly younger than the middle-aged version: no grey, no lines. ";
+        if (band.StartsWith("elder", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("senior", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("old", StringComparison.OrdinalIgnoreCase))
+            return $"SPECIES/AGE: ELDERLY human{years} — an aged face; older than the middle-aged version. ";
+        if (band.StartsWith("adult", StringComparison.OrdinalIgnoreCase)
+            || band.StartsWith("middle", StringComparison.OrdinalIgnoreCase))
+            return $"SPECIES/AGE: ADULT human{years} — a mature adult face; not a child, " +
+                   "not a twenty-year-old, not elderly. ";
+        return "";
+    }
+
+    /// <summary>The years an age band names — <c>child_8_12</c> → " (8-12)", <c>young_adult_20s</c> → " (20s)".</summary>
+    private static string AgeYearsPhrase(string band)
+    {
+        var years = band
+            .Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .SkipWhile(p => !char.IsDigit(p[0]))
+            .ToList();
+        return years.Count == 0 ? "" : $" ({string.Join("-", years)})";
+    }
+
+    private static string HumanMediumClause(bool illustrated) =>
+        IllustratedOrLive(
+            illustrated,
+            "All characters are rendered as in a children's picture book; not photoreal stock photography. ",
+            "Photoreal skin texture and period wardrobe matching the project medium. ");
 
     private static string IllustratedOrLive(bool illustrated, string illustratedText, string liveText) =>
         illustrated ? illustratedText : liveText;

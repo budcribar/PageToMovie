@@ -473,7 +473,18 @@ public sealed class CharacterSummary
     public List<string> DesignReferenceImages { get; set; } = new();
     public List<CharacterImageRef> BookRefs { get; set; } = new();
     public List<CharacterImageRef> Variants { get; set; } = new();
+    /// <summary>Voice-casting band. Only the four values a voice is picked from, so a seed's
+    /// own <c>age_band</c> (<c>child_8_12</c>, <c>young_adult_20s</c>) does not survive here.</summary>
     public VoiceAgeBand? AgeBand { get; set; }
+
+    /// <summary>
+    /// The seed's <c>age_band</c> as written — <c>child_8_12</c>, <c>young_adult_20s</c>, <c>adult</c>.
+    /// Kept because it is what the operator is shown: narrowing it to the voice enum turned two
+    /// different life stages into one word and left the age-variant chips reading "Adult" for a
+    /// child and a twenty-year-old alike.
+    /// </summary>
+    public string? AgeBandToken { get; set; }
+
     public VoiceGender Gender { get; set; } = VoiceGender.Neutral;
     public VoiceCloneStatus VoiceCloneStatus { get; set; } = VoiceCloneStatus.Ready;
     /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>

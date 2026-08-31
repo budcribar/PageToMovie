@@ -186,14 +186,27 @@ public partial class Characters
 
 
         /// <summary>Readable label for an age_band value, e.g. "child_8_9" → "Child (8-9)". Falls back to the display name.</summary>
+        /// <summary>
+        /// The life stage this chip stands for: "Child (8-12)", "Young adult (20s)", "Adult".
+        /// Reads the seed's own age_band, which carries the stage and its years. It used to read
+        /// the voice-casting enum, which has four values and no years — anything that did not
+        /// parse came back null and the chip fell through to the character's name, so a child and
+        /// a twenty-year-old both read as "Annette" and "Adult" instead of their ages.
+        /// </summary>
         internal static string AgeVariantLabel(CharacterSummary c)
         {
-            var band = c.AgeBand.HasValue ? c.AgeBand.Value.ToString().Trim() : null;
-            if (string.IsNullOrEmpty(band)) return c.DisplayName;
+            var band = (c.AgeBandToken ?? "").Trim();
+            if (band.Length == 0)
+                band = c.AgeBand.HasValue ? c.AgeBand.Value.ToString().Trim() : "";
+            if (band.Length == 0) return c.DisplayName;
             var parts = band.Split('_', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return c.DisplayName;
-            var stage = char.ToUpperInvariant(parts[0][0]) + parts[0][1..];
-            var numbers = parts.Skip(1).Where(p => p.Length > 0 && char.IsDigit(p[0])).ToList();
+            // Words are the stage ("young_adult"), trailing numbers are its years ("8_12", "20s").
+            var words = parts.TakeWhile(p => !char.IsDigit(p[0])).ToList();
+            var numbers = parts.Skip(words.Count).ToList();
+            if (words.Count == 0) return c.DisplayName;
+            var stage = string.Join(" ", words);
+            stage = char.ToUpperInvariant(stage[0]) + stage[1..];
             return numbers.Count > 0 ? $"{stage} ({string.Join("-", numbers)})" : stage;
         }
 
