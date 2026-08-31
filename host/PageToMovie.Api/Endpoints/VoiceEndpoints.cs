@@ -30,6 +30,7 @@ public static class VoiceEndpoints
         // <summary>Save voice_label / voice_profile into cast_seeds (+ blueprint) character seeds.</summary>
         app.MapPost("/api/projects/{id}/characters/{charKey}/voice", PostProjectsIdCharactersCharKeyVoice);
         // Generate-role Imagine preset voices for the project's selected video model.
+        // First segment must stay in ProjectIdRouting.ResourceSegments (owner/Name rewrite).
         app.MapGet("/api/projects/{id}/video-preset-voices", GetProjectsIdVideoPresetVoices);
         // Pick and persist a catalog preset voice when the character has none yet.
         app.MapPost("/api/projects/{id}/characters/{charKey}/voice/ensure-imagine", PostProjectsIdCharactersCharKeyVoiceEnsureImagine);

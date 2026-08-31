@@ -70,6 +70,7 @@ public static class ProjectIdRouting
         "studio-path",
         "sync-origin",
         "takes-telemetry",
+        "video-preset-voices",
         "visibility",
         "visual-medium",
         "voice-alignment",
