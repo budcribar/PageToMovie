@@ -76,7 +76,7 @@ public sealed class CharacterDesignService
         await ScrubAndPersistLookTextAsync(projectId, charKey, ctx, onProgress, ct)
             .ConfigureAwait(false);
 
-        var (prompt, illustratedMedium) = BuildDesignPrompt(
+        var (designPrompt, illustratedMedium) = BuildDesignPrompt(
             charKey,
             ctx.Seeds,
             ctx.HasImageHints,
@@ -86,6 +86,10 @@ public sealed class CharacterDesignService
             wardrobeLockDescription: ctx.WardrobeDescription,
             hasIdentityRefs: ctx.EditRefs.Count > 0,
             hasCostumeRef: ctx.CostumeRefPath is not null);
+        var prompt = IsIterativeImageEdit(ctx)
+            ? CharacterLookEdit.BuildImageEditPrompt(
+                ctx.DescForGen, ctx.VisForGen, ctx.Opts.ImageEditInstruction ?? "")
+            : designPrompt;
 
         onProgress?.Invoke(
             $"design prompt ready ({prompt.Length} chars) · image_provider={ImageApiLimits.ResolveProvider(ctx.ImageProvider, ctx.ImageModel)} max_refs={ctx.MaxRefs}");
@@ -572,8 +576,15 @@ public sealed class CharacterDesignService
         if (paths.Count < 1)
             throw new InvalidOperationException($"No variants generated for {ctx.CharKey}");
 
+        var lockedNewTweak = false;
         if (ctx.Opts.IterativeEdit && ctx.TweakSlots is { } kept)
-            onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Pick one.");
+        {
+            onProgress?.Invoke($"Locking new look #{kept.Next} as preferred (was #{kept.Previous})…");
+            await LockFromPathAsync(ctx.ProjectId, ctx.CharKey, paths[0], allowStyleOverride: true, ct)
+                .ConfigureAwait(false);
+            PersistTweakLookText(ctx, onProgress);
+            lockedNewTweak = true;
+        }
 
         return new CharacterDesignResult
         {
@@ -582,10 +593,25 @@ public sealed class CharacterDesignService
             Paths = paths,
             BookRefs = ctx.EditRefs.Select(Path.GetFileName).OfType<string>().ToList(),
             EditError = editError,
-            LockedAsPreferred = false,
+            LockedAsPreferred = lockedNewTweak,
             PreviousVariantIndex = ctx.TweakSlots?.Previous,
             NewVariantIndex = ctx.TweakSlots?.Next,
         };
+    }
+
+    private static bool IsIterativeImageEdit(VariantGenContext ctx) =>
+        ctx.Opts.IterativeEdit && !string.IsNullOrWhiteSpace(ctx.Opts.ImageEditInstruction);
+
+    private void PersistTweakLookText(VariantGenContext ctx, Action<string>? onProgress)
+    {
+        var instruction = ctx.Opts.ImageEditInstruction;
+        if (string.IsNullOrWhiteSpace(instruction))
+            return;
+        var (desc, vis) = CharacterLookEdit.ApplyTweakToLookText(
+            ctx.DescForGen, ctx.VisForGen, instruction);
+        _projects.UpdateCharacterSeedText(
+            ctx.ProjectId, ctx.CharKey, description: desc, visualLock: vis);
+        onProgress?.Invoke("Saved tweak into look text");
     }
 
     private async Task<List<string>> WriteVariantFilesAsync(
@@ -869,8 +895,8 @@ public sealed class CharacterDesignService
         bool allowStyleOverride = false,
         CancellationToken ct = default)
     {
-        if (variantIndex is < 1 or > 3)
-            throw new ArgumentOutOfRangeException(nameof(variantIndex), "variant index must be 1..3");
+        if (variantIndex is < 1 || variantIndex > CharacterLookEdit.MaxVariants)
+            throw new ArgumentOutOfRangeException(nameof(variantIndex), $"variant index must be 1..{CharacterLookEdit.MaxVariants}");
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var fileName = $"{charKey.ToLowerInvariant()}_variant_0{variantIndex}.png";
         var variantPath = Path.Combine(projectDir, "assets", "characters", fileName);
@@ -897,7 +923,7 @@ public sealed class CharacterDesignService
         var vlock = seeds.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "";
 
         var found = new List<(int Index, string Path)>();
-        for (var i = 1; i <= Math.Clamp(maxVariants, 1, 3); i++)
+        for (var i = 1; i <= Math.Clamp(maxVariants, 1, CharacterLookEdit.MaxVariants); i++)
         {
             var path = Path.Combine(projectDir, "assets", "characters",
                 $"{charKey.ToLowerInvariant()}_variant_0{i}.png");
