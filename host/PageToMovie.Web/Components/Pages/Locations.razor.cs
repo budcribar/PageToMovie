@@ -88,19 +88,23 @@ public partial class Locations : IDisposable
         if (loc.HasPreferred || (loc.Locked && loc.PreferredUrl is { Length: > 0 }))
         {
             if (loc.PreferredUrl is { Length: > 0 } u)
-                return KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
-            return KeyFormatting.CacheBust(Engine.LocationRefUrl(_projectId, loc.Key));
+                return BustMediaUrl(Engine.AbsolutizeMediaUrl(u) ?? u);
+            return BustMediaUrl(Engine.LocationRefUrl(_projectId, loc.Key));
         }
         var v = loc.Variants.Where(x => x.Exists).OrderBy(x => x.Index).FirstOrDefault();
         if (v is not null)
         {
             if (v.Url is { Length: > 0 } vu)
-                return KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(vu) ?? vu);
+                return BustMediaUrl(Engine.AbsolutizeMediaUrl(vu) ?? vu);
             if (v.Index is int vi)
-                return KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, loc.Key, vi));
+                return BustMediaUrl(Engine.LocationVariantUrl(_projectId, loc.Key, vi));
         }
         return null;
     }
+
+    /// <summary>Same path after a looks job would otherwise keep showing the empty/old tile.</summary>
+    internal string BustMediaUrl(string url) =>
+        KeyFormatting.CacheBust(url, _plateBust);
 
     /// <summary>
     /// Which variant tile shows the locked badge (session last-lock, or sole variant).
@@ -129,13 +133,25 @@ public partial class Locations : IDisposable
     private CancellationTokenSource? _saveCts;
     internal JobSnapshot? _job;
     private CancellationTokenSource? _pollCts;
+    private string? _polledJobId;
+    private string? _appliedTerminalKey;
+    /// <summary>True after we started a looks job and before the first snapshot arrives.</summary>
+    private bool _expectingLocationJob;
+    private bool _hubHooked;
+    /// <summary>Bumped when plates land so the same variant URL does not keep an empty/old tile.</summary>
+    private long _plateBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     /// <summary>Last variant index locked this session (for lock badge on tiles).</summary>
     private int? _lastLockedVariantIndex;
+
+    [Inject] private JobHubClient Hub { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
         ActiveProject.Changed += OnProjectChanged;
+        HookJobHub();
+        try { await Hub.StartAsync(); } catch { /* poll backup still watches */ }
         await LoadAsync();
+        await AdoptInFlightLocationJobAsync();
     }
 
     // Re-render AFTER the reload finishes: a bare InvokeAsync(LoadAsync) leaves the last render at
@@ -143,14 +159,22 @@ public partial class Locations : IDisposable
     // "Loading locations…" whenever readiness refresh fires Changed right after navigation.
     private void OnProjectChanged() => _ = InvokeAsync(async () =>
     {
+        StopJobPoll();
+        _job = null;
+        _appliedTerminalKey = null;
+        _expectingLocationJob = false;
         await LoadAsync();
+        await AdoptInFlightLocationJobAsync();
         StateHasChanged();
     });
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(bool clearOperatorCopy = true)
     {
-        _error = null;
-        _message = null;
+        if (clearOperatorCopy)
+        {
+            _error = null;
+            _message = null;
+        }
         _projectId = ActiveProject.ProjectId ?? "";
         if (string.IsNullOrWhiteSpace(_projectId))
         {
@@ -385,9 +409,9 @@ public partial class Locations : IDisposable
         if (loc.HasPreferred || (loc.Locked && loc.PreferredUrl is { Length: > 0 }))
         {
             if (loc.PreferredUrl is { Length: > 0 } u)
-                _plateUrl = KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
+                _plateUrl = BustMediaUrl(Engine.AbsolutizeMediaUrl(u) ?? u);
             else
-                _plateUrl = KeyFormatting.CacheBust(Engine.LocationRefUrl(_projectId, loc.Key));
+                _plateUrl = BustMediaUrl(Engine.LocationRefUrl(_projectId, loc.Key));
         }
         else
         {
@@ -495,7 +519,7 @@ public partial class Locations : IDisposable
                 ? "New look is ready next to the current lock — click a lock to keep old or switch."
                 : "Generating 3 set looks — AI will lock the best…";
 
-            StartJobPoll();
+            await WatchStartedLocationJobAsync();
         }
         catch (Exception ex)
         {
@@ -525,7 +549,7 @@ public partial class Locations : IDisposable
                 IncludeLocations = true,
             });
             _message = "Plan looks: cast faces + places · 3 each · AI auto-locks best…";
-            StartJobPoll();
+            await WatchStartedLocationJobAsync();
         }
         catch (Exception ex)
         {
@@ -537,28 +561,144 @@ public partial class Locations : IDisposable
         }
     }
 
+    private async Task WatchStartedLocationJobAsync()
+    {
+        _appliedTerminalKey = null;
+        _expectingLocationJob = true;
+        try { await Hub.StartAsync(); } catch { /* poll backup still watches */ }
+        StartJobPoll();
+        await RaiseCurrentJobIfTrackedAsync();
+    }
+
+    private void HookJobHub()
+    {
+        if (_hubHooked) return;
+        _hubHooked = true;
+        Hub.JobUpdated += OnJobUpdated;
+        Hub.JobLog += OnJobLog;
+        Hub.Reconnected += OnHubReconnected;
+    }
+
+    internal void OnJobUpdated(JobSnapshot snap)
+    {
+        if (!LocationJobWatch.IsTrackedForProject(snap, _projectId))
+            return;
+        _ = InvokeAsync(async () =>
+        {
+            await ApplyLocationJobSnapshotAsync(snap);
+            StateHasChanged();
+        });
+    }
+
+    private void OnJobLog(string line)
+    {
+        if (_job is null || !LocationJobWatch.IsTrackedKind(_job.Kind))
+            return;
+        _job.Message = line;
+        if (_job.Log.Count == 0 || _job.Log[^1] != line)
+        {
+            _job.Log.Add(line);
+            if (_job.Log.Count > 80)
+                _job.Log = _job.Log.TakeLast(80).ToList();
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnHubReconnected() => _ = InvokeAsync(async () =>
+    {
+        await AdoptInFlightLocationJobAsync();
+        StateHasChanged();
+    });
+
+    private async Task AdoptInFlightLocationJobAsync()
+    {
+        try
+        {
+            var snap = (await Engine.GetJobAsync())?.Job;
+            if (!LocationJobWatch.IsTrackedForProject(snap, _projectId) || snap is null)
+                return;
+            await ApplyLocationJobSnapshotAsync(snap);
+        }
+        catch
+        {
+            // Hub subscription still covers a later terminal event.
+        }
+    }
+
+    private async Task RaiseCurrentJobIfTrackedAsync()
+    {
+        try
+        {
+            var snap = (await Engine.GetJobAsync())?.Job;
+            if (LocationJobWatch.IsTrackedForProject(snap, _projectId))
+                Hub.RaiseJobUpdated(snap);
+        }
+        catch
+        {
+            // Backup poll will pick it up.
+        }
+    }
+
     private void StartJobPoll()
     {
-        _pollCts?.Cancel();
-        _pollCts?.Dispose();
+        var jobId = _job?.JobId;
+        if (_pollCts is not null
+            && (_expectingLocationJob || LocationJobWatch.ShouldWatch(_job, _projectId))
+            && (string.IsNullOrWhiteSpace(jobId)
+                || string.Equals(_polledJobId, jobId, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        StopJobPoll();
+        _polledJobId = jobId;
         _pollCts = new CancellationTokenSource();
         var token = _pollCts.Token;
         _ = PollJobAsync(token);
     }
 
+    private void StopJobPoll()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = null;
+        _polledJobId = null;
+    }
+
+    private void EnsureBackupPoll(JobSnapshot job)
+    {
+        if (!LocationJobWatch.ShouldWatch(job, _projectId))
+            return;
+        if (_pollCts is not null
+            && string.Equals(_polledJobId, job.JobId, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(job.JobId))
+            return;
+        StartJobPoll();
+    }
+
+    /// <summary>
+    /// Unbounded backup for a looks run that can last 20–30 minutes. The hub
+    /// <see cref="OnJobUpdated"/> path is primary; this loop never stops on a tick cap.
+    /// Dispose / a new poll cancels the token so leaving the page does not leak.
+    /// </summary>
     private async Task PollJobAsync(CancellationToken token)
     {
         try
         {
-            for (var i = 0; i < 120 && !token.IsCancellationRequested; i++)
+            while (LocationJobWatch.ShouldContinuePoll(
+                       _job, _projectId, _expectingLocationJob, token.IsCancellationRequested))
             {
-                var jobs = await Engine.GetJobAsync(token);
-                if (await TryApplyLocationJobAsync(jobs?.Job))
+                await Task.Delay(LocationJobWatch.BackupPollInterval, token);
+                if (token.IsCancellationRequested)
                     return;
-                await Task.Delay(1500, token);
+                if (!LocationJobWatch.ShouldContinuePoll(
+                        _job, _projectId, _expectingLocationJob, cancelled: false))
+                    return;
+
+                var snap = (await Engine.GetJobAsync(token))?.Job;
+                if (LocationJobWatch.IsTrackedForProject(snap, _projectId))
+                    Hub.RaiseJobUpdated(snap);
             }
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             // Polling stopped (component disposed or a new poll started).
         }
@@ -569,35 +709,61 @@ public partial class Locations : IDisposable
         }
     }
 
-    private bool IsTrackedLocationJob(JobSnapshot? j) =>
-        j is not null &&
-        (string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase)
-         || string.Equals(j.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase)) &&
-        string.Equals(j.ProjectId, _projectId, StringComparison.OrdinalIgnoreCase);
-
-    private async Task<bool> TryApplyLocationJobAsync(JobSnapshot? j)
+    private async Task ApplyLocationJobSnapshotAsync(JobSnapshot j)
     {
-        if (!IsTrackedLocationJob(j))
-            return false;
+        var finish = LocationJobWatch.Classify(j, _projectId);
+        if (finish == LocationJobWatch.Finish.Ignore)
+            return;
+
         _job = j;
-        await InvokeAsync(StateHasChanged);
-        if (!j!.IsFinished)
-            return false;
-        await ApplyFinishedLocationJobAsync(j);
-        return true;
+        _expectingLocationJob = false;
+        if (finish == LocationJobWatch.Finish.StillRunning)
+        {
+            EnsureBackupPoll(j);
+            return;
+        }
+
+        if (AlreadyApplied(j))
+            return;
+        MarkApplied(j);
+        StopJobPoll();
+        await ApplyFinishedLocationJobAsync(j, finish);
     }
 
-    private async Task ApplyFinishedLocationJobAsync(JobSnapshot j)
+    private bool AlreadyApplied(JobSnapshot j) =>
+        string.Equals(_appliedTerminalKey, TerminalKey(j), StringComparison.Ordinal);
+
+    private void MarkApplied(JobSnapshot j) =>
+        _appliedTerminalKey = TerminalKey(j);
+
+    private static string TerminalKey(JobSnapshot j) =>
+        string.IsNullOrWhiteSpace(j.JobId)
+            ? $"{j.Kind}|{j.Status}|{j.FinishedAt:O}"
+            : $"{j.JobId}|{j.Status}";
+
+    private async Task ApplyFinishedLocationJobAsync(JobSnapshot j, LocationJobWatch.Finish finish)
     {
-        if (j.IsSuccess)
+        if (finish == LocationJobWatch.Finish.ReloadSuccess)
         {
-            _message = j.Message ?? "Set plates ready.";
-            await LoadAsync();
+            _plateBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var pending = LocationJobWatch.SuccessBanner(j);
+            await LoadAsync(clearOperatorCopy: false);
             if (!string.IsNullOrWhiteSpace(_selectedKey))
                 await SelectAsync(_selectedKey);
+            _error = null;
+            _message = LocationJobWatch.BannerAfterReload(pending, _message);
         }
-        else if (!string.IsNullOrWhiteSpace(j.Error))
-            _error = j.Error;
+        else if (finish == LocationJobWatch.Finish.Failed)
+        {
+            _message = null;
+            if (!string.IsNullOrWhiteSpace(j.Error))
+                _error = j.Error;
+        }
+        else if (finish == LocationJobWatch.Finish.Cancelled)
+        {
+            _error = null;
+            _message = "Cancelled.";
+        }
     }
 
     private async Task LockVariantAsync(int index)
@@ -610,9 +776,11 @@ public partial class Locations : IDisposable
         {
             await Engine.LockLocationVariantAsync(_projectId, _selected.Key, index);
             _lastLockedVariantIndex = index;
-            _message = $"Locked look #{index} as preferred.";
-            await LoadAsync();
+            _plateBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var pending = $"Locked look #{index} as preferred.";
+            await LoadAsync(clearOperatorCopy: false);
             await SelectAsync(_selected.Key);
+            _message = LocationJobWatch.BannerAfterReload(pending, _message);
         }
         catch (Exception ex)
         {
@@ -636,9 +804,11 @@ public partial class Locations : IDisposable
         {
             await using var stream = file.OpenReadStream(maxAllowedSize: 8_000_000, cancellationToken: _saveCts?.Token ?? CancellationToken.None);
             await Engine.UploadLocationRefAsync(_projectId, _selected.Key, stream, file.Name, _saveCts?.Token ?? CancellationToken.None);
-            _message = "Location plate locked.";
-            await LoadAsync();
+            _plateBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            const string pending = "Location plate locked.";
+            await LoadAsync(clearOperatorCopy: false);
             await SelectAsync(_selected.Key);
+            _message = LocationJobWatch.BannerAfterReload(pending, _message);
         }
         catch (Exception ex)
         {
@@ -660,9 +830,15 @@ public partial class Locations : IDisposable
     {
         if (!disposing) return;
         ActiveProject.Changed -= OnProjectChanged;
+        if (_hubHooked)
+        {
+            Hub.JobUpdated -= OnJobUpdated;
+            Hub.JobLog -= OnJobLog;
+            Hub.Reconnected -= OnHubReconnected;
+            _hubHooked = false;
+        }
         _saveCts?.Cancel();
         _saveCts?.Dispose();
-        _pollCts?.Cancel();
-        _pollCts?.Dispose();
+        StopJobPoll();
     }
 }
