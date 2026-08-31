@@ -5146,38 +5146,66 @@ public sealed partial class ProjectStore
 
             // Every take that was trashed with this clip, plus its pointer. Matching only
             // scene_SS_clip_CC.mp4 restored nothing at all for a clip stored as takes.
-            var restored = false;
-            foreach (var trashedTake in Directory
-                         .EnumerateFiles(trashDir, ClipTakeNaming.TakeMp4SearchPattern(scene, clip)))
-            {
-                var takeName = Path.GetFileName(trashedTake);
-                foreach (var fileName in new[]
-                         {
-                             takeName,
-                             takeName + StoreLit.NativeSuffix,
-                             Path.ChangeExtension(takeName, StoreLit.ClipJsonSuffix),
-                             Path.ChangeExtension(takeName, StoreLit.MetaJsonSuffix),
-                         })
-                {
-                    var trashed = Path.Combine(trashDir, fileName);
-                    if (!File.Exists(trashed))
-                        continue;
-                    try
-                    {
-                        File.Move(trashed, Path.Combine(videoDir, fileName), overwrite: false);
-                        restored = true;
-                    }
-                    catch (IOException) { /* leave it in the trash rather than clobber */ }
-                }
-            }
+            if (TryRestoreTrashedTakes(videoDir, trashDir, scene, clip))
+                WriteRestoredCurrentTake(videoDir, scene, clip);
+        }
+    }
 
-            // Point at what came back: the newest take restored.
-            if (restored
-                && ClipSidecarService.ResolveClipMediaPath(videoDir, scene, clip) is { } back
-                && ClipTakeNaming.ParseTakeNumber(Path.GetFileName(back)) is var take && take > 0)
+    /// <summary>
+    /// Moves every matching take (and its sidecars) from trash back to the video dir.
+    /// Returns true if at least one file came back.
+    /// </summary>
+    private static bool TryRestoreTrashedTakes(string videoDir, string trashDir, int scene, int clip)
+    {
+        var restored = false;
+        foreach (var trashedTake in Directory
+                     .EnumerateFiles(trashDir, ClipTakeNaming.TakeMp4SearchPattern(scene, clip)))
+        {
+            var takeName = Path.GetFileName(trashedTake);
+            foreach (var fileName in new[]
+                     {
+                         takeName,
+                         takeName + StoreLit.NativeSuffix,
+                         Path.ChangeExtension(takeName, StoreLit.ClipJsonSuffix),
+                         Path.ChangeExtension(takeName, StoreLit.MetaJsonSuffix),
+                     })
             {
-                ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, take);
+                if (TryRestoreTrashedFile(videoDir, trashDir, fileName))
+                    restored = true;
             }
+        }
+        return restored;
+    }
+
+    /// <summary>
+    /// Moves one trash file back. An <see cref="IOException"/> leaves it in trash rather than
+    /// clobbering something already on disk.
+    /// </summary>
+    private static bool TryRestoreTrashedFile(string videoDir, string trashDir, string fileName)
+    {
+        var trashed = Path.Combine(trashDir, fileName);
+        if (!File.Exists(trashed))
+            return false;
+        try
+        {
+            File.Move(trashed, Path.Combine(videoDir, fileName), overwrite: false);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Points the clip at the newest take that came back from trash.
+    /// </summary>
+    private static void WriteRestoredCurrentTake(string videoDir, int scene, int clip)
+    {
+        if (ClipSidecarService.ResolveClipMediaPath(videoDir, scene, clip) is { } back
+            && ClipTakeNaming.ParseTakeNumber(Path.GetFileName(back)) is var take && take > 0)
+        {
+            ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, take);
         }
     }
 
