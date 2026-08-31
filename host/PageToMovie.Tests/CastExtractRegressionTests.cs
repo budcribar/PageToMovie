@@ -124,6 +124,7 @@ public sealed class CastExtractRegressionTests
             {
               "schema_version": "cast_seeds.v1",
               "movie_title": "Test",
+              "performance_lock": "PERFORMANCE LOCK: objective; characters look at each other, not the viewer.",
               "character_seed_tokens": {
                 "Character_Mom": {
                   "canonical_given_name": "Mom",
@@ -162,6 +163,7 @@ public sealed class CastExtractRegressionTests
         var modelJson = """
             {
               "schema_version": "cast_seeds.v1",
+              "performance_lock": "PERFORMANCE LOCK: objective; characters look at each other, not the viewer.",
               "character_seed_tokens": {
                 "Character_Hero": {
                   "canonical_given_name": "Hero",
@@ -180,6 +182,108 @@ public sealed class CastExtractRegressionTests
         Assert.Equal("Character_Hero", keys[0], ignoreCase: true);
         Assert.DoesNotContain(keys, k => k.Contains("Office", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(keys, k => k.Contains("Day", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_fails_when_model_omits_performance_lock()
+    {
+        const string fountain = """
+            INT. ROOM - DAY
+            HERO
+            Hello.
+            """;
+        var modelJson = """
+            {
+              "schema_version": "cast_seeds.v1",
+              "movie_title": "No Lock",
+              "character_seed_tokens": {
+                "Character_Hero": {
+                  "canonical_given_name": "Hero",
+                  "description": "young adult",
+                  "visual_lock": "young adult",
+                  "display_name_policy": "ok_anytime",
+                  "species_kind": "human"
+                }
+              }
+            }
+            """;
+
+        var (result, _, _, _, _, _) = await RunExtractAsync(
+            fountain, book: null, modelJson, writeMedium: true, writePerformanceLock: false);
+
+        Assert.False(result.Ok);
+        Assert.False(string.IsNullOrWhiteSpace(result.Error));
+        Assert.True(
+            result.Error!.Contains("performance lock", StringComparison.OrdinalIgnoreCase)
+            || result.Error.Contains("performance_lock", StringComparison.OrdinalIgnoreCase),
+            result.Error);
+        Assert.DoesNotContain("book/screenplay", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_fails_when_vision_has_no_look_to_persist_lock()
+    {
+        const string fountain = """
+            INT. ROOM - DAY
+            HERO
+            Hello.
+            """;
+        var modelJson = """
+            {
+              "schema_version": "cast_seeds.v1",
+              "movie_title": "No Look",
+              "performance_lock": "PERFORMANCE LOCK: objective; characters look at each other, not the viewer.",
+              "character_seed_tokens": {
+                "Character_Hero": {
+                  "canonical_given_name": "Hero",
+                  "description": "young adult",
+                  "visual_lock": "young adult",
+                  "display_name_policy": "ok_anytime",
+                  "species_kind": "human"
+                }
+              }
+            }
+            """;
+
+        var (result, _, _, _, _, _) = await RunExtractAsync(
+            fountain, book: null, modelJson, writeMedium: false, writePerformanceLock: false);
+
+        Assert.False(result.Ok);
+        Assert.Equal(CastFromScreenplayService.MissingPerformanceLockPersistMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_persists_performance_lock_onto_vision_meta()
+    {
+        const string fountain = """
+            INT. ROOM - DAY
+            HERO
+            Hello.
+            """;
+        const string lockText = "PERFORMANCE LOCK: first-person confessional; the speaker addresses an implied listener.";
+        var modelJson = $$"""
+            {
+              "schema_version": "cast_seeds.v1",
+              "movie_title": "Locked",
+              "performance_lock": "{{lockText}}",
+              "character_seed_tokens": {
+                "Character_Hero": {
+                  "canonical_given_name": "Hero",
+                  "description": "young adult",
+                  "visual_lock": "young adult",
+                  "display_name_policy": "ok_anytime",
+                  "species_kind": "human"
+                }
+              }
+            }
+            """;
+
+        var (result, _, _, _, _, persistedLock) = await RunExtractAsync(
+            fountain, book: null, modelJson, writeMedium: true, writePerformanceLock: false, includePersistedLock: true);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.False(string.IsNullOrWhiteSpace(persistedLock));
+        Assert.Contains("confessional", persistedLock, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -206,6 +310,19 @@ public sealed class CastExtractRegressionTests
     private static async Task<(CastFromScreenplayService.ExtractResult Result, List<string> Keys, string UserPrompt, string CastSeeds, string Rules)>
         RunExtractAsync(string fountain, string? book, string modelJson)
     {
+        var r = await RunExtractAsync(fountain, book, modelJson, writeMedium: true, writePerformanceLock: true);
+        return (r.Result, r.Keys, r.UserPrompt, r.CastSeeds, r.Rules);
+    }
+
+    private static async Task<(CastFromScreenplayService.ExtractResult Result, List<string> Keys, string UserPrompt, string CastSeeds, string Rules, string? PersistedLock)>
+        RunExtractAsync(
+            string fountain,
+            string? book,
+            string modelJson,
+            bool writeMedium,
+            bool writePerformanceLock,
+            bool includePersistedLock = false)
+    {
         var workspace = Path.Combine(Path.GetTempPath(), "ptm_cast_reg_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
         try
@@ -225,9 +342,20 @@ public sealed class CastExtractRegressionTests
             });
             var store = new ProjectStore(opts);
             var project = await store.CreateProjectAsync("CastReg");
-            await OfflineTestModelConfig.ApplyAsync(store, project.Id);
+            await OfflineTestModelConfig.ApplyAsync(store, project.Id, writeDecidedVision: false);
             var dir = store.GetProjectDir(project.Id);
             Directory.CreateDirectory(Path.Combine(dir, "source"));
+            if (writeMedium)
+            {
+                ProjectVisionMeta.Write(dir, new ProjectVisionMeta.Document
+                {
+                    VisualMedium = ProjectVisionMeta.MediumIllustrated,
+                    PerformanceLock = writePerformanceLock
+                        ? "PERFORMANCE LOCK: objective; characters look at each other / scene action, not the viewer."
+                        : null,
+                    DecidedBy = "adaptation",
+                });
+            }
             await File.WriteAllTextAsync(Path.Combine(dir, "source", "screenplay.fountain"), fountain);
             if (!string.IsNullOrWhiteSpace(book))
                 await File.WriteAllTextAsync(Path.Combine(dir, "source", "book_full.txt"), book);
@@ -247,7 +375,8 @@ public sealed class CastExtractRegressionTests
             var castSeeds = File.Exists(castPath) ? await File.ReadAllTextAsync(castPath) : "";
             var rulesPath = Path.Combine(dir, "project_rules.json");
             var rulesJson = File.Exists(rulesPath) ? await File.ReadAllTextAsync(rulesPath) : "";
-            return (result, keys, chat.LastCastUserPrompt ?? "", castSeeds, rulesJson);
+            var persistedLock = includePersistedLock ? ProjectVisionMeta.TryGetPerformanceLock(dir) : null;
+            return (result, keys, chat.LastCastUserPrompt ?? "", castSeeds, rulesJson, persistedLock);
         }
         finally
         {

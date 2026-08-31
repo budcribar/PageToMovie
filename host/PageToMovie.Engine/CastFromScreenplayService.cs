@@ -40,6 +40,20 @@ public sealed class CastFromScreenplayService
     /// <summary>Evenly spaced narrative windows when the book is truncated (covers late chapters).</summary>
     public const int BookSpineWindowCount = 5;
 
+    /// <summary>
+    /// Model omitted or emptied <c>performance_lock</c>. Do not invent a default —
+    /// fail extract so Stage 2 is not the first to notice.
+    /// </summary>
+    public const string MissingPerformanceLockFromModelMessage =
+        "Cast extract did not infer a performance lock from the book and screenplay. Re-run Cast extract.";
+
+    /// <summary>
+    /// Model returned a lock but vision_meta has no decided look, so persist is a no-op
+    /// (writing vision_meta from extract alone would invent a medium).
+    /// </summary>
+    public const string MissingPerformanceLockPersistMessage =
+        "Cast extract could not save a performance lock. Open Screenplay, choose how the film should look, then re-run Cast extract.";
+
     private const string KeyCharacterSeedTokens = "character_seed_tokens";
     private const string KeyLocationSeedTokens = "location_seed_tokens";
     private const string KeyWardrobeLockTokens = "wardrobe_lock_tokens";
@@ -135,7 +149,7 @@ public sealed class CastFromScreenplayService
             return new ExtractResult { Ok = false, Error = "Screenplay draft is empty." };
 
         var outPath = ScreenplayService.GetCastSeedsPath(_projects, projectId);
-        var existing = await TryLoadExistingCastAsync(outPath, force, onProgress, ct).ConfigureAwait(false);
+        var existing = await TryLoadExistingCastAsync(projectId, outPath, force, onProgress, ct).ConfigureAwait(false);
         if (existing is not null)
             return existing;
 
@@ -162,6 +176,10 @@ public sealed class CastFromScreenplayService
 
         if (seedsObj.Count == 0)
             return new ExtractResult { Ok = false, Error = "Model returned no character_seed_tokens." };
+
+        var lockError = RequirePersistedPerformanceLock(projectId, normalized);
+        if (lockError is not null)
+            return lockError;
 
         seedsObj = await LiteralizeCastLooksAsync(
             normalized, seedsObj, book, fountain, model, onProgress, ct).ConfigureAwait(false);
@@ -225,6 +243,7 @@ public sealed class CastFromScreenplayService
     }
 
     private async Task<ExtractResult?> TryLoadExistingCastAsync(
+        string projectId,
         string outPath,
         bool force,
         Action<string>? onProgress,
@@ -238,6 +257,19 @@ public sealed class CastFromScreenplayService
                 var seeds = GetSeedsElement(existing.RootElement);
                 if (seeds.ValueKind == JsonValueKind.Object && seeds.EnumerateObject().Any())
                 {
+                    // Skip only when vision_meta already has (or can take) a performance lock.
+                    // An old cast file without a lock must not report success — Stage 2 would
+                    // then be the first to notice.
+                    if (existing.RootElement.TryGetProperty(KeyPerformanceLock, out var existingLock))
+                    {
+                        var fromFile = existingLock.GetString();
+                        if (!string.IsNullOrWhiteSpace(fromFile))
+                            PersistPerformanceLockToVisionMeta(projectId, fromFile);
+                    }
+                    if (string.IsNullOrWhiteSpace(
+                            ProjectVisionMeta.TryGetPerformanceLock(_projects.GetProjectDir(projectId))))
+                        return null;
+
                     onProgress?.Invoke("Cast file already present — use force to rebuild.");
                     var existingKeys = seeds.EnumerateObject().Select(p => p.Name).ToList();
                     return new ExtractResult
@@ -1190,22 +1222,52 @@ public sealed class CastFromScreenplayService
     }
 
     /// <summary>
-    /// Write extract lock onto an already-decided vision_meta. Do not create vision_meta
-    /// from extract alone (that would invent a medium). Do not overwrite a lock adaptation already set.
+    /// Fail extract unless a non-empty performance lock is on the model payload and
+    /// persisted onto vision_meta. Do not invent a default lock, medium, or STYLE LOCK.
     /// </summary>
-    private void PersistPerformanceLockToVisionMeta(string projectId, string performanceLock)
+    private ExtractResult? RequirePersistedPerformanceLock(string projectId, Dictionary<string, object?> normalized)
+    {
+        var fromModel = ReadPerformanceLock(normalized);
+        if (string.IsNullOrWhiteSpace(fromModel))
+            return new ExtractResult { Ok = false, Error = MissingPerformanceLockFromModelMessage };
+
+        PersistPerformanceLockToVisionMeta(projectId, fromModel);
+        var dir = _projects.GetProjectDir(projectId);
+        if (!string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
+            return null;
+
+        if (ProjectVisionMeta.TryGetDecided(dir) is null)
+            return new ExtractResult { Ok = false, Error = MissingPerformanceLockPersistMessage };
+        return new ExtractResult { Ok = false, Error = MissingPerformanceLockFromModelMessage };
+    }
+
+    private static string? ReadPerformanceLock(Dictionary<string, object?> doc)
+    {
+        if (!doc.TryGetValue(KeyPerformanceLock, out var pl) || pl is null)
+            return null;
+        var text = pl.ToString()?.Trim();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    /// <summary>
+    /// Write extract lock onto an already-decided vision_meta. Do not create vision_meta
+    /// from extract alone (that would invent a medium). Do not overwrite a lock already set.
+    /// </summary>
+    /// <returns>True when vision_meta already has a lock or this call just wrote one.</returns>
+    private bool PersistPerformanceLockToVisionMeta(string projectId, string performanceLock)
     {
         var dir = _projects.GetProjectDir(projectId);
+        if (!string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
+            return true;
         var doc = ProjectVisionMeta.TryRead(dir);
         if (doc is null || !ProjectVisionMeta.IsDecidedMedium(doc.VisualMedium))
-            return;
-        if (!string.IsNullOrWhiteSpace(doc.PerformanceLock))
-            return;
+            return false;
         var normalized = ProjectRulesService.NormalizePerformanceRuleText(performanceLock);
         if (string.IsNullOrWhiteSpace(normalized))
-            return;
+            return false;
         doc.PerformanceLock = normalized;
         ProjectVisionMeta.Write(dir, doc);
+        return true;
     }
 
     private static Dictionary<string, object?> NormalizeCharacterSeeds(Dictionary<string, object?> seedsIn)

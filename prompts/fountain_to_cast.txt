@@ -161,7 +161,7 @@ FIELD RULES:
   and default performance/staging (e.g. "first-person confessional often addresses implied
   listener/camera when speaking; other characters are observed objects"; or "objective
   picture-book staging; characters look at each other / scene action, not the viewer").
-  Prefer conventions over anatomy recipes. Empty only if nothing can be inferred.
+  Prefer conventions over anatomy recipes. Required — never empty. Infer from book+screenplay.
 - performance_notes (per character, optional): only when that role differs from the film default.
 - reference_image_placeholder: bare filename only under assets/characters/ (no folder path).
 - source_image_pages: optional 1–3 page numbers from book --- PAGE N --- if book has plates

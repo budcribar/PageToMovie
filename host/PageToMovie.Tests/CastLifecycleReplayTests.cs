@@ -13,6 +13,7 @@ public sealed class CastLifecycleReplayTests
         var valid = """
             {
               "schema_version":"cast_seeds.v1",
+              "performance_lock":"PERFORMANCE LOCK: objective; characters look at each other, not the viewer.",
               "character_seed_tokens":{
                 "Character_Mary":{
                   "canonical_given_name":"Mary",
@@ -41,6 +42,29 @@ public sealed class CastLifecycleReplayTests
         Assert.Equal(2, result.Attempts.Count);
         Assert.Contains(result.Attempts[0].ValidationIssues, issue => issue.Code == "invalid_schema");
         Assert.Contains("Character_Mary", CastExtractionValidator.FindSeeds(result.Value!)!.Keys);
+    }
+
+    [Fact]
+    public void CastExtractionValidator_rejects_empty_performance_lock()
+    {
+        var parsed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["schema_version"] = "cast_seeds.v1",
+            ["character_seed_tokens"] = new Dictionary<string, object?>
+            {
+                ["Character_Mary"] = new Dictionary<string, object?>
+                {
+                    ["canonical_given_name"] = "Mary",
+                    ["description"] = "A young child in a plain blue dress.",
+                    ["display_name_policy"] = "ok_anytime",
+                    ["species_kind"] = "human",
+                },
+            },
+        };
+
+        var issues = new CastExtractionValidator().Validate(parsed);
+        Assert.Contains(issues, issue => issue.Code == "missing_performance_lock");
+        Assert.Contains(issues, issue => issue.Message.Contains("performance_lock", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

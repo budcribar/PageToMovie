@@ -85,8 +85,10 @@ public sealed class ProjectVisionMetaTests
             Assert.Null(ProjectVisionMeta.TryGetPerformanceLock(dir));
             var ex = Assert.Throws<InvalidOperationException>(() => ProjectVisionMeta.RequirePerformanceLock(dir));
             Assert.Equal(ProjectVisionMeta.MissingPerformanceLockMessage, ex.Message);
-            Assert.Contains("out of date", ex.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("performance lock", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("cast extract", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("book/screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("regen", ex.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

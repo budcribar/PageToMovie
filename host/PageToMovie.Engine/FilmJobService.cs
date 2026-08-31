@@ -5907,6 +5907,11 @@ public sealed class FilmJobService
 
     private async Task<double> ExecuteClipGenerationAsync(ClipGenContext ctx)
     {
+        // Same fail-fast as Stage 2: decided look + performance lock before paid reseed / generate.
+        // Message is ProjectVisionMeta.MissingPerformanceLockMessage (Cast extract, not book/screenplay).
+        var vision = ProjectVisionMeta.RequireDecided(ctx.ProjectDir);
+        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(ctx.ProjectDir);
+
         // PR2: reseed with locked refs when on-screen cast set changes (API drops refs on extend).
         await ApplyIdentityReseedIfNeededAsync(ctx).ConfigureAwait(false);
 
@@ -5914,9 +5919,6 @@ public sealed class FilmJobService
         // from the prior silent clip). Require prev on disk for order, but gen fresh + plates.
         await ApplyFirstSpokenAfterSilenceReseedAsync(ctx).ConfigureAwait(false);
         await LogContinuityOrReseedAsync(ctx).ConfigureAwait(false);
-
-        var vision = ProjectVisionMeta.RequireDecided(ctx.ProjectDir);
-        var performanceLock = ProjectVisionMeta.RequirePerformanceLock(ctx.ProjectDir);
         var styleHead = vision.RenderStyleLock;
         var sceneLocationKey = ResolveSceneLocationKey(ctx.BlueprintRoot, ctx.Scene);
 
