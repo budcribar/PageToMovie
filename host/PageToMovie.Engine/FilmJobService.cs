@@ -5908,7 +5908,7 @@ public sealed class FilmJobService
     private async Task<double> ExecuteClipGenerationAsync(ClipGenContext ctx)
     {
         // Same fail-fast as Stage 2: decided look + performance lock before paid reseed / generate.
-        // Message is ProjectVisionMeta.MissingPerformanceLockMessage (Cast extract, not book/screenplay).
+        // Message is ProjectVisionMeta.MissingPerformanceLockMessage (Cast from the screenplay, not Plan looks).
         var vision = ProjectVisionMeta.RequireDecided(ctx.ProjectDir);
         var performanceLock = ProjectVisionMeta.RequirePerformanceLock(ctx.ProjectDir);
 

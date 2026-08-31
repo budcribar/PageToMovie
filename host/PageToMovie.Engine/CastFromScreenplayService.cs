@@ -45,14 +45,21 @@ public sealed class CastFromScreenplayService
     /// fail extract so Stage 2 is not the first to notice.
     /// </summary>
     public const string MissingPerformanceLockFromModelMessage =
-        "Cast extract did not infer a performance lock from the book and screenplay. Re-run Cast extract.";
+        "Cast from the screenplay did not infer a performance lock. Approve again, or run Cast from the screenplay.";
 
     /// <summary>
     /// Model returned a lock but vision_meta has no decided look, so persist is a no-op
     /// (writing vision_meta from extract alone would invent a medium).
     /// </summary>
     public const string MissingPerformanceLockPersistMessage =
-        "Cast extract could not save a performance lock. Open Screenplay, choose how the film should look, then re-run Cast extract.";
+        "Cast from the screenplay could not save a performance lock. Open Screenplay, choose how the film should look, then approve again.";
+
+    /// <summary>
+    /// Approve/sign-off ran extract but <c>vision_meta.performance_lock</c> is still empty.
+    /// Do not invent a lock. Operator retries approve (inline extract) or runs Cast from the screenplay.
+    /// </summary>
+    public const string SignOffMissingPerformanceLockMessage =
+        "Cast from the screenplay did not produce a performance lock. Approve again, or run Cast from the screenplay.";
 
     private const string KeyCharacterSeedTokens = "character_seed_tokens";
     private const string KeyLocationSeedTokens = "location_seed_tokens";

@@ -183,8 +183,9 @@ public sealed class VisualMediumSsotTests : IDisposable
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => planner.PlanAsync(projectId, resolution: "480p", scenes: "all", onProgress: progress.Add));
         Assert.Equal(ProjectVisionMeta.MissingPerformanceLockMessage, ex.Message);
-        Assert.Contains("cast extract", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cast from the screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("book/screenplay", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("plan looks", ex.Message, StringComparison.OrdinalIgnoreCase);
         // Fail-fast at job start: no classifier progress and no chat calls.
         Assert.Empty(chat.Prompts);
         Assert.DoesNotContain(progress, line =>
