@@ -90,18 +90,21 @@ public sealed class CharacterLookEditTests
     public void BuildRegenRequest_iterative_edit_is_one_look_and_does_not_AutoLockBest()
     {
         var req = Characters.CharactersLookPipeline.BuildRegenRequest(
-            projectId: "p1",
-            charKey: "Character_Ada",
-            hasImageEdit: true,
-            includePref: true,
-            variants: new List<int> { 1, 2 },
-            books: new List<int> { 0 },
-            sendOrder: new List<string> { "p", "v1" },
-            maxSend: 3,
-            description: "A young woman with brunette hair",
-            visualLock: "brunette hair",
-            imageEditInstruction: "red hair",
-            selectedSeedCount: 2);
+            new Characters.CharactersLookPipeline.RegenRequestArgs
+            {
+                ProjectId = "p1",
+                CharKey = "Character_Ada",
+                HasImageEdit = true,
+                IncludePref = true,
+                Variants = new List<int> { 1, 2 },
+                Books = new List<int> { 0 },
+                SendOrder = new List<string> { "p", "v1" },
+                MaxSend = 3,
+                Description = "A young woman with brunette hair",
+                VisualLock = "brunette hair",
+                ImageEditInstruction = "red hair",
+                SelectedSeedCount = 2,
+            });
 
         Assert.Equal(1, req.Count);
         Assert.True(req.IterativeEdit);
@@ -117,18 +120,17 @@ public sealed class CharacterLookEditTests
     public void BuildRegenRequest_generate_from_description_is_three_looks_and_AutoLockBest()
     {
         var req = Characters.CharactersLookPipeline.BuildRegenRequest(
-            projectId: "p1",
-            charKey: "Character_Ada",
-            hasImageEdit: false,
-            includePref: false,
-            variants: new List<int>(),
-            books: new List<int>(),
-            sendOrder: new List<string>(),
-            maxSend: 3,
-            description: "A pale adult in a dark coat",
-            visualLock: null,
-            imageEditInstruction: "",
-            selectedSeedCount: 0);
+            new Characters.CharactersLookPipeline.RegenRequestArgs
+            {
+                ProjectId = "p1",
+                CharKey = "Character_Ada",
+                HasImageEdit = false,
+                IncludePref = false,
+                MaxSend = 3,
+                Description = "A pale adult in a dark coat",
+                ImageEditInstruction = "",
+                SelectedSeedCount = 0,
+            });
 
         Assert.Equal(3, req.Count);
         Assert.False(req.IterativeEdit);

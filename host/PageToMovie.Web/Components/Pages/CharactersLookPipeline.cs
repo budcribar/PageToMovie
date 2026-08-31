@@ -198,58 +198,68 @@ public partial class Characters
             List<int> books,
             List<string> sendOrder,
             int maxSend)
-            => BuildRegenRequest(
-                S._projectId,
-                S.List._selected!.Key,
-                hasImageEdit,
-                includePref,
-                variants,
-                books,
-                sendOrder,
-                maxSend,
-                S.LookEdit._editDescription,
-                S.LookEdit._editVisualLock,
-                S.LookEdit._imageEditInstruction,
-                S.LookBook.SelectedSeedCount);
+            => BuildRegenRequest(new RegenRequestArgs
+            {
+                ProjectId = S._projectId,
+                CharKey = S.List._selected!.Key,
+                HasImageEdit = hasImageEdit,
+                IncludePref = includePref,
+                Variants = variants,
+                Books = books,
+                SendOrder = sendOrder,
+                MaxSend = maxSend,
+                Description = S.LookEdit._editDescription,
+                VisualLock = S.LookEdit._editVisualLock,
+                ImageEditInstruction = S.LookEdit._imageEditInstruction,
+                SelectedSeedCount = S.LookBook.SelectedSeedCount,
+            });
+
+        /// <summary>
+        /// Inputs for <see cref="BuildRegenRequest(RegenRequestArgs)"/>.
+        /// Object-initializer shape so generate vs tweak fields stay grouped.
+        /// </summary>
+        internal sealed class RegenRequestArgs
+        {
+            public required string ProjectId { get; init; }
+            public required string CharKey { get; init; }
+            public bool HasImageEdit { get; init; }
+            public bool IncludePref { get; init; }
+            public List<int> Variants { get; init; } = new();
+            public List<int> Books { get; init; } = new();
+            public List<string> SendOrder { get; init; } = new();
+            public int MaxSend { get; init; }
+            public string? Description { get; init; }
+            public string? VisualLock { get; init; }
+            public string? ImageEditInstruction { get; init; }
+            public int SelectedSeedCount { get; init; }
+        }
 
         /// <summary>Request shape for generate-3 vs iterative tweak-1. Testable without a page host.</summary>
-        internal static StartCharacterVariantsRequest BuildRegenRequest(
-            string projectId,
-            string charKey,
-            bool hasImageEdit,
-            bool includePref,
-            List<int> variants,
-            List<int> books,
-            List<string> sendOrder,
-            int maxSend,
-            string? description,
-            string? visualLock,
-            string? imageEditInstruction,
-            int selectedSeedCount)
+        internal static StartCharacterVariantsRequest BuildRegenRequest(RegenRequestArgs args)
         {
             string seedMode;
-            if (hasImageEdit) seedMode = "preferred_only";
-            else if (selectedSeedCount == 0) seedMode = "none";
+            if (args.HasImageEdit) seedMode = "preferred_only";
+            else if (args.SelectedSeedCount == 0) seedMode = "none";
             else seedMode = "explicit";
             return new StartCharacterVariantsRequest
             {
-                ProjectId = projectId,
-                CharKey = charKey,
-                Count = CharacterLookEdit.VariantCount(hasImageEdit),
+                ProjectId = args.ProjectId,
+                CharKey = args.CharKey,
+                Count = CharacterLookEdit.VariantCount(args.HasImageEdit),
                 // Voice/text image edit always anchors on the preferred plate.
                 SeedMode = seedMode,
-                IncludePreferred = hasImageEdit || includePref,
-                IncludeLockedRef = hasImageEdit || includePref,
-                BookRefIndices = hasImageEdit ? new List<int>() : books,
-                VariantIndices = hasImageEdit ? new List<int>() : variants,
-                SeedOrderKeys = hasImageEdit ? new List<string> { "p" } : sendOrder,
-                MaxRefs = hasImageEdit ? 1 : maxSend,
-                DescriptionOverride = description,
-                VisualLockOverride = visualLock,
-                ImageEditInstruction = hasImageEdit ? imageEditInstruction : null,
-                PersistDescription = !hasImageEdit, // merge instruction into look text after a successful tweak
-                AutoLockBest = CharacterLookEdit.ShouldAutoLockBest(hasImageEdit),
-                IterativeEdit = hasImageEdit,
+                IncludePreferred = args.HasImageEdit || args.IncludePref,
+                IncludeLockedRef = args.HasImageEdit || args.IncludePref,
+                BookRefIndices = args.HasImageEdit ? new List<int>() : args.Books,
+                VariantIndices = args.HasImageEdit ? new List<int>() : args.Variants,
+                SeedOrderKeys = args.HasImageEdit ? new List<string> { "p" } : args.SendOrder,
+                MaxRefs = args.HasImageEdit ? 1 : args.MaxSend,
+                DescriptionOverride = args.Description,
+                VisualLockOverride = args.VisualLock,
+                ImageEditInstruction = args.HasImageEdit ? args.ImageEditInstruction : null,
+                PersistDescription = !args.HasImageEdit, // merge instruction into look text after a successful tweak
+                AutoLockBest = CharacterLookEdit.ShouldAutoLockBest(args.HasImageEdit),
+                IterativeEdit = args.HasImageEdit,
             };
         }
 
