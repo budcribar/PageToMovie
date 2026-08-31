@@ -5170,8 +5170,8 @@ public sealed partial class ProjectStore
                          Path.ChangeExtension(takeName, StoreLit.MetaJsonSuffix),
                      })
             {
-                if (TryRestoreTrashedFile(videoDir, trashDir, fileName))
-                    restored = true;
+                // |= so every companion still runs — Where/Any would skip remaining moves.
+                restored |= TryRestoreTrashedFile(videoDir, trashDir, fileName);
             }
         }
         return restored;
