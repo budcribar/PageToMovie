@@ -2928,7 +2928,7 @@ public sealed partial class ProjectStore
     private static List<CharacterImageRef> CollectCharacterVariants(string projectId, string projectDir, string key)
     {
         var variants = new List<CharacterImageRef>();
-        for (var idx = 1; idx <= 3; idx++)
+        for (var idx = 1; idx <= PageToMovie.Core.Utils.CharacterLookEdit.MaxVariants; idx++)
         {
             var fileName = $"{key.ToLowerInvariant()}_variant_0{idx}.png";
             var full = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, fileName);
@@ -5883,7 +5883,7 @@ public sealed partial class ProjectStore
 
     public string? ResolveCharacterVariantPath(string projectId, string charKey, int variantIndex)
     {
-        if (variantIndex is < 1 or > 3)
+        if (variantIndex is < 1 || variantIndex > PageToMovie.Core.Utils.CharacterLookEdit.MaxVariants)
             return null;
         var seeds = LoadCharacterSeeds(projectId);
         if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(info))

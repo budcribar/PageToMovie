@@ -2359,7 +2359,7 @@ public sealed class FilmJobService
         {
             "lock-variant" =>
                 await _characters.LockVariantAsync(
-                    projectId, charKey, Math.Clamp(variantIndex, 1, 3), allowStyleOverride, ct).ConfigureAwait(false),
+                    projectId, charKey, Math.Clamp(variantIndex, 1, CharacterLookEdit.MaxVariants), allowStyleOverride, ct).ConfigureAwait(false),
             "lock-image" when !string.IsNullOrWhiteSpace(imagePath) =>
                 await _characters.LockFromPathAsync(
                     projectId,
@@ -2763,7 +2763,7 @@ public sealed class FilmJobService
     {
         if (req.Count > 0)
             return req.Count;
-        return req.IterativeEdit ? 1 : 3;
+        return CharacterLookEdit.VariantCount(req.IterativeEdit);
     }
 
     private static string FormatCharacterVariantFilesLog(CharacterDesignResult result) =>
@@ -2810,11 +2810,14 @@ public sealed class FilmJobService
         CharacterDesignResult result,
         CancellationToken ct)
     {
-        if (result.PreviousVariantIndex is int prevChar && result.NewVariantIndex is int nextChar)
+        if (req.IterativeEdit && result.NewVariantIndex is int nextChar && !result.LockedAsPreferred)
         {
+            await UpdateAsync(s => s.Message = $"Locking new look #{nextChar}…");
+            await _characters.LockVariantAsync(
+                projectId, req.CharKey, nextChar, allowStyleOverride: true, ct).ConfigureAwait(false);
             await FinishAsync(
                 StatusDone,
-                $"New look is #{nextChar} — current lock is still #{prevChar}. Pick one.");
+                $"Portrait tweaked for {req.CharKey} — new look #{nextChar} is locked.");
             return;
         }
 
@@ -2826,7 +2829,7 @@ public sealed class FilmJobService
             return;
         }
 
-        if (req.AutoLockBest && !req.IterativeEdit && result.Paths.Count > 0)
+        if (req.AutoLockBest && CharacterLookEdit.ShouldAutoLockBest(req.IterativeEdit) && result.Paths.Count > 0)
         {
             await AutoLockCharacterBestAsync(req, projectId, result, ct).ConfigureAwait(false);
             return;

@@ -244,8 +244,18 @@ public partial class Characters
                 S._message = null;
                 // Brief delay so variant files are visible after write/flush
                 await Task.Delay(150);
+                S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 await S.List.SoftReloadAsync();
-                S.LookPipe.BeginCompareFromVariants();
+                if (S.LookPipe._lastGenerateWasIterative)
+                {
+                    // Tweak locked the new plate — show it as preferred, do not open the 3-way pick.
+                    S.LookPipe.ResetCompare();
+                    S.LookPipe._mode = Mode.PickSource;
+                    S.LookPipe._pictureRoute = PictureRoute.Choose;
+                    S.List.ApplyPanelsForSelected();
+                }
+                else
+                    S.LookPipe.BeginCompareFromVariants();
             }
             else if (snap.Status == JobStatusError)
             {
