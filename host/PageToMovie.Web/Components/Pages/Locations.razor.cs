@@ -131,6 +131,7 @@ public partial class Locations : IDisposable
     internal bool _busy;
     internal bool _loading = true;
     private CancellationTokenSource? _saveCts;
+    private readonly CancellationTokenSource _pageCts = new();
     internal JobSnapshot? _job;
     private CancellationTokenSource? _pollCts;
     private string? _polledJobId;
@@ -149,7 +150,7 @@ public partial class Locations : IDisposable
     {
         ActiveProject.Changed += OnProjectChanged;
         HookJobHub();
-        try { await Hub.StartAsync(); } catch { /* poll backup still watches */ }
+        try { await Hub.StartAsync(_pageCts.Token); } catch { /* poll backup still watches */ }
         await LoadAsync();
         await AdoptInFlightLocationJobAsync();
     }
@@ -565,7 +566,7 @@ public partial class Locations : IDisposable
     {
         _appliedTerminalKey = null;
         _expectingLocationJob = true;
-        try { await Hub.StartAsync(); } catch { /* poll backup still watches */ }
+        try { await Hub.StartAsync(_pageCts.Token); } catch { /* poll backup still watches */ }
         StartJobPoll();
         await RaiseCurrentJobIfTrackedAsync();
     }
@@ -839,6 +840,8 @@ public partial class Locations : IDisposable
         }
         _saveCts?.Cancel();
         _saveCts?.Dispose();
+        _pageCts.Cancel();
+        _pageCts.Dispose();
         StopJobPoll();
     }
 }
