@@ -141,20 +141,6 @@ public partial class AdaptationScreenplay
         _structuredUi?.OpenExportPdfModal();
     }
 
-    private async Task MenuCollapseAllAsync()
-    {
-        CloseMenu();
-        if (_structuredUi is not null)
-            await _structuredUi.CollapseAllScenes();
-    }
-
-    private async Task MenuExpandAllAsync()
-    {
-        CloseMenu();
-        if (_structuredUi is not null)
-            await _structuredUi.ExpandAllScenes();
-    }
-
     /// <summary>
     /// Outline ▶ — play the generated scene video on Film (same stitch path as “Play scene”).
     /// </summary>
