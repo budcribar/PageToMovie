@@ -84,6 +84,15 @@ internal sealed class CastExtractionValidator : IModelResultValidator<Dictionary
             return issues;
         }
 
+        ValidateCharacterSeeds(seeds, issues);
+        ValidateLocationSeeds(result, issues);
+        return issues;
+    }
+
+    private static void ValidateCharacterSeeds(
+        Dictionary<string, object?> seeds,
+        List<ModelValidationIssue> issues)
+    {
         foreach (var (key, value) in seeds)
         {
             var path = $"$.character_seed_tokens.{key}";
@@ -98,27 +107,30 @@ internal sealed class CastExtractionValidator : IModelResultValidator<Dictionary
             RequireText(seed, "species_kind", path, issues);
             ValidateSourcePages(seed, path, issues);
         }
+    }
 
+    private static void ValidateLocationSeeds(
+        Dictionary<string, object?> result,
+        List<ModelValidationIssue> issues)
+    {
         // Locations optional for validation fail-hard; when present, require Loc_* + description.
-        if (result.TryGetValue("location_seed_tokens", out var locObj)
-            && locObj is Dictionary<string, object?> locs
-            && locs.Count > 0)
-        {
-            foreach (var (key, value) in locs)
-            {
-                var path = $"$.location_seed_tokens.{key}";
-                if (!key.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
-                    || value is not Dictionary<string, object?> seed)
-                {
-                    issues.Add(new("invalid_location", "Each location entry must use a Loc_ key and contain an object.", path));
-                    continue;
-                }
-                if (!seed.TryGetValue("description", out var desc) || string.IsNullOrWhiteSpace(desc?.ToString()))
-                    issues.Add(new("missing_location_field", "description is required for every location seed.", $"{path}.description"));
-            }
-        }
+        if (!result.TryGetValue("location_seed_tokens", out var locObj)
+            || locObj is not Dictionary<string, object?> locs
+            || locs.Count == 0)
+            return;
 
-        return issues;
+        foreach (var (key, value) in locs)
+        {
+            var path = $"$.location_seed_tokens.{key}";
+            if (!key.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
+                || value is not Dictionary<string, object?> seed)
+            {
+                issues.Add(new("invalid_location", "Each location entry must use a Loc_ key and contain an object.", path));
+                continue;
+            }
+            if (!seed.TryGetValue("description", out var desc) || string.IsNullOrWhiteSpace(desc?.ToString()))
+                issues.Add(new("missing_location_field", "description is required for every location seed.", $"{path}.description"));
+        }
     }
 
     internal static Dictionary<string, object?>? FindSeeds(Dictionary<string, object?> result)

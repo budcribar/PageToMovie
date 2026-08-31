@@ -263,7 +263,7 @@ public sealed class CastFromScreenplayService
         var result = await ExtractAsync(projectId, model, force, onProgress, ct).ConfigureAwait(false);
         if (!result.Ok)
             return result;
-        var dir = _projects.GetProjectDir(projectId);
+        var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
             return result;
         return new ExtractResult { Ok = false, Error = SignOffMissingPerformanceLockMessage };
@@ -276,45 +276,55 @@ public sealed class CastFromScreenplayService
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        if (!force && File.Exists(outPath))
+        if (force || !File.Exists(outPath))
+            return null;
+
+        try
         {
-            try
-            {
-                using var existing = JsonDocument.Parse(await File.ReadAllTextAsync(outPath, ct).ConfigureAwait(false));
-                var seeds = GetSeedsElement(existing.RootElement);
-                if (seeds.ValueKind == JsonValueKind.Object && seeds.EnumerateObject().Any())
-                {
-                    // Skip only when vision_meta already has (or can take) a performance lock.
-                    // An old cast file without a lock must not report success — Stage 2 would
-                    // then be the first to notice.
-                    if (existing.RootElement.TryGetProperty(KeyPerformanceLock, out var existingLock))
-                    {
-                        var fromFile = existingLock.GetString();
-                        if (!string.IsNullOrWhiteSpace(fromFile))
-                            PersistPerformanceLockToVisionMeta(projectId, fromFile);
-                    }
-                    if (string.IsNullOrWhiteSpace(
-                            ProjectVisionMeta.TryGetPerformanceLock(_projects.GetProjectDir(projectId))))
-                        return null;
+            using var existing = JsonDocument.Parse(await File.ReadAllTextAsync(outPath, ct).ConfigureAwait(false));
+            var seeds = GetSeedsElement(existing.RootElement);
+            if (seeds.ValueKind != JsonValueKind.Object || !seeds.EnumerateObject().Any())
+                return null;
 
-                    onProgress?.Invoke("Cast file already present — use force to rebuild.");
-                    var existingKeys = seeds.EnumerateObject().Select(p => p.Name).ToList();
-                    return new ExtractResult
-                    {
-                        Ok = true,
-                        OutPath = outPath,
-                        CharacterCount = existingKeys.Count,
-                        CharacterKeys = existingKeys,
-                        MovieTitle = existing.RootElement.TryGetProperty(JsonKeys.MovieTitle, out var mt)
-                            ? mt.GetString()
-                            : null,
-                    };
-                }
-            }
-            catch { /* rebuild */ }
+            // Skip only when vision_meta already has (or can take) a performance lock.
+            // An old cast file without a lock must not report success — Stage 2 would
+            // then be the first to notice.
+            PersistExistingFilePerformanceLock(projectId, existing.RootElement);
+            var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
+                return null;
+
+            onProgress?.Invoke("Cast file already present — use force to rebuild.");
+            return ExistingCastSuccess(outPath, existing.RootElement, seeds);
         }
+        catch
+        {
+            return null; // rebuild
+        }
+    }
 
-        return null;
+    private void PersistExistingFilePerformanceLock(string projectId, JsonElement root)
+    {
+        if (!root.TryGetProperty(KeyPerformanceLock, out var existingLock))
+            return;
+        var fromFile = existingLock.GetString();
+        if (!string.IsNullOrWhiteSpace(fromFile))
+            PersistPerformanceLockToVisionMeta(projectId, fromFile);
+    }
+
+    private static ExtractResult ExistingCastSuccess(string outPath, JsonElement root, JsonElement seeds)
+    {
+        var existingKeys = seeds.EnumerateObject().Select(p => p.Name).ToList();
+        return new ExtractResult
+        {
+            Ok = true,
+            OutPath = outPath,
+            CharacterCount = existingKeys.Count,
+            CharacterKeys = existingKeys,
+            MovieTitle = root.TryGetProperty(JsonKeys.MovieTitle, out var mt)
+                ? mt.GetString()
+                : null,
+        };
     }
 
     private static void ReportBookContext(string? book, Action<string>? onProgress)
@@ -1280,21 +1290,19 @@ public sealed class CastFromScreenplayService
     /// Write extract lock onto an already-decided vision_meta. Do not create vision_meta
     /// from extract alone (that would invent a medium). Do not overwrite a lock already set.
     /// </summary>
-    /// <returns>True when vision_meta already has a lock or this call just wrote one.</returns>
-    private bool PersistPerformanceLockToVisionMeta(string projectId, string performanceLock)
+    private void PersistPerformanceLockToVisionMeta(string projectId, string performanceLock)
     {
         var dir = _projects.GetProjectDir(projectId);
         if (!string.IsNullOrWhiteSpace(ProjectVisionMeta.TryGetPerformanceLock(dir)))
-            return true;
+            return;
         var doc = ProjectVisionMeta.TryRead(dir);
         if (doc is null || !ProjectVisionMeta.IsDecidedMedium(doc.VisualMedium))
-            return false;
+            return;
         var normalized = ProjectRulesService.NormalizePerformanceRuleText(performanceLock);
         if (string.IsNullOrWhiteSpace(normalized))
-            return false;
+            return;
         doc.PerformanceLock = normalized;
         ProjectVisionMeta.Write(dir, doc);
-        return true;
     }
 
     private static Dictionary<string, object?> NormalizeCharacterSeeds(Dictionary<string, object?> seedsIn)
