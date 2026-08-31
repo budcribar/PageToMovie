@@ -29,7 +29,11 @@ public static class KeyFormatting
 
     /// <summary>Appends a timestamp query param so the browser doesn't serve a stale cached video.</summary>
     public static string CacheBust(string url) =>
-        url + (url.Contains('?') ? "&" : "?") + "v=" + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        CacheBust(url, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+    /// <summary>Stable bust token so a reload can refresh the same media path (new plate bytes).</summary>
+    public static string CacheBust(string url, long bust) =>
+        url + (url.Contains('?') ? "&" : "?") + "v=" + bust;
 
     /// <summary>
     /// Rough ETA for a running batch/scene job from elapsed-time-per-completed-unit, extrapolated

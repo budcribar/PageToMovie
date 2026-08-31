@@ -201,7 +201,7 @@
                                         @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
                                         {
                                             var vi = v.Index ?? 1;
-                                            var src = KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, _selected.Key, vi));
+                                            var src = BustMediaUrl(Engine.LocationVariantUrl(_projectId, _selected.Key, vi));
                                             <div class="loc-variant-tile @(selectedLocked && IsPreferredVariant(vi) ? "is-preferred" : "")">
                                                 <button type="button"
                                                         class="loc-variant-frame"
