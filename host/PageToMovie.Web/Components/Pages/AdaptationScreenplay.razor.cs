@@ -117,18 +117,6 @@ public partial class AdaptationScreenplay
         await action();
     }
 
-    private void MenuOpenCharacters()
-    {
-        CloseMenu();
-        _structuredUi?.OpenCharacterModal();
-    }
-
-    private void MenuOpenLocations()
-    {
-        CloseMenu();
-        _structuredUi?.OpenLocationModal();
-    }
-
     private void MenuOpenExport()
     {
         CloseMenu();
