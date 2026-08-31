@@ -51,9 +51,9 @@
                          CssClass="border-primary shadow-sm" />
     </div>
 }
-@if (list._scenes is null)
+@if (Scenes.ScenesListState.IsSceneListPending(list._scenes))
 {
-    @* ---- Loading / failed / no shot plan yet ---- *@
+    @* Null list = first load has not finished (or failed). Never treat that as empty. *@
     @if (!string.IsNullOrWhiteSpace(Host._error))
     {
         <EmptyState Message="@($"Could not load scenes: {Host._error}")"
@@ -61,19 +61,12 @@
                     ActionLabel="Retry"
                     CssClass="text-muted" />
     }
-    else if (Host._busy)
+    else
     {
-        <EmptyState Message="Loading scenes…" CssClass="text-muted" />
-    }
-    else if (VoiceSubstitutionOverlayGate.IsMissingSceneList(list._scenes))
-    {
-        <EmptyState Message="No scene list yet. Rebuild the shot plan from the screenplay, then return here."
-                    ActionHref="adaptation/shots"
-                    ActionLabel="Open shot plan →"
-                    CssClass="text-muted" />
+        <EmptyState Message="Loading scenes…" TestId="scenes-loading" CssClass="text-muted" />
     }
 }
-else if (list._scenes.Count == 0)
+else if (Scenes.ScenesListState.IsEmptyShotPlan(list._scenes))
 {
     @* The running-job card is rendered once above, for every plan state. *@
     @if (Host.Gen.JobRunning && Host.Gen._job is not null && !Host.Gen.ShowLiveGenProgress)
