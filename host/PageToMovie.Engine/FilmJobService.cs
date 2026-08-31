@@ -5414,7 +5414,7 @@ public sealed class FilmJobService
     /// into assets/video/_backup/ so a bad regen can be restored by hand. Keeps only the
     /// immediately-previous version — not unbounded history.
     /// </summary>
-    private static void BackupExistingClipFile(string outPath, int scene, int clip)
+    private static void BackupExistingClipFile(string outPath)
     {
         if (!File.Exists(outPath)) return;
         try
