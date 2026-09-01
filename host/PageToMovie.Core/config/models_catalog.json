@@ -902,6 +902,30 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
+      "id": "gemini-3.1-flash-image",
+      "displayName": "Gemini 3.1 Flash Image (Nano Banana 2)",
+      "capability": "Image",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-3.1-flash-image:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.067,
+      "maxReferenceImages": 14,
+      "notes": "Wired via GeminiImageClient. Official current generateContent Flash image model (Nano Banana 2). Distinct cheaper current-gen SKU vs gemini-3-pro-image (Nano Banana Pro). Stable/GA. Default output 1K; also 0.5K / 2K / 4K. Supports up to 14 reference images (documented soft max for Gemini 3 image models).",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "maxPromptLength": 4000,
+      "pricingNotes": "ai.google.dev/gemini-api/docs/pricing 2026-09-01 paid standard: $0.045 per 0.5K image, $0.067 per 1K image (default), $0.101 per 2K image, $0.151 per 4K image. Image output also listed as $60/1M tokens. imageCostPerImage=0.067 is the official 1K list equivalent.",
+      "lastVerifiedAt": "2026-09-01",
+      "pricingLastReviewedAt": "2026-09-01"
+    },
+    {
       "id": "fal-ai/flux/dev",
       "displayName": "FLUX.1 [dev] (Fal.ai)",
       "capability": "Image",
