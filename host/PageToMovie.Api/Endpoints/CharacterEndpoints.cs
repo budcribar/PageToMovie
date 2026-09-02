@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -51,6 +51,7 @@ public static class CharacterEndpoints
         // </summary>
         app.MapPost("/api/projects/{id}/characters/{charKey}/upload-ref", PostProjectsIdCharactersCharKeyUploadRef);
         app.MapPost("/api/projects/{id}/characters/{charKey}/unlock", PostProjectsIdCharactersCharKeyUnlock);
+        app.MapPost("/api/projects/{id}/characters/{charKey}/keep-look", PostProjectsIdCharactersCharKeyKeepLook);
         // <summary>
         // Delete a character picture: preferred/lock, variant, or book plate.
         // Body: { "kind": "preferred"|"variant"|"bookref", "index": 0 }
@@ -365,6 +366,23 @@ public static class CharacterEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    /// <summary>
+    /// The operator looked at a picture flagged as drawn from an out-of-date reference and chose to
+    /// keep it. Retires the flag; nothing is regenerated and nothing is deleted.
+    /// </summary>
+    private static IResult PostProjectsIdCharactersCharKeyKeepLook(string id, string charKey, ProjectStore projects)
+    {
+        try
+        {
+            projects.ClearCharacterLookStale(id, charKey);
+            return Results.Ok(new { ok = true, projectId = id, charKey });
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+    }
 
     private static async Task<IResult> PostProjectsIdCharactersCharKeyUnlock(string id, string charKey, FilmJobService jobService,
            PageToMovie.Engine.Collaboration.IProjectLeaseService leases,

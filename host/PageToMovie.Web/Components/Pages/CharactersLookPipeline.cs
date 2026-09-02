@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -444,6 +444,21 @@ public partial class Characters
                 || m.Contains("style check", StringComparison.OrdinalIgnoreCase);
         }
 
+
+        /// <summary>Operator kept a picture flagged as drawn from an out-of-date reference.</summary>
+        internal async Task KeepStaleLookAsync()
+        {
+            if (S.List._selected is null) return;
+            S._busy = true;
+            S._error = null;
+            try
+            {
+                await S.Engine.KeepCharacterLookAsync(S._projectId, S.List._selected.Key);
+                await S.List.LoadAsync();
+            }
+            catch (Exception ex) { S._error = ex.Message; }
+            finally { S._busy = false; }
+        }
 
         internal async Task UnlockAsync()
         {

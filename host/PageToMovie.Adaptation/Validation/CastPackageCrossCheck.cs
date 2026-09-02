@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using PageToMovie.Core.Models;
 using System.Text.RegularExpressions;
 using PageToMovie.Adaptation.Conversion;
@@ -60,6 +60,12 @@ public static class CastPackageCrossCheck
         public string Speaker { get; set; } = "";
         public bool HasDescription { get; set; }
         public bool HasVisualLock { get; set; }
+        /// <summary>
+        /// The seed says its look is the pipeline's own invention, so an empty visual_lock is the
+        /// correct outcome rather than a gap — see <see cref="LookProvenance"/>. Scored as a look
+        /// that is present: doing the honest thing must not cost the package points.
+        /// </summary>
+        public bool LookWasInvented { get; set; }
         public bool HasWardrobe { get; set; }
         public bool HasSpecies { get; set; }
         public int DescriptionChars { get; set; }
@@ -171,7 +177,7 @@ public static class CastPackageCrossCheck
         report.Quality[match] = q;
         if (!q.HasDescription)
             report.Failures.Add($"Cast '{match}' missing usable description.");
-        if (!q.HasVisualLock)
+        if (!q.HasVisualLock && !q.LookWasInvented)
             report.Warnings.Add($"Cast '{match}' missing visual_lock — portraits may drift.");
         if (!q.HasWardrobe)
             report.Warnings.Add($"Cast '{match}' missing wardrobe lock.");
@@ -226,7 +232,7 @@ public static class CastPackageCrossCheck
         var detail = 0.0;
         if (q.HasDescription && q.DescriptionChars >= 24) detail += 2.5;
         else if (q.HasDescription) detail += 1.0;
-        if (q.HasVisualLock) detail += 1.5;
+        if (q.HasVisualLock || q.LookWasInvented) detail += 1.5;
         if (q.HasWardrobe) detail += 0.5;
         if (q.HasSpecies) detail += 0.5;
         return detail;
@@ -505,6 +511,7 @@ public static class CastPackageCrossCheck
         q.DescriptionChars = desc?.Length ?? 0;
         q.HasDescription = !string.IsNullOrWhiteSpace(desc) && q.DescriptionChars >= 8;
         q.HasVisualLock = !string.IsNullOrWhiteSpace(vlock) && vlock.Length >= 8;
+        q.LookWasInvented = LookProvenanceTokens.IsInvented(GetText(seed, LookProvenanceTokens.SeedKey));
         q.HasWardrobe = !string.IsNullOrWhiteSpace(wardrobe);
         q.HasSpecies = !string.IsNullOrWhiteSpace(species);
         if (q.HasDescription && q.DescriptionChars < 40)

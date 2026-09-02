@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -2711,9 +2711,14 @@ public sealed partial class ProjectStore
         var seeds = LoadCharacterSeeds(projectId);
         var projectDir = GetProjectDir(projectId);
         var speakerTokens = ReadScreenplaySpeakerTokens(projectId);
+        var stale = ReadCharacterLookStale(projectId);
         var rows = new List<CharacterSummary>();
         foreach (var (key, info) in seeds)
-            rows.Add(BuildCharacterSummary(projectId, projectDir, speakerTokens, key, info));
+        {
+            var row = BuildCharacterSummary(projectId, projectDir, speakerTokens, key, info);
+            row.LookStaleReason = stale.TryGetValue(key, out var why) ? why : null;
+            rows.Add(row);
+        }
 
         ApplyPlanUsageToCharacters(projectId, rows);
 
@@ -2834,6 +2839,7 @@ public sealed partial class ProjectStore
             Variants = voiceOnly ? new List<CharacterImageRef>() : CollectCharacterVariants(projectId, projectDir, key),
             AgeBand = ReadAgeBand(info),
             AgeBandToken = JsonStrOrNull(info, "age_band"),
+            LookProvenance = JsonStrOrNull(info, LookProvenanceTokens.SeedKey),
             Gender = ReadGender(info),
             VariantOf = JsonStrOrNull(info, "variant_of"),
             UsedInPlan = true, // filled below from shot plan
@@ -3975,6 +3981,13 @@ public sealed partial class ProjectStore
         SetOrRemoveJsonString(seed, StoreLit.VoiceProviderVoiceId, patch.VoiceProviderVoiceId);
         SetOrRemoveJsonString(seed, "voice_clone_provider_id", patch.VoiceCloneProviderId);
         SetOrRemoveJsonString(seed, StoreLit.ImagineVoiceId, patch.ImagineVoiceId);
+        // Someone typed these words, so they are no longer the pipeline's invention — they are a
+        // decision, and a decision gets full standing: back into visual_lock, back into the shot
+        // prompts, and no "we made this up" notice on a look the operator chose. Voice-only
+        // patches (preset voice assignment during clip generation) touch no look text and leave
+        // the marker where it is.
+        if (patch.Description is not null || patch.VisualLock is not null)
+            seed.Remove(LookProvenanceTokens.SeedKey);
         seeds[foundKey] = seed;
     }
 
@@ -4271,6 +4284,7 @@ public sealed partial class ProjectStore
             VoiceOnly = info.TryGetProperty("display_name_policy", out var pol) &&
                         CastKindClassifier.IsVoiceOnlyPolicy(pol.GetString()),
             CastKind = JsonStr(info, "cast_kind").Trim(),
+            LookProvenance = JsonStr(info, LookProvenanceTokens.SeedKey).Trim(),
         };
     }
 
@@ -5828,6 +5842,77 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>Bump character revision in pipeline_state (cascade stale marker).</summary>
+    private const string CharacterLookStaleKey = "character_look_stale";
+
+    /// <summary>
+    /// Records that a character's existing portrait no longer matches what it was drawn from —
+    /// today only when an age variant's family face changes underneath it. Advisory, never
+    /// destructive: the picture stays on disk and stays usable, and re-rendering costs real money,
+    /// so the decision is the operator's. <see cref="ClearCharacterLookStale"/> retires the flag.
+    /// </summary>
+    public void MarkCharacterLookStale(string projectId, string charKey, string reason)
+    {
+        var path = ResolvePipelineStatePath(projectId);
+        var merged = LoadPipelineStateDict(path);
+        var stale = LoadNestedObjectDict(merged, CharacterLookStaleKey);
+        stale[charKey] = new Dictionary<string, object?>
+        {
+            ["reason"] = reason,
+            ["since"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
+        };
+        merged[CharacterLookStaleKey] = stale;
+        File.WriteAllText(path, JsonSerializer.Serialize(merged, JsonDefaults.Indented) + "\n");
+        InvalidateReadCaches(projectId);
+    }
+
+    /// <summary>Drops the stale flag — the portrait was re-rendered, relocked, or the operator kept it.</summary>
+    public void ClearCharacterLookStale(string projectId, string charKey)
+    {
+        var path = ResolvePipelineStatePath(projectId);
+        var merged = LoadPipelineStateDict(path);
+        var stale = LoadNestedObjectDict(merged, CharacterLookStaleKey);
+        if (!stale.Remove(charKey))
+            return;
+        merged[CharacterLookStaleKey] = stale;
+        File.WriteAllText(path, JsonSerializer.Serialize(merged, JsonDefaults.Indented) + "\n");
+        InvalidateReadCaches(projectId);
+    }
+
+    /// <summary>charKey → reason for every character whose portrait is flagged stale.</summary>
+    public Dictionary<string, string> ReadCharacterLookStale(string projectId)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var merged = LoadPipelineStateDict(ResolvePipelineStatePath(projectId));
+            var stale = LoadNestedObjectDict(merged, CharacterLookStaleKey);
+            foreach (var (key, val) in stale)
+            {
+                if (val is null) continue;
+                using var doc = JsonDocument.Parse(JsonSerializer.Serialize(val));
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) continue;
+                if (doc.RootElement.TryGetProperty("reason", out var r) && r.GetString() is { Length: > 0 } reason)
+                    result[key] = reason;
+            }
+        }
+        catch { /* advisory only */ }
+        return result;
+    }
+
+    /// <summary>Keys of every seed whose <c>variant_of</c> points at <paramref name="baseKey"/>.</summary>
+    public List<string> ListAgeVariantKeys(string projectId, string baseKey)
+    {
+        var keys = new List<string>();
+        foreach (var (key, info) in LoadCharacterSeeds(projectId))
+        {
+            var variantOf = JsonStrOrNull(info, "variant_of");
+            if (!string.IsNullOrWhiteSpace(variantOf)
+                && string.Equals(variantOf, baseKey, StringComparison.OrdinalIgnoreCase))
+                keys.Add(key);
+        }
+        return keys;
+    }
+
     public void MarkCharacterChanged(string projectId, string charKey, string reason)
     {
         var path = ResolvePipelineStatePath(projectId);

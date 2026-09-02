@@ -127,6 +127,25 @@ When debugging or implementing against a sample project (e.g. Buster / Buster2 /
      banned is a pattern that decides *how much* prose to delete. See also rule 8 — one canonical
      helper, not a copy per writer.
 
+13. **A field the pipeline filled in for itself must say so.**
+   - The cast extractor is required to produce a concrete, filmable look for every on-screen role,
+     even when the source describes nobody. That is correct — an image model needs pixels and "the
+     book says nothing" is not a portrait. The bug is what happened next: the invention was written
+     into the same fields, with the same authority, as a fact from the book. Annette's source is
+     twelve one-line life vignettes with no appearance detail at all; the extract gave her "dark
+     brown-black hair, dark brown eyes, sun-warmed tan skin" and put it in `visual_lock` — the
+     must-never-drift contract carried into every shot of the film — while her actual photograph
+     shows auburn hair and blue eyes. Nothing downstream could tell the two kinds of claim apart.
+   - **Use `LookProvenance`** (`host/PageToMovie.Core/Models/LookProvenance.cs`): `sourced` (the text
+     says it), `inferred` (not stated but pinned down by era/setting/occupation/age), `invented`
+     (nothing upstream supports it). An invented look never enters `visual_lock`, and it stands down
+     wherever a reference image of that character is attached — **first render wins**, because the
+     picture is the identity and the words can only argue with it.
+   - This generalizes past looks. Any field a prompt is *required* to fill needs a way to say "we
+     made this up", or the requirement quietly manufactures facts. Marking it is not a licence for
+     vagueness — the concrete answer is still required; only its authorship is recorded.
+   - A value the operator typed is a decision, not an invention: clear the marker on save.
+
 Buster (and other fixtures) are **eval / demo projects**, not product requirements.
 
 ---

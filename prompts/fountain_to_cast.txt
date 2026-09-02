@@ -43,6 +43,24 @@ GOALS
    elderly Old Man). Clothes belong in wardrobe_always; visual_lock is face / markings /
    species / hair / eyes only. Never leave "as described in the screenplay" or empty
    looks for on-screen roles when the book has cues.
+6b. **SAY WHERE THE LOOK CAME FROM (HARD):** Set `look_provenance` on every on-screen
+   character to exactly one of:
+     - "sourced"  - the book or screenplay states this appearance.
+     - "inferred" - not stated, but pinned down by what is: era, setting, occupation,
+                    age, species. Honest narrowing, not free choice.
+     - "invented" - nothing upstream supports it. You chose it so a portrait could exist.
+   Rule 6 still applies: a concrete, filmable description is required either way, and
+   "the source says nothing" is never an excuse for a stub or a hedge. This field does
+   not license vagueness - it records authorship.
+   **When look_provenance is "invented", leave visual_lock EMPTY.** visual_lock is the
+   must-never-drift contract carried into every shot of the film; only appearance the
+   source actually backs belongs there. Put invented appearance in description alone,
+   where it can drive the first portrait and then be superseded by the resulting picture.
+   Judge per character, not per project: one cast can hold a titled lead the book
+   describes in detail and a passing figure who is pure invention.
+   Be honest here even when it is unflattering to the output. A book that never mentions
+   eyes has not told you an eye colour, and marking that "sourced" is exactly the failure
+   this field exists to catch.
 7. **ON-CAMERA POV:** First-person confessors / presenters who face the camera are
    display_name_policy ok_anytime (NOT never_on_screen). never_on_screen only for
    pure off-screen VO with no body on camera.
@@ -107,6 +125,7 @@ Return ONLY a JSON object (no markdown fences, no commentary):
       "performance_notes": "optional: how this role addresses camera or partners when speaking",
       "reference_image_placeholder": "character_example_ref.png",
       "source_image_pages": [2, 4],
+      "look_provenance": "sourced | inferred | invented - where description's appearance came from (see rule 6b)",
       "age_band": "optional: adult | child_8_9 | child_12 | teen_15_17 | etc — only when this seed is an age-variant of another seed, or the story otherwise needs an explicit age",
       "variant_of": "optional: base character's Character_* key — set ONLY on an age-variant seed (see AGE-VARIANT CUES rule)"
     }
@@ -166,6 +185,9 @@ FIELD RULES:
 - reference_image_placeholder: bare filename only under assets/characters/ (no folder path).
 - source_image_pages: optional 1–3 page numbers from book --- PAGE N --- if book has plates
   and the character is clearly visible; else [].
+- look_provenance: required for on-screen roles (see rule 6b). "invented" MUST come with
+  an empty visual_lock - a look you authored is not a continuity contract. Omit on
+  never_on_screen voice-only roles, which have no appearance to source.
 - age_band / variant_of: see AGE-VARIANT CUES rule above. Omit both on a character who only
   appears at one life stage — most characters never need them.
 - Include humans AND animals that appear on screen.

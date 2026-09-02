@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -68,6 +68,13 @@ public static class ClipVideoPromptBuilder
         public bool VoiceOnly { get; init; }
         /// <summary>Explicit cast_kind from the cast seed (group/chorus/ensemble/individual/…), if any.</summary>
         public string CastKind { get; init; } = "";
+        /// <summary>
+        /// <c>sourced</c> / <c>inferred</c> / <c>invented</c> from the cast seed — see
+        /// <see cref="PageToMovie.Core.Models.LookProvenance"/>. An invented look stands down once a
+        /// reference image is attached to the shot: the picture is then the identity, and the words
+        /// the pipeline chose for itself can only fight it.
+        /// </summary>
+        public string LookProvenance { get; init; } = "";
     }
 
     public sealed class PromptBuildResult
@@ -1802,9 +1809,17 @@ public static class ClipVideoPromptBuilder
             ? p.DisplayName
             : key.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' ');
         var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
+        // First render wins. Where the look is the pipeline's own invention (nothing in the book
+        // or screenplay described this character) and their reference image is attached to this
+        // shot, the picture is the identity and the invented words can only argue with it —
+        // "auburn hair" in the frame against "dark brown-black hair" in the prose. Sourced looks
+        // stay: those came from the author and are worth restating alongside the reference.
+        // With no image attached the words are all there is, invented or not, so they stand.
+        var inventedLookYieldsToImage =
+            tag.Length > 0 && LookProvenanceTokens.IsInvented(p?.LookProvenance);
         // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
         // source rather than at each tag-wrap call site below.
-        var desc = PromptTags.SanitizeValue(
+        var desc = inventedLookYieldsToImage ? "" : PromptTags.SanitizeValue(
             CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.Description?.Trim()));
         // visual_lock is face / markings / species. Clothes live on the Wardrobe tag — strip
         // leftover garments here so a frozen signature outfit cannot fight a later put_on.
@@ -1851,6 +1866,13 @@ public static class ClipVideoPromptBuilder
         // So: no fixed per-character cap here; let the full text through.
         var (_, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
         var compactSource = vlock.Length > 0 ? vlock : desc;
+        // No identity prose left — an invented look standing down to its own attached reference.
+        // The reference carries the identity, so point at it instead of emitting a dangling
+        // "keep identity consistent: ." with nothing after the colon.
+        if (compactSource.Length == 0)
+            return tag.Length > 0
+                ? $"- {key}{tag}: Also present (not shot focus); keep identity consistent with reference {tag.Trim()}."
+                : $"- {key}: Also present (not shot focus); keep identity consistent.";
         var compact =
             $"- {key}{tag}: Also present (not shot focus); keep identity consistent: {compactSource}.";
         if (useImageTags && tag.Length > 0) compact += $" Match reference {tag.Trim()}.";

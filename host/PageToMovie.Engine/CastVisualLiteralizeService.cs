@@ -1,4 +1,4 @@
-using PageToMovie.Core.Models;
+﻿using PageToMovie.Core.Models;
 using System.Text.Json;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.ModelBacked;
@@ -204,7 +204,13 @@ public sealed class CastVisualLiteralizeService
     {
         if (clean.TryGetValue(DescriptionKey, out var desc) && desc is not null)
             copy[DescriptionKey] = desc.ToString()?.Trim();
-        if (clean.TryGetValue(VisualLockKey, out var vl) && vl is not null)
+        // Rewrite an existing lock; never author one. This pass is a scrubber - it turns
+        // figurative prose literal. A seed whose look the pipeline invented deliberately carries
+        // an empty visual_lock (see LookProvenance), and letting the scrub fill it would smuggle
+        // that invention straight back into the film's must-never-drift contract.
+        if (clean.TryGetValue(VisualLockKey, out var vl) && vl is not null
+            && copy.TryGetValue(VisualLockKey, out var had)
+            && !string.IsNullOrWhiteSpace(had?.ToString()))
             copy[VisualLockKey] = vl.ToString()?.Trim();
         if (clean.TryGetValue(WardrobeAlwaysKey, out var wa) && wa is List<object?> list)
             copy[WardrobeAlwaysKey] = list;

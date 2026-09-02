@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -4764,6 +4764,19 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         using var resp = await _http.PostAsJsonAsync(
             $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/unlock",
+            new { },
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
+    /// <summary>Keep a portrait that was flagged as drawn from an out-of-date reference.</summary>
+    public async Task KeepCharacterLookAsync(
+        string projectId,
+        string charKey,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            $"{ProjectIdRouting.ProjectApi(projectId)}/characters/{Uri.EscapeDataString(charKey)}/keep-look",
             new { },
             ct);
         await EnsureOkAsync(resp, ct);

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
@@ -5903,6 +5903,7 @@ public sealed class FilmJobService
             AgeBand = prof?.AgeBand ?? "",
             VoiceOnly = prof?.VoiceOnly ?? false,
             CastKind = prof?.CastKind ?? "",
+            LookProvenance = prof?.LookProvenance ?? "",
         };
 
     private async Task<double> ExecuteClipGenerationAsync(ClipGenContext ctx)

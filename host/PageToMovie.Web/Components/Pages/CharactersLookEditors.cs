@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -43,6 +43,15 @@ public partial class Characters
         internal VisualMedium _savedLookVisualMedium = VisualMedium.LiveAction;
 
         internal bool _savingLook;
+
+        /// <summary>
+        /// True when this character's look text is the pipeline's own invention rather than the
+        /// story's — nothing in the book or screenplay described them, so words were written so a
+        /// portrait could exist. Worth saying out loud: it is the difference between a detail the
+        /// author chose and one nobody did, and only the operator can tell which they wanted.
+        /// </summary>
+        internal static bool LookWasSuggested(CharacterSummary? c) =>
+            c is not null && !c.VoiceOnly && LookProvenanceTokens.IsInvented(c.LookProvenance);
 
 
         internal void OnLookDescriptionInput(ChangeEventArgs e)

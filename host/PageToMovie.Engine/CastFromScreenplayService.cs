@@ -1,4 +1,4 @@
-using PageToMovie.Core.Models;
+﻿using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Adaptation.Validation;
 using System.Text;
@@ -73,6 +73,7 @@ public sealed class CastFromScreenplayService
     private const string KeyCanonicalGivenName = "canonical_given_name";
     private const string KeyReferenceImagePlaceholder = "reference_image_placeholder";
     private const string KeyWardrobeAlways = "wardrobe_always";
+    private const string KeyLookProvenance = LookProvenanceTokens.SeedKey;
 
     private readonly ProjectStore _projects;
     private readonly IChatClient _chat;
@@ -877,7 +878,12 @@ public sealed class CastFromScreenplayService
             var desc = CoerceString(seed, JsonKeys.Description) ?? "";
             var vlock = CoerceString(seed, KeyVisualLock) ?? "";
             var needsDesc = string.IsNullOrWhiteSpace(desc) || IsStubLook(desc);
-            var needsLock = string.IsNullOrWhiteSpace(vlock) || IsStubLook(vlock);
+            // An invented look holds an empty visual_lock on purpose (rule 6b). These excerpts are
+            // paragraphs that merely mention the name - good enough to fill a blank description,
+            // too weak to promote into the never-drift contract for a character the source never
+            // actually described.
+            var needsLock = (string.IsNullOrWhiteSpace(vlock) || IsStubLook(vlock))
+                            && !LookProvenanceTokens.IsInvented(CoerceString(seed, KeyLookProvenance));
             if (!needsDesc && !needsLock) continue;
 
             var display = CoerceString(seed, KeyCanonicalGivenName)
@@ -1348,7 +1354,7 @@ public sealed class CastFromScreenplayService
                 ?? ProjectStore.CharacterRefFileName(k),
         };
 
-        ApplyVisualLock(clean, seed, off);
+        ApplyVisualLook(clean, seed, off);
         CopyOptionalSeedLists(clean, seed);
 
         var perfNotes = CoerceString(seed, "performance_notes");
@@ -1403,13 +1409,26 @@ public sealed class CastFromScreenplayService
         return desc;
     }
 
-    private static void ApplyVisualLock(Dictionary<string, object?> clean, Dictionary<string, object?> seed, bool off)
+    /// <summary>
+    /// Writes visual_lock and the look_provenance that qualifies it (see rule 6b in
+    /// fountain_to_cast.txt). An invented look never reaches visual_lock: the prompt asks for an
+    /// empty one, and this drops it if the model writes one anyway. visual_lock is carried into
+    /// every shot of the film as a must-never-drift contract, and a hair colour the pipeline
+    /// chose for itself has no business making that promise. The words are not lost - they stay
+    /// in description, which is what actually drives the portrait.
+    /// </summary>
+    private static void ApplyVisualLook(Dictionary<string, object?> clean, Dictionary<string, object?> seed, bool off)
     {
+        if (off)
+            return; // voice-only: no body on camera, so no appearance to source.
+
+        var provenance = LookProvenanceTokens.Parse(CoerceString(seed, KeyLookProvenance));
         var vlock = CoerceString(seed, KeyVisualLock) ?? "";
-        if (!off)
-        {
-            clean[KeyVisualLock] = IsStubLook(vlock) ? "" : vlock;
-        }
+        clean[KeyVisualLock] = IsStubLook(vlock) || provenance == LookProvenance.Invented ? "" : vlock;
+
+        var token = LookProvenanceTokens.ToToken(provenance);
+        if (token is not null)
+            clean[KeyLookProvenance] = token;
     }
 
     private static void CopyOptionalSeedLists(Dictionary<string, object?> clean, Dictionary<string, object?> seed)

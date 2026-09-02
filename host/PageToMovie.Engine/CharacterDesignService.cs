@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
@@ -85,7 +85,8 @@ public sealed class CharacterDesignService
             projectRenderStyleLock: ctx.ProjectStyle,
             wardrobeLockDescription: ctx.WardrobeDescription,
             hasIdentityRefs: ctx.EditRefs.Count > 0,
-            hasCostumeRef: ctx.CostumeRefPath is not null);
+            hasCostumeRef: ctx.CostumeRefPath is not null,
+            identityRefIsInherited: ctx.IdentityRefIsInherited);
 
         onProgress?.Invoke(
             $"design prompt ready ({prompt.Length} chars) · image_provider={ImageApiLimits.ResolveProvider(ctx.ImageProvider, ctx.ImageModel)} max_refs={ctx.MaxRefs}");
@@ -127,6 +128,12 @@ public sealed class CharacterDesignService
         public string? WardrobeDescription { get; set; }
         public string? ProjectStyle { get; set; }
         public string? PreferredSnapshot { get; set; }
+        /// <summary>
+        /// True when PreferredPath is the base character's locked reference rather than this
+        /// seed's own — an age variant borrowing the family face. The portrait then has to hold
+        /// identity from the photo while overriding its age, so the prompt reads differently.
+        /// </summary>
+        public bool IdentityRefIsInherited { get; set; }
 
         public bool HasImageHints => EditRefs.Count > 0 || CostumeRefPath is not null;
     }
@@ -237,6 +244,11 @@ public sealed class CharacterDesignService
     private void ApplyPreferredAndVariantCount(VariantGenContext ctx, string projectId, int n)
     {
         ctx.PreferredPath = ResolvePreferredImagePath(projectId, ctx.CharKey, ctx.CharDir);
+        if (ctx.PreferredPath is null)
+        {
+            ctx.PreferredPath = ResolveInheritedIdentityRefPath(projectId, ctx.Seeds);
+            ctx.IdentityRefIsInherited = ctx.PreferredPath is not null;
+        }
         ctx.AlreadyLocked = IsAlreadyLockedPreferred(ctx.CharKey, ctx.PreferredPath);
         n = ResolveVariantCount(n, ctx.Opts, ctx.AlreadyLocked);
         // Iterative face tweak: one new look, keep the current lock as a sibling to pick from.
@@ -249,7 +261,9 @@ public sealed class CharacterDesignService
         ctx.TweakSlots = LookTweakSlots.Allocate(
             ctx.CharDir,
             i => $"{ctx.CharKey.ToLowerInvariant()}_variant_0{i}.png",
-            ctx.PreferredPath);
+            // A borrowed family face is not this character's current look, so it is not the
+            // thing an iterative tweak is iterating on.
+            ctx.IdentityRefIsInherited ? null : ctx.PreferredPath);
     }
 
     private static bool IsAlreadyLockedPreferred(string charKey, string? preferredPath)
@@ -1385,10 +1399,31 @@ public sealed class CharacterDesignService
         // for the next regenerate (preferred lock is a separate *_ref.png copy).
         _projects.UpdateCharacterSeedPlaceholder(projectId, charKey, ProjectStore.CharacterRefFileName(charKey));
         _projects.MarkCharacterChanged(projectId, charKey, changeNote);
+        // This character's look was just decided, so whatever made it questionable is settled.
+        _projects.ClearCharacterLookStale(projectId, charKey);
+        FlagAgeVariantsDrawnFromOldReference(projectId, charKey);
         _projects.InvalidateReadCaches(projectId);
         if (!File.Exists(destPath) || new FileInfo(destPath).Length < 64)
             throw new InvalidOperationException(
                 $"Locked look was not saved for {charKey}. Try uploading again.");
+    }
+
+    /// <summary>
+    /// This character's picture just changed, so any age variant already drawn from the old one is
+    /// showing a face that no longer belongs to this person. Flagged, never redrawn: a portrait
+    /// costs real money, the existing one still renders, and which ages are worth redoing is the
+    /// operator's call. Variants with no picture yet have nothing to go stale.
+    /// </summary>
+    private void FlagAgeVariantsDrawnFromOldReference(string projectId, string baseKey)
+    {
+        foreach (var variantKey in _projects.ListAgeVariantKeys(projectId, baseKey))
+        {
+            if (_projects.ResolveCharacterRefPath(projectId, variantKey) is null)
+                continue;
+            _projects.MarkCharacterLookStale(
+                projectId, variantKey,
+                "Drawn before this character's main picture changed — regenerate to match.");
+        }
     }
 
     /// <summary>
@@ -1558,6 +1593,24 @@ public sealed class CharacterDesignService
     }
 
     /// <summary>
+    /// An age variant with no picture of its own borrows the base character's locked reference.
+    /// They are the same person, so the family face should be decided once and inherited — not
+    /// re-imagined independently for each life stage, which is how one character's child, young
+    /// adult and adult seeds end up looking like three unrelated people who share a name.
+    /// Returns null when this seed is not a variant, already has its own image, or the base has none.
+    /// </summary>
+    private string? ResolveInheritedIdentityRefPath(string projectId, JsonElement seeds)
+    {
+        var variantOf = GetSeedString(seeds, "variant_of");
+        if (string.IsNullOrWhiteSpace(variantOf))
+            return null;
+        var baseRef = _projects.ResolveCharacterRefPath(projectId, variantOf);
+        if (baseRef is null || !File.Exists(baseRef) || new FileInfo(baseRef).Length < 64)
+            return null;
+        return baseRef;
+    }
+
+    /// <summary>
     /// Resolves the shared costume-only reference plate for a wardrobe lock group, generating
     /// it once (text-only, no character identity involved) if it doesn't exist yet. Every
     /// character whose seed points at <paramref name="wardrobeKey"/> reuses this same image as
@@ -1693,7 +1746,8 @@ public sealed class CharacterDesignService
         string? projectRenderStyleLock = null,
         string? wardrobeLockDescription = null,
         bool hasIdentityRefs = true,
-        bool hasCostumeRef = false)
+        bool hasCostumeRef = false,
+        bool identityRefIsInherited = false)
     {
         var description = ResolveSeedText(descriptionOverride, seedInfo, DescriptionKey);
         var visualLock = ResolveSeedText(visualLockOverride, seedInfo, "visual_lock");
@@ -1737,12 +1791,21 @@ public sealed class CharacterDesignService
         // Default was always picture-book — wrong for photoreal projects; style lock decides.
         var styleLock = BuildPortraitStyleLock(projectRenderStyleLock, illustrated);
         var lookNotes = BuildLookNotes(descSafe, visualSafe);
+        // First render wins. Once this character has a picture of their own, an invented look -
+        // prose the pipeline authored because the story described nobody - has nothing left to
+        // contribute and everything to argue with: it is exactly the text that says "dark hair"
+        // over a photograph of auburn. A borrowed family face is the exception; there the words
+        // are what carry the age the photo gets wrong.
+        var ownIdentityRef = hasIdentityRefs && !identityRefIsInherited;
+        if (ownIdentityRef && LookProvenanceTokens.IsInvented(GetSeedString(seedInfo, LookProvenanceTokens.SeedKey)))
+            lookNotes = "";
 
         if (hasImageHints)
             return (BuildPromptWithImageHints(
                 display, styleLock, speciesClause, familyClause, wardrobeClause,
                 ignoreRules, outputRules, lookNotes,
-                hasIdentityRefs, hasCostumeRef, species.IsAnimal, illustrated), illustrated);
+                hasIdentityRefs, hasCostumeRef, species.IsAnimal, illustrated,
+                identityRefIsInherited, BuildAgeOverrideClause(ageBand)), illustrated);
         return (BuildPromptWithoutImageHints(
             display, styleLock, speciesClause, familyClause, wardrobeClause,
             ignoreRules, outputRules, lookNotes, species.IsAnimal, illustrated), illustrated);
@@ -1926,10 +1989,16 @@ public sealed class CharacterDesignService
         bool hasIdentityRefs,
         bool hasCostumeRef,
         bool isAnimal,
-        bool illustrated)
+        bool illustrated,
+        bool identityRefIsInherited = false,
+        string ageOverrideClause = "")
     {
-        var matchBody = BuildImageHintMatchBody(hasIdentityRefs, hasCostumeRef, isAnimal, illustrated);
-        var priority1 = BuildImageHintPriority1(hasIdentityRefs, hasCostumeRef);
+        var matchBody = identityRefIsInherited
+            ? InheritedFaceMatchBody
+            : BuildImageHintMatchBody(hasIdentityRefs, hasCostumeRef, isAnimal, illustrated);
+        var priority1 = identityRefIsInherited
+            ? InheritedFacePriority1
+            : BuildImageHintPriority1(hasIdentityRefs, hasCostumeRef);
         return
             $"CHARACTER CONTINUITY PORTRAIT of {display}. " +
             styleLock +
@@ -1937,6 +2006,10 @@ public sealed class CharacterDesignService
             "Skip any reference that is mostly printed text with no character art. " +
             "Do not redesign; do not invent a new outfit not clearly visible in the character/costume art. " +
             matchBody +
+            // The age has to clear the reference photo, so it is stated here rather than left to
+            // the text notes at PRIORITY 3 — behind a paragraph of IGNORE rules is not where a
+            // hard constraint that contradicts the attached image survives.
+            ageOverrideClause +
             speciesClause +
             familyClause +
             wardrobeClause +
@@ -1945,7 +2018,9 @@ public sealed class CharacterDesignService
                 ? "If book art shows an animal without clothes, draw no clothes or costumes. "
                 : "Use only default clothes visible in refs; do not add later-story costumes. ") +
             ignoreRules +
-            $"PRIORITY 3 — TEXT NOTES (secondary hints only): {lookNotes} " +
+            (lookNotes.Length > 0
+                ? $"PRIORITY 3 — TEXT NOTES (secondary hints only): {lookNotes} "
+                : "") +
             outputRules;
     }
 
@@ -1976,6 +2051,35 @@ public sealed class CharacterDesignService
         return illustrated
             ? "Match face, hair, and default clothing from the preferred illustrated reference. "
             : "Match face, hair, and default clothing from the preferred reference photo/portrait. ";
+    }
+
+    /// <summary>
+    /// The attached photo is this person at a different point in their life — borrowed from the
+    /// base seed because this age variant has no picture of its own. Everything a face carries
+    /// across a lifetime transfers; everything time changes must not.
+    /// </summary>
+    private const string InheritedFacePriority1 =
+        "PRIORITY 1 — IMAGE: the attached photo is THE SAME PERSON at a DIFFERENT AGE, not a photo " +
+        "of the character to draw. It is the family-identity reference: take ethnicity, skin tone, " +
+        "hair colour, eye colour, and underlying face structure from it. Do NOT copy its age, its " +
+        "wardrobe, its hairstyle length, its setting, or its expression. ";
+
+    private const string InheritedFaceMatchBody =
+        "Render this person AT THE AGE STATED BELOW, recognizably the same individual as the photo — " +
+        "the resemblance a family album shows between one person's own portraits decades apart. " +
+        "Where the photo and the stated age disagree, the stated age wins. ";
+
+    /// <summary>
+    /// Restates the seed's own age_band as a hard constraint. Used only where an attached image
+    /// shows a different life stage — elsewhere the age is already in the prose and repeating a
+    /// bare token adds nothing (see <see cref="BuildAgeFallbackClause"/>).
+    /// </summary>
+    private static string BuildAgeOverrideClause(string? ageBand)
+    {
+        var band = (ageBand ?? "").Trim();
+        if (band.Length == 0)
+            return "";
+        return $"AGE (hard — overrides the attached photo): {band.Replace('_', ' ')}. ";
     }
 
     private static string BuildImageHintPriority1(bool hasIdentityRefs, bool hasCostumeRef)

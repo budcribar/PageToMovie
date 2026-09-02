@@ -1,4 +1,4 @@
-
+﻿
 
 using System;
 using System.Text.Json;
@@ -489,6 +489,21 @@ public sealed class CharacterSummary
     public VoiceCloneStatus VoiceCloneStatus { get; set; } = VoiceCloneStatus.Ready;
     /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>
     public string? VariantOf { get; set; }
+
+    /// <summary>
+    /// Where this character's appearance came from — <c>sourced</c>, <c>inferred</c> or
+    /// <c>invented</c>; null on seeds extracted before provenance was recorded. See
+    /// <see cref="LookProvenance"/>. The Characters page uses it to say plainly when a look is
+    /// the pipeline's own suggestion rather than the story's.
+    /// </summary>
+    public string? LookProvenance { get; set; }
+
+    /// <summary>
+    /// Why this character's existing portrait may no longer be right — set when the family face it
+    /// was drawn from changed underneath it. Advisory: the picture still works, and re-rendering
+    /// costs money, so nothing is regenerated without the operator asking. Null when not flagged.
+    /// </summary>
+    public string? LookStaleReason { get; set; }
     /// <summary>
     /// True when this character appears in the current shot plan / scenes (on-screen cast).
     /// Unused seeds are kept in cast_seeds but hidden from the default Characters list.
