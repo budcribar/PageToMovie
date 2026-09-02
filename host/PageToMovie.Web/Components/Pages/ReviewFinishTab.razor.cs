@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using PageToMovie.Cut.Services;
+using PageToMovie.Web.Services;
 using PageToMovie.Web.Components;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -10,7 +11,37 @@ public partial class ReviewFinishTab : PageSliceComponent
 
     [Inject] public CutFolderService Folder { get; set; } = default!;
 
+    [Inject] public ClientMediaFolderService MediaFolder { get; set; } = default!;
+
     private bool _subscribed;
+    private bool _downloading;
+    private string? _downloadStatus;
+
+    /// <summary>
+    /// Pulls the project's finished clips into this computer's media folder, then re-reads the
+    /// folder so the timeline picks them up. The clips play on the Film step straight off the
+    /// server, which is why their absence here is easy to miss - the cut is the one place that can
+    /// only use what is on this machine.
+    /// </summary>
+    internal async Task DownloadMissingClipsAsync()
+    {
+        if (_downloading) return;
+        _downloading = true;
+        _downloadStatus = null;
+        try
+        {
+            await MediaFolder.SyncProjectMediaToClientAsync(ActiveProject.ProjectId ?? "");
+            await Folder.RefreshClipsAsync();
+        }
+        catch (Exception ex)
+        {
+            _downloadStatus = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
 
     protected override void OnInitialized()
     {

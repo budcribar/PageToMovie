@@ -5,21 +5,39 @@
 @if (Missing() is { } gap)
 {
     <div class="alert alert-warning py-2 px-3 mb-2" data-testid="review-finish-missing-clips">
-        <strong>This cut is @gap.Local of @gap.Planned clips.</strong>
+        <div class="mb-1">
+            <strong>This cut has @gap.Local of @gap.Planned clips.</strong>
+            @if (gap.NotHere > 0)
+            {
+                <span>
+                    @gap.NotHere @(gap.NotHere == 1 ? "clip is" : "clips are") finished but not on this
+                    computer yet, so the movie made here would be missing @(gap.NotHere == 1 ? "it" : "them").
+                </span>
+            }
+            @if (gap.NotMade > 0)
+            {
+                <span>
+                    @gap.NotMade @(gap.NotMade == 1 ? "clip has" : "clips have") not been made yet —
+                    finish @(gap.NotMade == 1 ? "it" : "them") on the Film step first.
+                </span>
+            }
+        </div>
         @if (gap.NotHere > 0)
         {
-            <span>
-                @gap.NotHere @(gap.NotHere == 1 ? "clip is" : "clips are") finished but not in this
-                browser's media folder, so they can't go in the movie from here. Connect the media
-                folder this project was made in, or generate them again on this computer.
-            </span>
-        }
-        @if (gap.NotMade > 0)
-        {
-            <span>
-                @gap.NotMade @(gap.NotMade == 1 ? "clip has" : "clips have") not been made yet —
-                finish them on the Film step first.
-            </span>
+            <button type="button" class="btn btn-sm btn-warning"
+                    disabled="@_downloading"
+                    data-testid="review-finish-download-clips"
+                    @onclick="DownloadMissingClipsAsync">
+                @if (_downloading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>@(_downloadStatus ?? "Downloading…")</span>
+                }
+                else
+                {
+                    <span>Download the rest to this computer</span>
+                }
+            </button>
         }
     </div>
 }

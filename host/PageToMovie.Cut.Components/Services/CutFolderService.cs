@@ -85,6 +85,18 @@ public sealed class CutFolderService : IAsyncDisposable
         return FolderError is null;
     }
 
+    /// <summary>
+    /// Re-reads the attached folder. Files can appear under it without the editor doing anything -
+    /// a host downloading the project's clips into it is the ordinary case - and re-attaching is a
+    /// no-op once the prefix already matches, so there was otherwise no way to pick them up.
+    /// </summary>
+    public async Task RefreshClipsAsync()
+    {
+        if (!HasFolder)
+            return;
+        await LoadClipsFromCurrentFolderAsync();
+    }
+
     public async Task PickMp4FilesFallbackAsync()
     {
         FolderError = null;
