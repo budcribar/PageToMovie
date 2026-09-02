@@ -84,6 +84,7 @@
                                                    UseLabel="@L["CharactersPage.UseThisLook"]"
                                                    UseTitle="Save as preferred look for film"
                                                    UseDisabled="@(Host._busy || Jobs.JobRunning)"
+                                                   Busy="@LookPipe.IsSavingCandidate(c)"
                                                    OnUse="@(() => LookPipe.LockCandidateAsync(c))"
                                                    UseTestId="char-use-look">
                                     <ExtraActions>

@@ -22,6 +22,14 @@ public partial class Characters
 
         internal string? _chosenCandidateKey;
 
+        /// <summary>
+        /// The card whose save is actually in flight right now. Deliberately not
+        /// <see cref="_chosenCandidateKey"/>, which also marks the chosen card and survives a
+        /// failed save — a spinner keyed on that would come back on an unrelated later operation.
+        /// Set and cleared in one try/finally so it cannot outlive the call.
+        /// </summary>
+        private string? _savingCandidateKey;
+
         internal PendingDelete? _deleteConfirm;
 
         internal long _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -365,6 +373,14 @@ public partial class Characters
         }
 
 
+        /// <summary>
+        /// True for the one card whose save is in flight, so the spinner lands on the picture the
+        /// operator clicked rather than on all three at once.
+        /// </summary>
+        internal bool IsSavingCandidate(Candidate c) =>
+            _savingCandidateKey is { Length: > 0 }
+            && string.Equals(_savingCandidateKey, CandidateKey(c), StringComparison.OrdinalIgnoreCase);
+
         internal async Task LockCandidateAsync(Candidate c, bool overrideStyle = false, string? overrideReason = null)
         {
             if (S.List._selected is null) return;
@@ -372,6 +388,7 @@ public partial class Characters
             _pendingLockCandidate = c;
             _chosenCandidateKey = CandidateKey(c);
             var charKey = S.List._selected.Key;
+            _savingCandidateKey = CandidateKey(c);
             S._busy = true;
             S._error = null;
             if (overrideStyle) { _styleRejectCandidate = null; _styleRejectMessage = null; }
@@ -420,7 +437,11 @@ public partial class Characters
                 }
                 // Keep _pendingLockCandidate so switching cast can retry / flush once.
             }
-            finally { S._busy = false; }
+            finally
+            {
+                _savingCandidateKey = null;
+                S._busy = false;
+            }
         }
 
 

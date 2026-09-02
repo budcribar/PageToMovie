@@ -1,4 +1,4 @@
-@namespace PageToMovie.Web.Components
+﻿@namespace PageToMovie.Web.Components
 @inject IAppLocalizer L
 
 <div class="char-pick__card @(Selected ? "is-chosen" : null)"
@@ -45,10 +45,18 @@
             <button type="button"
                     class="btn btn-sm btn-primary char-pick__use"
                     data-testid="@UseTestId"
-                    disabled="@UseDisabled"
+                    disabled="@(UseDisabled || Busy)"
                     title="@UseTitle"
                     @onclick="OnUse">
-                @UseLabel
+                @if (Busy)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>@(BusyLabel ?? L["Common.Saving"])</span>
+                }
+                else
+                {
+                    <span>@UseLabel</span>
+                }
             </button>
         }
         @ExtraActions
