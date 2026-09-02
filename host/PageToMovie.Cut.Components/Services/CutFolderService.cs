@@ -1,4 +1,4 @@
-using Microsoft.JSInterop;
+﻿using Microsoft.JSInterop;
 using PageToMovie.Cut.Cut;
 
 namespace PageToMovie.Cut.Services;
@@ -34,6 +34,13 @@ public sealed class CutFolderService : IAsyncDisposable
     public Dictionary<int, string> SceneCacheFiles { get; } = [];
     public Dictionary<int, string> JoinCacheFiles { get; } = [];
     public List<CutClip> Clips { get; private set; } = [];
+
+    /// <summary>
+    /// Raised after the clip list is rebuilt from the folder. The folder attaches asynchronously,
+    /// so anything outside the editor that reasons about what was found - a host reconciling the
+    /// files on hand against a shot plan - has no other moment to learn that the scan finished.
+    /// </summary>
+    public event Action? ClipsChanged;
     public List<CutTextClip> TextClips { get; } = [];
 
     public async Task PickFolderAsync()
@@ -145,6 +152,7 @@ public sealed class CutFolderService : IAsyncDisposable
             await SaveFinishAsync(PendingMusicFileName, SavedMovieFingerprint, PendingMusic, SavedMergeCache);
         if (clips.Count == 0)
             FolderError = "No takes named scene_SS_clip_CC_take_NN.mp4 in that folder.";
+        ClipsChanged?.Invoke();
     }
 
     private async Task AttachTakeUrlsAsync(List<CutClip> clips)

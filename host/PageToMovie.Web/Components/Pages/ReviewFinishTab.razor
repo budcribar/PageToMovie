@@ -2,5 +2,27 @@
 @* Page-local to Review — finish (trims, titles, music). Built only when this tab is selected. *@
 @inject ActiveProjectState ActiveProject
 
+@if (Missing() is { } gap)
+{
+    <div class="alert alert-warning py-2 px-3 mb-2" data-testid="review-finish-missing-clips">
+        <strong>This cut is @gap.Local of @gap.Planned clips.</strong>
+        @if (gap.NotHere > 0)
+        {
+            <span>
+                @gap.NotHere @(gap.NotHere == 1 ? "clip is" : "clips are") finished but not in this
+                browser's media folder, so they can't go in the movie from here. Connect the media
+                folder this project was made in, or generate them again on this computer.
+            </span>
+        }
+        @if (gap.NotMade > 0)
+        {
+            <span>
+                @gap.NotMade @(gap.NotMade == 1 ? "clip has" : "clips have") not been made yet —
+                finish them on the Film step first.
+            </span>
+        }
+    </div>
+}
+
 <PageToMovie.Cut.Pages.CutEditor HostProjectPrefix="@ActiveProject.ProjectId"
                                  AutoAttachHostFolder="true" />
