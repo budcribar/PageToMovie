@@ -6,17 +6,22 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// First render wins. Where the story described nobody, the look the pipeline wrote is a stand-in
-/// for a picture that does not exist yet. Once the picture does exist, those words stop being
-/// helpful and start being wrong: "dark brown-black hair" is shipped into every shot alongside a
-/// photograph of auburn, and the model has to pick a side. A look the author actually wrote is a
-/// different thing and keeps riding along — restating it next to the reference costs nothing and
-/// guards against drift.
+/// The picture is the identity. Once a character's reference image rides with the shot, prose
+/// describing their face can only agree redundantly or disagree — and a model weighing sentences
+/// against pixels will sometimes pick the sentences. Annette's seeds said "dark brown-black hair,
+/// dark brown eyes, sun-warmed tan skin" over a photograph of auburn hair and blue eyes. Where the
+/// words came from makes no difference: a description matching the photo is no more use than one
+/// contradicting it, and it still competes. What matters is whether the picture is there.
+///
+/// visual_lock is exempt, and that is not a hedge. It holds the one curated trait that must not
+/// drift — the subtle thing a model gets wrong while looking straight at the reference. Cutting it
+/// is a mistake already made and measured here: Tell-Tale Heart's Old Man lost his filmy eye and
+/// rendered with a clear one, refs attached.
 /// </summary>
 public class InventedLookYieldsToImageTests
 {
-    private const string InventedProse = "dark brown-black hair, dark brown eyes, sun-warmed tan skin";
-    private const string SourcedProse = "pale filmy left eye, thin white hair";
+    private const string LookProse = "dark brown-black hair, dark brown eyes, sun-warmed tan skin";
+    private const string LockProse = "Never dark-haired, never dark-eyed, never tanned";
 
     private static JsonElement Clip() => JsonDocument.Parse("""
         {
@@ -45,7 +50,8 @@ public class InventedLookYieldsToImageTests
             {
                 Key = "Character_Annette",
                 DisplayName = "Annette",
-                Description = $"Woman in her fifties, {(provenance == LookProvenanceTokens.Invented ? InventedProse : SourcedProse)}.",
+                Description = $"Woman in her fifties, {LookProse}.",
+                VisualLock = LockProse,
                 VoiceProfile = "warm mid pitch",
                 LookProvenance = provenance,
             },
@@ -61,35 +67,38 @@ public class InventedLookYieldsToImageTests
         }
     }
 
-    [Fact]
-    public void An_invented_look_stands_down_once_its_reference_image_is_attached()
-    {
-        var prompt = BuildPrompt(LookProvenanceTokens.Invented, attachReference: true);
-
-        Assert.Contains("<IMAGE_1>", prompt, StringComparison.Ordinal);
-        Assert.DoesNotContain(InventedProse, prompt, StringComparison.OrdinalIgnoreCase);
-        // The character is still in the shot — it is the invented adjectives that left, not them.
-        Assert.Contains("Character_Annette", prompt, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void With_no_reference_image_the_invented_look_is_all_there_is_and_stays()
-    {
-        var prompt = BuildPrompt(LookProvenanceTokens.Invented, attachReference: false);
-
-        Assert.DoesNotContain("<IMAGE_1>", prompt, StringComparison.Ordinal);
-        Assert.Contains(InventedProse, prompt, StringComparison.OrdinalIgnoreCase);
-    }
-
     [Theory]
+    [InlineData(LookProvenanceTokens.Invented)]
     [InlineData(LookProvenanceTokens.Sourced)]
     [InlineData(LookProvenanceTokens.Inferred)]
     [InlineData("")]
-    public void A_look_the_source_backs_rides_alongside_its_reference_image(string provenance)
+    public void An_attached_picture_retires_the_words_describing_the_same_face(string provenance)
     {
         var prompt = BuildPrompt(provenance, attachReference: true);
 
         Assert.Contains("<IMAGE_1>", prompt, StringComparison.Ordinal);
-        Assert.Contains(SourcedProse, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(LookProse, prompt, StringComparison.OrdinalIgnoreCase);
+        // visual_lock is the hand-curated must-not-drift trait, not a restatement of the photo,
+        // and it earns its place beside one — see the Old Man's filmy eye.
+        Assert.Contains(LockProse, prompt, StringComparison.OrdinalIgnoreCase);
+        // The character is still in the shot, and still told to match their reference — it is the
+        // adjectives that left, not them.
+        Assert.Contains("Character_Annette", prompt, StringComparison.Ordinal);
+        Assert.Contains("Match appearance of reference", prompt, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(LookProvenanceTokens.Invented)]
+    [InlineData(LookProvenanceTokens.Sourced)]
+    [InlineData("")]
+    public void With_no_picture_the_words_are_the_only_identity_and_stay(string provenance)
+    {
+        // Also the video-extend case: the provider's extensions endpoint cannot carry reference
+        // images, so a shot built that way has nothing but this prose to go on.
+        var prompt = BuildPrompt(provenance, attachReference: false);
+
+        Assert.DoesNotContain("<IMAGE_1>", prompt, StringComparison.Ordinal);
+        Assert.Contains(LookProse, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(LockProse, prompt, StringComparison.OrdinalIgnoreCase);
     }
 }

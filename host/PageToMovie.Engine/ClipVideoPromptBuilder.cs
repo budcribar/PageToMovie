@@ -1809,17 +1809,28 @@ public static class ClipVideoPromptBuilder
             ? p.DisplayName
             : key.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' ');
         var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
-        // First render wins. Where the look is the pipeline's own invention (nothing in the book
-        // or screenplay described this character) and their reference image is attached to this
-        // shot, the picture is the identity and the invented words can only argue with it —
-        // "auburn hair" in the frame against "dark brown-black hair" in the prose. Sourced looks
-        // stay: those came from the author and are worth restating alongside the reference.
-        // With no image attached the words are all there is, invented or not, so they stand.
-        var inventedLookYieldsToImage =
-            tag.Length > 0 && LookProvenanceTokens.IsInvented(p?.LookProvenance);
+        // Once this character's reference image rides with the shot, the picture is the identity
+        // and the broad description has nothing left to add — it can only agree redundantly or
+        // disagree, and a model weighing sentences against pixels sometimes picks the sentences.
+        // Annette's seeds said "dark brown-black hair, dark brown eyes" over a photograph of
+        // auburn hair and blue eyes. Where the words came from makes no difference: an accurate
+        // description is no more use than an invented one when the photo is already attached.
+        //
+        // visual_lock stays, because it is not the same kind of text. It is the one hand-curated
+        // trait that must not drift — deliberately the subtle thing a model gets wrong even while
+        // looking at the reference. Dropping it is a mistake this codebase has already made and
+        // measured: Tell-Tale Heart's Old Man lost "the single pale blue eye with dull filmy veil
+        // that must not drift to clear blue" and rendered with an ordinary clear eye, refs
+        // attached and all. Emphasis on a subtlety is worth its place next to a picture; a
+        // paragraph restating what the picture already shows is not.
+        //
+        // Both stand when the picture does not travel with them: no locked reference, or a
+        // video-extend hop, where the provider's extensions endpoint cannot carry reference images
+        // at all and this prose is the only identity anchor the shot gets.
+        var pictureCarriesIdentity = tag.Length > 0;
         // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
         // source rather than at each tag-wrap call site below.
-        var desc = inventedLookYieldsToImage ? "" : PromptTags.SanitizeValue(
+        var desc = pictureCarriesIdentity ? "" : PromptTags.SanitizeValue(
             CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.Description?.Trim()));
         // visual_lock is face / markings / species. Clothes live on the Wardrobe tag — strip
         // leftover garments here so a frozen signature outfit cannot fight a later put_on.

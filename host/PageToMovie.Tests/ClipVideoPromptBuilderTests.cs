@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
@@ -152,7 +152,10 @@ public class ClipVideoPromptBuilderTests
         var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
         Assert.Contains("<Characters", built.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Character_Buster", built.Prompt);
-        Assert.Contains("Small black-and-white dog", built.Prompt);
+        // Buster's reference is attached, so the broad description stands down to it and his
+        // curated lock carries the identity instead — see InventedLookYieldsToImageTests.
+        Assert.DoesNotContain("Small black-and-white dog", built.Prompt);
+        Assert.Contains("Always black-and-white patches", built.Prompt);
         Assert.Contains("<IMAGE_1>", built.Prompt);
         Assert.Contains("<VoiceLock>", built.Prompt);
         Assert.Contains("He's Buster the Noodle Head Dog.", built.Prompt);
