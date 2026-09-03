@@ -1816,13 +1816,14 @@ public static class ClipVideoPromptBuilder
         // auburn hair and blue eyes. Where the words came from makes no difference: an accurate
         // description is no more use than an invented one when the photo is already attached.
         //
-        // visual_lock stays, because it is not the same kind of text. It is the one hand-curated
-        // trait that must not drift — deliberately the subtle thing a model gets wrong even while
-        // looking at the reference. Dropping it is a mistake this codebase has already made and
-        // measured: Tell-Tale Heart's Old Man lost "the single pale blue eye with dull filmy veil
-        // that must not drift to clear blue" and rendered with an ordinary clear eye, refs
-        // attached and all. Emphasis on a subtlety is worth its place next to a picture; a
-        // paragraph restating what the picture already shows is not.
+        // visual_lock goes with it. It was kept back at first on the strength of Tell-Tale Heart's
+        // Old Man losing "the single pale blue eye with dull filmy veil that must not drift to
+        // clear blue" - but his prompts say that happened in clips carrying NO reference image.
+        // Every C02-and-later clip of that film is a video-extend hop with refsAttachedToApi
+        // false and zero IMAGE tags, and the truncation that dropped the eye cut a line that was
+        // the shot's only identity anchor. His locked portrait shows the filmy eye plainly. So
+        // nothing there argues for restating a face beside a picture of it; it argues for not
+        // truncating the words when there is no picture - a different rule, and one that holds.
         //
         // Both stand when the picture does not travel with them: no locked reference, or a
         // video-extend hop, where the provider's extensions endpoint cannot carry reference images
@@ -1834,7 +1835,7 @@ public static class ClipVideoPromptBuilder
             CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.Description?.Trim()));
         // visual_lock is face / markings / species. Clothes live on the Wardrobe tag — strip
         // leftover garments here so a frozen signature outfit cannot fight a later put_on.
-        var vlock = PromptTags.SanitizeValue(
+        var vlock = pictureCarriesIdentity ? "" : PromptTags.SanitizeValue(
             CharacterVisualTextScrubber.StripGarmentsFromIdentityProse(p?.VisualLock?.Trim()));
         var voice = PromptTags.SanitizeValue(p?.VoiceProfile?.Trim());
         return (display, tag, desc, vlock, voice);

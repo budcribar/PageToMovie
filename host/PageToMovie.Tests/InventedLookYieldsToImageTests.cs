@@ -13,10 +13,11 @@ namespace PageToMovie.Tests;
 /// words came from makes no difference: a description matching the photo is no more use than one
 /// contradicting it, and it still competes. What matters is whether the picture is there.
 ///
-/// visual_lock is exempt, and that is not a hedge. It holds the one curated trait that must not
-/// drift — the subtle thing a model gets wrong while looking straight at the reference. Cutting it
-/// is a mistake already made and measured here: Tell-Tale Heart's Old Man lost his filmy eye and
-/// rendered with a clear one, refs attached.
+/// visual_lock goes too. It was held back at first over Tell-Tale Heart's Old Man losing his filmy
+/// eye — but his prompts put that in clips with no reference image at all (every C02-and-later clip
+/// of that film is a video-extend hop, refsAttachedToApi false), where a truncated line was the
+/// shot's only identity anchor. That argues for not truncating text when no picture ships, which is
+/// a different rule and still holds below.
 /// </summary>
 public class InventedLookYieldsToImageTests
 {
@@ -78,9 +79,8 @@ public class InventedLookYieldsToImageTests
 
         Assert.Contains("<IMAGE_1>", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(LookProse, prompt, StringComparison.OrdinalIgnoreCase);
-        // visual_lock is the hand-curated must-not-drift trait, not a restatement of the photo,
-        // and it earns its place beside one — see the Old Man's filmy eye.
-        Assert.Contains(LockProse, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(LockProse, prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<VisualLock>", prompt, StringComparison.Ordinal);
         // The character is still in the shot, and still told to match their reference — it is the
         // adjectives that left, not them.
         Assert.Contains("Character_Annette", prompt, StringComparison.Ordinal);

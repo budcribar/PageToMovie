@@ -152,10 +152,9 @@ public class ClipVideoPromptBuilderTests
         var built = ClipVideoPromptBuilder.Build(clip, tmp, profiles, maxRefs: 5);
         Assert.Contains("<Characters", built.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Character_Buster", built.Prompt);
-        // Buster's reference is attached, so the broad description stands down to it and his
-        // curated lock carries the identity instead — see InventedLookYieldsToImageTests.
+        // Refs are attached here, so the identity prose stands down to the pictures — the point of
+        // this case is the tags and the audio block. Prose-vs-picture is InventedLookYieldsToImageTests.
         Assert.DoesNotContain("Small black-and-white dog", built.Prompt);
-        Assert.Contains("Always black-and-white patches", built.Prompt);
         Assert.Contains("<IMAGE_1>", built.Prompt);
         Assert.Contains("<VoiceLock>", built.Prompt);
         Assert.Contains("He's Buster the Noodle Head Dog.", built.Prompt);
@@ -1122,8 +1121,9 @@ public class ClipVideoPromptBuilderTests
         var tmp = Path.Combine(Path.GetTempPath(), "fs-multi-compact-" + Guid.NewGuid().ToString("N"));
         var charDir = Path.Combine(tmp, "assets", "characters");
         Directory.CreateDirectory(charDir);
-        File.WriteAllBytes(Path.Combine(charDir, "character_narrator_ref.png"), new byte[512]);
-        File.WriteAllBytes(Path.Combine(charDir, "character_old_man_ref.png"), new byte[512]);
+        // No reference images: identity prose only ships when no picture carries it, and that is
+        // exactly the case this regression is about — Tell-Tale Heart's Old Man drifted in
+        // video-extend clips, which cannot attach refs at all, when his line was truncated.
 
         var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
             StringComparer.OrdinalIgnoreCase)
@@ -1175,8 +1175,9 @@ public class ClipVideoPromptBuilderTests
         var tmp = Path.Combine(Path.GetTempPath(), "fs-multi-compact-vlock-" + Guid.NewGuid().ToString("N"));
         var charDir = Path.Combine(tmp, "assets", "characters");
         Directory.CreateDirectory(charDir);
-        File.WriteAllBytes(Path.Combine(charDir, "character_narrator_ref.png"), new byte[512]);
-        File.WriteAllBytes(Path.Combine(charDir, "character_old_man_ref.png"), new byte[512]);
+        // No reference images: identity prose only ships when no picture carries it, and that is
+        // exactly the case this regression is about — Tell-Tale Heart's Old Man drifted in
+        // video-extend clips, which cannot attach refs at all, when his line was truncated.
 
         var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
             StringComparer.OrdinalIgnoreCase)
@@ -1220,7 +1221,7 @@ public class ClipVideoPromptBuilderTests
         var tmp = Path.Combine(Path.GetTempPath(), "fs-vlock-wardrobe-" + Guid.NewGuid().ToString("N"));
         var charDir = Path.Combine(tmp, "assets", "characters");
         Directory.CreateDirectory(charDir);
-        File.WriteAllBytes(Path.Combine(charDir, "character_mary_ref.png"), new byte[512]);
+        // No reference image — visual_lock ships only when no picture carries the identity.
 
         var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(
             StringComparer.OrdinalIgnoreCase)
