@@ -677,7 +677,15 @@ public sealed partial class ProjectStore
 
         var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         if (!TryPromoteClipVersion(projectId, videoDir, scene, clip, target))
-            return false;
+        {
+            // Not a silent false: the operator is looking at a card with a working-looking button,
+            // and "Failed to promote clip version." is indistinguishable from the button doing
+            // nothing. Say which of the three places the video is not.
+            throw new InvalidOperationException(
+                $"Take {Math.Max(1, target.Take)} has no video here, on your device, or with the "
+                + "provider, so it cannot be made the active take. Reconnect the media folder that "
+                + "holds it, or generate this clip again.");
+        }
 
         InvalidateSceneListCache(projectId);
         var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
@@ -779,6 +787,19 @@ public sealed partial class ProjectStore
 
     private static void ApplyClipSidecarJson(ClipVersionItem item, JsonElement root)
     {
+        // The sidecar records when the take was generated. A file's last-write time records when
+        // its bytes last landed on this disk - which a restore, a folder sync or a plain copy
+        // rewrites, and a zip restore zeroes outright. That is how a take made this afternoon came
+        // back dated "Dec 31, 5:00 PM": the card was reading the mtime, and the display format
+        // omits the year, so a 1979 DOS-epoch stamp read as a plausible evening in December.
+        if (root.TryGetProperty("created_at_utc", out var createdEl)
+            && createdEl.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(
+                createdEl.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var createdAt))
+        {
+            item.CreatedAtUtc = createdAt.UtcDateTime;
+        }
         item.VisualPrompt = FirstJsonString(root, StoreLit.VisualPrompt, "prompt");
         item.ScriptText = JsonStringOrEmpty(root, "script_text");
         item.Model = JsonStringOrEmpty(root, "model");

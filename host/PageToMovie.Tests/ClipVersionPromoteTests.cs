@@ -1,4 +1,4 @@
-using PageToMovie.Core.Options;
+﻿using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -91,18 +91,22 @@ public sealed class ClipVersionPromoteTests : IDisposable
 
     /// <summary>
     /// The guard still does its job: no bytes anywhere, no provider copy, no client marker — that
-    /// take cannot be made current, because nothing could play it.
+    /// take cannot be made current, because nothing could play it. It now says so rather than
+    /// returning a bare false, which the endpoint turned into "Failed to promote clip version." —
+    /// a message indistinguishable, from the operator's side of the screen, from a dead button.
     /// </summary>
     [Fact]
-    public async Task A_take_nobody_holds_is_still_refused()
+    public async Task A_take_nobody_holds_is_refused_and_says_why()
     {
         File.WriteAllText(Path_("scene_01_clip_02_take_07.clip.json"),
             """{"schema_version":"clip_sidecar.v1","scene":1,"clip":2,"take":7,"duration_seconds":5}""");
         WriteServerTake(11);
 
-        var ok = await _store.PromoteClipVersionAsync(ProjectId, 1, 2, "scene_01_clip_02_take_07.mp4");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _store.PromoteClipVersionAsync(ProjectId, 1, 2, "scene_01_clip_02_take_07.mp4"));
 
-        Assert.False(ok);
+        Assert.Contains("Take 7", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("your device", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>A provider copy remains sufficient on its own — that path is unchanged.</summary>
