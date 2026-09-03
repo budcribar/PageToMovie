@@ -64,6 +64,15 @@ public partial class Scenes
 
     internal List<SceneSummary>? _scenes;
 
+    /// <summary>
+    /// First Film paint: <see cref="_scenes"/> stays null until <see cref="ReloadListAsync"/>
+    /// finishes. Treat that as loading — not as "no shot plan yet".
+    /// </summary>
+    internal static bool IsSceneListPending(IReadOnlyList<SceneSummary>? scenes) => scenes is null;
+
+    /// <summary>Loaded list with zero rows — the real empty shot-plan card, not first-paint.</summary>
+    internal static bool IsEmptyShotPlan(IReadOnlyList<SceneSummary>? scenes) => scenes is { Count: 0 };
+
     /// <summary>Shot plan rows or on-disk clips already exist — do not send the user to rebuild.</summary>
     internal bool HasSceneOrClipMedia =>
         !VoiceSubstitutionOverlayGate.IsMissingSceneList(_scenes)

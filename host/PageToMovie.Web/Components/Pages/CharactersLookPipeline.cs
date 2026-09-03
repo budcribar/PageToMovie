@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
+using PageToMovie.Core.Utils;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -34,7 +35,15 @@ public partial class Characters
 
         internal long _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
+        /// <summary>Last generate was a one-look face tweak (not generate-3).</summary>
+        internal bool _lastGenerateWasIterative;
+
         internal Mode _mode = Mode.PickSource;
+
+        internal int GeneratingLookCount =>
+            S.Jobs._job is { Total: > 0 } job
+                ? job.Total
+                : CharacterLookEdit.VariantCount(_lastGenerateWasIterative);
 
         /// <summary>Look chosen in Compare mode, not yet confirmed locked (auto-flushed on cast switch).</summary>
         internal Candidate? _pendingLockCandidate;
@@ -156,7 +165,8 @@ public partial class Characters
                                && S.List.PreferredImageUrl is { Length: > 0 };
             await StartGenerateCoreAsync(BuildRegenRequest(
                 hasImageEdit, includePref, variants, books, sendOrder, maxSend));
-            if (hasImageEdit)
+            // Keep the instruction if start failed so a retry still has the tweak text.
+            if (hasImageEdit && S._error is null)
                 S.LookEdit._imageEditInstruction = "";
         }
 
@@ -189,55 +199,81 @@ public partial class Characters
             return (includePref, variants, books);
         }
 
-        private StartCharacterVariantsRequest BuildRegenRequest(
+        internal StartCharacterVariantsRequest BuildRegenRequest(
             bool hasImageEdit,
             bool includePref,
             List<int> variants,
             List<int> books,
             List<string> sendOrder,
             int maxSend)
-        {
-            var descForGen = hasImageEdit
-                ? BuildImageEditPrompt(S.LookEdit._editDescription, S.LookEdit._editVisualLock, S.LookEdit._imageEditInstruction)
-                : S.LookEdit._editDescription;
-            string seedMode;
-            if (hasImageEdit) seedMode = "preferred_only";
-            else if (S.LookBook.SelectedSeedCount == 0) seedMode = "none";
-            else seedMode = "explicit";
-            return new StartCharacterVariantsRequest
+            => BuildRegenRequest(new RegenRequestArgs
             {
                 ProjectId = S._projectId,
                 CharKey = S.List._selected!.Key,
-                Count = hasImageEdit ? 1 : 3,
+                HasImageEdit = hasImageEdit,
+                IncludePref = includePref,
+                Variants = variants,
+                Books = books,
+                SendOrder = sendOrder,
+                MaxSend = maxSend,
+                Description = S.LookEdit._editDescription,
+                VisualLock = S.LookEdit._editVisualLock,
+                ImageEditInstruction = S.LookEdit._imageEditInstruction,
+                SelectedSeedCount = S.LookBook.SelectedSeedCount,
+            });
+
+        /// <summary>
+        /// Inputs for <see cref="BuildRegenRequest(RegenRequestArgs)"/>.
+        /// Object-initializer shape so generate vs tweak fields stay grouped.
+        /// </summary>
+        internal sealed class RegenRequestArgs
+        {
+            public required string ProjectId { get; init; }
+            public required string CharKey { get; init; }
+            public bool HasImageEdit { get; init; }
+            public bool IncludePref { get; init; }
+            public List<int> Variants { get; init; } = new();
+            public List<int> Books { get; init; } = new();
+            public List<string> SendOrder { get; init; } = new();
+            public int MaxSend { get; init; }
+            public string? Description { get; init; }
+            public string? VisualLock { get; init; }
+            public string? ImageEditInstruction { get; init; }
+            public int SelectedSeedCount { get; init; }
+        }
+
+        /// <summary>Request shape for generate-3 vs iterative tweak-1. Testable without a page host.</summary>
+        internal static StartCharacterVariantsRequest BuildRegenRequest(RegenRequestArgs args)
+        {
+            string seedMode;
+            if (args.HasImageEdit) seedMode = "preferred_only";
+            else if (args.SelectedSeedCount == 0) seedMode = "none";
+            else seedMode = "explicit";
+            return new StartCharacterVariantsRequest
+            {
+                ProjectId = args.ProjectId,
+                CharKey = args.CharKey,
+                Count = CharacterLookEdit.VariantCount(args.HasImageEdit),
                 // Voice/text image edit always anchors on the preferred plate.
                 SeedMode = seedMode,
-                IncludePreferred = hasImageEdit || includePref,
-                IncludeLockedRef = hasImageEdit || includePref,
-                BookRefIndices = hasImageEdit ? new List<int>() : books,
-                VariantIndices = hasImageEdit ? new List<int>() : variants,
-                SeedOrderKeys = hasImageEdit ? new List<string> { "p" } : sendOrder,
-                MaxRefs = hasImageEdit ? 1 : maxSend,
-                DescriptionOverride = descForGen,
-                VisualLockOverride = S.LookEdit._editVisualLock,
-                PersistDescription = !hasImageEdit, // don't overwrite seed with ephemeral edit instruction
-                AutoLockBest = true,
-                IterativeEdit = hasImageEdit,
+                IncludePreferred = args.HasImageEdit || args.IncludePref,
+                IncludeLockedRef = args.HasImageEdit || args.IncludePref,
+                BookRefIndices = args.HasImageEdit ? new List<int>() : args.Books,
+                VariantIndices = args.HasImageEdit ? new List<int>() : args.Variants,
+                SeedOrderKeys = args.HasImageEdit ? new List<string> { "p" } : args.SendOrder,
+                MaxRefs = args.HasImageEdit ? 1 : args.MaxSend,
+                DescriptionOverride = args.Description,
+                VisualLockOverride = args.VisualLock,
+                ImageEditInstruction = args.HasImageEdit ? args.ImageEditInstruction : null,
+                PersistDescription = !args.HasImageEdit, // merge instruction into look text after a successful tweak
+                AutoLockBest = CharacterLookEdit.ShouldAutoLockBest(args.HasImageEdit),
+                IterativeEdit = args.HasImageEdit,
             };
         }
 
-        /// <summary>Prompt for Grok image edit: keep identity, apply spoken/typed change.</summary>
+        /// <summary>Prompt for image edit: keep identity, apply spoken/typed change. Instruction wins.</summary>
         internal static string BuildImageEditPrompt(string? description, string? visualLock, string instruction)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append("Edit this character reference image. Keep the same person, face identity, and era. ");
-            sb.Append("Change only what the instruction asks. ");
-            sb.Append("Instruction: ").Append(instruction.Trim()).Append('.');
-            if (!string.IsNullOrWhiteSpace(visualLock))
-                sb.Append(" Visual lock: ").Append(visualLock.Trim());
-            if (!string.IsNullOrWhiteSpace(description))
-                sb.Append(" Base description: ").Append(description.Trim());
-            return sb.ToString();
-        }
+            => CharacterLookEdit.BuildImageEditPrompt(description, visualLock, instruction);
 
 
         internal async Task StartGenerateCoreAsync(StartCharacterVariantsRequest req)
@@ -247,7 +283,8 @@ public partial class Characters
             S._error = null;
             S._message = null;
             // Reset progress UI immediately so a prior 3/3 bar never carries over
-            var total = req.Count > 0 ? req.Count : 3;
+            _lastGenerateWasIterative = req.IterativeEdit;
+            var total = req.Count > 0 ? req.Count : CharacterLookEdit.VariantCount(req.IterativeEdit);
             S.Jobs._job = new JobSnapshot
             {
                 Status = "queued",

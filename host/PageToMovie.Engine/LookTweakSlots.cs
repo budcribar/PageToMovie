@@ -1,12 +1,15 @@
+using PageToMovie.Core.Utils;
+
 namespace PageToMovie.Engine;
 
 /// <summary>
 /// Slot picker for iterative look tweaks: keep the current preferred as one variant
-/// and write the new edit to a different slot so the operator can lock either.
+/// and write the new edit to a different slot so the new plate can be locked
+/// without overwriting the previous preferred file.
 /// </summary>
 internal static class LookTweakSlots
 {
-    public const int MaxVariants = 6;
+    public const int MaxVariants = CharacterLookEdit.MaxVariants;
 
     public readonly record struct Pair(int Previous, int Next);
 

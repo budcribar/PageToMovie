@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 @using PageToMovie.Core.Models
+@using PageToMovie.Core.Utils
 @using PageToMovie.Web.Services
 
 @if (List._selected is { } selected)
@@ -55,7 +56,7 @@
                 @if (LookPipe._mode == Characters.Mode.WaitingGenerate)
                 {
                     <div class="alert alert-info mb-0 py-2">
-                        Generating three looks for @selected.DisplayName…
+                        @CharacterLookEdit.GeneratingLooksMessage(selected.DisplayName, LookPipe.GeneratingLookCount)
                         @if (Jobs.JobRunning)
                         {
                             <button type="button" class="btn btn-sm btn-outline-danger ms-2 py-0"
@@ -78,9 +79,9 @@
                                                    Selected="@(LookPipe._chosenCandidateKey == Characters.CharactersLookPipeline.CandidateKey(c))"
                                                    ShowZoomBadge="true"
                                                    FrameDisabled="@(Host._busy || Jobs.JobRunning)"
-                                                   FrameTitle="@($"Click to save this look for {selected.DisplayName}")"
-                                                   FrameAriaLabel="@($"Use look {c.Label}")"
-                                                   OnFrameClick="@(() => LookPipe.LockCandidateAsync(c))"
+                                                   FrameTitle="@($"Click to zoom {c.Label}")"
+                                                   FrameAriaLabel="@($"Zoom look {c.Label}")"
+                                                   OnFrameClick="@(() => LookPipe.OpenLookZoom(c))"
                                                    UseLabel="@L["CharactersPage.UseThisLook"]"
                                                    UseTitle="Save as preferred look for film"
                                                    UseDisabled="@(Host._busy || Jobs.JobRunning)"
@@ -190,7 +191,7 @@
                         @if (selected.Variants.Any(v => v.Exists))
                         {
                             <div class="mt-3 pt-2 border-top border-secondary border-opacity-25" data-testid="char-variants-gallery">
-                                <div class="small fw-semibold text-muted mb-2">Generated options (3 variants):</div>
+                                <div class="small fw-semibold text-muted mb-2">@CharacterLookEdit.GeneratedOptionsHeading(selected.Variants.Count(v => v.Exists))</div>
                                 <div class="d-flex flex-wrap gap-2">
                                     @foreach (var v in selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
                                     {

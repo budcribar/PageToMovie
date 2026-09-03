@@ -22,7 +22,8 @@ public class ScenesPipelineTests
             await PipelineFlow.RunToScenesAsync(page, _fx.BaseUrl, "Scenes_" + Guid.NewGuid().ToString("N")[..6], "tell_tale_heart.fountain");
 
             // Shot plan produced scenes — the authoritative count marker must show a non-empty plan,
-            // and the "No scenes in the shot plan yet" empty state must be gone.
+            // and the post-load "No shot plan yet" empty card must be gone (first-paint loading
+            // uses "Loading scenes…", never that empty copy).
             var status = page.GetByTestId("scenes-status");
             await status.WaitForAsync(new() { Timeout = 60_000 });
             var sceneCount = int.Parse(await status.GetAttributeAsync("data-scene-count") ?? "0");

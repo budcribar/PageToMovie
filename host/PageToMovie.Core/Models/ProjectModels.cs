@@ -615,10 +615,13 @@ public sealed class StartCharacterVariantsRequest
     /// <summary>After gen, vision ranks variants and locks the best (operator can override later).</summary>
     public bool AutoLockBest { get; set; }
     /// <summary>
-    /// Voice/text tweak of the locked portrait: force one result and lock it immediately
-    /// (no 3-way pick). Description/visual lock are not rewritten when PersistDescription is false.
+    /// Voice/text tweak of the locked portrait: force one result and lock the new plate
+    /// (do not vision-rank siblings). Description/visual lock are not rewritten when PersistDescription is false;
+    /// the raw instruction is merged into look text after a successful tweak.
     /// </summary>
     public bool IterativeEdit { get; set; }
+    /// <summary>Spoken/typed face tweak. When set with IterativeEdit, this instruction wins over conflicting look text.</summary>
+    public string? ImageEditInstruction { get; set; }
 }
 
 /// <summary>Admin / one-shot: enrich the full-length screenplay as a background job.</summary>
