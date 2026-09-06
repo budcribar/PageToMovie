@@ -888,24 +888,8 @@ public sealed class CastFromScreenplayService
 
             var display = CoerceString(seed, KeyCanonicalGivenName)
                           ?? CastKindClassifier.StripPrefix(key).Replace('_', ' ');
-            var queryNames = new List<string> { display };
-            var keyCore = CastKindClassifier.StripPrefix(key).Replace('_', ' ');
-            if (!string.IsNullOrWhiteSpace(keyCore) &&
-                !string.Equals(keyCore, display, StringComparison.OrdinalIgnoreCase))
-                queryNames.Add(keyCore);
-
             // Fountain is source of truth; book only fills gaps.
-            var look = "";
-            if (!string.IsNullOrWhiteSpace(fountainText))
-            {
-                look = HarvestNameLookExcerpts(fountainText, queryNames, maxChars: 1_200);
-                look = CollapseLookExcerptToSentence(look, display);
-            }
-            if (string.IsNullOrWhiteSpace(look) && !string.IsNullOrWhiteSpace(bookText))
-            {
-                look = HarvestNameLookExcerpts(bookText, queryNames, maxChars: 800);
-                look = CollapseLookExcerptToSentence(look, display);
-            }
+            var look = HarvestStubLookFromSources(key, display, fountainText, bookText);
             if (string.IsNullOrWhiteSpace(look)) continue;
 
             if (needsDesc)
@@ -916,6 +900,36 @@ public sealed class CastFromScreenplayService
             updated++;
         }
         return updated;
+    }
+
+    /// <summary>
+    /// Display name plus key-core aliases, then fountain-first look harvest.
+    /// Book fills only when fountain yields nothing. Empty when neither source has a usable look.
+    /// </summary>
+    private static string HarvestStubLookFromSources(
+        string key,
+        string display,
+        string? fountainText,
+        string? bookText)
+    {
+        var queryNames = new List<string> { display };
+        var keyCore = CastKindClassifier.StripPrefix(key).Replace('_', ' ');
+        if (!string.IsNullOrWhiteSpace(keyCore) &&
+            !string.Equals(keyCore, display, StringComparison.OrdinalIgnoreCase))
+            queryNames.Add(keyCore);
+
+        var look = "";
+        if (!string.IsNullOrWhiteSpace(fountainText))
+        {
+            look = HarvestNameLookExcerpts(fountainText, queryNames, maxChars: 1_200);
+            look = CollapseLookExcerptToSentence(look, display);
+        }
+        if (string.IsNullOrWhiteSpace(look) && !string.IsNullOrWhiteSpace(bookText))
+        {
+            look = HarvestNameLookExcerpts(bookText, queryNames, maxChars: 800);
+            look = CollapseLookExcerptToSentence(look, display);
+        }
+        return look;
     }
 
     /// <summary>
