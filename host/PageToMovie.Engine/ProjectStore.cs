@@ -787,19 +787,7 @@ public sealed partial class ProjectStore
 
     private static void ApplyClipSidecarJson(ClipVersionItem item, JsonElement root)
     {
-        // The sidecar records when the take was generated. A file's last-write time records when
-        // its bytes last landed on this disk - which a restore, a folder sync or a plain copy
-        // rewrites, and a zip restore zeroes outright. That is how a take made this afternoon came
-        // back dated "Dec 31, 5:00 PM": the card was reading the mtime, and the display format
-        // omits the year, so a 1979 DOS-epoch stamp read as a plausible evening in December.
-        if (root.TryGetProperty("created_at_utc", out var createdEl)
-            && createdEl.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(
-                createdEl.GetString(), System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.RoundtripKind, out var createdAt))
-        {
-            item.CreatedAtUtc = createdAt.UtcDateTime;
-        }
+        TryApplyClipSidecarCreatedAt(item, root);
         item.VisualPrompt = FirstJsonString(root, StoreLit.VisualPrompt, "prompt");
         item.ScriptText = JsonStringOrEmpty(root, "script_text");
         item.Model = JsonStringOrEmpty(root, "model");
@@ -820,6 +808,23 @@ public sealed partial class ProjectStore
             item.Take = tkNo;
         if (root.TryGetProperty("source_file_expires_at", out var sfexp) && sfexp.TryGetInt64(out var sfexpVal))
             item.SourceFileExpiresAtUnixSeconds = sfexpVal;
+    }
+
+    /// <summary>
+    /// Prefer the sidecar's recorded generation time over the file mtime. A restore, folder sync,
+    /// or copy rewrites last-write, and a zip restore zeroes it to the DOS epoch — which is how a
+    /// take made in the afternoon came back dated "Dec 31, 5:00 PM".
+    /// </summary>
+    private static void TryApplyClipSidecarCreatedAt(ClipVersionItem item, JsonElement root)
+    {
+        if (root.TryGetProperty("created_at_utc", out var createdEl)
+            && createdEl.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(
+                createdEl.GetString(), CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var createdAt))
+        {
+            item.CreatedAtUtc = createdAt.UtcDateTime;
+        }
     }
 
     private static string FirstJsonString(JsonElement root, string primary, string fallback)
