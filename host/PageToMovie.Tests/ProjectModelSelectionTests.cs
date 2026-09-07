@@ -49,7 +49,7 @@ public class ProjectModelSelectionTests
     [Theory]
     [InlineData("grok-4.5")]
     [InlineData("grok-4.6")]
-    [InlineData("gemini-3.7-flash")]
+    [InlineData("gemini-3.8-flash")]
     public void RequirePlanning_accepts_catalog_chat_models(string modelId)
     {
         var id = ProjectModelSelection.RequirePlanning(Cfg(("planning_model_name", modelId)));
@@ -65,7 +65,7 @@ public class ProjectModelSelectionTests
 
     [Theory]
     [InlineData("grok-4.5")]
-    [InlineData("gemini-3.7-flash")]
+    [InlineData("gemini-3.8-flash")]
     public void RequireVision_accepts_vision_or_chat_overlap_models(string modelId)
     {
         // Catalog lists some ids under Vision and/or Chat; Find allows Chat↔Vision.
