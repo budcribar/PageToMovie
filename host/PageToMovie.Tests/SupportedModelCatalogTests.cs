@@ -58,8 +58,9 @@ public class SupportedModelCatalogTests
     }
 
     [Theory]
-    [InlineData("grok-imagine-image-quality", 3)]  // Grok Imagine multi-image edit hard cap
-    [InlineData("grok-imagine-image", 3)]          // Grok Imagine multi-image edit hard cap
+    [InlineData("grok-imagine-image-2.0", 5)]      // docs.x.ai Imagine Overview / Image Editing: up to 5 source images
+    [InlineData("grok-imagine-image-quality", 5)]  // same Imagine multi-image edit hard cap
+    [InlineData("grok-imagine-image", 5)]          // same Imagine multi-image edit hard cap
     [InlineData("gemini-2.5-pro-image", 14)]         // documented soft max for Gemini 3 image family
     public void MaxReferenceImages_MatchesRealPerModelCapability_ForImageModels(string modelId, int expectedMax)
     {

@@ -318,11 +318,11 @@
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
-      "videoReferenceImageCost": 0.0,
+      "videoReferenceImageCost": 0.002,
       "videoExtendCostPerSecond": 0.07,
-      "pricingNotes": "docs.x.ai 2026-08-15: official list price $0.050/s. 720p catalog rate 0.07 kept as the previously confirmed docs.x.ai 720p figure; 1080p $0.25 dropped (not official for this id). videoReferenceImageCost=0 (no separate ref fee). videoExtendCostPerSecond uses 720p catalog rate.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "docs.x.ai/docs/pricing 2026-09-08 detailed Imagine table: $0.002/img input + $0.01/s input video; output 480p $0.05/s, 720p $0.07/s. Flattened summary line still $0.050/s. 1080p $0.25 is not official for this id. videoReferenceImageCost=0.002. videoExtendCostPerSecond uses 720p catalog rate.",
+      "lastVerifiedAt": "2026-09-08",
+      "pricingLastReviewedAt": "2026-09-08"
     },
     {
       "id": "grok-imagine-video-1.5",
@@ -395,10 +395,10 @@
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
-      "videoReferenceImageCost": 0.0,
-      "pricingNotes": "docs.x.ai/developers/models/grok-imagine-video-1.5 and /developers/pricing 2026-08-27: official resolutionPricing (embedded model metadata, not the flattened $0.080/sec summary) is 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s. Flattened list-price line $0.080/s is the 480p default. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
-      "lastVerifiedAt": "2026-08-27",
-      "pricingLastReviewedAt": "2026-08-27"
+      "videoReferenceImageCost": 0.01,
+      "pricingNotes": "docs.x.ai/docs/models/grok-imagine-video-1.5 and /docs/pricing 2026-09-08: Input Image $0.01; official resolutionPricing is 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s. Flattened list-price line $0.080/s is the 480p default. videoReferenceImageCost=0.01. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
+      "lastVerifiedAt": "2026-09-08",
+      "pricingLastReviewedAt": "2026-09-08"
     },
     {
       "id": "imagine-video-1.5-extend",
@@ -794,14 +794,14 @@
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.05,
-      "maxReferenceImages": 3,
-      "notes": "Primary portrait engine for photoreal / studio character plates. Grok Imagine multi-image edit hard cap is 3 references. Disabled 2026-08-15 (image default is now grok-imagine-image-2.0). Id kept so existing projects migrate on open.",
+      "maxReferenceImages": 5,
+      "notes": "Primary portrait engine for photoreal / studio character plates. Grok Imagine multi-image edit hard cap is 5 references. Disabled 2026-08-15 (image default is now grok-imagine-image-2.0). Id kept so existing projects migrate on open.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-05",
+      "lastVerifiedAt": "2026-09-08",
+      "pricingLastReviewedAt": "2026-09-08",
       "deprecated": true
     },
     {
@@ -819,14 +819,14 @@
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.02,
-      "maxReferenceImages": 3,
-      "notes": "Grok Imagine multi-image edit hard cap is 3 references. Disabled 2026-08-15 (image default is now grok-imagine-image-2.0). Id kept so existing projects migrate on open.",
+      "maxReferenceImages": 5,
+      "notes": "Grok Imagine multi-image edit hard cap is 5 references. Disabled 2026-08-15 (image default is now grok-imagine-image-2.0). Id kept so existing projects migrate on open.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-05",
+      "lastVerifiedAt": "2026-09-08",
+      "pricingLastReviewedAt": "2026-09-08",
       "deprecated": true
     },
     {
@@ -844,14 +844,14 @@
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
       "imageCostPerImage": 0.04,
-      "maxReferenceImages": 3,
-      "notes": "xAI's recommended image model. Text/image \u2192 image. Reference-image cap copied from the Imagine Image family (hard cap 3) pending a distinct 2.0 published cap.",
+      "maxReferenceImages": 5,
+      "notes": "xAI's recommended image model. Text/image \u2192 image. Multi-image edit hard cap is 5 reference/source images (docs.x.ai Imagine Overview / Image Editing, 2026-09-08).",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "pricingNotes": "docs.x.ai/developers/models/grok-imagine-image-2.0 2026-08-15: $0.04/image.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "lastVerifiedAt": "2026-09-08",
+      "pricingLastReviewedAt": "2026-09-08"
     },
     {
       "id": "gemini-2.5-pro-image",
