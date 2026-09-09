@@ -90,14 +90,14 @@ public class CutIncompleteMergeTests
     {
         var clips = FeatureClips(17);
         var compose = new CutComposeService(new UnusedJs());
-        var plan = CutMergeCache.Build(clips, [], null, null);
+        var plan = CutMergeCache.Build(clips, [], compose.AudioFileName, compose.Music);
         compose.Cache.RememberPlan(plan);
         compose.Cache.RememberScene(1, "blob:s01", plan.Scenes[0].Fingerprint);
         compose.Cache.RememberScene(17, "blob:s17", plan.Scenes[^1].Fingerprint);
         compose.Cache.PictureUrl = "blob:stub-picture";
         compose.AttachExistingMerge("blob:stub-movie", clips.Length);
 
-        var reused = compose.TryReuseMovie(clips, [], _ => { }, onPrefix: null);
+        var reused = compose.TryReuseMovie(clips, [], (_, _) => { }, onPrefix: null);
         Assert.False(reused);
         Assert.Null(compose.Cache.PictureUrl);
 
@@ -117,14 +117,16 @@ public class CutIncompleteMergeTests
     {
         var clips = FeatureClips(3);
         var compose = new CutComposeService(new UnusedJs());
-        var plan = CutMergeCache.Build(clips, [], null, null);
+        var plan = CutMergeCache.Build(clips, [], compose.AudioFileName, compose.Music);
         compose.Cache.RememberPlan(plan);
         foreach (var scene in plan.Scenes)
             compose.Cache.RememberScene(scene.Scene, "blob:s" + scene.Scene, scene.Fingerprint);
+        foreach (var join in plan.Joins.Where(j => j.Encodes))
+            compose.Cache.RememberJoin(join.FromScene, "blob:j" + join.FromScene, join.Fingerprint);
         compose.Cache.PictureUrl = "blob:picture";
         compose.AttachExistingMerge("blob:movie", clips.Length);
 
-        Assert.True(compose.TryReuseMovie(clips, [], _ => { }, onPrefix: null));
+        Assert.True(compose.TryReuseMovie(clips, [], (_, _) => { }, onPrefix: null));
         var payload = compose.BuildComposePlan(clips, []);
         Assert.Equal("blob:movie", payload.ReuseMovieUrl);
         Assert.Equal("blob:picture", payload.ReusePictureUrl);
