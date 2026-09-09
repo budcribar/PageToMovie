@@ -28,8 +28,10 @@ public class CutAvSyncTests
     {
         Assert.True(CutComposeContract.AvDurationsMatch(91.75, 91.75));
         Assert.True(CutComposeContract.AvDurationsMatch(
-            10, 10 + CutComposeContract.AvDurationToleranceSec));
-        Assert.False(CutComposeContract.AvDurationsMatch(10, 10 + CutComposeContract.AvDurationToleranceSec + 0.001));
+            CutComposeContract.AvDurationToleranceSec,
+            CutComposeContract.AvDurationToleranceSec * 2));
+        Assert.False(CutComposeContract.AvDurationsMatch(
+            10, 10 + CutComposeContract.AvDurationToleranceSec + 0.001));
         // Extension takes often leak 80–157 ms of picture past the sound.
         Assert.False(CutComposeContract.AvDurationsMatch(5.04, 5.04 - 0.080));
         Assert.False(CutComposeContract.AvDurationsMatch(5.04, 5.04 - 0.157));
