@@ -128,12 +128,12 @@ public class CutComposeContractTests
         Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"0:a:0\")", src, StringComparison.Ordinal);
         Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"1:a:0\", \"-shortest\")", src, StringComparison.Ordinal);
         Assert.Contains("format=yuv420p,setpts=PTS-STARTPTS", trim, StringComparison.Ordinal);
-        Assert.Contains("\"-af\", \"asetpts=PTS-STARTPTS\"", trim, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.PadAudioToVideoFilter, trim, StringComparison.Ordinal);
         var concat = src[src.IndexOf("async function concatEncodeOnce", StringComparison.Ordinal)
             ..src.IndexOf("async function concatEncodeAsync", StringComparison.Ordinal)];
         Assert.Contains("list.push(\"duration \" + durations[i])", concat, StringComparison.Ordinal);
         Assert.Contains("setpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
-        Assert.Contains("asetpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.PadAudioToVideoFilter, concat, StringComparison.Ordinal);
         Assert.Contains("outputSec += seconds", concat, StringComparison.Ordinal);
         Assert.Contains("[\"-t\", String(outputSec)]", concat, StringComparison.Ordinal);
         Assert.Contains("\"-fflags\", \"+genpts\", \"-f\", \"concat\"", concat, StringComparison.Ordinal);
@@ -389,8 +389,7 @@ public class CutComposeContractTests
                 Assert.DoesNotContain("libx264", argv);
                 continue;
             }
-            var expectAudio = path is not CutFfmpegEncodePath.Still
-                and not CutFfmpegEncodePath.OverlaySilent
+            var expectAudio = path is not CutFfmpegEncodePath.OverlaySilent
                 and not CutFfmpegEncodePath.ConcatSilent;
             Assert.True(CutComposeContract.ExportArgvIsWmpSafe(argv, expectAudio), path.ToString());
             Assert.Contains("-pix_fmt", argv);

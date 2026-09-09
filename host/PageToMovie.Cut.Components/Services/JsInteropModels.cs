@@ -47,6 +47,30 @@ public sealed class JsResult
 
     [JsonPropertyName("rebuiltJoins")]
     public List<int> RebuiltJoins { get; set; } = [];
+
+    [JsonPropertyName("videoSec")]
+    public double VideoSec { get; set; }
+
+    [JsonPropertyName("audioSec")]
+    public double AudioSec { get; set; }
+}
+
+public sealed class JsAvProbe
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("matched")]
+    public bool Matched { get; set; }
+
+    [JsonPropertyName("videoSec")]
+    public double VideoSec { get; set; }
+
+    [JsonPropertyName("audioSec")]
+    public double AudioSec { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
 }
 
 public sealed class JsMediaValidation

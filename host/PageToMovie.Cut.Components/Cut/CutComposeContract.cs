@@ -10,7 +10,7 @@ namespace PageToMovie.Cut.Cut;
 /// </summary>
 public static class CutComposeContract
 {
-    public const string RenderVersion = "cut-render-20260830-jl-audio";
+    public const string RenderVersion = "cut-render-20260909-av-pad";
     public const bool KeepNativeClipAudio = true;
     public const bool PadCardSilence = false;
 
@@ -82,6 +82,32 @@ public static class CutComposeContract
     /// </summary>
     public const string IncompleteMergeError =
         "The movie is missing scenes. Play or Make movie again so every scene is included.";
+
+    /// <summary>
+    /// One AAC frame at 44.1 kHz (largest common frame vs 48 kHz).
+    /// Annette movie (24) was V=91.750s / A=88.888s — 2.862s of silent picture.
+    /// </summary>
+    public const double AvDurationToleranceSec = 1024d / 44100d;
+
+    /// <summary>
+    /// Keep this string in <c>cut.js</c> trim/concat <c>-af</c> in sync.
+    /// Extension takes often have picture longer than sound; <c>apad</c>
+    /// fills to <c>-t</c> so those gaps cannot accumulate across joins.
+    /// </summary>
+    public const string PadAudioToVideoFilter =
+        "asetpts=PTS-STARTPTS,apad,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+
+    public const string AvMismatchError =
+        "The movie's sound is shorter than the picture. Play or Make movie again.";
+
+    public static bool AvDurationsMatch(double videoSec, double audioSec)
+    {
+        if (videoSec <= 0 || audioSec <= 0
+            || double.IsNaN(videoSec) || double.IsNaN(audioSec)
+            || double.IsInfinity(videoSec) || double.IsInfinity(audioSec))
+            return false;
+        return Math.Abs(videoSec - audioSec) <= AvDurationToleranceSec;
+    }
 
     public static bool JoinInsertsBlackHold(CutJoinKind kind) =>
         kind == CutJoinKind.CutToBlack;
