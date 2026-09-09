@@ -133,7 +133,8 @@ public class CutComposeContractTests
             ..src.IndexOf("async function concatEncodeAsync", StringComparison.Ordinal)];
         Assert.Contains("list.push(\"duration \" + durations[i])", concat, StringComparison.Ordinal);
         Assert.Contains("setpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
-        Assert.Contains("CUT_PAD_AUDIO_TO_VIDEO", concat, StringComparison.Ordinal);
+        Assert.Contains("CUT_RESAMPLE_AUDIO", concat, StringComparison.Ordinal);
+        Assert.Contains("[\"-shortest\"]", concat, StringComparison.Ordinal);
         Assert.Contains("outputSec += seconds", concat, StringComparison.Ordinal);
         Assert.Contains("[\"-t\", String(outputSec)]", concat, StringComparison.Ordinal);
         Assert.Contains("\"-fflags\", \"+genpts\", \"-f\", \"concat\"", concat, StringComparison.Ordinal);

@@ -1086,6 +1086,8 @@ public partial class CutEditor : IAsyncDisposable
             return;
         if (!CutMergeCache.HasEverySegment(compose.CurrentPlan, compose.Cache))
             return;
+        if (!await compose.MovieAvMatchesAsync(compose.MoviePreviewUrl))
+            return;
         if (!string.IsNullOrWhiteSpace(compose.MoviePreviewUrl))
             await folder.WriteMovieMp4Async(compose.MoviePreviewUrl);
         await folder.PersistMergeCacheAsync(compose);

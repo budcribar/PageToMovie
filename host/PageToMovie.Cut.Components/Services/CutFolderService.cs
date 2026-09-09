@@ -393,7 +393,8 @@ public sealed class CutFolderService : IAsyncDisposable
             JoinCacheFiles,
             rebuiltJoins);
         var wrotePicture = CutMergeCache.ShouldPersistPicture(
-                CutMergeCache.HasEverySegment(compose.CurrentPlan, compose.Cache),
+                CutMergeCache.HasEverySegment(compose.CurrentPlan, compose.Cache)
+                    && await compose.MovieAvMatchesAsync(compose.Cache.PictureUrl),
                 compose.Cache.PictureUrl)
             && await PersistPictureCacheAsync(
                 compose.Cache.PictureUrl,

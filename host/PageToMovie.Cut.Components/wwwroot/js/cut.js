@@ -54,9 +54,12 @@
     /** Matches CutComposeContract.PadAudioToVideoFilter. */
     const CUT_PAD_AUDIO_TO_VIDEO =
         "asetpts=PTS-STARTPTS,apad,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+    /** Matches CutComposeContract.ResampleAudioFilter — concat must not apad to a freeze tail. */
+    const CUT_RESAMPLE_AUDIO =
+        "asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
     /** Matches CutComposeContract.AvMismatchError. */
     const CUT_AV_MISMATCH_ERROR =
-        "The movie's sound is shorter than the picture. Play or Make movie again.";
+        "The movie's picture and sound do not match. Play or Make movie again.";
     const FFMPEG_WORKER_MIN = 1;
     const FFMPEG_WORKER_MAX = 4;
     const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
@@ -465,9 +468,11 @@
             const input = ["-hide_banner", "-y", "-fflags", "+genpts", "-f", "concat", "-safe", "0", "-i", listName];
             const cap = outputSec > 0.05 ? ["-t", String(outputSec)] : [];
             const encodeWithAudio = function () {
+                // -shortest stops at audio so concat duration lines cannot
+                // hold the last frame into a silent EOF tail (movie 24).
                 return execChecked(ffmpeg, input.concat(
-                    ["-vf", "setpts=PTS-STARTPTS", "-af", CUT_PAD_AUDIO_TO_VIDEO],
-                    h264EncodeArgs("aac"), cap, [outName]));
+                    ["-vf", "setpts=PTS-STARTPTS", "-af", CUT_RESAMPLE_AUDIO],
+                    h264EncodeArgs("aac"), ["-shortest"], [outName]));
             };
             try {
                 await encodeWithAudio();
@@ -1824,36 +1829,41 @@
             return result;
         if (!(probe.videoSec > 0.1))
             return result;
-        onProgress?.(90, "Matching sound to picture…");
-        const padded = await padAudioToVideoAsync(api, result.url, probe.videoSec, onProgress);
-        if (!padded.success)
+        if (!(probe.audioSec > 0.1))
             return { success: false, error: CUT_AV_MISMATCH_ERROR };
-        if (result.url !== padded.url)
+        // movie (24): V=91.750 / A=88.888 is an EOF freeze, not mid-film drift.
+        // Keep the audible length — do not pad silence onto the frozen tail.
+        const keep = Math.min(probe.videoSec, probe.audioSec);
+        onProgress?.(90, "Matching picture and sound…");
+        const trimmed = await trimAvToDurationAsync(api, result.url, keep, onProgress);
+        if (!trimmed.success)
+            return { success: false, error: CUT_AV_MISMATCH_ERROR };
+        if (result.url !== trimmed.url)
             releaseTempUrl(result.url);
-        const again = await probeAvDurationsWithApiAsync(api, padded.url);
-        padded.videoSec = again.videoSec;
-        padded.audioSec = again.audioSec;
+        const again = await probeAvDurationsWithApiAsync(api, trimmed.url);
+        trimmed.videoSec = again.videoSec;
+        trimmed.audioSec = again.audioSec;
         if (!again.success || !again.matched)
             return { success: false, error: CUT_AV_MISMATCH_ERROR };
-        return padded;
+        return trimmed;
     }
 
-    async function padAudioToVideoAsync(api, url, videoSec, onProgress) {
+    async function trimAvToDurationAsync(api, url, keepSec, onProgress) {
         if (!api) return { success: false, error: "ffmpeg helper missing" };
-        const keep = Math.max(0.1, Number(videoSec) || 0);
+        const keep = Math.max(0.1, Number(keepSec) || 0);
         return api._runExclusiveAsync(async function () {
             const load = await api.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error };
             const ffmpeg = api._ffmpeg;
             const seq = ++cut._trimSeq;
-            const inName = "cut_avpad_in_" + seq + ".mp4";
-            const outName = "cut_avpad_out_" + seq + ".mp4";
+            const inName = "cut_avtrim_in_" + seq + ".mp4";
+            const outName = "cut_avtrim_out_" + seq + ".mp4";
             try {
                 await writeMemfs(ffmpeg, inName, await fetchInputBytes(api, url, "Movie"));
                 await execChecked(ffmpeg, [
                     "-hide_banner", "-y", "-i", inName,
                     "-vf", "setpts=PTS-STARTPTS",
-                    "-af", CUT_PAD_AUDIO_TO_VIDEO,
+                    "-af", CUT_RESAMPLE_AUDIO,
                     "-t", String(keep),
                     "-map", "0:v:0", "-map", "0:a:0",
                 ].concat(h264EncodeArgs("aac"), [outName]));
