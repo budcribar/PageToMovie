@@ -697,7 +697,7 @@ public sealed partial class ProjectStore
     {
         var targetMp4Path = ResolveLocalTakeMp4Path(videoDir, target.Mp4FileName);
         var hasLocalTakeMp4 = File.Exists(targetMp4Path);
-        if (!hasLocalTakeMp4 && !HasProviderCopy(target) && !HasClientCopy(videoDir, target.Mp4FileName))
+        if (!hasLocalTakeMp4 && !HasProviderCopy(target) && !HasClientCopy(videoDir, target.Mp4FileName) && !target.ClientOnly)
             return false;
 
         ClipSidecarService.WriteCurrentTake(videoDir, scene, clip, Math.Max(1, target.Take));

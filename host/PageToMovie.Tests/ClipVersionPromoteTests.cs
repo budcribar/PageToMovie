@@ -35,7 +35,12 @@ public sealed class ClipVersionPromoteTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, recursive: true); } catch { /* */ }
+        try
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(_root, recursive: true);
+        }
+        catch { /* */ }
     }
 
     private string Path_(string name) => Path.Combine(_videoDir, name);
@@ -107,6 +112,54 @@ public sealed class ClipVersionPromoteTests : IDisposable
 
         Assert.Contains("Take 7", ex.Message, StringComparison.Ordinal);
         Assert.Contains("your device", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The Takes modal lists a registry-only take as "Stored on your device" (no sidecar, no
+    /// server MP4, no .client.json marker). Select &amp; Keep must still write the pointer —
+    /// that is the Mary / S14 C02 take-2 case: the card is visible and playable locally.
+    /// </summary>
+    [Fact]
+    public async Task A_take_listed_only_from_the_media_registry_can_be_promoted()
+    {
+        var opts = Options.Create(
+            new PageToMovieOptions { WorkspaceRoot = _root, EnableReadCaches = false });
+        var registry = new MediaRegistryService(opts);
+        var store = new ProjectStore(opts, mediaRegistry: registry);
+        WriteServerTake(1);
+        File.WriteAllText(Path_("scene_01_clip_02.current.json"),
+            """{"scene":1,"clip":2,"take":1}""");
+        await registry.UpsertAsync(
+            ProjectId,
+            "assets/video/scene_01_clip_02_take_02.mp4",
+            new string('a', 64),
+            4096,
+            "clip",
+            1,
+            2,
+            "tester");
+
+        var versions = await store.GetClipVersionsAsync(ProjectId, 1, 2);
+        var deviceTake = Assert.Single(versions, v => v.Take == 2);
+        Assert.True(deviceTake.ClientOnly);
+        Assert.True(deviceTake.CanPromote);
+
+        var ok = await store.PromoteClipVersionAsync(ProjectId, 1, 2, deviceTake.VersionId);
+
+        Assert.True(ok, "a take the media registry says the browser holds must be selectable");
+        Assert.Equal(2, CurrentTake());
+    }
+
+    [Fact]
+    public void A_device_stored_take_is_selectable_but_not_server_deletable()
+    {
+        var device = new PageToMovie.Core.Models.ClipVersionItem { Take = 2, IsCurrent = false, ClientOnly = true };
+        var current = new PageToMovie.Core.Models.ClipVersionItem { Take = 3, IsCurrent = true, ClientOnly = false };
+
+        Assert.True(device.CanPromote);
+        Assert.False(device.CanSoftDelete);
+        Assert.False(current.CanPromote);
+        Assert.False(current.CanSoftDelete);
     }
 
     /// <summary>A provider copy remains sufficient on its own — that path is unchanged.</summary>
