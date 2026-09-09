@@ -264,16 +264,16 @@ public static class CutMergeCache
             RejectIncompletePicture(runtime);
     }
 
-    private static bool HasUsableSceneUrl(CutMergeRuntime runtime, int sceneId) =>
-        runtime.SceneUrls.TryGetValue(sceneId, out var url)
-        && !string.IsNullOrWhiteSpace(url);
-
     public static void RejectIncompletePicture(CutMergeRuntime runtime)
     {
         runtime.PictureUrl = null;
         runtime.Built.PictureFingerprint = null;
         runtime.Built.MovieFingerprint = null;
     }
+
+    private static bool HasUsableSceneUrl(CutMergeRuntime runtime, int sceneId) =>
+        runtime.SceneUrls.TryGetValue(sceneId, out var url)
+        && !string.IsNullOrWhiteSpace(url);
 
     public static bool ShouldPersistPicture(bool segmentsComplete, string? pictureUrl) =>
         segmentsComplete && !string.IsNullOrWhiteSpace(pictureUrl);
