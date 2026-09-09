@@ -61,6 +61,7 @@ public class CutComposeContractTests
         Assert.Contains("prepareExportAsync", src, StringComparison.Ordinal);
         Assert.Contains("drainComposeAsync", src, StringComparison.Ordinal);
         Assert.Contains("writeMemfs", src, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.IncompleteMergeError, src, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -94,9 +95,16 @@ public class CutComposeContractTests
         Assert.Contains("async function ensureJoinUrlAsync(api, join", ensureJoin, StringComparison.Ordinal);
         Assert.Contains("join.url = hardCut.url", src, StringComparison.Ordinal);
         Assert.Contains("actualSec + 0.25 < expectedSec", src, StringComparison.Ordinal);
-        Assert.Contains("const appended = await xfadeAsync", src, StringComparison.Ordinal);
-        Assert.Contains("const video = await concatVideoRemuxAsync(api, pieces, onProgress)", src, StringComparison.Ordinal);
-        Assert.Contains("const repaired = await mixMovieAudioAsync", src, StringComparison.Ordinal);
+        Assert.Contains("function incompleteMergeError()", src, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.IncompleteMergeError, src, StringComparison.Ordinal);
+        Assert.Contains("function requireSceneUrls(sceneUrls)", src, StringComparison.Ordinal);
+        Assert.Contains("never xfade the last", src, StringComparison.Ordinal);
+        var stitchScenes = src[src.IndexOf("async function stitchScenesAsync", StringComparison.Ordinal)
+            ..src.IndexOf("async function validateCombinedResultAsync", StringComparison.Ordinal)];
+        Assert.DoesNotContain("const appended = await xfadeAsync", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("const video = await concatVideoRemuxAsync(api, pieces, onProgress)", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("const repaired = await mixMovieAudioAsync", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("incompleteMergeError()", stitchScenes, StringComparison.Ordinal);
         Assert.Contains("tpad=start_mode=add:start_duration=", src, StringComparison.Ordinal);
         Assert.Contains(":color=black:stop_mode=clone:stop_duration=", src, StringComparison.Ordinal);
         Assert.Contains("const outputSec = Math.max(pictureEndSec, musicSec)", src, StringComparison.Ordinal);
@@ -120,12 +128,13 @@ public class CutComposeContractTests
         Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"0:a:0\")", src, StringComparison.Ordinal);
         Assert.Contains("args.push(\"-map\", \"0:v:0\", \"-map\", \"1:a:0\", \"-shortest\")", src, StringComparison.Ordinal);
         Assert.Contains("format=yuv420p,setpts=PTS-STARTPTS", trim, StringComparison.Ordinal);
-        Assert.Contains("\"-af\", \"asetpts=PTS-STARTPTS\"", trim, StringComparison.Ordinal);
+        Assert.Contains("CUT_PAD_AUDIO_TO_VIDEO", trim, StringComparison.Ordinal);
         var concat = src[src.IndexOf("async function concatEncodeOnce", StringComparison.Ordinal)
             ..src.IndexOf("async function concatEncodeAsync", StringComparison.Ordinal)];
         Assert.Contains("list.push(\"duration \" + durations[i])", concat, StringComparison.Ordinal);
         Assert.Contains("setpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
-        Assert.Contains("asetpts=PTS-STARTPTS", concat, StringComparison.Ordinal);
+        Assert.Contains("CUT_RESAMPLE_AUDIO", concat, StringComparison.Ordinal);
+        Assert.Contains("[\"-shortest\"]", concat, StringComparison.Ordinal);
         Assert.Contains("outputSec += seconds", concat, StringComparison.Ordinal);
         Assert.Contains("[\"-t\", String(outputSec)]", concat, StringComparison.Ordinal);
         Assert.Contains("\"-fflags\", \"+genpts\", \"-f\", \"concat\"", concat, StringComparison.Ordinal);
@@ -381,8 +390,7 @@ public class CutComposeContractTests
                 Assert.DoesNotContain("libx264", argv);
                 continue;
             }
-            var expectAudio = path is not CutFfmpegEncodePath.Still
-                and not CutFfmpegEncodePath.OverlaySilent
+            var expectAudio = path is not CutFfmpegEncodePath.OverlaySilent
                 and not CutFfmpegEncodePath.ConcatSilent;
             Assert.True(CutComposeContract.ExportArgvIsWmpSafe(argv, expectAudio), path.ToString());
             Assert.Contains("-pix_fmt", argv);

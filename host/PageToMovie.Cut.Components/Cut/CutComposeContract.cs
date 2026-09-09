@@ -10,7 +10,7 @@ namespace PageToMovie.Cut.Cut;
 /// </summary>
 public static class CutComposeContract
 {
-    public const string RenderVersion = "cut-render-20260830-jl-audio";
+    public const string RenderVersion = "cut-render-20260909-av-trim";
     public const bool KeepNativeClipAudio = true;
     public const bool PadCardSilence = false;
 
@@ -74,6 +74,65 @@ public static class CutComposeContract
             return raw.Trim();
         return download ? "Export failed." : "Play failed.";
     }
+
+    /// <summary>
+    /// Operator text when concat is short or a scene segment is missing.
+    /// Keep the string in <c>cut.js</c> <c>incompleteMergeError</c> in sync.
+    /// A first-scene + last-scene freeze must never ship as the movie.
+    /// </summary>
+    public const string IncompleteMergeError =
+        "The movie is missing scenes. Play or Make movie again so every scene is included.";
+
+    /// <summary>
+    /// One AAC frame at 44.1 kHz (largest common frame vs 48 kHz).
+    /// Annette movie (24) / today's picture.mp4: V=91.750s / A=88.888s —
+    /// a 2.862s EOF freeze (London terrace) after the last audio packet.
+    /// </summary>
+    public const double AvDurationToleranceSec = 1024d / 44100d;
+
+    /// <summary>
+    /// Keep this string in <c>cut.js</c> per-clip trim <c>-af</c> in sync.
+    /// Extension takes often have picture longer than sound; <c>apad</c>
+    /// fills that clip to <c>-t</c> so small gaps do not accumulate.
+    /// </summary>
+    public const string PadAudioToVideoFilter =
+        "asetpts=PTS-STARTPTS,apad,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+
+    /// <summary>
+    /// Final concat must not <c>apad</c> + <c>-t</c> to the video sum — that
+    /// holds the last frame into a silent tail. Resample only; stop at audio.
+    /// </summary>
+    public const string ResampleAudioFilter =
+        "asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+
+    public const string AvMismatchError =
+        "The movie's picture and sound do not match. Play or Make movie again.";
+
+    public static bool AvDurationsMatch(double videoSec, double audioSec)
+    {
+        if (videoSec <= 0 || audioSec <= 0
+            || double.IsNaN(videoSec) || double.IsNaN(audioSec)
+            || double.IsInfinity(videoSec) || double.IsInfinity(audioSec))
+            return false;
+        return Math.Abs(videoSec - audioSec) <= AvDurationToleranceSec;
+    }
+
+    /// <summary>
+    /// movie (24) EOF freeze: keep the audible length, drop the silent tail.
+    /// Do not pad sound out to a frozen last frame.
+    /// </summary>
+    public static double AlignedDurationSec(double videoSec, double audioSec)
+    {
+        if (videoSec <= 0 || audioSec <= 0
+            || double.IsNaN(videoSec) || double.IsNaN(audioSec)
+            || double.IsInfinity(videoSec) || double.IsInfinity(audioSec))
+            return 0;
+        return Math.Min(videoSec, audioSec);
+    }
+
+    public static bool ShouldTrimToShorterStream(double videoSec, double audioSec) =>
+        !AvDurationsMatch(videoSec, audioSec)
+        && AlignedDurationSec(videoSec, audioSec) > 0;
 
     public static bool JoinInsertsBlackHold(CutJoinKind kind) =>
         kind == CutJoinKind.CutToBlack;

@@ -133,7 +133,7 @@ public sealed class CutComposeService : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyList<CutTextClip>? texts = null)
     {
-        if (TryReuseMovie(clips, texts, progress, onPrefix: null))
+        if (await TryReuseMovieIfAvMatchAsync(clips, texts, progress, onPrefix: null))
             return MoviePreviewUrl;
         return await ComposeAsync(clips, download: false, progress, cancellationToken, texts: texts);
     }
@@ -145,7 +145,7 @@ public sealed class CutComposeService : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyList<CutTextClip>? texts = null)
     {
-        if (TryReuseMovie(clips, texts, progress, onPrefix))
+        if (await TryReuseMovieIfAvMatchAsync(clips, texts, progress, onPrefix))
             return MoviePreviewUrl;
         return await ComposeAsync(clips, download: false, progress, cancellationToken, onPrefix, texts);
     }
@@ -157,7 +157,7 @@ public sealed class CutComposeService : IAsyncDisposable
         IReadOnlyList<CutTextClip>? texts = null)
     {
         await PrepareExportJsAsync();
-        if (TryReuseMovie(clips, texts, progress, onPrefix: null)
+        if (await TryReuseMovieIfAvMatchAsync(clips, texts, progress, onPrefix: null)
             && !string.IsNullOrWhiteSpace(MoviePreviewUrl))
         {
             await _js.InvokeVoidAsync("PageToMovieCut.downloadUrlAs", MoviePreviewUrl, CutPlayMerge.MovieFileName);
@@ -231,8 +231,44 @@ public sealed class CutComposeService : IAsyncDisposable
                 cancellationToken);
         if (!r.Success)
             throw new InvalidOperationException(CutComposeContract.OperatorComposeError(r.Error, download));
+        if ((r.VideoSec > 0 || r.AudioSec > 0)
+            && !CutComposeContract.AvDurationsMatch(r.VideoSec, r.AudioSec))
+            throw new InvalidOperationException(CutComposeContract.AvMismatchError);
         RememberComposeResult(r, ready.Count);
         return r.Url;
+    }
+
+    private async Task<bool> TryReuseMovieIfAvMatchAsync(
+        IReadOnlyList<CutClip> clips,
+        IReadOnlyList<CutTextClip>? texts,
+        Action<int, string> progress,
+        Action<string, int>? onPrefix)
+    {
+        if (!TryReuseMovie(clips, texts, progress, onPrefix))
+            return false;
+        if (await MovieAvMatchesAsync(MoviePreviewUrl))
+            return true;
+        MoviePreviewUrl = null;
+        PrefixPreviewUrl = null;
+        PrefixClipCount = 0;
+        Cache.PictureUrl = null;
+        return false;
+    }
+
+    internal async Task<bool> MovieAvMatchesAsync(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        try
+        {
+            var probe = await _js.InvokeAsync<JsAvProbe>("PageToMovieCut.probeAvDurations", url);
+            return probe.Success && probe.Matched
+                && CutComposeContract.AvDurationsMatch(probe.VideoSec, probe.AudioSec);
+        }
+        catch (JSException)
+        {
+            return false;
+        }
     }
 
     internal bool TryReuseMovie(
@@ -242,6 +278,8 @@ public sealed class CutComposeService : IAsyncDisposable
         Action<string, int>? onPrefix)
     {
         RefreshPlan(clips, texts);
+        if (!CutMergeCache.HasEverySegment(CurrentPlan, Cache))
+            return false;
         string? url;
         if (CutComposeContract.CanReuseExport(MoviePreviewUrl, LastDiff))
             url = MoviePreviewUrl;
@@ -308,7 +346,8 @@ public sealed class CutComposeService : IAsyncDisposable
     private void RefreshPlan(IReadOnlyList<CutClip> clips, IReadOnlyList<CutTextClip>? texts)
     {
         CurrentPlan = CutMergeCache.Build(clips, texts, AudioFileName, Music);
-        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
+        CutMergeCache.RejectIncompletePicture(Cache, CurrentPlan);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache);
     }
 
     private void RememberComposeResult(JsResult r, int clipCount)
@@ -338,8 +377,11 @@ public sealed class CutComposeService : IAsyncDisposable
                 Cache.RememberJoin(join.Id, join.Url, row.Fingerprint);
         }
 
+        if (!CutMergeCache.HasEverySegment(CurrentPlan, Cache))
+            throw new InvalidOperationException(CutComposeContract.IncompleteMergeError);
+
         Cache.RememberPlan(CurrentPlan);
-        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache);
     }
 
     internal static List<JsExportClip> BuildExportPayload(

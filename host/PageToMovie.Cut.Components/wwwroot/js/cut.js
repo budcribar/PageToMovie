@@ -49,6 +49,17 @@
     const CUT_H264_PIX = "yuv420p";
     const CUT_H264_PROFILE = "main";
     const CUT_AAC_RATE = "128k";
+    /** Matches CutComposeContract.AvDurationToleranceSec — one AAC frame at 44.1 kHz. */
+    const CUT_AV_TOLERANCE_SEC = 1024 / 44100;
+    /** Matches CutComposeContract.PadAudioToVideoFilter. */
+    const CUT_PAD_AUDIO_TO_VIDEO =
+        "asetpts=PTS-STARTPTS,apad,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+    /** Matches CutComposeContract.ResampleAudioFilter — concat must not apad to a freeze tail. */
+    const CUT_RESAMPLE_AUDIO =
+        "asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+    /** Matches CutComposeContract.AvMismatchError. */
+    const CUT_AV_MISMATCH_ERROR =
+        "The movie's picture and sound do not match. Play or Make movie again.";
     const FFMPEG_WORKER_MIN = 1;
     const FFMPEG_WORKER_MAX = 4;
     const FFMPEG_WORKER_STORAGE_KEY = "pagetomovie.cut.ffmpegWorkers";
@@ -456,18 +467,56 @@
             await writeMemfs(ffmpeg, listName, list.join("\n"));
             const input = ["-hide_banner", "-y", "-fflags", "+genpts", "-f", "concat", "-safe", "0", "-i", listName];
             const cap = outputSec > 0.05 ? ["-t", String(outputSec)] : [];
+            const encodeWithAudio = function () {
+                // -shortest stops at audio so concat duration lines cannot
+                // hold the last frame into a silent EOF tail (movie 24).
+                return execChecked(ffmpeg, input.concat(
+                    ["-vf", "setpts=PTS-STARTPTS", "-af", CUT_RESAMPLE_AUDIO],
+                    h264EncodeArgs("aac"), ["-shortest"], [outName]));
+            };
             try {
-                await execChecked(ffmpeg, input.concat(
-                    ["-vf", "setpts=PTS-STARTPTS", "-af", "asetpts=PTS-STARTPTS"],
-                    h264EncodeArgs("aac"), cap, [outName]));
+                await encodeWithAudio();
             } catch (audioErr) {
+                // Mixed 24/44.1 scene files + 30/48k joins make the concat
+                // demuxer drop or refuse audio. Normalize each piece, then
+                // retry — never ship video-only as a successful movie.
                 console.debug("Cut: concat audio missing", audioErr);
                 try { await ffmpeg.deleteFile(outName); } catch (delErr) {
                     console.debug("Cut: concat out cleanup", delErr);
                 }
-                await execChecked(ffmpeg, input.concat(
-                    ["-vf", "setpts=PTS-STARTPTS"],
-                    h264EncodeArgs("an"), cap, [outName]));
+                const normNames = [];
+                try {
+                    for (let i = 0; i < names.length; i++) {
+                        const n = names[i].replace(/\.mp4$/i, "") + "_n.mp4";
+                        normNames.push(n);
+                        const pieceCap = durations[i] > 0.05 ? ["-t", String(durations[i])] : [];
+                        await execChecked(ffmpeg, [
+                            "-hide_banner", "-y", "-i", names[i],
+                            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p,setpts=PTS-STARTPTS",
+                            "-af", CUT_PAD_AUDIO_TO_VIDEO,
+                            "-map", "0:v:0", "-map", "0:a:0",
+                        ].concat(pieceCap, h264EncodeArgs("aac"), [n]));
+                    }
+                    const nlist = [];
+                    for (let i = 0; i < normNames.length; i++) {
+                        nlist.push("file '" + normNames[i] + "'");
+                        if (durations[i] > 0.001)
+                            nlist.push("duration " + durations[i]);
+                    }
+                    await writeMemfs(ffmpeg, listName, nlist.join("\n"));
+                    await encodeWithAudio();
+                } catch (normErr) {
+                    console.debug("Cut: concat normalize retry failed", normErr);
+                    try { await ffmpeg.deleteFile(outName); } catch (delErr) {
+                        console.debug("Cut: concat out cleanup", delErr);
+                    }
+                    await execChecked(ffmpeg, input.concat(
+                        ["-vf", "setpts=PTS-STARTPTS"],
+                        h264EncodeArgs("an"), cap, [outName]));
+                } finally {
+                    for (let i = 0; i < normNames.length; i++)
+                        await deleteMemfs(ffmpeg, normNames[i]);
+                }
             }
             const out = await ffmpeg.readFile(outName);
             const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
@@ -715,7 +764,7 @@
             // demuxer preserves each source's trim offset as a gap: seeking
             // lands on black frames and late scenes (notably credits) vanish.
             "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS",
-            "-af", "asetpts=PTS-STARTPTS");
+            "-af", CUT_PAD_AUDIO_TO_VIDEO);
         args.push.apply(args, h264EncodeArgs("aac"));
         if (silentAudio)
             args.push("-map", "0:v:0", "-map", "1:a:0", "-shortest");
@@ -941,11 +990,14 @@
                 let vf = "scale=1280:720,setsar=1";
                 if (fade > 0.05)
                     vf += ",fade=t=in:st=0:d=" + fade + ",fade=t=out:st=" + (hold - fade) + ":d=" + fade;
-                vf += ",format=yuv420p";
+                vf += ",fps=30,format=yuv420p";
                 await execChecked(ffmpeg, [
-                    "-hide_banner", "-y", "-loop", "1", "-i", inName, "-t", String(hold),
+                    "-hide_banner", "-y", "-loop", "1", "-r", "30", "-i", inName,
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+                    "-t", String(hold),
                     "-vf", vf,
-                ].concat(h264EncodeArgs("an"), [outName]));
+                    "-map", "0:v:0", "-map", "1:a:0",
+                ].concat(h264EncodeArgs("aac"), [outName]));
                 const out = await ffmpeg.readFile(outName);
                 const url = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
                 noteTemp(url);
@@ -1020,7 +1072,7 @@
                             vgraph + ";[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad[a]",
                         ]
                         : [
-                            vgraph + ";" + aNorm + "[a0][a1]acrossfade=d=" + fade + ":c1=tri:c2=tri[a]",
+                            vgraph + ";" + aNorm + "[a0][a1]acrossfade=d=" + fade + ":c1=tri:c2=tri,apad[a]",
                             vgraph + ";[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad[a]",
                             vgraph + ";[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad[a]",
                         ];
@@ -1696,6 +1748,138 @@
     cut.validateVideoUrl = function (url) { return validateMediaUrl(url, true); };
     cut.validateAudioUrl = function (url) { return validateMediaUrl(url, false); };
 
+    function avDurationsMatch(videoSec, audioSec) {
+        const video = Number(videoSec);
+        const audio = Number(audioSec);
+        if (!(video > 0) || !(audio > 0))
+            return false;
+        return Math.abs(video - audio) <= CUT_AV_TOLERANCE_SEC;
+    }
+
+    function parseFfmpegTime(message) {
+        const m = String(message || "").match(/time=\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (!m)
+            return 0;
+        return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    }
+
+    async function probeStreamCopySeconds(ffmpeg, inName, map) {
+        let seconds = 0;
+        const handler = function (event) {
+            const next = parseFfmpegTime(event && event.message);
+            if (next > seconds)
+                seconds = next;
+        };
+        if (typeof ffmpeg.on === "function")
+            ffmpeg.on("log", handler);
+        try {
+            await ffmpeg.exec([
+                "-hide_banner", "-i", inName, "-map", map, "-c", "copy", "-f", "null", "-",
+            ]);
+        } catch (_) { }
+        if (typeof ffmpeg.off === "function")
+            ffmpeg.off("log", handler);
+        return seconds;
+    }
+
+    async function probeAvDurationsWithApiAsync(api, url) {
+        if (!api || !url)
+            return { success: false, matched: false, videoSec: 0, audioSec: 0, error: "No file to check." };
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync();
+            if (!load.success)
+                return { success: false, matched: false, videoSec: 0, audioSec: 0, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inName = "cut_avprobe_" + seq + ".mp4";
+            try {
+                await writeMemfs(ffmpeg, inName, await fetchInputBytes(api, url, "Movie"));
+                const videoSec = await probeStreamCopySeconds(ffmpeg, inName, "0:v:0");
+                const audioSec = await probeStreamCopySeconds(ffmpeg, inName, "0:a:0");
+                const matched = avDurationsMatch(videoSec, audioSec);
+                return {
+                    success: videoSec > 0 && audioSec > 0,
+                    matched: matched,
+                    videoSec: videoSec,
+                    audioSec: audioSec,
+                    error: matched ? "" : CUT_AV_MISMATCH_ERROR,
+                };
+            } catch (err) {
+                return {
+                    success: false, matched: false, videoSec: 0, audioSec: 0,
+                    error: messageOf(err, CUT_AV_MISMATCH_ERROR),
+                };
+            } finally {
+                await deleteMemfs(ffmpeg, inName);
+            }
+        });
+    }
+
+    cut.probeAvDurations = function (url) {
+        return probeAvDurationsWithApiAsync(window.PageToMovieFfmpeg, url);
+    };
+
+    async function alignAvIfNeededAsync(api, result, onProgress) {
+        if (!result || !result.success || !result.url)
+            return result;
+        const probe = await probeAvDurationsWithApiAsync(api, result.url);
+        result.videoSec = probe.videoSec;
+        result.audioSec = probe.audioSec;
+        if (probe.matched)
+            return result;
+        if (!(probe.videoSec > 0.1))
+            return result;
+        if (!(probe.audioSec > 0.1))
+            return { success: false, error: CUT_AV_MISMATCH_ERROR };
+        // movie (24): V=91.750 / A=88.888 is an EOF freeze, not mid-film drift.
+        // Keep the audible length — do not pad silence onto the frozen tail.
+        const keep = Math.min(probe.videoSec, probe.audioSec);
+        onProgress?.(90, "Matching picture and sound…");
+        const trimmed = await trimAvToDurationAsync(api, result.url, keep, onProgress);
+        if (!trimmed.success)
+            return { success: false, error: CUT_AV_MISMATCH_ERROR };
+        if (result.url !== trimmed.url)
+            releaseTempUrl(result.url);
+        const again = await probeAvDurationsWithApiAsync(api, trimmed.url);
+        trimmed.videoSec = again.videoSec;
+        trimmed.audioSec = again.audioSec;
+        if (!again.success || !again.matched)
+            return { success: false, error: CUT_AV_MISMATCH_ERROR };
+        return trimmed;
+    }
+
+    async function trimAvToDurationAsync(api, url, keepSec, onProgress) {
+        if (!api) return { success: false, error: "ffmpeg helper missing" };
+        const keep = Math.max(0.1, Number(keepSec) || 0);
+        return api._runExclusiveAsync(async function () {
+            const load = await api.ensureLoadedAsync(onProgress);
+            if (!load.success) return { success: false, error: load.error };
+            const ffmpeg = api._ffmpeg;
+            const seq = ++cut._trimSeq;
+            const inName = "cut_avtrim_in_" + seq + ".mp4";
+            const outName = "cut_avtrim_out_" + seq + ".mp4";
+            try {
+                await writeMemfs(ffmpeg, inName, await fetchInputBytes(api, url, "Movie"));
+                await execChecked(ffmpeg, [
+                    "-hide_banner", "-y", "-i", inName,
+                    "-vf", "setpts=PTS-STARTPTS",
+                    "-af", CUT_RESAMPLE_AUDIO,
+                    "-t", String(keep),
+                    "-map", "0:v:0", "-map", "0:a:0",
+                ].concat(h264EncodeArgs("aac"), [outName]));
+                const out = await ffmpeg.readFile(outName);
+                const aligned = URL.createObjectURL(new Blob([out.buffer], { type: "video/mp4" }));
+                noteTemp(aligned);
+                return { success: true, url: aligned };
+            } catch (err) {
+                return { success: false, error: messageOf(err, CUT_AV_MISMATCH_ERROR) };
+            } finally {
+                await deleteMemfs(ffmpeg, inName);
+                await deleteMemfs(ffmpeg, outName);
+            }
+        });
+    }
+
     cut.probeUrlDuration = function (url) {
         return new Promise(function (resolve) {
             if (!url) {
@@ -2351,7 +2535,7 @@
         };
     }
 
-    function emptyComposeResult(url, pictureUrl) {
+    function emptyComposeResult(url, pictureUrl, videoSec, audioSec) {
         return {
             success: true,
             url: url,
@@ -2363,6 +2547,8 @@
             joins: [],
             rebuiltScenes: [],
             rebuiltJoins: [],
+            videoSec: Number(videoSec) || 0,
+            audioSec: Number(audioSec) || 0,
         };
     }
 
@@ -2878,7 +3064,25 @@
         return { success: true, url: "" };
     }
 
+    function incompleteMergeError() {
+        return "The movie is missing scenes. Play or Make movie again so every scene is included.";
+    }
+
+    function requireSceneUrls(sceneUrls) {
+        const rows = Array.isArray(sceneUrls) ? sceneUrls : [];
+        if (rows.length === 0)
+            return { success: false, error: incompleteMergeError() };
+        for (let i = 0; i < rows.length; i++) {
+            if (!rows[i] || !rows[i].url)
+                return { success: false, error: incompleteMergeError() };
+        }
+        return { success: true };
+    }
+
     function assembleStitchPieces(sceneUrls, joins, bodyUrls, joinUrls) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const pieces = [];
         const transientBodies = [];
         for (let i = 0; i < sceneUrls.length; i++) {
@@ -3208,6 +3412,9 @@
     }
 
     async function stitchScenesAsync(api, sceneUrls, joins, onProgress, metrics) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const prepared = await prepareStitchPiecesWithPoolAsync(api, sceneUrls, joins, onProgress, metrics);
         if (!prepared.success) return prepared;
         const pieces = prepared.pieces;
@@ -3228,24 +3435,15 @@
                 return combined;
             const actualSec = await measuredSceneSecondsAsync(api, combined.url, 0);
             if (expectedSec > 0.1 && actualSec + 0.25 < expectedSec) {
-                const lastScene = sceneUrls.length > 0 ? sceneUrls[sceneUrls.length - 1] : null;
-                const lastJoin = joins.length > 0 ? joins[joins.length - 1] : null;
-                const lastKind = String(lastJoin && lastJoin.kind || "").toLowerCase();
-                if (lastScene && lastScene.url && xfadeName(lastKind)) {
-                    await resetFfmpegWorker(api);
-                    const appended = await xfadeAsync(
-                        combined.url, lastScene.url, lastKind, onProgress,
-                        Math.max(CUT_XFADE_MIN_SEC, Number(lastJoin.fade) || CUT_XFADE_SEC));
-                    if (appended.success) {
-                        releaseTempUrl(combined.url);
-                        combined = appended;
-                        return combined;
-                    }
-                }
+                // A short concat is a failed assemble — never xfade the last
+                // scene onto the stub (that shipped first-scene + frozen last
+                // scene with dead audio as picture.mp4).
                 const nativeAudio = combined.url;
                 const video = await concatVideoRemuxAsync(api, pieces, onProgress);
-                if (!video.success)
-                    return video;
+                if (!video.success) {
+                    releaseTempUrl(nativeAudio);
+                    return { success: false, error: incompleteMergeError() };
+                }
                 const repaired = await mixMovieAudioAsync(api, video.url, nativeAudio, onProgress, {
                     start: 0, markIn: 0, markOut: 0, volume: 1,
                     fadeIn: 0, fadeOut: 0, playbackRate: 1,
@@ -3253,12 +3451,17 @@
                 releaseTempUrl(video.url);
                 if (!repaired.success) {
                     releaseTempUrl(nativeAudio);
-                    return repaired;
+                    return { success: false, error: incompleteMergeError() };
                 }
                 releaseTempUrl(nativeAudio);
                 combined = repaired;
+                const repairedSec = await measuredSceneSecondsAsync(api, combined.url, 0);
+                if (expectedSec > 0.1 && repairedSec + 0.25 < expectedSec) {
+                    releaseTempUrl(combined.url);
+                    return { success: false, error: incompleteMergeError() };
+                }
             }
-            return combined;
+            return alignAvIfNeededAsync(api, combined, onProgress);
         } finally {
             if (metrics) metrics.concatMs = Math.round(performance.now() - concatStarted);
             transientBodies.forEach(function (url) {
@@ -3280,7 +3483,7 @@
             metrics.combinedValidationMs = Math.round(performance.now() - validationStarted);
         if (checks[0].success && checks[1].success) {
             if (metrics) metrics.combinedValidated = true;
-            return combined;
+            return alignAvIfNeededAsync(window.PageToMovieFfmpeg, combined);
         }
         const validationError = !checks[0].success
             ? checks[0].error || "Combined video stream could not be decoded."
@@ -3318,6 +3521,9 @@
     }
 
     async function stitchAndMixScenesAsync(api, sceneUrls, joins, audio, onProgress, metrics) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const spec = musicSpec(audio);
         if (!spec)
             return { success: false, error: "Soundtrack is missing." };
@@ -3690,8 +3896,16 @@
             const clips = plan.clips;
             if (!clips || clips.length === 0)
                 return { success: false, error: "No clips to export." };
-            if (plan.reuseMovieUrl)
-                return emptyComposeResult(plan.reuseMovieUrl, plan.reusePictureUrl || plan.reuseMovieUrl);
+            if (plan.reuseMovieUrl) {
+                const reused = await alignAvIfNeededAsync(api, { success: true, url: plan.reuseMovieUrl }, onProgress);
+                if (reused.success)
+                    return emptyComposeResult(
+                        reused.url,
+                        plan.reusePictureUrl || reused.url,
+                        reused.videoSec,
+                        reused.audioSec);
+                plan.reuseMovieUrl = "";
+            }
 
             const spec = musicSpec(audioUrl);
             const sourceUrls = clips.map(function (c) { return c && c.url; }).filter(Boolean);
@@ -3713,8 +3927,10 @@
                     plan.joins.forEach(function (join) {
                         if (join && join.encodes && join.url) cachedFlatJoins[join.from] = true;
                     });
-                    const flat = await composeFlatClipsAndMixAsync(
+                    let flat = await composeFlatClipsAndMixAsync(
                         api, clips, scenes, plan.joins, audioUrl, onProgress, metrics);
+                    if (flat.success)
+                        flat = await alignAvIfNeededAsync(api, flat, onProgress);
                     if (flat.success) {
                         plan.joins.forEach(function (join) {
                             if (join && join.encodes && join.url && !cachedFlatJoins[join.from])
@@ -3730,6 +3946,8 @@
                                 return join && join.encodes && join.url;
                             }).map(function (join) { return { id: join.from, url: join.url }; }),
                             rebuiltScenes: [], rebuiltJoins: rebuiltJoins,
+                            videoSec: Number(flat.videoSec) || 0,
+                            audioSec: Number(flat.audioSec) || 0,
                         };
                     }
                     metrics.flatFellBack = true;
@@ -3743,6 +3961,9 @@
                 if (!prepared.success)
                     return prepared;
                 const sceneUrls = prepared.sceneUrls;
+                const scenesReady = requireSceneUrls(sceneUrls);
+                if (!scenesReady.success)
+                    return scenesReady;
                 rebuiltScenes = prepared.rebuiltScenes;
 
                 if (plan.jit) {
@@ -3805,6 +4026,8 @@
                     mixed = await mixOptionalAudio(api, picture.url, audioUrl, onProgress, metrics);
                 }
                 if (!mixed.success) return mixed;
+                mixed = await alignAvIfNeededAsync(api, mixed, onProgress);
+                if (!mixed.success) return mixed;
                 plan.joins.forEach(function (j) {
                     if (j && j.encodes && j.url && !cachedJoins[j.from])
                         rebuiltJoins.push(j.from);
@@ -3825,6 +4048,8 @@
                         .map(function (j) { return { id: j.from, url: j.url }; }),
                     rebuiltScenes: rebuiltScenes,
                     rebuiltJoins: rebuiltJoins,
+                    videoSec: Number(mixed.videoSec) || 0,
+                    audioSec: Number(mixed.audioSec) || 0,
                 };
             });
         } finally {

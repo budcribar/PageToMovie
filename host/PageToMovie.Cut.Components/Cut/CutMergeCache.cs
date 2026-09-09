@@ -181,11 +181,131 @@ public static class CutMergeCache
             RemixMusicOnly: remixOnly);
     }
 
+    /// <summary>
+    /// Fingerprints are not enough. A stub <c>picture.mp4</c> (first scene +
+    /// last-scene freeze) can share a complete-cut hash when the cache only
+    /// kept a few scene files. Missing segments must rebuild, not reuse.
+    /// </summary>
+    public static CutMergeDiff Diff(
+        CutMergePlan plan,
+        CutMergeManifest? saved,
+        IReadOnlyCollection<int> presentScenes,
+        IReadOnlyCollection<int> presentJoins)
+    {
+        var diff = Diff(plan, saved);
+        var rebuildScenes = UnionMissing(diff.RebuildScenes, MissingScenes(plan.Scenes, presentScenes));
+        var rebuildJoins = UnionMissing(diff.RebuildJoins, MissingJoins(plan.Joins, presentJoins));
+        var complete = rebuildScenes.Count == 0 && rebuildJoins.Count == 0;
+        var pictureFresh = complete && diff.PictureFresh;
+        var movieFresh = complete && diff.MovieFresh;
+        return new CutMergeDiff(
+            movieFresh,
+            pictureFresh,
+            complete && diff.MusicFresh,
+            rebuildScenes,
+            rebuildJoins,
+            MustStitch: !movieFresh,
+            RemixMusicOnly: pictureFresh && !diff.MusicFresh);
+    }
+
+    public static CutMergeDiff Diff(CutMergePlan plan, CutMergeRuntime runtime) =>
+        Diff(plan, runtime.Built, runtime.SceneUrls.Keys, runtime.JoinUrls.Keys);
+
+    public static IReadOnlyList<int> MissingScenes(
+        IReadOnlyList<CutMergeScene> scenes,
+        IReadOnlyCollection<int> presentScenes)
+    {
+        var missing = new List<int>();
+        foreach (var scene in scenes)
+        {
+            if (scene.Scene <= 0 || presentScenes.Contains(scene.Scene))
+                continue;
+            missing.Add(scene.Scene);
+        }
+
+        return missing;
+    }
+
+    public static IReadOnlyList<int> MissingJoins(
+        IReadOnlyList<CutMergeJoin> joins,
+        IReadOnlyCollection<int> presentJoins)
+    {
+        var missing = new List<int>();
+        foreach (var join in joins)
+        {
+            if (!join.Encodes || presentJoins.Contains(join.FromScene))
+                continue;
+            missing.Add(join.FromScene);
+        }
+
+        return missing;
+    }
+
+    public static bool HasEverySegment(
+        CutMergePlan plan,
+        IReadOnlyCollection<int> presentScenes,
+        IReadOnlyCollection<int> presentJoins) =>
+        MissingScenes(plan.Scenes, presentScenes).Count == 0
+        && MissingJoins(plan.Joins, presentJoins).Count == 0;
+
+    public static bool HasEverySegment(CutMergePlan plan, CutMergeRuntime runtime) =>
+        HasEverySegment(plan, runtime.SceneUrls.Keys, runtime.JoinUrls.Keys);
+
+    /// <summary>
+    /// Drop a cached picture/movie pointer when any planned scene file is
+    /// absent. Otherwise Play / Make movie can republish a silent freeze.
+    /// </summary>
+    public static void RejectIncompletePicture(CutMergeRuntime runtime, CutMergePlan plan)
+    {
+        foreach (var scene in plan.Scenes)
+        {
+            if (scene.Scene <= 0)
+                continue;
+            if (runtime.SceneUrls.TryGetValue(scene.Scene, out var url)
+                && !string.IsNullOrWhiteSpace(url))
+                continue;
+            RejectIncompletePicture(runtime);
+            return;
+        }
+    }
+
+    public static void RejectIncompletePicture(CutMergeRuntime runtime, IReadOnlyList<CutMergeSeg> plannedScenes)
+    {
+        foreach (var row in plannedScenes)
+        {
+            if (row.Id <= 0)
+                continue;
+            if (runtime.SceneUrls.TryGetValue(row.Id, out var url)
+                && !string.IsNullOrWhiteSpace(url))
+                continue;
+            RejectIncompletePicture(runtime);
+            return;
+        }
+    }
+
+    public static void RejectIncompletePicture(CutMergeRuntime runtime)
+    {
+        runtime.PictureUrl = null;
+        runtime.Built.PictureFingerprint = null;
+        runtime.Built.MovieFingerprint = null;
+    }
+
+    public static bool ShouldPersistPicture(bool segmentsComplete, string? pictureUrl) =>
+        segmentsComplete && !string.IsNullOrWhiteSpace(pictureUrl);
+
     public static bool CanReuseMovie(CutMergeDiff diff, string? movieUrl) =>
         diff.MovieFresh && !string.IsNullOrWhiteSpace(movieUrl);
 
     public static bool CanReusePicture(CutMergeDiff diff, string? pictureUrl) =>
         diff.PictureFresh && !string.IsNullOrWhiteSpace(pictureUrl);
+
+    private static List<int> UnionMissing(IReadOnlyList<int> left, IReadOnlyList<int> right)
+    {
+        var set = new SortedSet<int>(left);
+        foreach (var id in right)
+            set.Add(id);
+        return set.ToList();
+    }
 
     public static string SceneFingerprint(
         IReadOnlyList<CutClip> clips,

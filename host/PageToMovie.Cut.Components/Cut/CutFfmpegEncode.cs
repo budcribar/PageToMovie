@@ -35,7 +35,7 @@ public static class CutFfmpegEncode
         CutFfmpegEncodePath.Trim => WithAudio(),
         CutFfmpegEncodePath.Overlay => WithAudio(),
         CutFfmpegEncodePath.OverlaySilent => WithoutAudio(),
-        CutFfmpegEncodePath.Still => WithoutAudio(),
+        CutFfmpegEncodePath.Still => WithAudio(),
         CutFfmpegEncodePath.Xfade => WithAudio(),
         CutFfmpegEncodePath.Concat => WithAudio(),
         CutFfmpegEncodePath.ConcatSilent => WithoutAudio(),
