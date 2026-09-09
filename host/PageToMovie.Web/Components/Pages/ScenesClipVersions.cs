@@ -148,6 +148,29 @@ public partial class Scenes
             }
         }
 
+        /// <summary>
+        /// Film owns the current take via the local pointer. When the take lives only on this
+        /// device, write that pointer even if the server has no copy to promote.
+        /// </summary>
+        private async Task<bool> TrySelectDeviceStoredTakeAsync(int sceneNumber, int clipNumber, string versionId)
+        {
+            var target = _clipVersions?.FirstOrDefault(v =>
+                string.Equals(v.VersionId, versionId, StringComparison.OrdinalIgnoreCase));
+            if (target is null || !target.ClientOnly || target.Take <= 0 || !S.MediaFolder.IsConnected)
+                return false;
+            if (!await S.MediaFolder.WriteCurrentTakeAsync(S._projectId, sceneNumber, clipNumber, target.Take))
+                return false;
+
+            foreach (var v in _clipVersions!)
+                v.IsCurrent = string.Equals(v.VersionId, target.VersionId, StringComparison.OrdinalIgnoreCase);
+            _selectedCompareVersionId = _clipVersions.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? target.VersionId;
+            _clipCompareMessage = $"Selected take {target.Take} (stored on your device).";
+            await S.Playback.RefreshCompareVideoUrlsAsync();
+            await S.Playback.ReloadCurrentTakeVideoAsync(sceneNumber, clipNumber);
+            await S.RefreshUncommittedStatusAsync();
+            return true;
+        }
+
         internal async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
         {
             _promotingVersion = true;
@@ -172,6 +195,11 @@ public partial class Scenes
                     await S.Playback.ReloadCurrentTakeVideoAsync(sceneNumber, clipNumber);
                     await S.RefreshUncommittedStatusAsync();
                 }
+                else if (await TrySelectDeviceStoredTakeAsync(sceneNumber, clipNumber, versionId))
+                {
+                    // The player reads the local .current.json. A device-stored take is already
+                    // playable here, so a server refusal must not leave Select & Keep looking dead.
+                }
                 else
                 {
                     _clipCompareMessage = res.Error ?? "Failed to promote clip version.";
@@ -179,6 +207,8 @@ public partial class Scenes
             }
             catch (Exception ex)
             {
+                if (await TrySelectDeviceStoredTakeAsync(sceneNumber, clipNumber, versionId))
+                    return;
                 _clipCompareMessage = $"Promote failed: {ex.Message}";
             }
             finally

@@ -24,6 +24,15 @@ public sealed class ClipVersionItem
     /// <summary>True when this version's bytes live only on the client (synced + pruned server-side) —
     /// the UI must resolve video playback via the local media folder, not a server URL.</summary>
     public bool ClientOnly { get; set; }
+    /// <summary>
+    /// Select &amp; Keep writes the current-take pointer; it never needs server bytes. A take
+    /// stored on the operator's device is playable there, so it can be made current.
+    /// </summary>
+    public bool CanPromote => !IsCurrent;
+    /// <summary>
+    /// Soft-delete moves server files into trash. A device-only take has no server file to move.
+    /// </summary>
+    public bool CanSoftDelete => !IsCurrent && !ClientOnly;
     /// <summary>Project-relative path (e.g. "assets/video/scene_01_clip_02.mp4") for ClientOnly
     /// versions — the exact key the media registry has, so the client can look up its local
     /// blob without re-deriving the folder convention (active vs. history vs. take-named).</summary>
