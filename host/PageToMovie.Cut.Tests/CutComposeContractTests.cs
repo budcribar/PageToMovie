@@ -61,6 +61,7 @@ public class CutComposeContractTests
         Assert.Contains("prepareExportAsync", src, StringComparison.Ordinal);
         Assert.Contains("drainComposeAsync", src, StringComparison.Ordinal);
         Assert.Contains("writeMemfs", src, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.IncompleteMergeError, src, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -94,9 +95,16 @@ public class CutComposeContractTests
         Assert.Contains("async function ensureJoinUrlAsync(api, join", ensureJoin, StringComparison.Ordinal);
         Assert.Contains("join.url = hardCut.url", src, StringComparison.Ordinal);
         Assert.Contains("actualSec + 0.25 < expectedSec", src, StringComparison.Ordinal);
-        Assert.Contains("const appended = await xfadeAsync", src, StringComparison.Ordinal);
-        Assert.Contains("const video = await concatVideoRemuxAsync(api, pieces, onProgress)", src, StringComparison.Ordinal);
-        Assert.Contains("const repaired = await mixMovieAudioAsync", src, StringComparison.Ordinal);
+        Assert.Contains("function incompleteMergeError()", src, StringComparison.Ordinal);
+        Assert.Contains(CutComposeContract.IncompleteMergeError, src, StringComparison.Ordinal);
+        Assert.Contains("function requireSceneUrls(sceneUrls)", src, StringComparison.Ordinal);
+        Assert.Contains("never xfade the last", src, StringComparison.Ordinal);
+        var stitchScenes = src[src.IndexOf("async function stitchScenesAsync", StringComparison.Ordinal)
+            ..src.IndexOf("async function validateCombinedResultAsync", StringComparison.Ordinal)];
+        Assert.DoesNotContain("const appended = await xfadeAsync", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("const video = await concatVideoRemuxAsync(api, pieces, onProgress)", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("const repaired = await mixMovieAudioAsync", stitchScenes, StringComparison.Ordinal);
+        Assert.Contains("incompleteMergeError()", stitchScenes, StringComparison.Ordinal);
         Assert.Contains("tpad=start_mode=add:start_duration=", src, StringComparison.Ordinal);
         Assert.Contains(":color=black:stop_mode=clone:stop_duration=", src, StringComparison.Ordinal);
         Assert.Contains("const outputSec = Math.max(pictureEndSec, musicSec)", src, StringComparison.Ordinal);

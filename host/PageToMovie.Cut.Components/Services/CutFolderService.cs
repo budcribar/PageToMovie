@@ -372,6 +372,8 @@ public sealed class CutFolderService : IAsyncDisposable
         var picture = await TryOpenPathAsync(picturePath);
         if (!string.IsNullOrWhiteSpace(picture))
             compose.Cache.PictureUrl = picture;
+
+        CutMergeCache.RejectIncompletePicture(compose.Cache, compose.Cache.Built.Scenes);
     }
 
     public async Task<bool> PersistMergeCacheAsync(CutComposeService compose)
@@ -390,9 +392,12 @@ public sealed class CutFolderService : IAsyncDisposable
             compose.Cache.JoinUrls,
             JoinCacheFiles,
             rebuiltJoins);
-        var wrotePicture = await PersistPictureCacheAsync(
-            compose.Cache.PictureUrl,
-            rebuiltScenes.Count > 0 || rebuiltJoins.Count > 0);
+        var wrotePicture = CutMergeCache.ShouldPersistPicture(
+                CutMergeCache.HasEverySegment(compose.CurrentPlan, compose.Cache),
+                compose.Cache.PictureUrl)
+            && await PersistPictureCacheAsync(
+                compose.Cache.PictureUrl,
+                rebuiltScenes.Count > 0 || rebuiltJoins.Count > 0);
         return wroteScenes || wroteJoins || wrotePicture;
     }
 

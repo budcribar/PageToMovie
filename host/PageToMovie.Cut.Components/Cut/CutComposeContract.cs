@@ -75,6 +75,14 @@ public static class CutComposeContract
         return download ? "Export failed." : "Play failed.";
     }
 
+    /// <summary>
+    /// Operator text when concat is short or a scene segment is missing.
+    /// Keep the string in <c>cut.js</c> <c>incompleteMergeError</c> in sync.
+    /// A first-scene + last-scene freeze must never ship as the movie.
+    /// </summary>
+    public const string IncompleteMergeError =
+        "The movie is missing scenes. Play or Make movie again so every scene is included.";
+
     public static bool JoinInsertsBlackHold(CutJoinKind kind) =>
         kind == CutJoinKind.CutToBlack;
 

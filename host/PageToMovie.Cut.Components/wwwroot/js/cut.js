@@ -2878,7 +2878,25 @@
         return { success: true, url: "" };
     }
 
+    function incompleteMergeError() {
+        return "The movie is missing scenes. Play or Make movie again so every scene is included.";
+    }
+
+    function requireSceneUrls(sceneUrls) {
+        const rows = Array.isArray(sceneUrls) ? sceneUrls : [];
+        if (rows.length === 0)
+            return { success: false, error: incompleteMergeError() };
+        for (let i = 0; i < rows.length; i++) {
+            if (!rows[i] || !rows[i].url)
+                return { success: false, error: incompleteMergeError() };
+        }
+        return { success: true };
+    }
+
     function assembleStitchPieces(sceneUrls, joins, bodyUrls, joinUrls) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const pieces = [];
         const transientBodies = [];
         for (let i = 0; i < sceneUrls.length; i++) {
@@ -3208,6 +3226,9 @@
     }
 
     async function stitchScenesAsync(api, sceneUrls, joins, onProgress, metrics) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const prepared = await prepareStitchPiecesWithPoolAsync(api, sceneUrls, joins, onProgress, metrics);
         if (!prepared.success) return prepared;
         const pieces = prepared.pieces;
@@ -3228,24 +3249,15 @@
                 return combined;
             const actualSec = await measuredSceneSecondsAsync(api, combined.url, 0);
             if (expectedSec > 0.1 && actualSec + 0.25 < expectedSec) {
-                const lastScene = sceneUrls.length > 0 ? sceneUrls[sceneUrls.length - 1] : null;
-                const lastJoin = joins.length > 0 ? joins[joins.length - 1] : null;
-                const lastKind = String(lastJoin && lastJoin.kind || "").toLowerCase();
-                if (lastScene && lastScene.url && xfadeName(lastKind)) {
-                    await resetFfmpegWorker(api);
-                    const appended = await xfadeAsync(
-                        combined.url, lastScene.url, lastKind, onProgress,
-                        Math.max(CUT_XFADE_MIN_SEC, Number(lastJoin.fade) || CUT_XFADE_SEC));
-                    if (appended.success) {
-                        releaseTempUrl(combined.url);
-                        combined = appended;
-                        return combined;
-                    }
-                }
+                // A short concat is a failed assemble — never xfade the last
+                // scene onto the stub (that shipped first-scene + frozen last
+                // scene with dead audio as picture.mp4).
                 const nativeAudio = combined.url;
                 const video = await concatVideoRemuxAsync(api, pieces, onProgress);
-                if (!video.success)
-                    return video;
+                if (!video.success) {
+                    releaseTempUrl(nativeAudio);
+                    return { success: false, error: incompleteMergeError() };
+                }
                 const repaired = await mixMovieAudioAsync(api, video.url, nativeAudio, onProgress, {
                     start: 0, markIn: 0, markOut: 0, volume: 1,
                     fadeIn: 0, fadeOut: 0, playbackRate: 1,
@@ -3253,10 +3265,15 @@
                 releaseTempUrl(video.url);
                 if (!repaired.success) {
                     releaseTempUrl(nativeAudio);
-                    return repaired;
+                    return { success: false, error: incompleteMergeError() };
                 }
                 releaseTempUrl(nativeAudio);
                 combined = repaired;
+                const repairedSec = await measuredSceneSecondsAsync(api, combined.url, 0);
+                if (expectedSec > 0.1 && repairedSec + 0.25 < expectedSec) {
+                    releaseTempUrl(combined.url);
+                    return { success: false, error: incompleteMergeError() };
+                }
             }
             return combined;
         } finally {
@@ -3318,6 +3335,9 @@
     }
 
     async function stitchAndMixScenesAsync(api, sceneUrls, joins, audio, onProgress, metrics) {
+        const complete = requireSceneUrls(sceneUrls);
+        if (!complete.success)
+            return complete;
         const spec = musicSpec(audio);
         if (!spec)
             return { success: false, error: "Soundtrack is missing." };
@@ -3743,6 +3763,9 @@
                 if (!prepared.success)
                     return prepared;
                 const sceneUrls = prepared.sceneUrls;
+                const scenesReady = requireSceneUrls(sceneUrls);
+                if (!scenesReady.success)
+                    return scenesReady;
                 rebuiltScenes = prepared.rebuiltScenes;
 
                 if (plan.jit) {

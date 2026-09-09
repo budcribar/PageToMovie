@@ -242,6 +242,8 @@ public sealed class CutComposeService : IAsyncDisposable
         Action<string, int>? onPrefix)
     {
         RefreshPlan(clips, texts);
+        if (!CutMergeCache.HasEverySegment(CurrentPlan, Cache))
+            return false;
         string? url;
         if (CutComposeContract.CanReuseExport(MoviePreviewUrl, LastDiff))
             url = MoviePreviewUrl;
@@ -308,7 +310,8 @@ public sealed class CutComposeService : IAsyncDisposable
     private void RefreshPlan(IReadOnlyList<CutClip> clips, IReadOnlyList<CutTextClip>? texts)
     {
         CurrentPlan = CutMergeCache.Build(clips, texts, AudioFileName, Music);
-        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
+        CutMergeCache.RejectIncompletePicture(Cache, CurrentPlan);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache);
     }
 
     private void RememberComposeResult(JsResult r, int clipCount)
@@ -338,8 +341,11 @@ public sealed class CutComposeService : IAsyncDisposable
                 Cache.RememberJoin(join.Id, join.Url, row.Fingerprint);
         }
 
+        if (!CutMergeCache.HasEverySegment(CurrentPlan, Cache))
+            throw new InvalidOperationException(CutComposeContract.IncompleteMergeError);
+
         Cache.RememberPlan(CurrentPlan);
-        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache.Built);
+        LastDiff = CutMergeCache.Diff(CurrentPlan, Cache);
     }
 
     internal static List<JsExportClip> BuildExportPayload(
