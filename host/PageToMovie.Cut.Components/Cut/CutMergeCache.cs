@@ -213,18 +213,11 @@ public static class CutMergeCache
 
     public static IReadOnlyList<int> MissingScenes(
         IReadOnlyList<CutMergeScene> scenes,
-        IReadOnlyCollection<int> presentScenes)
-    {
-        var missing = new List<int>();
-        foreach (var scene in scenes)
-        {
-            if (scene.Scene <= 0 || presentScenes.Contains(scene.Scene))
-                continue;
-            missing.Add(scene.Scene);
-        }
-
-        return missing;
-    }
+        IReadOnlyCollection<int> presentScenes) =>
+        scenes
+            .Select(scene => scene.Scene)
+            .Where(sceneId => sceneId > 0 && !presentScenes.Contains(sceneId))
+            .ToList();
 
     public static IReadOnlyList<int> MissingJoins(
         IReadOnlyList<CutMergeJoin> joins,
@@ -257,31 +250,23 @@ public static class CutMergeCache
     /// </summary>
     public static void RejectIncompletePicture(CutMergeRuntime runtime, CutMergePlan plan)
     {
-        foreach (var scene in plan.Scenes)
-        {
-            if (scene.Scene <= 0)
-                continue;
-            if (runtime.SceneUrls.TryGetValue(scene.Scene, out var url)
-                && !string.IsNullOrWhiteSpace(url))
-                continue;
+        if (plan.Scenes
+            .Select(scene => scene.Scene)
+            .Any(sceneId => sceneId > 0 && !HasUsableSceneUrl(runtime, sceneId)))
             RejectIncompletePicture(runtime);
-            return;
-        }
     }
 
     public static void RejectIncompletePicture(CutMergeRuntime runtime, IReadOnlyList<CutMergeSeg> plannedScenes)
     {
-        foreach (var row in plannedScenes)
-        {
-            if (row.Id <= 0)
-                continue;
-            if (runtime.SceneUrls.TryGetValue(row.Id, out var url)
-                && !string.IsNullOrWhiteSpace(url))
-                continue;
+        if (plannedScenes
+            .Select(row => row.Id)
+            .Any(id => id > 0 && !HasUsableSceneUrl(runtime, id)))
             RejectIncompletePicture(runtime);
-            return;
-        }
     }
+
+    private static bool HasUsableSceneUrl(CutMergeRuntime runtime, int sceneId) =>
+        runtime.SceneUrls.TryGetValue(sceneId, out var url)
+        && !string.IsNullOrWhiteSpace(url);
 
     public static void RejectIncompletePicture(CutMergeRuntime runtime)
     {
