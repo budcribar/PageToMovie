@@ -1873,7 +1873,7 @@
     },
     {
       "id": "elevenlabs-music",
-      "displayName": "ElevenLabs Music",
+      "displayName": "Eleven Music v2.5",
       "capability": "Audio",
       "provider": "ElevenLabs",
       "apiBase": "https://api.elevenlabs.io/v1",
@@ -1886,12 +1886,14 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "ElevenLabs 'Eleven Music' (POST /v1/music, model music_v2). Uses the same ElevenLabs_API_KEY as narrator voice \u2014 no separate Suno reseller account. 3s\u201310min; instrumental by default, can sing. Streams audio bytes (served via data: URL through the media proxy).",
+      "notes": "ElevenLabs Eleven Music v2.5 (POST /v1/music, wire model music_v2_5). Successor to music_v2; music_v1 is outclassed. Uses the same ElevenLabs_API_KEY as narrator voice \u2014 no separate Suno reseller account. 3s\u201310min; instrumental by default, can sing. Streams audio bytes (served via data: URL through the media proxy).",
       "providerId": "elevenlabs",
       "providerLabel": "ElevenLabs",
       "supportsVocals": true,
       "maxPromptLength": 4100,
-      "lastVerifiedAt": "2026-08-05"
+      "pricingNotes": "elevenlabs.io/pricing/api 2026-09-13: $0.15/min. Same Music product list price; no separate v2 vs v2.5 rate.",
+      "lastVerifiedAt": "2026-09-13",
+      "pricingLastReviewedAt": "2026-09-13"
     },
     {
       "id": "eleven_multilingual_v2",
