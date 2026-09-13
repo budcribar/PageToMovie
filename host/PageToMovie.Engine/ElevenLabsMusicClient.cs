@@ -103,12 +103,12 @@ public sealed class ElevenLabsMusicClient : IAudioClient
     }
 
     /// <summary>Catalog id → ElevenLabs wire model. Anything tagged "v1" pins music_v1; else the
-    /// newer music_v2.</summary>
+    /// GA default music_v2_5 (successor to music_v2). Catalog has no separate wire-model field.</summary>
     private static string ResolveWireModel(string? model)
     {
         if (!string.IsNullOrWhiteSpace(model) && model.Contains("v1", StringComparison.OrdinalIgnoreCase))
             return "music_v1";
-        return "music_v2";
+        return "music_v2_5";
     }
 
     private static string ShortReason(int status, string body)
