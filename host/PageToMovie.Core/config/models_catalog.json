@@ -1496,8 +1496,7 @@
       "providerLabel": "xAI",
       "pricingNotes": "docs.x.ai/docs/models 2026-09-21: $2.00 in / $6.00 out per 1M tokens (same as grok-4.6).",
       "lastVerifiedAt": "2026-09-21",
-      "pricingLastReviewedAt": "2026-09-21",
-      "apiModelId": "grok-4.7"
+      "pricingLastReviewedAt": "2026-09-21"
     },
     {
       "id": "grok-4.6",
@@ -1875,8 +1874,7 @@
       "maxOutputTokens": 128000,
       "lastVerifiedAt": "2026-09-21",
       "pricingNotes": "Same token rates as chat sibling (docs.x.ai/docs/models 2026-09-21).",
-      "pricingLastReviewedAt": "2026-09-21",
-      "apiModelId": "grok-4.7"
+      "pricingLastReviewedAt": "2026-09-21"
     },
     {
       "id": "grok-4.6",
