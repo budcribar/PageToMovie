@@ -144,49 +144,7 @@
       "order": 85
     }
   ],
-  "taskRankings": {
-    "script_import": [
-      "claude-sonnet-5",
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5",
-      "gemini-2.5-flash"
-    ],
-    "beat_pacing": [
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5",
-      "gemini-2.0-flash",
-      "claude-sonnet-5"
-    ],
-    "camera_director": [
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5",
-      "claude-sonnet-5"
-    ],
-    "sound_design": [
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5",
-      "gemini-2.5-flash"
-    ],
-    "cast_analysis": [
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5",
-      "claude-sonnet-5",
-      "gemini-2.5-flash"
-    ],
-    "video_review": [
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-      "gemini-2.5-flash",
-      "grok-4.7",
-      "grok-4.6",
-      "grok-4.5"
-    ]
-  },
+  "taskRankings": null,
   "models": [
     {
       "id": "gpt-4o",
