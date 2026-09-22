@@ -169,6 +169,28 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "gpt-6-astra",
+      "displayName": "OpenAI GPT-6 Astra",
+      "capability": "Chat",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1050000,
+      "inputCostPerMillionTokens": 10.0,
+      "outputCostPerMillionTokens": 50.0,
+      "notes": "Flagship OpenAI model for complex reasoning and coding. Text in/out; image input only (no audio/video). Reasoning effort: low, medium, high, xhigh, max. Knowledge cutoff Apr 30, 2026. Endpoints: Chat Completions and Responses. Context 1,050,000; max output 128,000. Long-context surcharge above 272K tokens: 2x input/cache rates and 1.5x output for the full request ($20 input / $75 output per 1M).",
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "maxOutputTokens": 128000,
+      "pricingNotes": "OpenAI list price 2026-09-22: $10.00 input / $1.00 cached input / $12.50 cache writes / $50.00 output per 1M tokens. Long-context >272K: 2x input and cache rates and 1.5x output for the full request ($20 input / $75 output per 1M). platform.openai.com/docs/models/gpt-6-astra and platform.openai.com/docs/models.",
+      "lastVerifiedAt": "2026-09-22",
+      "pricingLastReviewedAt": "2026-09-22"
+    },
+    {
       "id": "gpt-5.6-sol",
       "displayName": "OpenAI GPT-5.6 (Sol)",
       "capability": "Chat",
