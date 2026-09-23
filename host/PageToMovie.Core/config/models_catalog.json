@@ -191,6 +191,48 @@
       "pricingLastReviewedAt": "2026-09-22"
     },
     {
+      "id": "gpt-6-sol",
+      "displayName": "OpenAI GPT-6 Sol",
+      "capability": "Chat",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1050000,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 10.0,
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "maxOutputTokens": 128000,
+      "pricingNotes": "OpenAI list 2026-09-23: $2.00 input / $0.20 cached / $2.50 cache writes / $10.00 output per 1M. Long-context >272K: 2x input/cache and 1.5x output for full request ($4 / $15). platform.openai.com/docs/models/gpt-6-sol",
+      "lastVerifiedAt": "2026-09-23",
+      "pricingLastReviewedAt": "2026-09-23"
+    },
+    {
+      "id": "gpt-6-luna",
+      "displayName": "OpenAI GPT-6 Luna",
+      "capability": "Chat",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1050000,
+      "inputCostPerMillionTokens": 0.1,
+      "outputCostPerMillionTokens": 0.5,
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "maxOutputTokens": 128000,
+      "pricingNotes": "OpenAI list 2026-09-23: $0.10 input / $0.01 cached / $0.125 cache writes / $0.50 output per 1M. Long-context >272K: $0.20 / $0.75. platform.openai.com/docs/models/gpt-6-luna",
+      "lastVerifiedAt": "2026-09-23",
+      "pricingLastReviewedAt": "2026-09-23"
+    },
+    {
       "id": "gpt-5.6-sol",
       "displayName": "OpenAI GPT-5.6 (Sol)",
       "capability": "Chat",
@@ -1670,6 +1712,30 @@
       "pricingNotes": "Anthropic list price 2026-08-15: $5.00 / $25.00 per 1M tokens. Context 1M.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "claude-opus-5-5",
+      "displayName": "Claude Opus 5.5",
+      "capability": "Chat",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 4.0,
+      "outputCostPerMillionTokens": 20.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "docs.anthropic.com / platform.claude.com Opus 5.5 2026-09-23: $4 input / $20 output per 1M. 1M ctx, 128k max out. Adaptive thinking always on; default effort medium. Released 2026-09-22.",
+      "lastVerifiedAt": "2026-09-23",
+      "pricingLastReviewedAt": "2026-09-23"
     },
     {
       "id": "claude-fable-5",
