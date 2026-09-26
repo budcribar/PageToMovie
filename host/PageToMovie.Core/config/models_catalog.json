@@ -83,6 +83,16 @@
         "eleven"
       ],
       "order": 7
+    },
+    {
+      "id": "minimax",
+      "label": "MiniMax",
+      "aliases": [
+        "MiniMax",
+        "minimax",
+        "Minimax"
+      ],
+      "order": 8
     }
   ],
   "capabilities": [
@@ -905,6 +915,94 @@
       "providerId": "grok",
       "providerLabel": "xAI",
       "lastVerifiedAt": "2026-08-24"
+    },
+    {
+      "id": "MiniMax-H3-Max",
+      "displayName": "MiniMax H3 Max",
+      "capability": "Video",
+      "provider": "MiniMax",
+      "apiBase": "https://api.minimax.io",
+      "endpointPath": "v2/video_generation",
+      "requiredEnvKeys": [
+        "MINIMAX_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 9,
+      "supportsReferenceAudios": true,
+      "maxReferenceAudios": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 5,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 3,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.05,
+        "768p": 0.08
+      },
+      "supportedAspectRatios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "adaptive",
+      "notes": "Direct MiniMax pay-as-you-go video at platform.minimax.io (not the Fal-hosted MiniMax voice models). Official id MiniMax-H3-Max. Text-to-video, image-to-video (first and/or last frame), and reference generation. Reference mode accepts up to 3 audio clips for voice lock (2-15s each, 15s total) that preserve speaker identity, up to 9 reference images (character/look lock), and up to 3 reference videos (guide motion/style only; 2-15s each, 15s total). Mixed reference input is capped at 12 files. There is no true extend: this model cannot continue an existing clip from its last frame, so longer scenes must be stitched from separate clips. Duration is 5-15 seconds, integers only (4s is not supported). Output is 480P or 768P (2K is not supported). Text-to-video requires an explicit ratio and cannot use adaptive. Disabled because no IVideoClient is registered for providerId minimax, so selecting this model would fail at generation time. Awaits the MiniMax provider integration and MINIMAX_API_KEY. Do not enable until that client exists: ModelProviderFamily has no MiniMax member, so the deserialized Provider family falls back to Xai and key checks would treat this row as xAI.",
+      "providerId": "minimax",
+      "providerLabel": "MiniMax",
+      "maxPromptLength": 7000,
+      "videoReferenceImageCost": 0.074,
+      "pricingNotes": "platform.minimax.io/docs/guides/pricing-paygo Video Generation output (reviewed 2026-09-26): MiniMax-H3-Max 480P $0.05/s, 768P $0.08/s. Input materials on the same page: audio free; images first 2 free then $0.074 per additional image (videoReferenceImageCost is that marginal rate, not a charge on every image); input video billed by input duration and output resolution at 480P $0.0553/s, 768P $0.143/s. Specs from platform.minimax.io/docs/guides/video-generation and /docs/api-reference/video-generation-v2-create. No extend rate: supportsVideoContinue is false.",
+      "lastVerifiedAt": "2026-09-26",
+      "pricingLastReviewedAt": "2026-09-26"
+    },
+    {
+      "id": "MiniMax-H3",
+      "displayName": "MiniMax H3",
+      "capability": "Video",
+      "provider": "MiniMax",
+      "apiBase": "https://api.minimax.io",
+      "endpointPath": "v2/video_generation",
+      "requiredEnvKeys": [
+        "MINIMAX_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 9,
+      "supportsReferenceAudios": true,
+      "maxReferenceAudios": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 4,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 3,
+      "videoCostPerSecondByResolution": {
+        "768p": 0.08,
+        "2k": 0.13
+      },
+      "supportedAspectRatios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "adaptive",
+      "notes": "Direct MiniMax pay-as-you-go video at platform.minimax.io (not the Fal-hosted MiniMax voice models). Official id MiniMax-H3. Text-to-video, image-to-video (first and/or last frame), and reference generation. Reference mode accepts up to 3 audio clips for voice lock (2-15s each, 15s total) that preserve speaker identity, up to 9 reference images (character/look lock), and up to 3 reference videos (guide motion/style only; 2-15s each, 15s total). Mixed reference input is capped at 12 files. There is no true extend: this model cannot continue an existing clip from its last frame, so longer scenes must be stitched from separate clips. Duration is 4-15 seconds, integers only. Output is 768P or 2K. Text-to-video requires an explicit ratio and cannot use adaptive. A separate regeneration task can upscale an existing MiniMax-H3 768P output to 2K; that is not clip continue. Disabled because no IVideoClient is registered for providerId minimax, so selecting this model would fail at generation time. Awaits the MiniMax provider integration and MINIMAX_API_KEY. Do not enable until that client exists: ModelProviderFamily has no MiniMax member, so the deserialized Provider family falls back to Xai and key checks would treat this row as xAI.",
+      "providerId": "minimax",
+      "providerLabel": "MiniMax",
+      "maxPromptLength": 7000,
+      "videoReferenceImageCost": 0.04,
+      "pricingNotes": "platform.minimax.io/docs/guides/pricing-paygo Video Generation output (reviewed 2026-09-26): MiniMax-H3 768P $0.08/s, 2K $0.13/s. Input materials on the same page: audio free; images first 5 free then $0.04 per additional image (videoReferenceImageCost is that marginal rate, not a charge on every image); input video billed by input duration and output resolution at 2K $0.13/s, 768P $0.08/s. Specs from platform.minimax.io/docs/guides/video-generation and /docs/api-reference/video-generation-v2-create. No extend rate: supportsVideoContinue is false. Regeneration (768P to 2K) is a different API at $0.05/s of regenerated output and is not modeled as continue.",
+      "lastVerifiedAt": "2026-09-26",
+      "pricingLastReviewedAt": "2026-09-26"
     },
     {
       "id": "grok-imagine-video-edit",
