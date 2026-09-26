@@ -628,14 +628,66 @@ public class SupportedModelCatalogTests
     [Fact]
     public void Other_video_models_do_not_claim_reference_audios()
     {
+        // grok-imagine-video-1.5 has its own roster test. MiniMax H3 rows opt into
+        // reference-audio voice lock without a preset roster (see MiniMax_video_rows).
+        var referenceAudioIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "grok-imagine-video-1.5",
+            "MiniMax-H3",
+            "MiniMax-H3-Max",
+        };
         foreach (var e in SupportedModelCatalog.ForCapability(ModelCapability.Video, enabledOnly: false))
         {
-            if (string.Equals(e.Id, "grok-imagine-video-1.5", StringComparison.OrdinalIgnoreCase))
+            if (referenceAudioIds.Contains(e.Id))
                 continue;
             Assert.False(e.SupportsReferenceAudios, e.Id);
             Assert.Null(e.MaxReferenceAudios);
             Assert.True(e.PresetVoices is null || e.PresetVoices.Count == 0, e.Id);
         }
+    }
+
+    [Theory]
+    [InlineData("MiniMax-H3-Max", 5, 0.05, 0.08, 0.074, "480p", "768p")]
+    [InlineData("MiniMax-H3", 4, 0.08, 0.13, 0.04, "768p", "2k")]
+    public void MiniMax_video_rows_are_disabled_opt_ins(
+        string id,
+        int minSeconds,
+        double firstRate,
+        double secondRate,
+        double extraImageRate,
+        string firstResolution,
+        string secondResolution)
+    {
+        var m = SupportedModelCatalog.Find(id, ModelCapability.Video);
+        Assert.NotNull(m);
+        Assert.False(m!.Enabled);
+        Assert.Equal("minimax", m.ProviderId);
+        Assert.Equal("MiniMax", m.ProviderLabel);
+        Assert.Contains("MINIMAX_API_KEY", m.RequiredEnvKeys);
+        Assert.False(m.SupportsVideoContinue);
+        Assert.True(m.SupportsReferenceImages);
+        Assert.Equal(9, m.MaxReferenceImages);
+        Assert.True(m.SupportsReferenceAudios);
+        Assert.Equal(3, m.MaxReferenceAudios);
+        Assert.True(m.PresetVoices is null || m.PresetVoices.Count == 0);
+        Assert.Equal(3, m.MaxSpeakersPerClip);
+        Assert.Equal(minSeconds, m.MinClipDurationSeconds);
+        Assert.Equal(15, m.MaxClipDurationSeconds);
+        Assert.Equal(15, m.AbsMaxClipDurationSeconds);
+        Assert.Equal(7000, m.MaxPromptLength);
+        Assert.Equal(extraImageRate, m.VideoReferenceImageCost);
+        Assert.Equal(firstRate, m.VideoCostPerSecondByResolution![firstResolution]);
+        Assert.Equal(secondRate, m.VideoCostPerSecondByResolution[secondResolution]);
+        Assert.Equal(2, m.VideoCostPerSecondByResolution.Count);
+        Assert.Contains("adaptive", m.SupportedAspectRatios!);
+        Assert.Equal("adaptive", m.DefaultAspectRatio);
+        Assert.False(string.IsNullOrWhiteSpace(m.Notes));
+        Assert.Contains("MINIMAX_API_KEY", m.Notes, StringComparison.Ordinal);
+
+        Assert.Equal("grok-imagine-video", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.DoesNotContain(
+            SupportedModelCatalog.ForCapability(ModelCapability.Video),
+            e => e.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
