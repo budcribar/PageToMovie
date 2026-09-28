@@ -2498,12 +2498,84 @@
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 360,
-      "notes": "Model: Suno v5.5 (official enum V5_5). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. Custom-mode duration 10\u2013360s; prompt 5000 characters in custom mode.",
+      "notes": "Model: Suno v5.5 (official reseller enum V5_5). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. V5_5 is deprecated on sunoapi.org as of 2026-09-28 (still accepted for backward compatibility). Prefer suno-v6. Kept enabled so existing project selections keep working. Custom-mode duration 10\u2013360s; prompt 5000 characters in custom mode.",
       "providerId": "suno",
       "providerLabel": "Suno API (sunoapi.org)",
       "supportsVocals": true,
       "maxPromptLength": 5000,
-      "lastVerifiedAt": "2026-08-15"
+      "lastVerifiedAt": "2026-09-28"
+    },
+    {
+      "id": "suno-v6",
+      "displayName": "Suno v6",
+      "capability": "Audio",
+      "provider": "Suno",
+      "apiBase": "https://api.sunoapi.org/api/v1",
+      "endpointPath": "generate",
+      "requiredEnvKeys": [
+        "SUNO_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 360,
+      "notes": "Model: Suno v6 (official reseller enum V6; sunoapi.org current default). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. New integrations should use a V6-series model. Lyrics prompt 5000 characters; style 1000 (maxPromptLength 5000 matches the Suno sibling). Catalog max duration 360s.",
+      "providerId": "suno",
+      "providerLabel": "Suno API (sunoapi.org)",
+      "supportsVocals": true,
+      "maxPromptLength": 5000,
+      "pricingNotes": "sunoapi.org is a credits-based reseller. No USD list price published as of 2026-09-28 (docs.sunoapi.org/suno-api/generate-music).",
+      "lastVerifiedAt": "2026-09-28",
+      "pricingLastReviewedAt": "2026-09-28"
+    },
+    {
+      "id": "suno-v6-mini",
+      "displayName": "Suno v6 Mini",
+      "capability": "Audio",
+      "provider": "Suno",
+      "apiBase": "https://api.sunoapi.org/api/v1",
+      "endpointPath": "generate",
+      "requiredEnvKeys": [
+        "SUNO_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 360,
+      "notes": "Model: Suno v6 Mini (official reseller enum V6_MINI). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. Distinct current-generation SKU on the same generate-music docs page as V6. Lyrics prompt 5000 characters; style 1000 (maxPromptLength 5000 matches the Suno sibling). Catalog max duration 360s.",
+      "providerId": "suno",
+      "providerLabel": "Suno API (sunoapi.org)",
+      "supportsVocals": true,
+      "maxPromptLength": 5000,
+      "pricingNotes": "sunoapi.org is a credits-based reseller. No USD list price published as of 2026-09-28 (docs.sunoapi.org/suno-api/generate-music).",
+      "lastVerifiedAt": "2026-09-28",
+      "pricingLastReviewedAt": "2026-09-28"
+    },
+    {
+      "id": "suno-v6-wild",
+      "displayName": "Suno v6 Wild",
+      "capability": "Audio",
+      "provider": "Suno",
+      "apiBase": "https://api.sunoapi.org/api/v1",
+      "endpointPath": "generate",
+      "requiredEnvKeys": [
+        "SUNO_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "maxAudioDurationSeconds": 360,
+      "notes": "Model: Suno v6 Wild (official reseller enum V6_WILD). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. Distinct current-generation SKU on the same generate-music docs page as V6. Lyrics prompt 5000 characters; style 1000 (maxPromptLength 5000 matches the Suno sibling). Catalog max duration 360s.",
+      "providerId": "suno",
+      "providerLabel": "Suno API (sunoapi.org)",
+      "supportsVocals": true,
+      "maxPromptLength": 5000,
+      "pricingNotes": "sunoapi.org is a credits-based reseller. No USD list price published as of 2026-09-28 (docs.sunoapi.org/suno-api/generate-music).",
+      "lastVerifiedAt": "2026-09-28",
+      "pricingLastReviewedAt": "2026-09-28"
     },
     {
       "id": "aimusicapi-suno",
@@ -2519,13 +2591,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Model: Suno (latest reseller model id sonic-v5-5). Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. Official create path /api/v1/sonic/create. No documented duration control; client mix trims to scene length.",
+      "notes": "Model: Suno via AI Music API. Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. Create path /api/v1/sonic/create. As of 2026-09-09 Suno withdrew v3.5\u2013v5.5 on its own platform; this reseller still accepts existing sonic-v* ids, which map to v6. v6-wild and v6-mini are not available here yet. No documented duration control; client mix trims to scene length.",
       "providerId": "aimusicapi",
       "providerLabel": "AI Music API (aimusicapi.ai)",
       "supportsVocals": true,
       "maxAudioDurationSeconds": 240,
       "maxPromptLength": 3000,
-      "lastVerifiedAt": "2026-08-15"
+      "lastVerifiedAt": "2026-09-28"
     },
     {
       "id": "elevenlabs-music",
