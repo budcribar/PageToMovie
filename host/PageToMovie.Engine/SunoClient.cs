@@ -9,9 +9,11 @@ namespace PageToMovie.Engine;
 /// Suno background-music generation via sunoapi.org — an unofficial third-party Suno reseller
 /// (Suno itself has no public API as of 2026-07). Submits a generation task, then polls for
 /// completion (no public webhook receiver exists here, so polling only). Unlike Fal.ai's
-/// stable-audio, this provider documents a real duration control (10-360s on model V5_5 custom
-/// mode) — see SupportedModelCatalog's suno-v5-5 entry — which is the whole reason to have it:
-/// scenes over Fal's 47s cap don't need to be stitched from independently-generated segments.
+/// stable-audio, this provider documents a real duration control (catalog max 360s) — which is
+/// the whole reason to have it: scenes over Fal's 47s cap don't need to be stitched from
+/// independently-generated segments. The current reseller generation is the V6 family; V5_5
+/// remains accepted for existing selections. Wire tokens are derived from the catalog id
+/// (suno-v* → uppercase with underscores), not from hardcoded model-id constants.
 /// </summary>
 public sealed class SunoClient : IAudioClient
 {
