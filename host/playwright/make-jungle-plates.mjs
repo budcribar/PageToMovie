@@ -167,18 +167,23 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const written = [];
+  // One shared page, so each screenshot has to finish before the next content is loaded.
+  const shots = [];
+  const queueShot = (html, outPath) => {
+    shots.push({ html, outPath });
+    written.push(outPath);
+  };
 
   // Generic establishing pages
   for (let i = 1; i <= 3; i++) {
-    const p = path.join(BOOK_IMG, `page_${String(i).padStart(2, "0")}_establishing.png`);
-    await shot(page, cardHtml("Seeonee Hills", "Moon over teak and bamboo. Establishing landscape.", ACCENTS.default), p);
-    written.push(p);
+    queueShot(
+      cardHtml("Seeonee Hills", "Moon over teak and bamboo. Establishing landscape.", ACCENTS.default),
+      path.join(BOOK_IMG, `page_${String(i).padStart(2, "0")}_establishing.png`)
+    );
   }
   // Text-only decoys
   for (let i = 1; i <= 3; i++) {
-    const p = path.join(BOOK_IMG, `text_page_${i}.png`);
-    await shot(page, textPageHtml(i), p);
-    written.push(p);
+    queueShot(textPageHtml(i), path.join(BOOK_IMG, `text_page_${i}.png`));
   }
 
   for (const key of keys) {
@@ -188,19 +193,21 @@ async function main() {
     const s = slug(key);
     const accent = accentFor(key, desc);
 
-    const bookPlate = path.join(BOOK_IMG, `plate_${s}.png`);
-    await shot(page, cardHtml(name, desc, accent), bookPlate);
-    written.push(bookPlate);
+    queueShot(cardHtml(name, desc, accent), path.join(BOOK_IMG, `plate_${s}.png`));
 
     // Product-style character asset names (ref + 2 variants)
     const ref = path.join(ASSETS, `character_${s}_ref.png`);
     const v1 = path.join(ASSETS, `character_${s}_variant_01.png`);
     const v2 = path.join(ASSETS, `character_${s}_variant_02.png`);
-    await shot(page, cardHtml(name, desc, accent), ref);
-    await shot(page, cardHtml(name + " · turn", desc, accent), v1);
-    await shot(page, cardHtml(name + " · detail", desc, accent), v2);
-    written.push(ref, v1, v2);
+    queueShot(cardHtml(name, desc, accent), ref);
+    queueShot(cardHtml(name + " · turn", desc, accent), v1);
+    queueShot(cardHtml(name + " · detail", desc, accent), v2);
   }
+
+  await shots.reduce(
+    (chain, spec) => chain.then(() => shot(page, spec.html, spec.outPath)),
+    Promise.resolve()
+  );
 
   // Extra decoy asset not tied to a main hero
   await shot(

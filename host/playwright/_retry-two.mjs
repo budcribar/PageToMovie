@@ -10,17 +10,20 @@ async function api(method, p, body) {
   let json = null; try { json = JSON.parse(text); } catch {}
   return { ok: r.ok, status: r.status, json, text };
 }
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 async function waitJobsIdle(timeoutMs = 20 * 60_000) {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  async function check() {
+    if (Date.now() - start >= timeoutMs) throw new Error("timeout");
     const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
     const jobs = j.json?.jobs || [];
     const active = jobs.find((x) => /queued|running/i.test(x.status || ""));
-    if (!active) { await new Promise((r) => setTimeout(r, 500)); return; }
+    if (!active) { await sleep(500); return; }
     console.log("job", active.status, (active.message || "").slice(0, 100));
-    await new Promise((r) => setTimeout(r, 2000));
+    await sleep(2000);
+    await check();
   }
-  throw new Error("timeout");
+  await check();
 }
 const dir = path.resolve("../../projects/The_Jungle_Book/assets/characters");
 for (const key of KEYS) {
