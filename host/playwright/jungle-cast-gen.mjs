@@ -62,28 +62,37 @@ async function api(method, p, body) {
   return { ok: r.ok, status: r.status, json, text };
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// One project job queue: poll until it drains. The pause is the pacing, so each
+// check starts only after the previous one has been read.
 async function waitJobsIdle(timeoutMs = 25 * 60_000) {
   const start = Date.now();
-  let last = "";
-  while (Date.now() - start < timeoutMs) {
+
+  async function check(last) {
+    if (Date.now() - start >= timeoutMs) throw new Error("timeout waiting for jobs");
     const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
     const jobs = j.json?.jobs || j.json?.Jobs || [];
     const active = jobs.find((x) => /queued|running/i.test(x.status || x.Status || ""));
     if (!active) {
-      await new Promise((r) => setTimeout(r, 600));
+      await sleep(600);
       const j2 = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
       const jobs2 = j2.json?.jobs || j2.json?.Jobs || [];
       if (!jobs2.some((x) => /queued|running/i.test(x.status || x.Status || ""))) return;
-      continue;
+      await check(last);
+      return;
     }
     const msg = `${active.kind || active.Kind}|${active.message || active.Message || ""}`;
     if (msg !== last) {
-      last = msg;
       log("job", active.status || active.Status, (active.message || active.Message || "").slice(0, 120));
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await sleep(2000);
+    await check(msg);
   }
-  throw new Error("timeout waiting for jobs");
+
+  await check("");
 }
 
 function charDir() {
@@ -136,49 +145,55 @@ async function pickAndLock(charKey) {
   throw new Error(`could not lock any variant for ${charKey}`);
 }
 
+async function generateCharacter(key) {
+  log("===", key, "===");
+  // clear mock plates that might confuse — gen will overwrite variants
+  const gen = await api("POST", "/api/jobs/character-variants", {
+    projectId: PROJECT,
+    charKey: key,
+    count: 3,
+    seedMode: "none",
+    includePreferred: false,
+    includeLockedRef: false,
+    maxRefs: 0,
+    persistDescription: true,
+  });
+  if (!gen.ok) {
+    log("gen fail", key, gen.status, (gen.text || "").slice(0, 300));
+    // retry auto seed
+    const gen2 = await api("POST", "/api/jobs/character-variants", {
+      projectId: PROJECT,
+      charKey: key,
+      count: 3,
+      seedMode: "auto",
+      persistDescription: true,
+    });
+    if (!gen2.ok) return { key, ok: false, error: gen2.text?.slice(0, 200) };
+  }
+  try {
+    await waitJobsIdle();
+    const lockedIdx = await pickAndLock(key);
+    return { key, ok: true, lockedVariant: lockedIdx };
+  } catch (e) {
+    log("ERROR", key, e.message || e);
+    return { key, ok: false, error: String(e.message || e) };
+  }
+}
+
 async function main() {
   log("API", API, "project", PROJECT);
   const health = await api("GET", "/health");
   if (!health.ok) throw new Error("API not healthy");
 
+  // Characters share one job queue, so each key is generated and locked before the next starts.
   const results = [];
-  for (const key of KEYS) {
-    log("===", key, "===");
-    // clear mock plates that might confuse — gen will overwrite variants
-    const gen = await api("POST", "/api/jobs/character-variants", {
-      projectId: PROJECT,
-      charKey: key,
-      count: 3,
-      seedMode: "none",
-      includePreferred: false,
-      includeLockedRef: false,
-      maxRefs: 0,
-      persistDescription: true,
-    });
-    if (!gen.ok) {
-      log("gen fail", key, gen.status, (gen.text || "").slice(0, 300));
-      // retry auto seed
-      const gen2 = await api("POST", "/api/jobs/character-variants", {
-        projectId: PROJECT,
-        charKey: key,
-        count: 3,
-        seedMode: "auto",
-        persistDescription: true,
-      });
-      if (!gen2.ok) {
-        results.push({ key, ok: false, error: gen2.text?.slice(0, 200) });
-        continue;
-      }
-    }
-    try {
-      await waitJobsIdle();
-      const lockedIdx = await pickAndLock(key);
-      results.push({ key, ok: true, lockedVariant: lockedIdx });
-    } catch (e) {
-      log("ERROR", key, e.message || e);
-      results.push({ key, ok: false, error: String(e.message || e) });
-    }
-  }
+  await KEYS.reduce(
+    (chain, key) =>
+      chain.then(async () => {
+        results.push(await generateCharacter(key));
+      }),
+    Promise.resolve()
+  );
 
   fs.writeFileSync(path.join(ARTIFACTS, "summary.json"), JSON.stringify({ project: PROJECT, results }, null, 2));
   log("DONE", results.filter((r) => r.ok).length, "/", results.length, "locked");

@@ -76,16 +76,25 @@ function jget(obj, ...names) {
   return undefined;
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// The next officer must see the plate the previous job wrote, so poll until this job finishes.
 async function waitJobIdle(timeoutMs = 5 * 60_000) {
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+
+  async function check() {
+    if (Date.now() - start >= timeoutMs) throw new Error("timeout waiting for jobs to go idle");
     const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
     const jobs = jget(j.json || {}, "jobs", "Jobs") || [];
     const active = jobs.some((x) => /queued|running/i.test(jget(x, "status", "Status") || ""));
     if (!active) return;
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
+    await check();
   }
-  throw new Error("timeout waiting for jobs to go idle");
+
+  await check();
 }
 
 function charDir() {
@@ -236,14 +245,19 @@ async function main() {
   const wardrobeFile = "wardrobe_policeofficer_ref.png";
   let wardrobeStatAfterFirst = null;
 
-  for (let i = 0; i < officers.length; i++) {
-    wardrobeStatAfterFirst = await generateAndLockOfficer(
-      officers[i],
-      i,
-      wardrobeFile,
-      wardrobeStatAfterFirst
-    );
-  }
+  // Officer 1 creates the shared costume plate; 2 and 3 must run after that file exists.
+  await officers.reduce(
+    (chain, key, i) =>
+      chain.then(async () => {
+        wardrobeStatAfterFirst = await generateAndLockOfficer(
+          key,
+          i,
+          wardrobeFile,
+          wardrobeStatAfterFirst
+        );
+      }),
+    Promise.resolve()
+  );
 
   await verifyCharactersUi(officers);
 

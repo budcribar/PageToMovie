@@ -76,14 +76,19 @@ async function btnState(page, text) {
   return { found: true, enabled: await el.isEnabled().catch(() => false) };
 }
 
-async function waitJobs(pid, max = 40) {
-  for (let i = 0; i < max; i++) {
-    const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(pid)}`);
-    const active = (j.json?.jobs || []).find((x) => /queued|running/i.test(x.status || ""));
-    if (!active) return;
-    log("  job", active.status, active.kind || "", (active.message || "").slice(0, 80));
-    await new Promise((r) => setTimeout(r, 1000));
-  }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Readiness checks depend on the previous job having finished, so polls stay in order.
+async function waitJobs(pid, max = 40, attempt = 0) {
+  if (attempt >= max) return;
+  const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(pid)}`);
+  const active = (j.json?.jobs || []).find((x) => /queued|running/i.test(x.status || ""));
+  if (!active) return;
+  log("  job", active.status, active.kind || "", (active.message || "").slice(0, 80));
+  await sleep(1000);
+  await waitJobs(pid, max, attempt + 1);
 }
 
 async function main() {
