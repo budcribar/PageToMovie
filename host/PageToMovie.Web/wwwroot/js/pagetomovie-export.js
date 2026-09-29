@@ -4,6 +4,13 @@
  * straight to the user's local hard drive.
  */
 
+/** One zip entry at a time so inflate stays in central-directory order. */
+async function* eachInOrder(items) {
+    for (const item of items) {
+        yield item;
+    }
+}
+
 window.PageToMovieExport = {
     _directoryHandle: null,
 
@@ -370,8 +377,9 @@ window.PageToMovieExport = {
         if (!listed.success)
             return { clientAdded, clientSkipped, mediaError: listed.error || "Could not list local media" };
         const files = listed.files || [];
-        for (let i = 0; i < files.length; i++) {
-            const rel = (files[i].relativePath || "").replaceAll("\\", "/");
+        // One file at a time: each read pulls the whole clip into memory.
+        for await (const [i, file] of files.entries()) {
+            const rel = (file.relativePath || "").replaceAll("\\", "/");
             if (!rel) continue;
             if (i === 0 || i === files.length - 1 || (i + 1) % 3 === 0) {
                 const pct = files.length > 0 ? Math.min(100, ((i + 1) / files.length) * 100) : 0;
@@ -461,7 +469,8 @@ window.PageToMovieExport = {
         let written = 0;
         let skipped = 0;
         const errors = [];
-        for (const e of entries) {
+        // Directory writes stay ordered; the File System Access API handle is not concurrent-safe.
+        for await (const e of entries) {
             const res = await this._processZipMediaEntryAsync(e, targetId, mediaExt);
             if (res.status === "written") written++;
             else if (res.status === "skipped") {
@@ -513,7 +522,7 @@ window.PageToMovieExport = {
         if (eocd < 0) throw new Error("Not a zip (EOCD missing)");
         const cdOffset = view.getUint32(eocd + 16, true);
         const cdCount = view.getUint16(eocd + 10, true);
-        const entries = [];
+        const pending = [];
         let p = cdOffset;
         for (let n = 0; n < cdCount; n++) {
             if (view.getUint32(p, true) !== 0x02014b50)
@@ -537,16 +546,19 @@ window.PageToMovieExport = {
             const lExtraLen = view.getUint16(lp + 28, true);
             const dataStart = lp + 30 + lNameLen + lExtraLen;
             const comp = u8.subarray(dataStart, dataStart + compSize);
-            let data;
-            if (method === 0) {
-                data = comp.slice();
-            } else if (method === 8) {
-                data = await this._inflateRawAsync(comp, uncompSize);
-            } else {
+            if (method !== 0 && method !== 8) {
                 console.warn("zip: skip unsupported method", method, name);
                 continue;
             }
-            entries.push({ name, data });
+            pending.push({ name, method, comp, uncompSize });
+        }
+        const entries = [];
+        // Inflate in central-directory order so a large export does not decode every entry at once.
+        for await (const item of eachInOrder(pending)) {
+            const data = item.method === 0
+                ? item.comp.slice()
+                : await this._inflateRawAsync(item.comp, item.uncompSize);
+            entries.push({ name: item.name, data });
         }
         return entries;
     },
