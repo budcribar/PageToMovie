@@ -177,12 +177,13 @@ window.PageToMovieFfmpeg = {
      * concatVideosAsync/concatAudioSegmentsAsync so the download/write loop lives once. */
     _writeSequentialInputsAsync: async function (ffmpeg, urls, ext, onProgress, startPct, endPct) {
         const written = [];
-        for (let i = 0; i < urls.length; i++) {
+        // for-await keeps MEMFS writes and progress in input order (one ffmpeg instance).
+        for await (const [i, url] of urls.entries()) {
             const name = "in" + String(i).padStart(3, "0") + "." + ext;
             reportProgress(onProgress,
                 startPct + Math.round((i / urls.length) * (endPct - startPct)),
                 "Downloading " + (i + 1) + "/" + urls.length + "…");
-            const data = await this._safeFetchFile(urls[i]);
+            const data = await this._safeFetchFile(url);
             await ffmpeg.writeFile(name, data);
             written.push(name);
         }
@@ -194,15 +195,14 @@ window.PageToMovieFfmpeg = {
         const out = await ffmpeg.readFile(outName);
         const blob = new Blob([out.buffer], { type: mimeType });
         const url = URL.createObjectURL(blob);
-        for (const n of cleanupNames) {
-            try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-        }
+        await this._deleteMemfsFiles(ffmpeg, cleanupNames);
         try { await ffmpeg.deleteFile(outName); } catch (_) { /* */ }
         return url;
     },
 
     _deleteMemfsFiles: async function (ffmpeg, names) {
-        for (const n of names) {
+        // One MEMFS at a time — deleteFile on a shared ffmpeg instance is not concurrent-safe.
+        for await (const n of names) {
             try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
         }
     },
@@ -298,11 +298,7 @@ window.PageToMovieFfmpeg = {
             reportProgress(onProgress, 92, "Preparing player…");
             const hashed = await this._hashStitchedBlobAsync(await ffmpeg.readFile("out.mp4"));
             this._blobUrl = URL.createObjectURL(hashed.blob);
-            for (const n of written) {
-                try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-            }
-            try { await ffmpeg.deleteFile("list.txt"); } catch (_) { /* */ }
-            try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
+            await this._deleteMemfsFiles(ffmpeg, written.concat(["list.txt", "out.mp4"]));
             reportProgress(onProgress, 100, "Ready");
             return { success: true, url: this._blobUrl, count: list.length, sha256: hashed.sha256, byteLength: hashed.byteLength };
         } catch (err) {
@@ -1152,7 +1148,8 @@ window.PageToMovieFfmpeg = {
 
     _speechSlicesFromUrlsAsync: async function (ctx, list, pad) {
         const slices = [];
-        for (const url of list) {
+        // Decode on one AudioContext in list order so the stitched sample matches the takes.
+        for await (const url of list) {
             const resp = await fetch(url);
             const arr = await resp.arrayBuffer();
             let decoded;
@@ -1255,10 +1252,10 @@ window.PageToMovieFfmpeg = {
     },
 
     _writeOverlayVoicesAsync: async function (ffmpeg, list, audioNames, onProgress) {
-        for (let i = 0; i < list.length; i++) {
+        // Sequential: each voice is fetched, decoded, and written on the same ffmpeg instance.
+        for await (const [i, seg] of list.entries()) {
             reportProgress(onProgress, 8 + Math.round((i / list.length) * 22),
                 "Loading voice " + (i + 1) + "/" + list.length + "…");
-            const seg = list[i];
             console.log("[dub] seg " + i + ": start=" + seg.startSec + "s end=" + seg.endSec + "s");
             const rawName = "ov_voice_raw_" + i + this._overlayVoiceExt(seg.audioUrl);
             const wavName = "ov_voice_" + i + ".wav";
@@ -1294,8 +1291,8 @@ window.PageToMovieFfmpeg = {
     _buildMuteBaseFilterAsync: async function (list, audioNames) {
         const fmt = "aformat=sample_rates=48000:channel_layouts=stereo";
         const segInfo = [];
-        for (let i = 0; i < list.length; i++) {
-            const seg = list[i];
+        // Probe durations one file at a time; ffmpeg.wasm has a single MEMFS.
+        for await (const [i, seg] of list.entries()) {
             const startSec = Math.max(0, +seg.startSec || 0);
             const targetDur = Math.max(0.2, (+seg.endSec || 0) - startSec);
             const probe = await this._probeDurationMemfsAsync(audioNames[i]);
@@ -1398,9 +1395,7 @@ window.PageToMovieFfmpeg = {
                 return { success: true, url: url };
             } catch (err) {
                 console.error("overlayVoiceSegmentsAsync failed:", err);
-                for (const n of [inVideo, outName].concat(audioNames)) {
-                    try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-                }
+                await this._deleteMemfsFiles(ffmpeg, [inVideo, outName].concat(audioNames));
                 return { success: false, error: err.message || String(err) };
             }
         });
@@ -1697,8 +1692,7 @@ window.PageToMovieFfmpeg = {
                 return { success: true, url: url };
             } catch (err) {
                 console.error("concatAudioSegmentsAsync failed:", err);
-                for (const n of written) { try { await ffmpeg.deleteFile(n); } catch (_) { /* */ } }
-                try { await ffmpeg.deleteFile("music_list.txt"); } catch (_) { /* */ }
+                await this._deleteMemfsFiles(ffmpeg, written.concat(["music_list.txt"]));
                 return { success: false, error: err.message || String(err) };
             }
         });
@@ -1757,7 +1751,7 @@ window.PageToMovieFfmpeg = {
                 return { success: true, url: url };
             } catch (err) {
                 console.error("mixSceneAudioAsync failed:", err);
-                for (const n of [inVideo, inMusic, outName]) { try { await ffmpeg.deleteFile(n); } catch (_) { /* */ } }
+                await this._deleteMemfsFiles(ffmpeg, [inVideo, inMusic, outName]);
                 return { success: false, error: err.message || String(err) };
             }
         });

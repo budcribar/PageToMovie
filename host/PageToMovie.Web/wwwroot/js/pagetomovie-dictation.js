@@ -132,7 +132,9 @@
         _rec = rec;
         rec.start();
         // Live waveform for coach popover (best-effort; speech still works if meter fails)
-        startMeter(dotNetRef, _fieldId);
+        startMeter(dotNetRef, _fieldId).catch(function (err) {
+          console.debug("dictation meter unavailable", err);
+        });
         return Promise.resolve({ ok: true });
       } catch (ex) {
         stopMeter();
