@@ -4,6 +4,13 @@
  * straight to the user's local hard drive.
  */
 
+/** One zip entry at a time so inflate stays in central-directory order. */
+async function* eachInOrder(items) {
+    for (const item of items) {
+        yield item;
+    }
+}
+
 window.PageToMovieExport = {
     _directoryHandle: null,
 
@@ -547,7 +554,7 @@ window.PageToMovieExport = {
         }
         const entries = [];
         // Inflate in central-directory order so a large export does not decode every entry at once.
-        for await (const item of pending) {
+        for await (const item of eachInOrder(pending)) {
             const data = item.method === 0
                 ? item.comp.slice()
                 : await this._inflateRawAsync(item.comp, item.uncompSize);

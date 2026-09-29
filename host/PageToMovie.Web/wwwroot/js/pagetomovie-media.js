@@ -9,6 +9,13 @@ function ignoreDirectoryProbe(err, reason) {
     console.debug("[PageToMovieMedia]", reason, err);
 }
 
+/** One item at a time. Path segments depend on the previous directory handle. */
+async function* eachInOrder(items) {
+    for (const item of items) {
+        yield item;
+    }
+}
+
 window.PageToMovieMedia = {
     _root: null, // FileSystemDirectoryHandle
     _blobUrls: {},
@@ -35,7 +42,7 @@ window.PageToMovieMedia = {
         if (parts.length > 0) {
             try {
                 let dir = root;
-                for await (const part of parts)
+                for await (const part of eachInOrder(parts))
                     dir = await dir.getDirectoryHandle(part, { create: false });
                 return dir;
             } catch (err) {
@@ -228,7 +235,7 @@ window.PageToMovieMedia = {
         const parts = relativePath.replaceAll("\\", "/").split("/").filter(Boolean);
         let dir = this._root;
         // Each segment is resolved from the previous handle, so the walk cannot be parallel.
-        for await (const part of parts.slice(0, -1))
+        for await (const part of eachInOrder(parts.slice(0, -1)))
             dir = await dir.getDirectoryHandle(part, { create: true });
         const fileName = parts[parts.length - 1];
         return { dir, fileName };
@@ -909,7 +916,7 @@ window.PageToMovieMedia = {
         let base = "";
         if (prefix && String(prefix).trim()) {
             const parts = String(prefix).replaceAll("\\", "/").split("/").filter(Boolean);
-            for await (const part of parts) {
+            for await (const part of eachInOrder(parts)) {
                 dir = await dir.getDirectoryHandle(part, { create: false });
                 base = base ? `${base}/${part}` : part;
             }
