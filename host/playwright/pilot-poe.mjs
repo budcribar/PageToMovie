@@ -50,6 +50,35 @@ function ensureDir(d) {
   fs.mkdirSync(d, { recursive: true });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Next item starts only after `fn` for the previous item settles. */
+async function eachInOrder(items, fn, index = 0) {
+  if (index >= items.length) return;
+  await fn(items[index]);
+  return eachInOrder(items, fn, index + 1);
+}
+
+async function untilHttpReady(url, accept, timeoutMs, intervalMs) {
+  const start = Date.now();
+  async function attempt() {
+    try {
+      const response = await fetch(url);
+      if (accept(response)) return true;
+    } catch {
+      /* retry */
+    }
+    await delay(intervalMs);
+    return false;
+  }
+  while (Date.now() - start < timeoutMs) {
+    if (await attempt()) return true;
+  }
+  return false;
+}
+
 const API_HEADERS = {
   "Content-Type": "application/json",
   "X-FilmStudio-User": "pilot",
@@ -85,16 +114,16 @@ async function waitApiJobsIdle(projectId, timeoutMs = 600_000) {
   const start = Date.now();
   let lastMsg = "";
   let lastMsgAt = Date.now();
-  while (Date.now() - start < timeoutMs) {
+
+  async function attempt() {
     const j = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
     const jobs = j.json?.jobs || [];
     const active = jobs.find((x) => /queued|running/i.test(x.status || ""));
     if (!active) {
-      await new Promise((r) => setTimeout(r, 800));
+      await delay(800);
       const j2 = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
       const stillActive = (j2.json?.jobs || []).some((x) => /queued|running/i.test(x.status || ""));
-      if (!stillActive) return;
-      continue;
+      return !stillActive;
     }
     const msg = `${active.kind}|${active.index}|${active.message || ""}`;
     if (msg !== lastMsg) {
@@ -122,40 +151,32 @@ async function waitApiJobsIdle(projectId, timeoutMs = 600_000) {
       await fetch(`${API_URL}/api/jobs/cancel`, { method: "POST", headers: API_HEADERS }).catch(
         () => {}
       );
-      await new Promise((r) => setTimeout(r, 1500));
-      return;
+      await delay(1500);
+      return true;
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await delay(2000);
+    return false;
+  }
+
+  while (Date.now() - start < timeoutMs) {
+    if (await attempt()) return;
   }
   throw new Error("API jobs did not become idle in time");
 }
 
 async function waitForApi(timeoutMs = 120_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const r = await fetch(`${API_URL}/health`);
-      if (r.ok) return;
-    } catch {
-      /* retry */
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error(`API not healthy at ${API_URL}`);
+  const ready = await untilHttpReady(`${API_URL}/health`, (response) => response.ok, timeoutMs, 1000);
+  if (!ready) throw new Error(`API not healthy at ${API_URL}`);
 }
 
 async function waitForWeb(timeoutMs = 120_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const r = await fetch(WEB_URL);
-      if (r.ok || r.status === 200) return;
-    } catch {
-      /* retry */
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error(`Web not reachable at ${WEB_URL}`);
+  const ready = await untilHttpReady(
+    WEB_URL,
+    (response) => response.ok || response.status === 200,
+    timeoutMs,
+    1000
+  );
+  if (!ready) throw new Error(`Web not reachable at ${WEB_URL}`);
 }
 
 async function screenshot(page, name) {
@@ -256,14 +277,18 @@ async function pollJobUntilIdleOrHung(page, projectId, state) {
 async function waitJobIdle(page, timeoutMs = 600_000, projectId = PROJECT_NAME) {
   const start = Date.now();
   const state = { lastMsg: "", lastMsgAt: Date.now() };
-  while (Date.now() - start < timeoutMs) {
+  async function attempt() {
     // API by projectId works without browser auth cookies
     try {
-      if (await pollJobUntilIdleOrHung(page, projectId, state)) return;
+      if (await pollJobUntilIdleOrHung(page, projectId, state)) return true;
     } catch {
       /* fall through */
     }
     await page.waitForTimeout(1500);
+    return false;
+  }
+  while (Date.now() - start < timeoutMs) {
+    if (await attempt()) return;
   }
   throw new Error("Job did not become idle in time");
 }
@@ -535,9 +560,7 @@ async function lockCastUntilReady(page) {
     log("cast list pass", String(pass), String(rows.length), rows.map((c) => c.key || c.Key).join(", "));
     if (rows.length === 0) throw new Error("No characters after cast extract");
 
-    for (const c of rows) {
-      await prepareCharacterRow(page, c);
-    }
+    await eachInOrder(rows, (c) => prepareCharacterRow(page, c));
 
     const adapt = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/adaptation`);
     const cast = adapt.json?.adaptation?.cast || adapt.json?.Adaptation?.Cast || {};
@@ -575,11 +598,10 @@ async function gotoShotsFromCharacters(page) {
 async function discoverSceneNums(page, maxScene) {
   const genBtns = page.locator('[data-testid^="scenes-gen-"]');
   const btnCount = await genBtns.count();
-  const sceneNums = [];
-  for (let i = 0; i < btnCount; i++) {
-    const sn = Number(await genBtns.nth(i).getAttribute("data-scene"));
-    if (sn >= 1 && sn <= maxScene) sceneNums.push(sn);
-  }
+  const attrs = await Promise.all(
+    Array.from({ length: btnCount }, (_, i) => genBtns.nth(i).getAttribute("data-scene"))
+  );
+  const sceneNums = attrs.map((attr) => Number(attr)).filter((sn) => sn >= 1 && sn <= maxScene);
   if (sceneNums.length === 0) sceneNums.push(1);
   return sceneNums;
 }
@@ -651,10 +673,12 @@ async function generateOneScene(page, sn, res) {
       path.basename(v).match(new RegExp(`scene_0*${sn}_clip_`, "i"))
   );
   log(`scene ${sn} videos`, String(vids.length));
-  for (const v of vids) {
-    await extractKeyframes(v, path.join(ARTIFACTS, "frames"), path.basename(v, ".mp4"));
-    copyClipPromptArtifacts(v);
-  }
+  await Promise.all(
+    vids.map(async (v) => {
+      await extractKeyframes(v, path.join(ARTIFACTS, "frames"), path.basename(v, ".mp4"));
+      copyClipPromptArtifacts(v);
+    })
+  );
   fs.writeFileSync(
     path.join(ARTIFACTS, `videos-after-s${sn}.json`),
     JSON.stringify(findProjectVideos(PROJECT_NAME), null, 2)
@@ -735,9 +759,10 @@ async function reviewOneScene(page, label, reviewState, failEvery) {
   const autoBtns = page.locator(`[data-testid^="review-auto-${sceneNum}-"]`);
   const n = await autoBtns.count();
   log(`${label} auto-review buttons`, String(n));
-  for (let i = 0; i < n; i++) {
-    await autoReviewOneClip(page, autoBtns.nth(i), reviewState, failEvery);
-  }
+  await eachInOrder(
+    Array.from({ length: n }, (_, i) => i),
+    (i) => autoReviewOneClip(page, autoBtns.nth(i), reviewState, failEvery)
+  );
 }
 
 async function rebuildWipIfVisible(page) {
@@ -761,6 +786,32 @@ async function snapshotWipMovie() {
   } catch {
     log("WIP movie", wip);
   }
+}
+
+async function attributeReadyOrPause(locator, attribute, expected, page) {
+  if ((await locator.getAttribute(attribute)) === expected) return true;
+  await page.waitForTimeout(1000);
+  return false;
+}
+
+async function enabledOrPause(locator, page) {
+  if (await locator.isEnabled()) return true;
+  await page.waitForTimeout(1000);
+  return false;
+}
+
+async function approveNextPendingRule(page, approvedTexts) {
+  const button = page.locator('[data-testid^="learning-approve-"]').first();
+  if (!(await button.count())) return false;
+  // Capture suggestion text from the row before it disappears
+  const row = button.locator(
+    "xpath=ancestor::*[contains(@class,'list-group-item') or contains(@class,'card') or self::tr][1]"
+  );
+  const rowText = ((await row.count()) ? await row.innerText() : "").replace(/\s+/g, " ").trim();
+  if (rowText.length > 20) approvedTexts.push(rowText.slice(0, 400));
+  await button.click();
+  await page.waitForTimeout(600);
+  return true;
 }
 
 async function step(name, fn) {
@@ -884,9 +935,7 @@ async function main() {
       const status = page.getByTestId("screenplay-status");
       await status.waitFor({ timeout: 60_000 });
       for (let i = 0; i < 60; i++) {
-        const draft = await status.getAttribute("data-draft");
-        if (draft === "true") break;
-        await page.waitForTimeout(1000);
+        if (await attributeReadyOrPause(status, "data-draft", "true", page)) break;
       }
       await dumpJob(page, "screenplay");
       await screenshot(page, "03-screenplay-draft");
@@ -911,8 +960,7 @@ async function main() {
       await sign.waitFor({ state: "visible", timeout: 30_000 });
       // Poll until enabled
       for (let i = 0; i < 120; i++) {
-        if (await sign.isEnabled()) break;
-        await page.waitForTimeout(1000);
+        if (await enabledOrPause(sign, page)) break;
       }
       if (!(await sign.isEnabled())) {
         throw new Error("screenplay-signoff still disabled after waiting for jobs");
@@ -957,8 +1005,7 @@ async function main() {
       // Wait ready
       const st = page.getByTestId("shots-status");
       for (let i = 0; i < 90; i++) {
-        if ((await st.getAttribute("data-ready")) === "true") break;
-        await page.waitForTimeout(1000);
+        if (await attributeReadyOrPause(st, "data-ready", "true", page)) break;
       }
       const scenes = await st.getAttribute("data-scenes");
       const clips = await st.getAttribute("data-clips");
@@ -984,9 +1031,7 @@ async function main() {
       const sceneNums = await discoverSceneNums(page, maxScene);
       log("will generate scenes", sceneNums.join(", "), fullMovie ? "(FULL_MOVIE)" : "(pilot)");
 
-      for (const sn of sceneNums) {
-        await generateOneScene(page, sn, res);
-      }
+      await eachInOrder(sceneNums, (sn) => generateOneScene(page, sn, res));
     });
 
     await step("07_review_auto_and_human", async () => {
@@ -1003,9 +1048,7 @@ async function main() {
       const failEvery = Math.max(1, Math.round(1 / Math.max(0.01, FAIL_RATE)));
       const reviewState = { index: 0 };
 
-      for (const label of sceneLabels) {
-        await reviewOneScene(page, label, reviewState, failEvery);
-      }
+      await eachInOrder(sceneLabels, (label) => reviewOneScene(page, label, reviewState, failEvery));
 
       await rebuildWipIfVisible(page);
       await screenshot(page, "07-review-done");
@@ -1030,14 +1073,7 @@ async function main() {
       log("pending rules to approve", String(ac));
       const approvedTexts = [];
       for (let i = 0; i < ac; i++) {
-        const b = page.locator('[data-testid^="learning-approve-"]').first();
-        if (!(await b.count())) break;
-        // Capture suggestion text from the row before it disappears
-        const row = b.locator("xpath=ancestor::*[contains(@class,'list-group-item') or contains(@class,'card') or self::tr][1]");
-        const rowText = ((await row.count()) ? await row.innerText() : "").replace(/\s+/g, " ").trim();
-        if (rowText.length > 20) approvedTexts.push(rowText.slice(0, 400));
-        await b.click();
-        await page.waitForTimeout(600);
+        if (!(await approveNextPendingRule(page, approvedTexts))) break;
       }
 
       // Explicit checklist sync from active project rules (belt + suspenders with approve hook)
