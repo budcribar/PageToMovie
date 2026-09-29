@@ -598,10 +598,13 @@ async function gotoShotsFromCharacters(page) {
 async function discoverSceneNums(page, maxScene) {
   const genBtns = page.locator('[data-testid^="scenes-gen-"]');
   const btnCount = await genBtns.count();
-  const attrs = await Promise.all(
-    Array.from({ length: btnCount }, (_, i) => genBtns.nth(i).getAttribute("data-scene"))
-  );
-  const sceneNums = attrs.map((attr) => Number(attr)).filter((sn) => sn >= 1 && sn <= maxScene);
+  const sceneNums = (
+    await Promise.all(
+      Array.from({ length: btnCount }, (_, i) =>
+        genBtns.nth(i).evaluate((el) => Number(el.dataset.scene))
+      )
+    )
+  ).filter((sn) => sn >= 1 && sn <= maxScene);
   if (sceneNums.length === 0) sceneNums.push(1);
   return sceneNums;
 }
