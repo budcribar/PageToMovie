@@ -214,12 +214,35 @@
       "maxInputTokens": 1050000,
       "inputCostPerMillionTokens": 2.0,
       "outputCostPerMillionTokens": 10.0,
+      "notes": "Legacy. Superseded by gpt-6.1-sol. Still available on OpenAI; docs say \"See GPT-6.1 Sol for the newer Sol model.\" Reasoning effort: none, low, medium (default), high, xhigh, max. Text and image input, text out. Knowledge cutoff Apr 20, 2026. Prefer the Responses API for built-in tools and function calling.",
       "providerId": "openai",
       "providerLabel": "OpenAI",
       "maxOutputTokens": 128000,
-      "pricingNotes": "OpenAI list 2026-09-23: $2.00 input / $0.20 cached / $2.50 cache writes / $10.00 output per 1M. Long-context >272K: 2x input/cache and 1.5x output for full request ($4 / $15). platform.openai.com/docs/models/gpt-6-sol",
-      "lastVerifiedAt": "2026-09-23",
-      "pricingLastReviewedAt": "2026-09-23"
+      "pricingNotes": "OpenAI list 2026-09-30: $2.00 input / $0.20 cached input / $2.50 cache writes / $10.00 output per 1M. Long-context >272K: 2x input/cache and 1.5x output for full request ($4 / $15). Cached input is 10% of uncached. developers.openai.com/api/docs/models/gpt-6-sol",
+      "lastVerifiedAt": "2026-09-30",
+      "pricingLastReviewedAt": "2026-09-30"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "displayName": "OpenAI GPT-6.1 Sol",
+      "capability": "Chat",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1050000,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 10.0,
+      "notes": "NEW GA successor to gpt-6-sol. Near-Astra performance at lower cost. Reasoning effort: low, medium (default), high, xhigh, max (none and minimal unsupported). Text and image input, text out. Knowledge cutoff Apr 30, 2026. Prefer the Responses API for tool calling; Chat Completions is supported without tool calling. Context 1,050,000; max output 128,000. Long-context surcharge above 272K tokens: 2x input/cache rates and 1.5x output for the full request. Cached input is 5% of uncached ($0.10 per 1M), unlike gpt-6-sol (10% / $0.20).",
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "maxOutputTokens": 128000,
+      "pricingNotes": "OpenAI list 2026-09-30: $2.00 input / $0.10 cached input / $2.50 cache writes / $10.00 output per 1M. Long-context >272K: 2x input/cache and 1.5x output for full request. Cached input is 5% of uncached (differs from gpt-6-sol's 10% / $0.20). Sources: developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "lastVerifiedAt": "2026-09-30",
+      "pricingLastReviewedAt": "2026-09-30"
     },
     {
       "id": "gpt-6-luna",
