@@ -2730,11 +2730,57 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "ElevenLabs flagship TTS. 70+ languages. Official character limit 5000. Spoken dialogue from a personal clone sample on Cast.",
+      "notes": "Legacy / superseded by eleven_v4 (still available). 70+ languages. Official character limit 5000. Spoken dialogue from a personal clone sample on Cast.",
       "providerId": "elevenlabs",
       "providerLabel": "ElevenLabs",
       "maxPromptLength": 5000,
-      "lastVerifiedAt": "2026-08-15"
+      "lastVerifiedAt": "2026-10-01"
+    },
+    {
+      "id": "eleven_v4",
+      "displayName": "Eleven v4",
+      "capability": "Voice",
+      "provider": "ElevenLabs",
+      "apiBase": "https://api.elevenlabs.io/v1",
+      "endpointPath": "text-to-speech",
+      "requiredEnvKeys": [
+        "ElevenLabs_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "costPerThousandCharsUsd": 0.08,
+      "maxPromptLength": 10000,
+      "notes": "NEW GA flagship TTS succeeding eleven_v3. 90+ languages. Audio tags. Instant + Professional Voice Clone supported. Docs: https://elevenlabs.io/docs/overview/models and https://elevenlabs.io/docs/overview/capabilities/text-to-speech/eleven-v4",
+      "providerId": "elevenlabs",
+      "providerLabel": "ElevenLabs",
+      "pricingNotes": "List $0.08 per 1K characters. Promotional 72% off until 2026-10-12: $0.022 per 1K characters. https://elevenlabs.io/pricing/api",
+      "lastVerifiedAt": "2026-10-01",
+      "pricingLastReviewedAt": "2026-10-01"
+    },
+    {
+      "id": "eleven_v4_turbo",
+      "displayName": "Eleven v4 Turbo",
+      "capability": "Voice",
+      "provider": "ElevenLabs",
+      "apiBase": "https://api.elevenlabs.io/v1",
+      "endpointPath": "text-to-speech",
+      "requiredEnvKeys": [
+        "ElevenLabs_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "costPerThousandCharsUsd": 0.04,
+      "maxPromptLength": 10000,
+      "notes": "NEW GA realtime/low-latency sibling of eleven_v4. Ultra-low latency (~100ms). 90+ languages. Same ElevenLabs_API_KEY. Docs: https://elevenlabs.io/docs/overview/models",
+      "providerId": "elevenlabs",
+      "providerLabel": "ElevenLabs",
+      "pricingNotes": "List $0.04 per 1K characters. Promotional until 2026-10-12: $0.011 per 1K characters. https://elevenlabs.io/pricing/api",
+      "lastVerifiedAt": "2026-10-01",
+      "pricingLastReviewedAt": "2026-10-01"
     },
     {
       "id": "eleven_voice_clone",
