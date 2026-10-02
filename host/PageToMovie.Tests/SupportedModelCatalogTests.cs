@@ -626,6 +626,34 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
+    public void ImagineVideo15Lite_is_flat_two_cents_without_voice_lock()
+    {
+        // docs.x.ai/developers/pricing and /developers/models/grok-imagine-video-1.5-lite
+        // (reviewed 2026-10-02): one flat $0.020/sec line. No voice lock / reference_audios.
+        var m = SupportedModelCatalog.Find("grok-imagine-video-1.5-lite", ModelCapability.Video);
+        Assert.NotNull(m);
+        Assert.True(m!.Enabled);
+        Assert.Equal("grok", m.ProviderId);
+        Assert.Equal("xAI", m.ProviderLabel);
+        Assert.Equal(0.02, m.VideoCostPerSecondByResolution!["480p"]);
+        Assert.Equal(0.02, m.VideoCostPerSecondByResolution["720p"]);
+        Assert.False(m.VideoCostPerSecondByResolution.ContainsKey("1080p"));
+        Assert.Equal(0, m.VideoReferenceImageCost);
+        Assert.False(m.SupportsReferenceAudios);
+        Assert.Null(m.MaxReferenceAudios);
+        Assert.True(m.PresetVoices is null || m.PresetVoices.Count == 0);
+        Assert.False(m.SupportsReferenceImages);
+        Assert.Equal(0, m.MaxReferenceImages);
+        Assert.False(m.SupportsVideoContinue);
+        Assert.Null(m.VideoExtendCostPerSecond);
+        Assert.Equal(1, m.MinClipDurationSeconds);
+        Assert.Equal(15, m.MaxClipDurationSeconds);
+        Assert.Equal(15, m.AbsMaxClipDurationSeconds);
+        Assert.Contains("voice lock", m.Notes, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("grok-imagine-video", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+    }
+
+    [Fact]
     public void Other_video_models_do_not_claim_reference_audios()
     {
         // grok-imagine-video-1.5 has its own roster test. MiniMax H3 rows opt into

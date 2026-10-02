@@ -918,6 +918,49 @@
       "pricingLastReviewedAt": "2026-09-08"
     },
     {
+      "id": "grok-imagine-video-1.5-lite",
+      "displayName": "Grok Imagine Video 1.5 Lite",
+      "capability": "Video",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "videos/generations",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "maxReferenceImages": 0,
+      "supportsReferenceAudios": false,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 1,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 1,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.02,
+        "720p": 0.02
+      },
+      "supportedAspectRatios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Cost-only xAI video option. Model card docs.x.ai/developers/models/grok-imagine-video-1.5-lite (2026-10-02): modalities text, image \u2192 video; output $0.020/sec. NO documented voice lock / reference_audios, and no documented reference_images, extend path, resolution list, or input-image fee. Shared videos/generations API (docs.x.ai/developers/model-capabilities/video/generation and REST inference/videos): duration 1\u201315s; aspect ratios 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (default 16:9). Resolution enum is 480p/720p/1080p, but native 1080p is called out only for grok-imagine-video-1.5, so 1080p is not claimed here. That generation guide says generated videos include an audio track by default (generate_audio defaults on); the lite card does not repeat it. Reference-to-video and reference_audios are documented for grok-imagine-video-1.5, not this id \u2014 supportsReferenceImages and supportsReferenceAudios are false; supportsVideoContinue is false (extensions examples use grok-imagine-video). The image modality is a single start-frame image (image-to-video), not multi-plate reference_images. maxPromptLength 4000 is the Imagine Video family prompt budget already on the sibling xAI video rows (API rejects near 4096); the lite card does not publish a distinct cap.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "maxPromptLength": 4000,
+      "videoReferenceImageCost": 0,
+      "pricingNotes": "docs.x.ai/developers/pricing and docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-02: flat output $0.020 per second. No per-resolution price table and no input-image fee (videoReferenceImageCost=0). videoCostPerSecondByResolution stores that flat rate on 480p and 720p only; 1080p is omitted because the generation guide attributes native 1080p to grok-imagine-video-1.5, not this id. The same pricing page lists grok-imagine-video as a flat $0.050/sec and grok-imagine-video-1.5 as a flat $0.080/sec, with no 480p/720p/1080p split; those existing rows were not changed.",
+      "lastVerifiedAt": "2026-10-02",
+      "pricingLastReviewedAt": "2026-10-02"
+    },
+    {
       "id": "imagine-video-1.5-extend",
       "displayName": "Imagine Video 1.5 + extend",
       "capability": "Video",
