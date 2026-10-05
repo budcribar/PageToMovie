@@ -96,6 +96,53 @@ public class ConfigurationStudioCoverageTests
             editId: host.Coverage._coverageEditId));
     }
 
+    [Fact]
+    public void Empty_video_slot_uses_catalog_default_bundle()
+    {
+        var host = new Configuration();
+        host.EnsureDomains();
+        host.Catalog._videoModels = SupportedModelCatalog.ToDtoList()
+            .Where(m => string.Equals(m.Capability, "video", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var def = SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video);
+        Assert.Equal("imagine-video-1.5-extend", def);
+        var provider = SupportedModelCatalog.ProviderIdFor(def, ModelCapability.Video);
+
+        host.Keys.ApplyProviderModelDefaults(provider);
+
+        Assert.Equal(def, host.Coverage._modelName);
+        host.Coverage._modelName = "";
+        host.Coverage.AlignCoverageModelToProvider("video", provider);
+        Assert.Equal(def, host.Coverage._modelName);
+        var roles = SupportedModelCatalog.ResolveVideoRoles(host.Coverage._modelName);
+        Assert.Equal("grok-imagine-video-1.5", roles.WireModelId(isExtendHop: false));
+        Assert.Equal("grok-imagine-video", roles.WireModelId(isExtendHop: true));
+        SupportedModelCatalog.EnsureNotVirtualWireModel(roles.WireModelId(isExtendHop: false));
+        SupportedModelCatalog.EnsureNotVirtualWireModel(roles.WireModelId(isExtendHop: true));
+        var voices = SupportedModelCatalog.GenerateRolePresetVoices(host.Coverage._modelName);
+        Assert.Contains(voices, v => v.Id == "aurora");
+        Assert.True(roles.Generate.SupportsReferenceAudios);
+    }
+
+    [Fact]
+    public void Saved_video_model_stays_when_provider_default_is_applied()
+    {
+        var host = new Configuration();
+        host.EnsureDomains();
+        host.Catalog._videoModels = SupportedModelCatalog.ToDtoList()
+            .Where(m => string.Equals(m.Capability, "video", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        host.Coverage._modelName = "grok-imagine-video";
+        var provider = SupportedModelCatalog.ProviderIdFor("grok-imagine-video", ModelCapability.Video);
+
+        host.Keys.ApplyProviderModelDefaults(provider);
+        Assert.Equal("grok-imagine-video", host.Coverage._modelName);
+
+        host.Coverage.AlignCoverageModelToProvider("video", provider);
+        Assert.Equal("grok-imagine-video", host.Coverage._modelName);
+    }
+
     private static string FirstCatalogProviderId(ModelCapability capability)
     {
         var entry = SupportedModelCatalog.ForCapability(capability)

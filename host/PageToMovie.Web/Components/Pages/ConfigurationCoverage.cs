@@ -292,11 +292,42 @@ public partial class Configuration
                     ? SupportedModelCatalog.NormalizeProviderId(m.ProviderId)
                     : SupportedModelCatalog.NormalizeProviderId(m.Provider);
 
-            var pick = models.FirstOrDefault(m =>
+            bool ForProvider(SupportedModelDto m) =>
                 !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(PidOf(m), pid, StringComparison.OrdinalIgnoreCase));
+                && string.Equals(PidOf(m), pid, StringComparison.OrdinalIgnoreCase);
+
+            // A saved video model for this provider stays put. Unset slots take the catalog default.
+            if (string.Equals(coverageId, CapVideo, StringComparison.OrdinalIgnoreCase))
+            {
+                var current = GetCoverageModelId(coverageId);
+                if (models.Any(m => ForProvider(m)
+                        && string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase)))
+                    return;
+            }
+
+            var pick = PreferUnsetModel(coverageId, models.Where(ForProvider).ToList());
             if (pick is not null)
                 SetCoverageModelId(coverageId, pick.Id);
+        }
+
+        /// <summary>
+        /// Unset Video coverage uses <c>capabilities[].defaultModelId</c> when that row is in
+        /// <paramref name="candidates"/>. Other jobs keep the first candidate.
+        /// </summary>
+        internal static SupportedModelDto? PreferUnsetModel(
+            string coverageId,
+            IReadOnlyList<SupportedModelDto> candidates)
+        {
+            if (candidates.Count == 0) return null;
+            if (string.Equals(coverageId, CapVideo, StringComparison.OrdinalIgnoreCase))
+            {
+                var def = SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video);
+                var preferred = candidates.FirstOrDefault(m =>
+                    string.Equals(m.Id, def, StringComparison.OrdinalIgnoreCase));
+                if (preferred is not null)
+                    return preferred;
+            }
+            return candidates[0];
         }
 
 
@@ -371,8 +402,10 @@ public partial class Configuration
             var stillValid = models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase));
             if (!stillValid)
             {
-                // Prefer clone-step for voice; otherwise first model for this provider.
-                var pick = models.FirstOrDefault(m => m.IsVoiceCloneStep) ?? models.FirstOrDefault();
+                // Voice prefers the clone step. Unset video prefers the catalog default.
+                var pick = string.Equals(coverageId, CapVideo, StringComparison.OrdinalIgnoreCase)
+                    ? PreferUnsetModel(coverageId, models)
+                    : models.FirstOrDefault(m => m.IsVoiceCloneStep) ?? models.FirstOrDefault();
                 if (pick is not null)
                     SetCoverageModelId(coverageId, pick.Id);
                 else if (coverageId is CapMusic or CapVoice or CapVideoEdit)

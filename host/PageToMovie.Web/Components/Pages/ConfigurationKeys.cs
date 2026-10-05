@@ -226,7 +226,7 @@ public sealed partial class Configuration
 
         private async Task ApplyNewKeySideEffectsAsync(string providerId)
         {
-            // Fill empty required slots with this provider's first catalog models (if any).
+            // Fill empty required slots. Video uses the catalog default; other jobs use the first model.
             if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
             {
                 ApplyProviderModelDefaults(providerId);
@@ -260,20 +260,28 @@ public sealed partial class Configuration
             providerId is "fal" or "suno" or "aimusicapi" or "elevenlabs";
 
 
-        /// <summary>After attaching a provider key, set empty required slots to that provider's first catalog model.</summary>
+        /// <summary>
+        /// After attaching a provider key, set empty required slots.
+        /// Video uses the catalog default when that model belongs to the provider; other jobs use the first catalog model.
+        /// A slot that already names a model is left unchanged.
+        /// </summary>
         internal void ApplyProviderModelDefaults(string providerId)
         {
             var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
-            void Prefer(ref string slot, IReadOnlyList<SupportedModelDto> models)
+            void Prefer(ref string slot, IReadOnlyList<SupportedModelDto> models, string? coverageId = null)
             {
                 if (!string.IsNullOrWhiteSpace(slot) && !slot.Equals("none", StringComparison.OrdinalIgnoreCase))
                     return;
-                var hit = models.FirstOrDefault(m =>
+                var candidates = models.Where(m =>
                     !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                SupportedModelDto? hit = string.Equals(coverageId, "video", StringComparison.OrdinalIgnoreCase)
+                    ? ConfigurationCoverage.PreferUnsetModel("video", candidates)
+                    : candidates.FirstOrDefault();
                 if (hit is not null) slot = hit.Id;
             }
-            Prefer(ref S.Coverage._modelName, S.Catalog._videoModels);
+            Prefer(ref S.Coverage._modelName, S.Catalog._videoModels, "video");
             Prefer(ref S.Coverage._imageModel, S.Catalog._imageModels);
             Prefer(ref S.Coverage._planningModel, S.Catalog._planningModels);
             Prefer(ref S.Coverage._visionModel, S.Catalog._visionModels);
