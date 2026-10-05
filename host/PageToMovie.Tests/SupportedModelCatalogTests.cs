@@ -626,19 +626,21 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
-    public void ImagineVideo15Lite_is_flat_two_cents_without_voice_lock()
+    public void ImagineVideo15Lite_prices_by_resolution_without_voice_lock()
     {
         // docs.x.ai/developers/pricing and /developers/models/grok-imagine-video-1.5-lite
-        // (reviewed 2026-10-02): one flat $0.020/sec line. No voice lock / reference_audios.
+        // (reviewed 2026-10-05): 480p $0.02/s, 720p $0.03/s, 1080p $0.14/s, input image $0.01.
+        // No voice lock / reference_audios. supportsReferenceImages stays false: the catalog
+        // flag is multi-plate reference conditioning, not a single start-frame image.
         var m = SupportedModelCatalog.Find("grok-imagine-video-1.5-lite", ModelCapability.Video);
         Assert.NotNull(m);
         Assert.True(m!.Enabled);
         Assert.Equal("grok", m.ProviderId);
         Assert.Equal("xAI", m.ProviderLabel);
         Assert.Equal(0.02, m.VideoCostPerSecondByResolution!["480p"]);
-        Assert.Equal(0.02, m.VideoCostPerSecondByResolution["720p"]);
-        Assert.False(m.VideoCostPerSecondByResolution.ContainsKey("1080p"));
-        Assert.Equal(0, m.VideoReferenceImageCost);
+        Assert.Equal(0.03, m.VideoCostPerSecondByResolution["720p"]);
+        Assert.Equal(0.14, m.VideoCostPerSecondByResolution["1080p"]);
+        Assert.Equal(0.01, m.VideoReferenceImageCost);
         Assert.False(m.SupportsReferenceAudios);
         Assert.Null(m.MaxReferenceAudios);
         Assert.True(m.PresetVoices is null || m.PresetVoices.Count == 0);
