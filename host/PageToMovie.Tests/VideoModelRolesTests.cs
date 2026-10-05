@@ -93,7 +93,19 @@ public class VideoModelRolesTests : IDisposable
     {
         var list = SupportedModelCatalog.ForCapability(ModelCapability.Video);
         Assert.Contains(list, e => e.Id == VirtualId);
-        Assert.Equal(ExtendId, SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.Equal(VirtualId, SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+
+        var roles = SupportedModelCatalog.ResolveVideoRoles(VirtualId);
+        Assert.Equal(GenerateId, roles.WireModelId(isExtendHop: false));
+        Assert.Equal(ExtendId, roles.WireModelId(isExtendHop: true));
+        SupportedModelCatalog.EnsureNotVirtualWireModel(roles.WireModelId(isExtendHop: false));
+        SupportedModelCatalog.EnsureNotVirtualWireModel(roles.WireModelId(isExtendHop: true));
+
+        var voices = SupportedModelCatalog.GenerateRolePresetVoices(
+            SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.Equal(28, voices.Count);
+        Assert.Contains(voices, v => v.Id == "aurora");
+        Assert.True(roles.Generate.SupportsReferenceAudios);
     }
 
     [Fact]

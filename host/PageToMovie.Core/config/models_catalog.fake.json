@@ -101,7 +101,7 @@
       "id": "video",
       "displayName": "Video Generation",
       "description": "Generates MP4 video clips from prompts and character reference plates.",
-      "defaultModelId": "grok-imagine-video"
+      "defaultModelId": "imagine-video-1.5-extend"
     },
     {
       "id": "image",

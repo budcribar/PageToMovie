@@ -652,7 +652,7 @@ public class SupportedModelCatalogTests
         Assert.Equal(15, m.MaxClipDurationSeconds);
         Assert.Equal(15, m.AbsMaxClipDurationSeconds);
         Assert.Contains("voice lock", m.Notes, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("grok-imagine-video", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.Equal("imagine-video-1.5-extend", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
     }
 
     [Fact]
@@ -714,7 +714,7 @@ public class SupportedModelCatalogTests
         Assert.False(string.IsNullOrWhiteSpace(m.Notes));
         Assert.Contains("MINIMAX_API_KEY", m.Notes, StringComparison.Ordinal);
 
-        Assert.Equal("grok-imagine-video", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.Equal("imagine-video-1.5-extend", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
         Assert.DoesNotContain(
             SupportedModelCatalog.ForCapability(ModelCapability.Video),
             e => e.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
