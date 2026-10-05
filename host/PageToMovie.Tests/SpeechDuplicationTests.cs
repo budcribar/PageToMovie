@@ -42,13 +42,15 @@ public class SpeechDuplicationTests : IDisposable
     }
 
     private const string SpokenLine = "It made the children laugh and play.";
+    private const string NarratorLine = "And so the lamb went home again.";
 
     private static readonly string SpeechTagOpen = $"<{PromptFieldTags.Speech}>";
 
     /// <summary>
     /// A planned clip carries its line in <c>audio_payload</c> and nowhere else. The delivery is
     /// still planned — how the line is spoken is a plan decision; the words are not the plan's to
-    /// repeat.
+    /// repeat. When the video model allows more than one speaker, the second line may share the
+    /// clip as <c>secondary_dialogue</c>; it is still planned, and still only in the audio payload.
     /// </summary>
     [Fact]
     public async Task Stage2_plans_the_line_into_audio_payload_only()
@@ -75,27 +77,33 @@ public class SpeechDuplicationTests : IDisposable
         Assert.True(result.Ok);
 
         using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(result.OutPath!));
-        var spoken = 0;
+        var spoken = new List<string>();
         foreach (var scene in doc.RootElement.GetProperty("scenes").EnumerateArray())
         {
             foreach (var clip in scene.GetProperty("veo_clips").EnumerateArray())
             {
                 var visual = clip.GetProperty("visual_prompt").GetString() ?? "";
                 Assert.DoesNotContain(SpeechTagOpen, visual, StringComparison.OrdinalIgnoreCase);
-
-                if (!clip.TryGetProperty("audio_payload", out var audio)
-                    || !audio.TryGetProperty("dialogue", out var dlgEl)
-                    || dlgEl.GetString() is not { Length: > 0 } dialogue)
-                    continue;
-                spoken++;
-                // The words live in audio_payload. The visual prompt does not echo them, nor the
-                // "lip-syncs" / "OFF-CAMERA VOICEOVER" framing that used to introduce them.
-                Assert.DoesNotContain(dialogue.TrimEnd('.'), visual, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain("lip-syncs", visual, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain("OFF-CAMERA VOICEOVER", visual, StringComparison.OrdinalIgnoreCase);
+
+                if (!clip.TryGetProperty("audio_payload", out var audio))
+                    continue;
+                // A multi-speaker generate model (the Video catalog default) may put the second
+                // line on the same clip as secondary_dialogue. Every spoken line still lives only
+                // in audio_payload — counting the primary dialogue field alone would miss it.
+                foreach (var key in new[] { "dialogue", "secondary_dialogue", "tertiary_dialogue" })
+                {
+                    if (!audio.TryGetProperty(key, out var dlgEl)
+                        || dlgEl.GetString() is not { Length: > 0 } dialogue)
+                        continue;
+                    spoken.Add(dialogue);
+                    Assert.DoesNotContain(dialogue.TrimEnd('.'), visual, StringComparison.OrdinalIgnoreCase);
+                }
             }
         }
-        Assert.True(spoken >= 2, $"expected both spoken beats to be planned, saw {spoken}");
+        Assert.Contains(spoken, line => line.Contains(SpokenLine, StringComparison.Ordinal));
+        Assert.Contains(spoken, line => line.Contains(NarratorLine, StringComparison.Ordinal));
     }
 
     /// <summary>A current plan: the line reaches the model exactly once, in the AUDIO block.</summary>
