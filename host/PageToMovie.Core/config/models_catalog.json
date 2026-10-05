@@ -939,7 +939,8 @@
       "maxSpeakersPerClip": 1,
       "videoCostPerSecondByResolution": {
         "480p": 0.02,
-        "720p": 0.02
+        "720p": 0.03,
+        "1080p": 0.14
       },
       "supportedAspectRatios": [
         "1:1",
@@ -951,14 +952,14 @@
         "2:3"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Cost-only xAI video option. Model card docs.x.ai/developers/models/grok-imagine-video-1.5-lite (2026-10-02): modalities text, image \u2192 video; output $0.020/sec. NO documented voice lock / reference_audios, and no documented reference_images, extend path, resolution list, or input-image fee. Shared videos/generations API (docs.x.ai/developers/model-capabilities/video/generation and REST inference/videos): duration 1\u201315s; aspect ratios 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (default 16:9). Resolution enum is 480p/720p/1080p, but native 1080p is called out only for grok-imagine-video-1.5, so 1080p is not claimed here. That generation guide says generated videos include an audio track by default (generate_audio defaults on); the lite card does not repeat it. Reference-to-video and reference_audios are documented for grok-imagine-video-1.5, not this id \u2014 supportsReferenceImages and supportsReferenceAudios are false; supportsVideoContinue is false (extensions examples use grok-imagine-video). The image modality is a single start-frame image (image-to-video), not multi-plate reference_images. maxPromptLength 4000 is the Imagine Video family prompt budget already on the sibling xAI video rows (API rejects near 4096); the lite card does not publish a distinct cap.",
+      "notes": "Cost-only xAI video option. Model card docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-05: modalities text, image \u2192 video. resolutionPricing is 480p $0.02/s, 720p $0.03/s, 1080p $0.14/s; input image $0.01 per image. NO documented voice lock / reference_audios, and no documented multi-image reference_images or extend path. Shared videos/generations API (docs.x.ai/developers/model-capabilities/video/generation and REST inference/videos): duration 1\u201315s; aspect ratios 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (default 16:9); resolution enum 480p/720p/1080p, all three priced on this id. That generation guide says generated videos include an audio track by default (generate_audio defaults on); the lite card does not repeat it. Reference-to-video and reference_audios are documented for grok-imagine-video-1.5, not this id \u2014 supportsReferenceImages stays false because that flag means multi-plate reference conditioning, and the documented image input here is a single start-frame image (image-to-video), not reference_images. supportsReferenceAudios is false; supportsVideoContinue is false (extensions examples use grok-imagine-video). The $0.01 input-image fee is videoReferenceImageCost, not a reference-plate flag. maxPromptLength 4000 is the Imagine Video family prompt budget already on the sibling xAI video rows (API rejects near 4096); the lite card does not publish a distinct cap.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
-      "videoReferenceImageCost": 0,
-      "pricingNotes": "docs.x.ai/developers/pricing and docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-02: flat output $0.020 per second. No per-resolution price table and no input-image fee (videoReferenceImageCost=0). videoCostPerSecondByResolution stores that flat rate on 480p and 720p only; 1080p is omitted because the generation guide attributes native 1080p to grok-imagine-video-1.5, not this id. The same pricing page lists grok-imagine-video as a flat $0.050/sec and grok-imagine-video-1.5 as a flat $0.080/sec, with no 480p/720p/1080p split; those existing rows were not changed.",
-      "lastVerifiedAt": "2026-10-02",
-      "pricingLastReviewedAt": "2026-10-02"
+      "videoReferenceImageCost": 0.01,
+      "pricingNotes": "docs.x.ai/developers/pricing and docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-05: resolutionPricing 480p $0.02/s (unchanged), 720p $0.03/s (was $0.02 on 2026-10-02), 1080p $0.14/s (new). Input image $0.01 per image (videoReferenceImageCost=0.01; was 0). The pricing-page summary line still shows a flattened $0.020/sec, which matches the 480p rate. grok-imagine-video (flat $0.050/s) and grok-imagine-video-1.5 (480p $0.08/s, 720p $0.14/s, 1080p $0.25/s) were not changed.",
+      "lastVerifiedAt": "2026-10-05",
+      "pricingLastReviewedAt": "2026-10-05"
     },
     {
       "id": "imagine-video-1.5-extend",
@@ -1700,6 +1701,30 @@
       "pricingNotes": "fal.ai/models/fal-ai/flux-2/klein/9b 2026-08-15: $0.006/MP.",
       "lastVerifiedAt": "2026-08-15",
       "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "blackforestlabs/flux-3/text-to-image",
+      "displayName": "FLUX 3 Image (Fal.ai)",
+      "capability": "Image",
+      "provider": "Fal",
+      "apiBase": "https://queue.fal.run",
+      "endpointPath": "blackforestlabs/flux-3/text-to-image",
+      "requiredEnvKeys": [
+        "FAL_API_KEY",
+        "FAL_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.048,
+      "notes": "OPT-IN. Disabled: FalImageClient would not call this endpoint correctly from catalog data alone. It posts to https://fal.run/{model id} and does not read endpointPath (Fal video does). The body is the Flux.1 shape: image_size enum (square_hd, landscape_16_9, portrait_16_9, landscape_4_3, portrait_4_3), num_images, enable_safety_checker. FLUX 3 text-to-image expects prompt, aspect_ratio, resolution (512sq, 768sq, 1k, 2k, 4k), safety_tolerance, and output_format \u2014 not image_size, num_images, or enable_safety_checker (https://fal.ai/models/blackforestlabs/flux-3/text-to-image/api). EditVariantsAsync drops reference images and re-calls that same text-to-image path, so it never posts image_urls to blackforestlabs/flux-3/edit-image (up to 10 references; each at least 256px per side and at most 4 megapixels; https://fal.ai/models/blackforestlabs/flux-3/edit-image/api). Black Forest Labs FLUX 3 Image, GA 2026-10-01, served via Fal under the blackforestlabs/ namespace (not fal-ai/). Successor to fal-ai/flux-2, which stays unchanged. Output up to 4k. Not the Image default.",
+      "providerId": "fal",
+      "providerLabel": "Fal.ai",
+      "maxReferenceImages": 10,
+      "pricingNotes": "BFL list https://docs.bfl.ai/quick_start/pricing 2026-10-05: per image by resolution \u2014 768sq $0.041, 1k $0.048, 2k $0.100, 4k $0.607. Fal list for blackforestlabs/flux-3/text-to-image matches 1k at $0.048 (https://fal.ai/models/blackforestlabs/flux-3/text-to-image). Fal promo: launch rates are 50% off until 2026-10-08; a 1k image is $0.024 during the promo (page also says promotional pricing starts at $0.0205, half of the 768sq list) and $0.048 after. Promo is not stored in cost fields. imageCostPerImage=0.048 is the 1k list price (schema has no per-resolution image cost field).",
+      "lastVerifiedAt": "2026-10-05",
+      "pricingLastReviewedAt": "2026-10-05"
     },
     {
       "id": "gpt-image-2.5-sunburst",
@@ -2653,17 +2678,18 @@
       "requiredEnvKeys": [
         "SUNO_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
       "maxAudioDurationSeconds": 360,
-      "notes": "Model: Suno v5.5 (official reseller enum V5_5). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. V5_5 is deprecated on sunoapi.org as of 2026-09-28 (still accepted for backward compatibility). Prefer suno-v6. Kept enabled so existing project selections keep working. Custom-mode duration 10\u2013360s; prompt 5000 characters in custom mode.",
+      "notes": "Model: Suno v5.5 (official reseller enum V5_5). Provider: Suno API (sunoapi.org) \u2014 unofficial reseller. sunoapi.org labels V5_5 as (Discontinued) as of 2026-10-05 (https://docs.sunoapi.org/suno-api/generate-music); the enum is kept only for backward compatibility. Use a V6-series row instead: suno-v6, suno-v6-mini, or suno-v6-wild. Disabled and deprecated. Not a capability default. Custom-mode duration 10\u2013360s; prompt 5000 characters in custom mode.",
       "providerId": "suno",
       "providerLabel": "Suno API (sunoapi.org)",
       "supportsVocals": true,
       "maxPromptLength": 5000,
-      "lastVerifiedAt": "2026-09-28"
+      "lastVerifiedAt": "2026-10-05"
     },
     {
       "id": "suno-v6",
