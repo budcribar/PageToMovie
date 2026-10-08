@@ -1356,7 +1356,7 @@
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "maxReferenceImages": 3,
@@ -1378,14 +1378,15 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Catalog id stays veo-3.1 so existing projects keep resolving. Official Gemini API id is veo-3.1-generate-preview (endpointPath). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image ingredients reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16.",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Catalog id stays veo-3.1 so existing projects keep resolving. Official Gemini API id is veo-3.1-generate-preview (endpointPath). Documented duration is exactly 4, 6, or 8 seconds (not an arbitrary range) \u2014 1080p/4K surfaces often restrict to 8s only; no 480p support. Some surfaces document up to 3 multi-image ingredients reference images, but GeminiVideoClient does not implement that conditioning path \u2014 it throws NotSupportedException rather than silently ignoring reference images. ai.google.dev/gemini-api/docs/veo: landscape 16:9 (default) or portrait 9:16. Disabled 2026-10-08: Google shutdown date 2026-10-22 for veo-3.1-generate-preview (https://ai.google.dev/gemini-api/docs/deprecations). Id kept; not remapped. gemini-omni-1.1-flash is Google's suggested replacement and is not in this catalog.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged). Official model id veo-3.1-generate-preview (catalog id stays veo-3.1).",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged; deprecations page reviewed 2026-10-08 does not restate rates). Official model id veo-3.1-generate-preview (catalog id stays veo-3.1). Shutdown 2026-10-22.",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08",
+      "deprecated": true
     },
     {
       "id": "veo-3.1-fast-generate-preview",
@@ -1397,7 +1398,7 @@
       "requiredEnvKeys": [
         "GEMINI_API_KEY"
       ],
-      "enabled": true,
+      "enabled": false,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "maxReferenceImages": 3,
@@ -1419,14 +1420,15 @@
         "9:16"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-fast-generate-preview. Duration 4/6/8s copied from the Veo 3.1 family (same discrete set as veo-3.1).",
+      "notes": "Wired via GeminiVideoClient (text/image-to-video only). Official Gemini API id veo-3.1-fast-generate-preview. Duration 4/6/8s copied from the Veo 3.1 family (same discrete set as veo-3.1). Disabled 2026-10-08: Google shutdown date 2026-10-22 (https://ai.google.dev/gemini-api/docs/deprecations). Id kept; not remapped. gemini-omni-1.1-flash is Google's suggested replacement and is not in this catalog.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.0,
-      "pricingNotes": "Google Gemini API 2026-08-15: $0.10/s 720p, $0.12/s 1080p.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "Google Gemini API 2026-08-15: $0.10/s 720p, $0.12/s 1080p (unchanged; deprecations page reviewed 2026-10-08 does not restate rates). Shutdown 2026-10-22.",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08",
+      "deprecated": true
     },
     {
       "id": "grok-imagine-image-quality",
@@ -2088,12 +2090,37 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Wired via AnthropicChatClient. Chat + vision; extended thinking. Canonical snapshot id claude-haiku-4-5-20251001. Context 200k; max output 64k.",
+      "notes": "Wired via AnthropicChatClient. Chat + vision; extended thinking. Canonical snapshot id claude-haiku-4-5-20251001. Context 200k; max output 64k. Still Active on Anthropic (reviewed 2026-10-08); newer successor is claude-haiku-5-5. Tentative retirement not sooner than October 15, 2026.",
       "providerId": "anthropic",
       "providerLabel": "Anthropic",
-      "pricingNotes": "platform.claude.com / anthropic.com/pricing 2026-08-15: $1 input / $5 output per 1M. 200k context, 64k max out. Canonical id claude-haiku-4-5-20251001.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "platform.claude.com/docs/en/about-claude/pricing reviewed 2026-10-08: $1 input / $5 output per 1M. 200k context, 64k max out. Canonical id claude-haiku-4-5-20251001 (status Active).",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08"
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "displayName": "Claude Haiku 5.5",
+      "capability": "Chat",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 0.1,
+      "outputCostPerMillionTokens": 0.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "GA 2026-10-07 (dateless Claude API id claude-haiku-5-5). Newer successor to claude-haiku-4-5. Wired via AnthropicChatClient like siblings. Text and image input, text output; adaptive thinking (default effort medium). Context 1M; max output 128k sync (Message Batches API up to 300k with the output-300k-2026-03-24 beta header). Knowledge cutoff Jun 2026. Retirement not sooner than 2027-10-07. Sources: https://platform.claude.com/docs/en/about-claude/models/overview , https://platform.claude.com/docs/en/about-claude/pricing , https://platform.claude.com/docs/en/release-notes/overview .",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "Reviewed 2026-10-08. https://platform.claude.com/docs/en/about-claude/pricing : $0.10 input / $0.50 output per 1M tokens for prompts up to 100K tokens. Prompts over 100K tokens: $0.50 input / $2.50 output per 1M (cost fields store the up-to-100K tier). 1M context, 128k max out (sync).",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08"
     },
     {
       "id": "gemini-2.5-flash",
@@ -2440,12 +2467,37 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Extended thinking. Canonical snapshot id claude-haiku-4-5-20251001.",
+      "notes": "Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Extended thinking. Canonical snapshot id claude-haiku-4-5-20251001. Still Active on Anthropic (reviewed 2026-10-08); newer successor is claude-haiku-5-5. Tentative retirement not sooner than October 15, 2026.",
       "providerId": "anthropic",
       "providerLabel": "Anthropic",
-      "pricingNotes": "Same token rates as chat sibling (Anthropic 2026-08-15): $1 / $5 per 1M. 200k context, 64k max out.",
-      "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15"
+      "pricingNotes": "Same token rates as chat sibling (platform.claude.com pricing reviewed 2026-10-08): $1 / $5 per 1M. 200k context, 64k max out. Canonical id claude-haiku-4-5-20251001 (status Active).",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08"
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "displayName": "Claude Haiku 5.5 (vision)",
+      "capability": "Vision",
+      "provider": "Anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "endpointPath": "messages",
+      "requiredEnvKeys": [
+        "ANTHROPIC_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 0.1,
+      "outputCostPerMillionTokens": 0.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "GA 2026-10-07. Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Same id as chat sibling (Chat\u2194Vision overlap). Text and image input, text output; adaptive thinking (default effort medium). Context 1M; max output 128k sync. Newer successor to claude-haiku-4-5. Sources: https://platform.claude.com/docs/en/about-claude/models/overview , https://platform.claude.com/docs/en/about-claude/pricing .",
+      "providerId": "anthropic",
+      "providerLabel": "Anthropic",
+      "pricingNotes": "Same token rates as chat sibling (reviewed 2026-10-08): $0.10 input / $0.50 output per 1M for prompts up to 100K tokens. Prompts over 100K tokens: $0.50 input / $2.50 output per 1M (cost fields store the up-to-100K tier). 1M context, 128k max out (sync).",
+      "lastVerifiedAt": "2026-10-08",
+      "pricingLastReviewedAt": "2026-10-08"
     },
     {
       "id": "gemini-2.5-flash",

@@ -220,19 +220,56 @@ public class SupportedModelCatalogTests
         Assert.Equal("grok-imagine-video", m!.Id);
     }
 
-    [Fact]
-    public void Gemini_veo_is_selectable_as_a_video_model()
+    [Theory]
+    [InlineData("veo-3.1")]
+    [InlineData("veo-3.1-fast-generate-preview")]
+    public void Gemini_veo_31_rows_stay_resolvable_but_are_disabled(string id)
     {
-        var m = SupportedModelCatalog.Find("veo-3.1", ModelCapability.Video);
+        // Google shutdown 2026-10-22. Ids stay so old projects resolve; pickers hide them.
+        var m = SupportedModelCatalog.Find(id, ModelCapability.Video);
         Assert.NotNull(m);
-        Assert.True(m!.Enabled, "should be selectable on the Configuration page");
+        Assert.False(m!.Enabled);
+        Assert.True(m.Deprecated);
+        Assert.Contains("2026-10-22", m.Notes);
         Assert.Equal(ModelProviderFamily.Google, m.Provider);
         Assert.Equal("gemini", m.ProviderId);
         Assert.Contains("GEMINI_API_KEY", m.RequiredEnvKeys);
-        // Capability flags gate multi-clip / cast-locked gen before API spend
         Assert.False(m.SupportsVideoContinue);
         Assert.True(m.SupportsReferenceImages);
         Assert.Equal(3, m.MaxReferenceImages);
+        Assert.Equal(
+            "imagine-video-1.5-extend",
+            SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Video));
+        Assert.DoesNotContain(
+            SupportedModelCatalog.ForCapability(ModelCapability.Video),
+            e => e.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(ModelCapability.Chat)]
+    [InlineData(ModelCapability.Vision)]
+    public void Claude_haiku_55_is_enabled_for_chat_and_vision(ModelCapability capability)
+    {
+        var m = SupportedModelCatalog.Find("claude-haiku-5-5", capability);
+        Assert.NotNull(m);
+        Assert.True(m!.Enabled);
+        Assert.False(m.Deprecated);
+        Assert.Equal(ModelProviderFamily.Anthropic, m.Provider);
+        Assert.Equal("anthropic", m.ProviderId);
+        Assert.Equal(1_000_000, m.MaxInputTokens);
+        Assert.Equal(128_000, m.MaxOutputTokens);
+        Assert.Equal(0.10, m.InputCostPerMillionTokens);
+        Assert.Equal(0.50, m.OutputCostPerMillionTokens);
+        Assert.Contains("100K", m.PricingNotes, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2.50", m.PricingNotes, StringComparison.Ordinal);
+
+        var previous = SupportedModelCatalog.Find("claude-haiku-4-5", capability);
+        Assert.NotNull(previous);
+        Assert.True(previous!.Enabled);
+        Assert.Contains("October 15, 2026", previous.Notes, StringComparison.Ordinal);
+
+        Assert.NotEqual("claude-haiku-4-5", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
+        Assert.NotEqual("claude-haiku-4-5", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
     }
 
     [Fact]
