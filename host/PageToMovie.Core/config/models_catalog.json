@@ -434,7 +434,7 @@
       "enabled": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
-      "maxReferenceImages": 7,
+      "maxReferenceImages": 14,
       "supportsReferenceAudios": true,
       "maxReferenceAudios": 3,
       "presetVoices": [
@@ -908,7 +908,7 @@
         "2:3"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. maxReferenceImages=7 is the Imagine Video family cap pending a distinct 1.5 published cap. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only. Official docs.x.ai resolutionPricing 2026-08-27: 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s (flattened $0.080/s summary is the 480p default).",
+      "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. Official docs.x.ai/developers/model-capabilities/video/overview documents up to 14 reference images and 3 voice refs. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only. Official docs.x.ai resolutionPricing 2026-08-27: 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s (flattened $0.080/s summary is the 480p default).",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
