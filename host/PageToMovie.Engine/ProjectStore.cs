@@ -1641,6 +1641,8 @@ public sealed partial class ProjectStore
             wsPath,
             JsonSerializer.Serialize(new WorkspaceState { ActiveProject = p.Id }, JsonOpts),
             ct).ConfigureAwait(false);
+        // Opening a project migrates a disabled video model onto the capability default.
+        await GetConfigAsync(p.Id, ct).ConfigureAwait(false);
         return p;
     }
 
@@ -2639,6 +2641,7 @@ public sealed partial class ProjectStore
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in doc.RootElement.EnumerateObject())
             dict[p.Name] = p.Value.Clone();
+        PersistDisabledVideoHeal(projectId, dict);
         return dict;
     }
 
@@ -2655,7 +2658,24 @@ public sealed partial class ProjectStore
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in doc.RootElement.EnumerateObject())
             dict[p.Name] = p.Value.Clone();
+        PersistDisabledVideoHeal(projectId, dict);
         return dict;
+    }
+
+    /// <summary>
+    /// When the stored video model is a disabled or deprecated catalog row, write the
+    /// video capability default back to <c>pipeline_config.json</c>. Unknown ids are
+    /// left for the caller to reject. No vendor or model id is chosen here.
+    /// </summary>
+    private void PersistDisabledVideoHeal(string projectId, Dictionary<string, JsonElement> cfg)
+    {
+        if (cfg.Count == 0 || !ProjectCatalogModelHeal.TryReplaceDisabledVideo(cfg))
+            return;
+
+        var path = ConfigPath(projectId);
+        var json = JsonSerializer.Serialize(cfg, JsonDefaults.Indented);
+        File.WriteAllText(path, json + "\n");
+        InvalidateReadCaches(projectId);
     }
 
     public async Task<Dictionary<string, JsonElement>> SaveConfigAsync(

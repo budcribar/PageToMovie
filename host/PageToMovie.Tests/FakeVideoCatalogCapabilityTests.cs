@@ -61,50 +61,23 @@ public class FakeVideoCatalogCapabilityTests
     }
 
     [Fact]
-    public void Veo_allows_up_to_three_reference_images()
+    public void Veo_is_rejected_because_the_catalog_row_is_disabled()
     {
-        FakeGrokVideoClient.ValidateAgainstCatalog(
-            "veo-3.1",
-            durationSeconds: 4,
-            referenceImagePaths: new[] { "a.png", "b.png", "c.png" },
-            continueFromVideoPath: null);
-    }
-
-    [Fact]
-    public void Veo_rejects_more_than_three_reference_images()
-    {
+        // Shutdown 2026-10-22. The fake client refuses a disabled row before duration or
+        // reference checks. Those limits stay on the catalog row for old projects to resolve.
         var ex = Assert.Throws<InvalidOperationException>(() =>
             FakeGrokVideoClient.ValidateAgainstCatalog(
                 "veo-3.1",
-                durationSeconds: 4,
-                referenceImagePaths: new[] { "a.png", "b.png", "c.png", "d.png" },
+                durationSeconds: 8,
+                referenceImagePaths: new[] { "a.png", "b.png", "c.png" },
                 continueFromVideoPath: null));
-        Assert.Contains("at most 3", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
+        Assert.Contains("disabled", ex.Message, StringComparison.OrdinalIgnoreCase);
 
-    [Fact]
-    public void Veo_rejects_disallowed_duration()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            FakeGrokVideoClient.ValidateAgainstCatalog(
-                "veo-3.1",
-                durationSeconds: 5,
-                referenceImagePaths: null,
-                continueFromVideoPath: null));
-        Assert.Contains("only allows durations", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData(4)]
-    [InlineData(6)]
-    [InlineData(8)]
-    public void Veo_accepts_allowed_durations(int seconds)
-    {
-        FakeGrokVideoClient.ValidateAgainstCatalog(
-            "veo-3.1",
-            durationSeconds: seconds,
-            referenceImagePaths: null,
-            continueFromVideoPath: null);
+        var row = SupportedModelCatalog.Find("veo-3.1", ModelCapability.Video);
+        Assert.NotNull(row);
+        Assert.False(row!.Enabled);
+        Assert.Equal(3, row.MaxReferenceImages);
+        Assert.Equal(new[] { 4, 6, 8 }, row.AllowedDurationsSeconds);
     }
 
     [Fact]

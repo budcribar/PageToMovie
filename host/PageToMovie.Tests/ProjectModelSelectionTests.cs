@@ -30,11 +30,21 @@ public class ProjectModelSelectionTests
     [Theory]
     [InlineData("grok-imagine-video")]
     [InlineData("fal-ai/wan-2.1")]
-    [InlineData("veo-3.1")]
     public void RequireVideo_accepts_catalog_video_models(string modelId)
     {
         var id = ProjectModelSelection.RequireVideo(Cfg(("model_name", modelId)));
         Assert.Equal(modelId, id);
+    }
+
+    [Fact]
+    public void RequireVideo_rejects_disabled_catalog_video_id()
+    {
+        var disabled = SupportedModelCatalog.ForCapability(
+                ModelCapability.Video, enabledOnly: false, includeDeprecated: true)
+            .First(e => !e.Enabled);
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => ProjectModelSelection.RequireVideo(Cfg(("model_name", disabled.Id))));
+        Assert.Contains(disabled.Id, ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

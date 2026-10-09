@@ -202,6 +202,106 @@ public class ProjectCatalogModelHealTests : IDisposable
     }
 
     [Fact]
+    public void Apply_replaces_disabled_video_with_capability_default()
+    {
+        var disabled = DisabledVideo();
+        var expected = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Video);
+        var cfg = Cfg(
+            ("model_name", disabled.Id),
+            ("video_provider", disabled.ProviderId),
+            ("model_selections", new Dictionary<string, string>
+            {
+                ["video"] = disabled.Id,
+                ["chat"] = "grok-4.6",
+            }),
+            ("image_model_name", SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Image)));
+
+        Assert.True(ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Equal(expected, cfg["model_name"].GetString());
+        Assert.Equal(expected, cfg["model_selections"].GetProperty("video").GetString());
+        Assert.Equal("grok-4.6", cfg["model_selections"].GetProperty("chat").GetString());
+        Assert.Equal(
+            SupportedModelCatalog.ProviderIdFor(expected, ModelCapability.Video),
+            cfg["video_provider"].GetString());
+        Assert.Equal(
+            SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Image),
+            cfg["image_model_name"].GetString());
+    }
+
+    [Fact]
+    public void Apply_leaves_unknown_video_id_and_throws()
+    {
+        var cfg = Cfg(("model_name", "not-a-real-video-model"));
+        var ex = Assert.Throws<InvalidOperationException>(() => ProjectCatalogModelHeal.Apply(cfg));
+        Assert.Contains("video", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not-a-real-video-model", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("not-a-real-video-model", cfg["model_name"].GetString());
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_persists_capability_default_for_disabled_video()
+    {
+        var disabled = DisabledVideo();
+        var expected = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Video);
+        var store = TestProjects.CreateStore("heal-video-", out var root, "Demo");
+        try
+        {
+            var path = Path.Combine(root, "projects", "Demo", "pipeline_config.json");
+            await File.WriteAllTextAsync(path, $$"""
+                {
+                  "model_name": "{{disabled.Id}}",
+                  "video_provider": "{{disabled.ProviderId}}",
+                  "model_selections": { "video": "{{disabled.Id}}", "chat": "grok-4.6" }
+                }
+                """);
+
+            var cfg = await store.GetConfigAsync("Demo");
+            Assert.Equal(expected, cfg["model_name"].GetString());
+            Assert.Equal(expected, cfg["model_selections"].GetProperty("video").GetString());
+            Assert.Equal("grok-4.6", cfg["model_selections"].GetProperty("chat").GetString());
+            Assert.Equal(
+                SupportedModelCatalog.ProviderIdFor(expected, ModelCapability.Video),
+                cfg["video_provider"].GetString());
+
+            using var disk = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.Equal(expected, disk.RootElement.GetProperty("model_name").GetString());
+            Assert.Equal(expected, disk.RootElement.GetProperty("model_selections").GetProperty("video").GetString());
+            Assert.Equal("grok-4.6", disk.RootElement.GetProperty("model_selections").GetProperty("chat").GetString());
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task ActivateAsync_persists_capability_default_for_disabled_video()
+    {
+        var disabled = DisabledVideo();
+        var expected = SupportedModelCatalog.RequireDefaultModelIdForCapability(ModelCapability.Video);
+        var store = TestProjects.CreateStore("heal-open-video-", out var root, "Demo");
+        try
+        {
+            var path = Path.Combine(root, "projects", "Demo", "pipeline_config.json");
+            await File.WriteAllTextAsync(path, $$"""
+                { "model_name": "{{disabled.Id}}" }
+                """);
+
+            await store.ActivateAsync("Demo");
+            using var disk = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.Equal(expected, disk.RootElement.GetProperty("model_name").GetString());
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    static SupportedModelEntry DisabledVideo() =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Video, enabledOnly: false, includeDeprecated: true)
+            .First(e => !e.Enabled || e.Deprecated);
+
+    [Fact]
     public async Task ActivateAsync_does_not_rewrite_disabled_video_review()
     {
         var store = TestProjects.CreateStore("heal-open-", out var root, "Demo");
