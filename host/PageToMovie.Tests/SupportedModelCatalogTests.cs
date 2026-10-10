@@ -570,9 +570,13 @@ public class SupportedModelCatalogTests
 
     [Theory]
     // xAI Grok Imagine video generation (docs.x.ai/developers/model-capabilities/video/generation):
-    // aspect_ratio accepts 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, default 16:9.
+    // aspect_ratio accepts 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 21:9, 5:2, default 16:9.
     [InlineData("grok-imagine-video", ModelCapability.Video,
-        new[] { "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3" }, "16:9")]
+        new[] { "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:2" }, "16:9")]
+    [InlineData("grok-imagine-video-1.5", ModelCapability.Video,
+        new[] { "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:2" }, "16:9")]
+    [InlineData("grok-imagine-video-1.5-lite", ModelCapability.Video,
+        new[] { "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:2" }, "16:9")]
     // Google Veo 3.1 via Gemini API (ai.google.dev/gemini-api/docs/veo): landscape 16:9 (default)
     // or portrait 9:16 only.
     [InlineData("veo-3.1", ModelCapability.Video, new[] { "16:9", "9:16" }, "16:9")]

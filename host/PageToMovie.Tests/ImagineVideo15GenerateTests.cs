@@ -301,6 +301,38 @@ public sealed class ImagineVideo15GenerateTests : IDisposable
     }
 
     [Fact]
+    public async Task Grok_submit_sends_catalog_aspect_ratios_and_falls_back_when_unsupported()
+    {
+        var model = SupportedModelCatalog.ForCapability(ModelCapability.Video)
+            .First(e => e.SupportedAspectRatios?.Contains("5:2") == true
+                        && e.SupportedAspectRatios.Contains("21:9"));
+        var handler = new StubGrokVideoHandler();
+        var client = BuildClient(handler);
+        var had = Environment.GetEnvironmentVariable("XAI_API_KEY");
+        Environment.SetEnvironmentVariable("XAI_API_KEY", "test-key");
+        try
+        {
+            await client.SubmitGenerationAsync(
+                "wide", 6, "720p", model.Id, CancellationToken.None, aspectRatio: "5:2");
+            Assert.Equal("5:2", handler.LastBody!["aspect_ratio"]!.GetValue<string>());
+
+            handler.Reset();
+            await client.SubmitGenerationAsync(
+                "wider", 6, "720p", model.Id, CancellationToken.None, aspectRatio: "21:9");
+            Assert.Equal("21:9", handler.LastBody!["aspect_ratio"]!.GetValue<string>());
+
+            handler.Reset();
+            await client.SubmitGenerationAsync(
+                "unknown", 6, "720p", model.Id, CancellationToken.None, aspectRatio: "7:1");
+            Assert.Equal(model.DefaultAspectRatio, handler.LastBody!["aspect_ratio"]!.GetValue<string>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("XAI_API_KEY", had);
+        }
+    }
+
+    [Fact]
     public async Task Grok_does_not_call_extensions_when_catalog_disallows_continue()
     {
         var handler = new StubGrokVideoHandler();

@@ -408,7 +408,9 @@
         "4:3",
         "3:4",
         "3:2",
-        "2:3"
+        "2:3",
+        "21:9",
+        "5:2"
       ],
       "defaultAspectRatio": "16:9",
       "notes": "Also uses videos/extensions for clip continue. Fresh text/image-to-video allows 1-15s; the new portion of a reference/continue call is tighter (often <=10s, not independently confirmed to the second \u2014 maxExtensionSeconds is a conservative estimate, not a documented exact figure). Official list price $0.050/s. 1080p $0.25 is NOT official for this id (native 1080p belongs to grok-imagine-video-1.5). aspect_ratio/resolution are NOT accepted on videos/extensions \u2014 the extension output always matches the source clip's aspect ratio (docs.x.ai).",
@@ -418,7 +420,7 @@
       "videoReferenceImageCost": 0.002,
       "videoExtendCostPerSecond": 0.07,
       "pricingNotes": "docs.x.ai/docs/pricing 2026-09-08 detailed Imagine table: $0.002/img input + $0.01/s input video; output 480p $0.05/s, 720p $0.07/s. Flattened summary line still $0.050/s. 1080p $0.25 is not official for this id. videoReferenceImageCost=0.002. videoExtendCostPerSecond uses 720p catalog rate.",
-      "lastVerifiedAt": "2026-09-08",
+      "lastVerifiedAt": "2026-10-10",
       "pricingLastReviewedAt": "2026-09-08"
     },
     {
@@ -905,7 +907,9 @@
         "4:3",
         "3:4",
         "3:2",
-        "2:3"
+        "2:3",
+        "21:9",
+        "5:2"
       ],
       "defaultAspectRatio": "16:9",
       "notes": "xAI's recommended video model. Text/image \u2192 video, native 1080p, 1\u201315s. Official listing does not publish a continue/extend path for this id \u2014 supportsVideoContinue is false. Official docs.x.ai/developers/model-capabilities/video/overview documents up to 14 reference images and 3 voice refs. Reference-to-video (reference_images or reference_audios) is capped at 720p; 1080p is T2V/I2V only. Official docs.x.ai resolutionPricing 2026-08-27: 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s (flattened $0.080/s summary is the 480p default).",
@@ -914,7 +918,7 @@
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.01,
       "pricingNotes": "docs.x.ai/docs/models/grok-imagine-video-1.5 and /docs/pricing 2026-09-08: Input Image $0.01; official resolutionPricing is 480p $0.08/s, 720p $0.14/s, 1080p $0.25/s. Flattened list-price line $0.080/s is the 480p default. videoReferenceImageCost=0.01. Reference-to-video (reference_images or reference_audios) is capped at 720p per docs.x.ai video generation.",
-      "lastVerifiedAt": "2026-09-08",
+      "lastVerifiedAt": "2026-10-10",
       "pricingLastReviewedAt": "2026-09-08"
     },
     {
@@ -949,16 +953,18 @@
         "4:3",
         "3:4",
         "3:2",
-        "2:3"
+        "2:3",
+        "21:9",
+        "5:2"
       ],
       "defaultAspectRatio": "16:9",
-      "notes": "Cost-only xAI video option. Model card docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-05: modalities text, image \u2192 video. resolutionPricing is 480p $0.02/s, 720p $0.03/s, 1080p $0.14/s; input image $0.01 per image. NO documented voice lock / reference_audios, and no documented multi-image reference_images or extend path. Shared videos/generations API (docs.x.ai/developers/model-capabilities/video/generation and REST inference/videos): duration 1\u201315s; aspect ratios 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (default 16:9); resolution enum 480p/720p/1080p, all three priced on this id. That generation guide says generated videos include an audio track by default (generate_audio defaults on); the lite card does not repeat it. Reference-to-video and reference_audios are documented for grok-imagine-video-1.5, not this id \u2014 supportsReferenceImages stays false because that flag means multi-plate reference conditioning, and the documented image input here is a single start-frame image (image-to-video), not reference_images. supportsReferenceAudios is false; supportsVideoContinue is false (extensions examples use grok-imagine-video). The $0.01 input-image fee is videoReferenceImageCost, not a reference-plate flag. maxPromptLength 4000 is the Imagine Video family prompt budget already on the sibling xAI video rows (API rejects near 4096); the lite card does not publish a distinct cap.",
+      "notes": "Cost-only xAI video option. Model card docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-05: modalities text, image \u2192 video. resolutionPricing is 480p $0.02/s, 720p $0.03/s, 1080p $0.14/s; input image $0.01 per image. NO documented voice lock / reference_audios, and no documented multi-image reference_images or extend path. Shared videos/generations API (docs.x.ai/developers/model-capabilities/video/generation and REST inference/videos): duration 1\u201315s; aspect ratios 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 21:9, 5:2 (default 16:9); resolution enum 480p/720p/1080p, all three priced on this id. That generation guide says generated videos include an audio track by default (generate_audio defaults on); the lite card does not repeat it. Reference-to-video and reference_audios are documented for grok-imagine-video-1.5, not this id \u2014 supportsReferenceImages stays false because that flag means multi-plate reference conditioning, and the documented image input here is a single start-frame image (image-to-video), not reference_images. supportsReferenceAudios is false; supportsVideoContinue is false (extensions examples use grok-imagine-video). The $0.01 input-image fee is videoReferenceImageCost, not a reference-plate flag. maxPromptLength 4000 is the Imagine Video family prompt budget already on the sibling xAI video rows (API rejects near 4096); the lite card does not publish a distinct cap.",
       "providerId": "grok",
       "providerLabel": "xAI",
       "maxPromptLength": 4000,
       "videoReferenceImageCost": 0.01,
       "pricingNotes": "docs.x.ai/developers/pricing and docs.x.ai/developers/models/grok-imagine-video-1.5-lite reviewed 2026-10-05: resolutionPricing 480p $0.02/s (unchanged), 720p $0.03/s (was $0.02 on 2026-10-02), 1080p $0.14/s (new). Input image $0.01 per image (videoReferenceImageCost=0.01; was 0). The pricing-page summary line still shows a flattened $0.020/sec, which matches the 480p rate. grok-imagine-video (flat $0.050/s) and grok-imagine-video-1.5 (480p $0.08/s, 720p $0.14/s, 1080p $0.25/s) were not changed.",
-      "lastVerifiedAt": "2026-10-05",
+      "lastVerifiedAt": "2026-10-10",
       "pricingLastReviewedAt": "2026-10-05"
     },
     {
@@ -1749,9 +1755,9 @@
       "providerId": "fal",
       "providerLabel": "Fal.ai",
       "maxReferenceImages": 10,
-      "pricingNotes": "BFL list https://docs.bfl.ai/quick_start/pricing 2026-10-05: per image by resolution \u2014 768sq $0.041, 1k $0.048, 2k $0.100, 4k $0.607. Fal list for blackforestlabs/flux-3/text-to-image matches 1k at $0.048 (https://fal.ai/models/blackforestlabs/flux-3/text-to-image). Fal promo: launch rates are 50% off until 2026-10-08; a 1k image is $0.024 during the promo (page also says promotional pricing starts at $0.0205, half of the 768sq list) and $0.048 after. Promo is not stored in cost fields. imageCostPerImage=0.048 is the 1k list price (schema has no per-resolution image cost field).",
-      "lastVerifiedAt": "2026-10-05",
-      "pricingLastReviewedAt": "2026-10-05"
+      "pricingNotes": "BFL list https://docs.bfl.ai/quick_start/pricing 2026-10-05: per image by resolution \u2014 768sq $0.041, 1k $0.048, 2k $0.100, 4k $0.607. Fal list for blackforestlabs/flux-3/text-to-image matches 1k at $0.048 (https://fal.ai/models/blackforestlabs/flux-3/text-to-image). Fal launch 50% promo ended 2026-10-08; list price for 1k remains $0.048 (during the promo a 1k image was $0.024; the page also said promotional pricing starts at $0.0205, half of the 768sq list). Promo is not stored in cost fields. imageCostPerImage=0.048 is the 1k list price (schema has no per-resolution image cost field).",
+      "lastVerifiedAt": "2026-10-10",
+      "pricingLastReviewedAt": "2026-10-10"
     },
     {
       "id": "gpt-image-2.5-sunburst",
