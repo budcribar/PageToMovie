@@ -434,7 +434,7 @@ public sealed class GrokVideoClient : IVideoClient
             ["model"] = setup.Model,
             ["prompt"] = prompt,
             ["duration"] = setup.DurationSeconds,
-            ["aspect_ratio"] = ResolveAspectRatio(setup.Model, setup.AspectRatio).ToApiString(),
+            ["aspect_ratio"] = ResolveAspectRatio(setup.Model, setup.AspectRatio),
             ["resolution"] = setup.Resolution,
             // Persist to Files (file_id for edit/extend) and request public_url for playback.
             ["storage_options"] = PermanentVideoStorageOptions(),
@@ -492,17 +492,26 @@ public sealed class GrokVideoClient : IVideoClient
     }
 
     /// <summary>
-    /// Fresh-generation aspect ratio: requested aspect ratio if given, else catalog's
-    /// <c>DefaultAspectRatio</c> for the requested model, falling back to the historical hardcoded "16:9".
+    /// Fresh-generation aspect ratio: the requested ratio when the catalog lists it for this model,
+    /// else the catalog's <c>DefaultAspectRatio</c>, else the historical "16:9".
+    /// Catalog strings are sent as written (including ratios outside the older image enum, such as 5:2).
     /// (Not used for video-extend — xAI docs say aspect_ratio isn't accepted there; the extension
     /// always inherits the source clip's ratio.)
     /// </summary>
-    private static AspectRatio ResolveAspectRatio(string model, string? requestedAspectRatio = null)
+    private static string ResolveAspectRatio(string model, string? requestedAspectRatio = null)
     {
-        if (!string.IsNullOrWhiteSpace(requestedAspectRatio))
-            return MediaEngineEnumExtensions.ParseAspectRatio(requestedAspectRatio);
-        return MediaEngineEnumExtensions.ParseAspectRatio(
-            SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9");
+        var entry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
+        var fallback = string.IsNullOrWhiteSpace(entry.DefaultAspectRatio) ? "16:9" : entry.DefaultAspectRatio;
+        if (string.IsNullOrWhiteSpace(requestedAspectRatio))
+            return fallback;
+
+        var requested = requestedAspectRatio.Trim();
+        var supported = entry.SupportedAspectRatios;
+        if (supported is not { Count: > 0 })
+            return requested;
+
+        var match = supported.FirstOrDefault(r => string.Equals(r, requested, StringComparison.OrdinalIgnoreCase));
+        return match ?? fallback;
     }
 
     /// <summary>
