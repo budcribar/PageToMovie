@@ -2256,6 +2256,31 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "gemini-4-argon",
+      "displayName": "Gemini 4 Argon",
+      "capability": "Chat",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-4-argon:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 10.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "GA 2026-10-13. Flagship successor above gemini-3.1-pro-preview. Wired via GeminiChatClient. Intro $2/$10 per 1M through 2026-11-30 then $4/$20. 1M unified context; thinking low/medium/high (default medium). Inputs text/image/video/audio/PDF, output text. Not on Free tier or Google AI Pro. GeminiChatClient sends thinkingConfig.thinkingLevel of low, medium, or high only when a reasoning effort is set (never thinking_budget or MINIMAL) and always sends temperature, which Argon ignores rather than rejecting. No explicit context cache is requested. Sources: https://ai.google.dev/gemini-api/docs/changelog , https://ai.google.dev/gemini-api/docs/models/gemini-4-argon , https://ai.google.dev/gemini-api/docs/latest-model , https://ai.google.dev/gemini-api/docs/pricing , https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon .",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "https://ai.google.dev/gemini-api/docs/pricing 2026-10-14: intro $2 in / $10 out per 1M through 2026-11-30 (incl. thinking), then $4 / $20 from 2026-12-01; cached input $0.10 then $0.20 (implicit caching only). Context 1,048,576 / max out 65,536 default.",
+      "lastVerifiedAt": "2026-10-14",
+      "pricingLastReviewedAt": "2026-10-14"
+    },
+    {
       "id": "grok-4.7",
       "displayName": "Grok 4.7 (vision)",
       "capability": "Vision",
@@ -2581,6 +2606,31 @@
       "pricingNotes": "ai.google.dev/gemini-api/docs/pricing 2026-09-04: $0.75 in / $3.75 out per 1M through 2026-12-31, then $1.50 / $7.50. Context 1,048,576 in / 65,536 out.",
       "lastVerifiedAt": "2026-09-04",
       "pricingLastReviewedAt": "2026-09-04"
+    },
+    {
+      "id": "gemini-4-argon",
+      "displayName": "Gemini 4 Argon (vision)",
+      "capability": "Vision",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-4-argon:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 10.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "Same id as chat sibling (Chat\u2194Vision overlap). Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). CompleteWithImagesAsync sends temperature only (Argon ignores it) and does not send thinking_budget, thinkingLevel MINIMAL, or an explicit context cache. Sources: https://ai.google.dev/gemini-api/docs/changelog , https://ai.google.dev/gemini-api/docs/models/gemini-4-argon , https://ai.google.dev/gemini-api/docs/latest-model , https://ai.google.dev/gemini-api/docs/pricing , https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon .",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "https://ai.google.dev/gemini-api/docs/pricing 2026-10-14: intro $2 in / $10 out per 1M through 2026-11-30 (incl. thinking), then $4 / $20 from 2026-12-01; cached input $0.10 then $0.20 (implicit caching only). Context 1,048,576 / max out 65,536 default.",
+      "lastVerifiedAt": "2026-10-14",
+      "pricingLastReviewedAt": "2026-10-14"
     },
     {
       "id": "fal-ai/musicgen",
