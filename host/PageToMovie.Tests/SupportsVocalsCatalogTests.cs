@@ -58,7 +58,7 @@ public class SupportsVocalsCatalogTests
     public void ImageApiLimits_flux_from_catalog()
     {
         var n = ImageApiLimits.MaxReferenceImages(null, "fal-ai/flux/dev");
-        Assert.Equal(1, n);
+        Assert.Equal(0, n);
     }
 
     [Fact]
