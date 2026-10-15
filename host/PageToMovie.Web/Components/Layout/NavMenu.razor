@@ -16,14 +16,14 @@
     <nav class="nav flex-column nav-main" aria-label="Main">
         <div class="nav-main-links">
         @* Prototype look-feel: Home · Demo · Settings, then project studio pipeline *@
-        <div class="nav-item px-3">
+        <div class="nav-item">
             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" title="Home & Studio Overview" data-testid="nav-studio">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span>
                 @if (!Collapsed) { <span class="nav-label">@L["Nav.Home"]</span> }
             </NavLink>
         </div>
 
-        <div class="nav-item px-3">
+        <div class="nav-item">
             <NavLink class="nav-link" href="/demo" title="Public demo gallery — no sign-in required" data-testid="nav-demo">
                 <span class="bi bi-film-nav-menu" aria-hidden="true"></span>
                 @if (!Collapsed) { <span class="nav-label">@L["Nav.Demo"]</span> }
@@ -33,7 +33,7 @@
         @* Settings always available once signed in. *@
         @if (Session.IsLoggedIn)
         {
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/configuration" title="Settings — API keys, models, media folder" data-testid="nav-configuration">
                     <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Settings"]</span> }
@@ -43,42 +43,42 @@
 
         @if (ActiveProject.HasProject)
         {
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/adaptation/import" title="Book & import text" data-testid="nav-adaptation">
                     <span class="bi bi-book-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Book"]</span> }
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="@(ActiveProject.CanEstimate ? "nav-link" : "nav-link disabled")" href="/cost" title='@(ActiveProject.CanEstimate ? "Estimate & options" : ActiveProject.EstimateBlockedReason)' data-testid="nav-cost">
                     <span class="bi bi-cash-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Estimate"]</span> }
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/adaptation/screenplay" title="Edit screenplay beats" data-testid="nav-screenplay">
                     <span class="bi bi-file-earmark-text-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Screenplay"]</span> }
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="@(ActiveProject.CanCharacters ? "nav-link" : "nav-link disabled")" href="/characters" title='@(ActiveProject.CanCharacters ? "Cast & voices" : ActiveProject.CharactersBlockedReason)' data-testid="nav-characters">
                     <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Cast"]</span> }
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="@(ActiveProject.CanCharacters ? "nav-link" : "nav-link disabled")" href="/locations" title='@(ActiveProject.CanCharacters ? "Locations & set plates" : ActiveProject.CharactersBlockedReason)' data-testid="nav-locations">
                     <span class="bi bi-geo-alt-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Locations"]</span> }
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="@(ActiveProject.CanScenes ? "nav-link" : "nav-link disabled")" href="/scenes"
                          title='@(!ActiveProject.CanScenes ? ActiveProject.ScenesBlockedReason : (ActiveProject.ScenesWarning ?? "Scenes & film"))'
                          data-testid="nav-scenes" data-warning="@(ActiveProject.ScenesWarning is not null ? "true" : "false")">
@@ -92,7 +92,7 @@
                 </NavLink>
             </div>
 
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="@(ActiveProject.CanReview ? "nav-link" : "nav-link disabled")" href="/review" title='@(ActiveProject.CanReview ? "Review & export" : ActiveProject.ReviewBlockedReason)' data-testid="nav-review">
                     <span class="bi bi-check2-square-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Review"]</span> }
@@ -102,7 +102,7 @@
         else if (Session.IsLoggedIn)
         {
             @* Estimate available when signed in even without an active project — cost breakdown + account spend. *@
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/cost" title="Estimate & cost — quote, spend, by vendor" data-testid="nav-cost">
                     <span class="bi bi-cash-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Estimate"]</span> }
@@ -114,43 +114,43 @@
 
         @if (Session.IsAdmin)
         {
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin" title="Admin">
                     <span class="bi bi-shield-lock-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Admin"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin/users" title="Users & credits" data-testid="nav-admin-users">
                     <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.UsersAndCredits"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin/config" title="Admin config">
                     <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.AdminConfig"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin/models-catalog" title="Models catalog manager" data-testid="nav-admin-models-catalog">
                     <span class="bi bi-robot-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.ModelsCatalog"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin/learning" title="Learning from reviews" data-testid="nav-learning">
                     <span class="bi bi-lightbulb-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.Learning"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/admin/book-cache" title="Book text, adaptation artifacts, xAI file_id" data-testid="nav-admin-book-cache">
                     <span class="bi bi-book-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.BookCache"]</span> }
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item">
                 <NavLink class="nav-link" href="/dialogue-timing" title="Compare script vs speech-to-text per line, all speakers" data-testid="nav-admin-dialogue-timing">
                     <span class="bi bi-mic-fill-nav-menu" aria-hidden="true"></span>
                     @if (!Collapsed) { <span class="nav-label">@L["Nav.DialogueTiming"]</span> }
