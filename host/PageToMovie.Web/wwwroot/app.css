@@ -22,10 +22,33 @@
     --fs-accent-amber: #c4a35a;
     --fs-shadow-card: 0 8px 32px rgba(0, 0, 0, 0.35);
     --fs-link: #8b9bb8;
+    --fs-link-rgb: 139, 155, 184;
     --fs-link-hover: #a8b4cc;
     --fs-code-color: #c07a9a;
     --fs-overlay-soft: rgba(255, 255, 255, 0.03);
     --fs-overlay-mid: rgba(255, 255, 255, 0.06);
+    --fs-text-primary-rgb: 241, 243, 247;
+    --fs-text-muted-rgb: 154, 163, 181;
+    --fs-text-subtle-rgb: 107, 115, 133;
+    --fs-accent-amber-rgb: 196, 163, 90;
+    --fs-accent-indigo-rgb: 107, 140, 174;
+    --fs-alert-danger-text-rgb: 224, 168, 168;
+    --fs-alert-success-text-rgb: 168, 208, 180;
+    --fs-alert-info-text-rgb: 168, 192, 216;
+    --fs-bg-card-rgb: 18, 20, 26;
+    --fs-overlay-mid-rgb: 255, 255, 255;
+    --fs-overlay-mid-alpha: 0.06;
+    /* Unmodified Bootstrap tokens. Utility retargets restore these on descendants. */
+    --fs-bs-secondary-rgb: 108, 117, 125;
+    --fs-bs-secondary-color: rgba(222, 226, 230, 0.75);
+    --fs-bs-tertiary-color: rgba(222, 226, 230, 0.5);
+    --fs-bs-body-color-rgb: 222, 226, 230;
+    --fs-bs-warning-rgb: 255, 193, 7;
+    --fs-bs-danger-rgb: 220, 53, 69;
+    --fs-bs-success-rgb: 25, 135, 84;
+    --fs-bs-info-rgb: 13, 202, 240;
+    --fs-bs-light-rgb: 248, 249, 250;
+    --fs-bs-dark-rgb: 33, 37, 41;
 
     --fs-alert-info-bg: rgba(107, 140, 174, 0.12);
     --fs-alert-info-border: rgba(107, 140, 174, 0.28);
@@ -79,10 +102,25 @@
     --fs-accent-amber: #b45309;
     --fs-shadow-card: 0 8px 24px -6px rgba(15, 23, 42, 0.12);
     --fs-link: #4f46e5;
+    --fs-link-rgb: 79, 70, 229;
     --fs-link-hover: #4338ca;
     --fs-code-color: #c2255c;
     --fs-overlay-soft: rgba(15, 23, 42, 0.03);
     --fs-overlay-mid: rgba(15, 23, 42, 0.05);
+    --fs-text-primary-rgb: 25, 28, 36;
+    --fs-text-muted-rgb: 75, 85, 101;
+    --fs-text-subtle-rgb: 100, 116, 139;
+    --fs-accent-amber-rgb: 180, 83, 9;
+    --fs-accent-indigo-rgb: 79, 70, 229;
+    --fs-alert-danger-text-rgb: 153, 27, 27;
+    --fs-alert-success-text-rgb: 22, 101, 52;
+    --fs-alert-info-text-rgb: 7, 89, 133;
+    --fs-bg-card-rgb: 255, 255, 255;
+    --fs-overlay-mid-rgb: 15, 23, 42;
+    --fs-overlay-mid-alpha: 0.05;
+    --fs-bs-secondary-color: rgba(33, 37, 41, 0.75);
+    --fs-bs-tertiary-color: rgba(33, 37, 41, 0.5);
+    --fs-bs-body-color-rgb: 33, 37, 41;
 
     --fs-alert-info-bg: rgba(2, 132, 199, 0.08);
     --fs-alert-info-border: rgba(2, 132, 199, 0.25);
@@ -232,7 +270,6 @@ label,
 .form-check-label,
 .col-form-label,
 .card-title,
-.card-subtitle,
 .modal-body,
 .dropdown-item,
 .accordion-button,
@@ -247,14 +284,61 @@ label,
     color: var(--fs-text-muted);
 }
 
-/* Muted / secondary helpers — cover every Bootstrap utility we use in messages */
+/*
+ * Bootstrap color/background utilities set the property with !important and read a
+ * custom property. Point that property at the theme token. Descendants get Bootstrap's
+ * own token back so a utility on a parent does not repaint nested badges or fields.
+ * .text-black-50 / .text-white-50 hardcode the color (no variable); see the rule below.
+ */
+.text-muted > *,
+.text-body-secondary > *,
+.text-body-tertiary > *,
+.text-secondary > *,
+.text-body > *,
+.text-warning > *,
+.text-danger > *,
+.text-success > *,
+.text-info > *,
+.bg-light > * {
+    --bs-secondary-rgb: var(--fs-bs-secondary-rgb);
+    --bs-secondary-color: var(--fs-bs-secondary-color);
+    --bs-tertiary-color: var(--fs-bs-tertiary-color);
+    --bs-body-color-rgb: var(--fs-bs-body-color-rgb);
+    --bs-warning-rgb: var(--fs-bs-warning-rgb);
+    --bs-danger-rgb: var(--fs-bs-danger-rgb);
+    --bs-success-rgb: var(--fs-bs-success-rgb);
+    --bs-info-rgb: var(--fs-bs-info-rgb);
+    --bs-light-rgb: var(--fs-bs-light-rgb);
+    --bs-dark-rgb: var(--fs-bs-dark-rgb);
+}
+
 .form-text,
-.text-muted,
-.text-secondary,
-.text-body-secondary,
-.text-black-50,
-.text-white-50,
 .form-floating > label {
+    color: var(--fs-text-muted);
+}
+
+.text-muted,
+.text-body-secondary {
+    --bs-secondary-color: var(--fs-text-muted);
+}
+
+.text-secondary {
+    --bs-secondary-rgb: var(--fs-text-muted-rgb);
+    --bs-text-opacity: 1;
+}
+
+.text-body {
+    --bs-body-color-rgb: var(--fs-text-primary-rgb);
+    --bs-text-opacity: 1;
+}
+
+.text-body-tertiary {
+    --bs-tertiary-color: var(--fs-text-subtle);
+}
+
+.text-black-50,
+.text-white-50 {
+    /* Bootstrap hardcodes rgba(...) !important. No custom property to retarget. */
     color: var(--fs-text-muted) !important;
 }
 
@@ -277,17 +361,6 @@ label,
     opacity: 1;
     font-style: normal;
     -webkit-text-fill-color: var(--fs-text-secondary, #c8d0e0);
-}
-
-
-
-/* Bootstrap “secondary body” / opacity utilities that wash out on dark cards */
-.text-body {
-    color: var(--fs-text-primary) !important;
-}
-
-.text-body-tertiary {
-    color: var(--fs-text-subtle) !important;
 }
 
 /* Inline messages under controls (status lines, progress captions) */
@@ -482,12 +555,10 @@ input[type="file"]:disabled::file-selector-button {
 .table > tbody > tr.table-warning .text-decoration-underline,
 .table > tbody > tr.table-primary a,
 .table > tbody > tr.table-primary .text-decoration-underline {
+    --bs-secondary-color: var(--fs-link);
+    --bs-secondary-rgb: var(--fs-link-rgb);
+    --bs-text-opacity: 1;
     color: var(--fs-link);
-}
-
-.table > tbody > tr.table-warning .text-muted,
-.table > tbody > tr.table-primary .text-muted {
-    color: var(--fs-text-muted);
 }
 
 /* Home: My jobs collapse header */
@@ -512,6 +583,21 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 /* List groups (project list, cast list) — explicit high-contrast theme text color. */
+.list-group,
+.list-group-item {
+    --bs-list-group-color: var(--fs-text-primary);
+    --bs-list-group-bg: var(--fs-bg-card);
+    --bs-list-group-border-color: var(--fs-border-color);
+    --bs-list-group-action-color: var(--fs-text-primary);
+    --bs-list-group-action-hover-color: var(--fs-text-primary);
+    --bs-list-group-action-hover-bg: var(--fs-bg-card-hover);
+    --bs-list-group-action-active-color: #ffffff;
+    --bs-list-group-action-active-bg: var(--fs-accent-indigo);
+    --bs-list-group-active-color: #ffffff;
+    --bs-list-group-active-bg: var(--fs-accent-indigo);
+    --bs-list-group-active-border-color: var(--fs-accent-indigo);
+}
+
 .list-group-item {
     background-color: var(--fs-bg-card);
     color: var(--fs-text-primary);
@@ -525,11 +611,16 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 .project-list__pick:hover {
+    --bs-secondary-color: var(--fs-accent-indigo);
+    --bs-secondary-rgb: var(--fs-accent-indigo-rgb);
+    --bs-text-opacity: 1;
     color: var(--fs-accent-indigo);
 }
 
 .list-group-item.active .project-list__pick,
 .list-group-item.active .project-list__pick:hover {
+    --bs-secondary-color: #ffffff;
+    --bs-secondary-rgb: 255, 255, 255;
     color: #ffffff;
 }
 
@@ -569,41 +660,59 @@ input[type="file"]:disabled::file-selector-button {
     color: #ffffff;
 }
 
-/* Labels on active row stay white (Bootstrap / theme often leave child spans near-white-on-white). */
+/* Labels on active row stay white (theme utilities often leave child spans near-white-on-white). */
 .list-group-item.active .char-list-name,
 .list-group-item.active .project-list__pick,
 .list-group-item.active > span:not([class*="thumb"]):not([class*="badge"]):not([class*="miss"]) {
+    --bs-secondary-color: #ffffff;
+    --bs-secondary-rgb: 255, 255, 255;
+    --bs-text-opacity: 1;
     color: #ffffff;
 }
 
-/*
- * Active indigo row sets color:#fff on the whole item, which paints light
- * buttons (btn-light / text-bg-light) as white-on-white. Restore readable contrast.
- */
-.list-group-item.active .btn-light,
-.list-group-item.active .btn-light:hover:not(:disabled),
-.list-group-item.active .btn-light:focus,
-.list-group-item.active a.btn-light {
-    background-color: #ffffff;
-    border-color: #ffffff;
-    color: #1e1b4b; /* deep indigo text on white */
+/* Light buttons and chips on the indigo row stay readable. */
+.list-group-item.active .btn-light {
+    --bs-btn-color: #1e1b4b;
+    --bs-btn-bg: #ffffff;
+    --bs-btn-border-color: #ffffff;
+    --bs-btn-hover-color: #1e1b4b;
+    --bs-btn-hover-bg: #ffffff;
+    --bs-btn-hover-border-color: #ffffff;
+    --bs-btn-active-color: #1e1b4b;
+    --bs-btn-active-bg: #ffffff;
+    --bs-btn-active-border-color: #ffffff;
+    --bs-btn-disabled-color: #1e1b4b;
+    --bs-btn-disabled-bg: #ffffff;
+    --bs-btn-disabled-border-color: #ffffff;
 }
 
-.list-group-item.active .btn-outline-light,
-.list-group-item.active .btn-outline-light:hover:not(:disabled) {
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.85);
-    background-color: transparent;
-}
-
-.list-group-item.active .btn-outline-light:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.15);
+.list-group-item.active .btn-outline-light {
+    --bs-btn-color: #ffffff;
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: rgba(255, 255, 255, 0.85);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: rgba(255, 255, 255, 0.15);
+    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.85);
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-active-bg: rgba(255, 255, 255, 0.15);
+    --bs-btn-active-border-color: rgba(255, 255, 255, 0.85);
+    --bs-btn-disabled-color: #ffffff;
+    --bs-btn-disabled-bg: transparent;
+    --bs-btn-disabled-border-color: rgba(255, 255, 255, 0.85);
 }
 
 .list-group-item.active .badge.text-bg-light,
 .list-group-item.active .badge.bg-light,
 .list-group-item.active .text-bg-light {
-    background-color: #ffffff !important;
+    --bs-light-rgb: 255, 255, 255;
+    --bs-bg-opacity: 1;
+    --bs-badge-color: #1e1b4b;
+    --bs-dark-rgb: 30, 27, 75; /* #1e1b4b when a .text-dark utility is also present */
+    --bs-text-opacity: 1;
+}
+
+.list-group-item.active .text-bg-light {
+    /* .text-bg-light hardcodes color:#000 !important. */
     color: #1e1b4b !important;
 }
 
@@ -665,9 +774,16 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 /* Preformatted / code blocks (About page architecture + run scripts, etc.) */
-pre, .bg-light {
-    background-color: var(--fs-bg-card) !important;
-    color: var(--fs-text-primary) !important;
+pre {
+    background-color: var(--fs-bg-card);
+    color: var(--fs-text-primary);
+    border: 1px solid var(--fs-border-color);
+}
+
+.bg-light {
+    --bs-light-rgb: var(--fs-bg-card-rgb);
+    --bs-bg-opacity: 1;
+    color: var(--fs-text-primary);
     border: 1px solid var(--fs-border-color);
 }
 
@@ -678,18 +794,21 @@ code {
 /* Alerts — force text + nested links/code/strong for readable messages */
 .alert {
     color: var(--fs-text-primary);
+    --fs-alert-color: var(--fs-text-primary);
 }
 
 .alert-info {
     background-color: var(--fs-alert-info-bg);
     border: 1px solid var(--fs-alert-info-border);
     color: var(--fs-alert-info-text);
+    --fs-alert-color: var(--fs-alert-info-text);
 }
 
 .alert-warning {
     background-color: var(--fs-alert-warning-bg);
     border: 1px solid var(--fs-alert-warning-border);
     color: var(--fs-alert-warning-text);
+    --fs-alert-color: var(--fs-alert-warning-text);
 }
 
 .alert-secondary,
@@ -697,29 +816,41 @@ code {
     background-color: var(--fs-alert-secondary-bg);
     border: 1px solid var(--fs-border-color);
     color: var(--fs-alert-secondary-text);
+    --fs-alert-color: var(--fs-alert-secondary-text);
 }
 
 .alert-danger {
     background-color: var(--fs-alert-danger-bg);
     border: 1px solid var(--fs-alert-danger-border);
     color: var(--fs-alert-danger-text);
+    --fs-alert-color: var(--fs-alert-danger-text);
 }
 
 .alert-success {
     background-color: var(--fs-alert-success-bg);
     border: 1px solid var(--fs-alert-success-border);
     color: var(--fs-alert-success-text);
+    --fs-alert-color: var(--fs-alert-success-text);
 }
 
 .alert strong,
 .alert b,
 .alert a,
+.alert a:hover,
+.alert a:focus,
+.alert a:focus-visible,
 .alert .alert-link,
+.alert .alert-link:hover,
+.alert .alert-link:focus,
 .alert code,
-.alert .text-muted,
 .alert .form-text,
 .alert .small {
-    color: inherit !important;
+    color: inherit;
+}
+
+.alert .text-muted,
+.alert .text-body-secondary {
+    --bs-secondary-color: var(--fs-alert-color);
 }
 
 .alert a,
@@ -729,50 +860,80 @@ code {
 }
 
 .text-warning {
-    color: var(--fs-accent-amber) !important;
+    --bs-warning-rgb: var(--fs-accent-amber-rgb);
+    --bs-text-opacity: 1;
 }
 
 .text-danger {
-    color: var(--fs-alert-danger-text) !important;
+    --bs-danger-rgb: var(--fs-alert-danger-text-rgb);
+    --bs-text-opacity: 1;
 }
 
 .text-success {
-    color: var(--fs-alert-success-text) !important;
+    --bs-success-rgb: var(--fs-alert-success-text-rgb);
+    --bs-text-opacity: 1;
 }
 
 .text-info {
-    color: var(--fs-alert-info-text) !important;
+    --bs-info-rgb: var(--fs-alert-info-text-rgb);
+    --bs-text-opacity: 1;
 }
 
-/* Badges — Bootstrap gray badges are unreadable on dark UI */
+/* Badges — Bootstrap gray badges are unreadable on dark UI.
+   Backgrounds follow the utility's rgb token. .text-bg-* color is a hardcoded
+   !important in Bootstrap, so only that color still needs !important. */
 .badge.bg-secondary,
 .badge.text-bg-secondary {
-    background-color: #3d4659 !important;
-    color: #f1f5f9 !important;
+    --bs-secondary-rgb: 61, 70, 89; /* #3d4659 */
+    --bs-bg-opacity: 1;
+    --bs-badge-color: #f1f5f9;
 }
 
 .badge.bg-light,
 .badge.text-bg-light {
-    background-color: var(--fs-overlay-mid) !important;
-    color: var(--fs-text-primary) !important;
+    --bs-light-rgb: var(--fs-overlay-mid-rgb);
+    --bs-bg-opacity: var(--fs-overlay-mid-alpha);
+    --bs-badge-color: var(--fs-text-primary);
+    --bs-dark-rgb: var(--fs-text-primary-rgb);
+    --bs-text-opacity: 1;
     border: 1px solid var(--fs-border-color);
+}
+
+.badge.bg-light > *,
+.badge.text-bg-light > * {
+    --bs-dark-rgb: var(--fs-bs-dark-rgb);
 }
 
 .badge.bg-dark,
 .badge.text-bg-dark {
-    background-color: #0b0d12 !important;
-    color: #f1f5f9 !important;
+    --bs-dark-rgb: 11, 13, 18; /* #0b0d12 */
+    --bs-bg-opacity: 1;
+    --bs-badge-color: #f1f5f9;
 }
 
 .badge.bg-warning,
+.badge.text-bg-warning {
+    --bs-dark-rgb: 26, 20, 8; /* #1a1408, for a paired .text-dark */
+    --bs-badge-color: #1a1408;
+}
+
+:root:not([data-theme="light"]) .badge.text-bg-secondary,
+.badge.text-bg-dark {
+    color: #f1f5f9 !important;
+}
+
+.badge.text-bg-light {
+    color: var(--fs-text-primary) !important;
+}
+
 .badge.text-bg-warning {
     color: #1a1408 !important;
 }
 
 :root[data-theme="light"] .badge.bg-secondary,
 :root[data-theme="light"] .badge.text-bg-secondary {
-    background-color: #5b6472 !important;
-    color: #fff !important;
+    --bs-secondary-rgb: 91, 100, 114; /* #5b6472 */
+    --bs-badge-color: #fff;
 }
 
 /* Progress bars + status captions beside them */
@@ -1303,12 +1464,6 @@ a, .btn-link {
 
 a:hover, .btn-link:hover {
     color: var(--fs-link-hover);
-}
-
-.text-muted,
-.text-secondary,
-.text-body-secondary {
-    color: var(--fs-text-muted) !important;
 }
 
 /* Nav menu footer / sidebar muted rows (scoped layout still inherits) */
@@ -2024,9 +2179,6 @@ h1:focus {
     border: 1px solid var(--fs-border-color);
     background: var(--fs-bg-card);
 }
-.home-active-toolbar {
-    gap: 0.5rem;
-}
 .home-project-select {
     font-weight: 600;
 }
@@ -2056,9 +2208,9 @@ h1:focus {
 }
 .home-showcase-heading:hover,
 .home-showcase-heading:focus-visible {
-    /* .text-secondary reads --bs-secondary-rgb for its color. */
-    --bs-secondary-rgb: var(--bs-light-rgb);
+    --bs-secondary-rgb: var(--fs-bs-light-rgb);
     --bs-text-opacity: 1;
+    color: var(--bs-light, #f8f9fa);
 }
 .home-showcase-heading__arrow {
     opacity: 0;
@@ -2356,6 +2508,7 @@ h1:focus {
 /* Cast index — global so Characters_CastList (child) gets constraints */
 .cast-index-list {
     background: var(--fs-bg-card, #1a222d);
+    --bs-border-color: var(--fs-border-color, #3a4554);
     border-color: var(--fs-border-color, #3a4554);
 }
 .cast-index-list .char-list-item,
@@ -2507,7 +2660,7 @@ h1:focus {
   overflow: visible;
 }
 
-.voice-dictation-scrim {
+.voice-dictation.voice-dictation--open > .voice-dictation-scrim {
   position: fixed;
   inset: 0;
   z-index: 20000;
@@ -2523,7 +2676,7 @@ h1:focus {
   color: var(--bs-body-color, #e5e7eb);
 }
 /* Always in the viewport — never a dropdown that falls off the long Locations/Cast page. */
-.voice-dictation-popover--modal {
+.voice-dictation.voice-dictation--open > .voice-dictation-popover.voice-dictation-popover--modal {
   position: fixed;
   left: 50%;
   top: 50%;

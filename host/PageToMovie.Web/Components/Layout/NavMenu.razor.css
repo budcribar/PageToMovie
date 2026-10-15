@@ -349,6 +349,9 @@
 .nav-item {
     font-size: 0.9rem;
     padding-bottom: 0.5rem;
+    /* Same horizontal inset the px-3 utility applied, so the collapsed rail can tighten it. */
+    padding-left: 1rem;
+    padding-right: 1rem;
 }
 
     .nav-item:first-of-type {
@@ -386,9 +389,9 @@
     }
 
 /* Collapsed rail: icons only, centered */
-.nav-scrollable.nav-collapsed .nav-item.px-3 {
-    padding-left: 0.35rem !important;
-    padding-right: 0.35rem !important;
+.nav-scrollable.nav-collapsed .nav-item {
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
 }
 
 .nav-scrollable.nav-collapsed .nav-item ::deep .nav-link {

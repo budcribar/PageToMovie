@@ -18,7 +18,9 @@ public class FalVideoClientTests
         Assert.Equal(ModelProviderFamily.Fal, entry.Provider);
         Assert.Contains(SupportedModelCatalog.FalApiKeyEnv, entry.RequiredEnvKeys);
         Assert.False(entry.SupportsVideoContinue);
-        Assert.True(entry.SupportsReferenceImages);
+        // Text-to-video OpenAPI has no image input; image-to-video OpenAPI is 404.
+        Assert.False(entry.SupportsReferenceImages);
+        Assert.Equal(0, entry.MaxReferenceImages);
     }
 
     [Fact]

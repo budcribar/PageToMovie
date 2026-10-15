@@ -48,7 +48,7 @@ public class SupportedModelCatalogTests
 
     [Theory]
     [InlineData("grok-imagine-video", 7)]   // multi-plate identity conditioning
-    [InlineData("hunyuan-video", 1)]        // single init/reference image only (true i2v)
+    [InlineData("hunyuan-video", 0)]        // text-to-video schema has no image input; i2v OpenAPI 404
     [InlineData("fal-ai/wan-2.1", 1)]       // single init/reference image only (true i2v)
     [InlineData("veo-3.1", 3)] // Gemini API Veo 3.1: up to 3 asset reference images
     public void MaxReferenceImages_MatchesRealPerModelCapability(string modelId, int expectedMax)
@@ -609,18 +609,37 @@ public class SupportedModelCatalogTests
     }
 
     [Fact]
-    public void Chat_and_image_models_leave_aspect_ratio_catalog_fields_unset()
+    public void Chat_models_leave_aspect_ratio_catalog_fields_unset()
     {
-        // SupportedAspectRatios/DefaultAspectRatio are Video-only concepts (image generation
-        // already has its own per-call aspectRatio parameter unrelated to this catalog field).
-        foreach (var cap in new[] { ModelCapability.Chat, ModelCapability.Image })
+        foreach (var e in SupportedModelCatalog.ForCapability(ModelCapability.Chat, enabledOnly: false))
         {
-            foreach (var e in SupportedModelCatalog.ForCapability(cap, enabledOnly: false))
-            {
-                Assert.Null(e.SupportedAspectRatios);
-                Assert.Null(e.DefaultAspectRatio);
-            }
+            Assert.Null(e.SupportedAspectRatios);
+            Assert.Null(e.DefaultAspectRatio);
         }
+    }
+
+    [Fact]
+    public void Image_aspect_ratio_lists_keep_the_default_inside_the_list()
+    {
+        // Image clients do not read these fields. When docs publish a discrete enum, the
+        // catalog stores it; a default must be one of the listed values.
+        foreach (var e in SupportedModelCatalog.ForCapability(ModelCapability.Image, enabledOnly: false))
+        {
+            if (e.SupportedAspectRatios is null && e.DefaultAspectRatio is null)
+                continue;
+            Assert.NotNull(e.SupportedAspectRatios);
+            Assert.Contains(e.DefaultAspectRatio, e.SupportedAspectRatios!);
+        }
+    }
+
+    [Fact]
+    public void NanoBanana21_includes_panoramic_aspect_ratios()
+    {
+        var e = SupportedModelCatalog.Find("gemini-nano-banana-2.1", ModelCapability.Image);
+        Assert.NotNull(e);
+        foreach (var ratio in new[] { "1:4", "4:1", "1:8", "8:1" })
+            Assert.Contains(ratio, e!.SupportedAspectRatios!);
+        Assert.Equal("1:1", e.DefaultAspectRatio);
     }
 
     [Fact]

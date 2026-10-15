@@ -1,6 +1,6 @@
 /* Estimate hub — compact so DecisionCard fits without page scroll on laptop viewports */
 .cost-page .ptm-step-strip--studio {
-    margin-bottom: 0.35rem !important;
+    margin-bottom: 0.35rem;
 }
 .cost-page .ptm-step {
     min-height: 2.4rem;

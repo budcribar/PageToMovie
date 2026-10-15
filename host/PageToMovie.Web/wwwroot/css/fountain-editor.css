@@ -334,8 +334,8 @@
 .fe-editor-host .CodeMirror {
   position: absolute;
   inset: 0;
-  height: 100% !important;
-  width: 100% !important;
+  height: 100%;
+  width: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 0.88rem;
   line-height: 1.45;
@@ -343,7 +343,10 @@
   color: var(--fe-editor-fg);
 }
 
-/* Always show a vertical scrollbar so long drafts are obviously scrollable */
+/* Always show a vertical scrollbar so long drafts are obviously scrollable.
+   CodeMirror's stylesheet sets `overflow: scroll !important` on .CodeMirror-scroll
+   ("things will break if this is overridden"). A more specific selector cannot
+   beat that without !important. */
 .fe-editor-host .CodeMirror-scroll {
   min-height: 100%;
   max-height: 100%;
@@ -351,6 +354,9 @@
   overflow-x: auto !important;
 }
 
+/* CodeMirror hides .CodeMirror-vscrollbar with `display: none` and, when the
+   bar is not required, clears the inline display rather than setting `none`.
+   This selector is more specific, so the bar stays visible without !important. */
 .fe-editor-host .CodeMirror-vscrollbar {
   display: block;
   overflow-y: scroll;
@@ -377,7 +383,7 @@
   background: var(--fs-bg-card-hover);
 }
 
-/* Match CodeMirror's div/span selector so this color wins on specificity. */
+/* Beats `div.CodeMirror span.CodeMirror-matchingbracket` (element + three classes). */
 .fe-editor-host div.CodeMirror span.CodeMirror-matchingbracket {
   color: var(--fe-token-header);
 }
@@ -609,7 +615,10 @@
 /* ── Structured ScreenplayEditor RCL — studio cohesion ─────────────────────
    The RCL uses Bootstrap dark utilities (bg-dark, text-light, etc.) that do not
    match PageToMovie studio tokens. Scope overrides so the workbench reads as
-   one surface inside AdaptationShell, not a nested light/dark foreign app. */
+   one surface inside AdaptationShell, not a nested light/dark foreign app.
+   Utilities such as .bg-dark, .text-light, .py-0, and .shadow-sm are authored
+   with !important. Specificity cannot beat those; the overrides below keep
+   !important only for that case. */
 
 .fe-structured-editor {
   background: var(--fs-bg-card);
@@ -620,6 +629,7 @@
   min-height: 28rem;
 }
 
+/* Beats Bootstrap .py-0 / .py-2 on the RCL root (those utilities are !important). */
 .fe-structured-editor > .container-fluid {
   padding-top: 0.75rem !important;
   padding-bottom: 0.75rem !important;
@@ -635,7 +645,7 @@
 .fe-structured-editor h5 {
   font-size: 0.95rem;
   letter-spacing: -0.01em;
-  color: var(--fs-text-primary) !important;
+  color: var(--fs-text-primary);
 }
 
 .fe-structured-editor .text-light {
@@ -644,7 +654,7 @@
 
 .fe-structured-editor .text-secondary,
 .fe-structured-editor .text-muted {
-  color: var(--fs-text-muted) !important;
+  color: var(--fs-text-muted);
 }
 
 .fe-structured-editor .bg-dark {
@@ -692,7 +702,7 @@
 
 .fe-structured-editor .badge.text-bg-warning {
   background-color: var(--fs-accent-amber) !important;
-  color: #1a1408 !important;
+  color: #1a1408;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -703,11 +713,17 @@
   border: 1px solid var(--fs-border-color);
 }
 
-.fe-structured-editor .badge.text-bg-primary,
-.fe-structured-editor .btn-primary {
+/* .text-bg-primary sets color and background with !important. .btn-primary does not. */
+.fe-structured-editor .badge.text-bg-primary {
   background-color: var(--fs-accent-indigo) !important;
-  border-color: var(--fs-accent-indigo) !important;
+  border-color: var(--fs-accent-indigo);
   color: #fff !important;
+}
+
+.fe-structured-editor .btn-primary {
+  background-color: var(--fs-accent-indigo);
+  border-color: var(--fs-accent-indigo);
+  color: #fff;
 }
 
 .fe-structured-editor .btn-outline-secondary {
@@ -792,6 +808,7 @@
 /* Add-beat control */
 .fe-structured-editor .form-select.text-success,
 .fe-structured-editor .form-select.border-success {
+  /* Color must beat .fe-structured-editor .form-select, which is also !important. */
   color: var(--fs-alert-success-text) !important;
   border-color: var(--fs-alert-success-border) !important;
   background: var(--fs-alert-success-bg) !important;
@@ -965,6 +982,7 @@
   font-weight: 600;
 }
 
+/* Beats Bootstrap .pt-2 on the same element (padding utilities are !important). */
 .fe-screenplay-body {
   padding-top: 0.65rem !important;
 }
@@ -981,7 +999,9 @@
   padding: 0.65rem 0.75rem;
 }
 
-/* Tighter beat/scene selects — more room for text, caret tucked right */
+/* Tighter beat/scene selects — more room for text, caret tucked right.
+   These beat .form-select / .form-select-sm on specificity. The transition
+   preset select used to set height and font-size inline; .spe-sel owns both. */
 .fe-structured-editor .spe-sel {
   height: 26px;
   min-height: 26px;
@@ -1031,7 +1051,8 @@
 .fe-structured-editor .spe-sel-add {
   width: 9.5rem;
   height: 28px;
-  /* Keep caret when setting solid success background */
+  /* Kept under the success `background` shorthand, which is more specific and
+     still !important, so the solid fill stays and this caret does not paint. */
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2322c55e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
   background-repeat: no-repeat;
   background-position: right 0.35rem center;
@@ -1119,6 +1140,7 @@
   background: color-mix(in oklab, var(--bs-body-bg, #111) 70%, #1e3a5f);
   margin-top: 0.25rem;
 }
+/* Bootstrap .border sets every side as important, so the accent stripe has to as well. */
 .fe-structured-editor .spe-group-header + .spe-outline-row {
   margin-left: 0.35rem;
   border-left: 2px solid color-mix(in oklab, #38bdf8 35%, transparent) !important;
