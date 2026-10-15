@@ -121,7 +121,7 @@ public partial class Configuration
                 // QA only — missing key must not block book→screenplay or film generation.
                 MakeCoverage(CapReview, "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
                 MakeCoverage(CapMusic, "Background music", "Optional scores", _audioModel, CapAudio, required: false),
-                MakeCoverage(CapVoice, "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, CapVoice, required: false),
+                MakeCoverage(CapVoice, "Voice clone & speech", "Clones your voice and speaks the dialogue. The xAI option is English.", _voiceModel, CapVoice, required: false),
                 MakeCoverage(CapVideoEdit, "Clip editing", "Optional: re-render a clip from a written instruction", _videoEditModel, nameof(ModelCapability.VideoEdit), required: false),
             };
             return rows;
