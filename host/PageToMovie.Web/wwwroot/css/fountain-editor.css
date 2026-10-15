@@ -352,8 +352,8 @@
 }
 
 .fe-editor-host .CodeMirror-vscrollbar {
-  display: block !important;
-  overflow-y: scroll !important;
+  display: block;
+  overflow-y: scroll;
 }
 
 .fe-editor-host .CodeMirror-gutters {
@@ -377,8 +377,9 @@
   background: var(--fs-bg-card-hover);
 }
 
-.fe-editor-host .CodeMirror-matchingbracket {
-  color: var(--fe-token-header) !important;
+/* Match CodeMirror's div/span selector so this color wins on specificity. */
+.fe-editor-host div.CodeMirror span.CodeMirror-matchingbracket {
+  color: var(--fe-token-header);
 }
 
 /* Fountain mode token colors */
@@ -611,9 +612,9 @@
    one surface inside AdaptationShell, not a nested light/dark foreign app. */
 
 .fe-structured-editor {
-  background: var(--fs-bg-card) !important;
-  border: 1px solid var(--fs-border-color) !important;
-  border-radius: 0.75rem !important;
+  background: var(--fs-bg-card);
+  border: 1px solid var(--fs-border-color);
+  border-radius: 0.75rem;
   box-shadow: var(--fs-shadow-card);
   color: var(--fs-text-primary);
   min-height: 28rem;
@@ -888,7 +889,7 @@
 
 .fe-sp-tools__link:hover {
   text-decoration: underline;
-  color: var(--fs-text-primary) !important;
+  color: var(--fs-text-primary);
 }
 
 .fe-sp-tools__panel {
@@ -982,64 +983,64 @@
 
 /* Tighter beat/scene selects — more room for text, caret tucked right */
 .fe-structured-editor .spe-sel {
-  height: 26px !important;
-  min-height: 26px !important;
-  padding: 0 1.15rem 0 0.3rem !important;
-  font-size: 0.78rem !important;
-  line-height: 1.2 !important;
-  background-position: right 0.28rem center !important;
-  background-size: 10px 8px !important;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 1.15rem 0 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  background-position: right 0.28rem center;
+  background-size: 10px 8px;
 }
 
 .fe-structured-editor .spe-sel-type {
-  width: 5.6rem !important;
-  max-width: 5.6rem !important;
-  flex: 0 0 5.6rem !important;
+  width: 5.6rem;
+  max-width: 5.6rem;
+  flex: 0 0 5.6rem;
 }
 
 .fe-structured-editor .spe-sel-env {
-  width: 5.25rem !important;
-  max-width: 5.25rem !important;
-  flex: 0 0 5.25rem !important;
+  width: 5.25rem;
+  max-width: 5.25rem;
+  flex: 0 0 5.25rem;
 }
 
 .fe-structured-editor .spe-sel-tod {
-  width: 7.25rem !important;
-  max-width: 7.5rem !important;
-  flex: 0 0 7.25rem !important;
+  width: 7.25rem;
+  max-width: 7.5rem;
+  flex: 0 0 7.25rem;
 }
 
 .fe-structured-editor .spe-sel-ext {
-  width: 3.6rem !important;
-  max-width: 3.6rem !important;
-  flex: 0 0 3.6rem !important;
-  font-size: 0.72rem !important;
+  width: 3.6rem;
+  max-width: 3.6rem;
+  flex: 0 0 3.6rem;
+  font-size: 0.72rem;
 }
 
 .fe-structured-editor .spe-sel-speaker {
-  width: auto !important;
-  min-width: 5rem !important;
-  max-width: 9rem !important;
-  flex: 0 1 8rem !important;
+  width: auto;
+  min-width: 5rem;
+  max-width: 9rem;
+  flex: 0 1 8rem;
 }
 
 .fe-structured-editor .spe-sel-loc {
-  min-width: 6rem !important;
+  min-width: 6rem;
 }
 
 .fe-structured-editor .spe-sel-add {
-  width: 9.5rem !important;
-  height: 28px !important;
+  width: 9.5rem;
+  height: 28px;
   /* Keep caret when setting solid success background */
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2322c55e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 0.35rem center !important;
-  background-size: 10px 8px !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2322c55e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.35rem center;
+  background-size: 10px 8px;
 }
 
 .fe-structured-editor .spe-gear-btn {
-  height: 26px !important;
-  font-size: 0.72rem !important;
+  height: 26px;
+  font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.1;
 }
@@ -1074,7 +1075,7 @@
 .fe-structured-editor .spe-outline-check {
   width: 0.85rem;
   height: 0.85rem;
-  margin: 0 !important;
+  margin: 0;
   flex-shrink: 0;
 }
 .fe-structured-editor .spe-outline-label {
@@ -1088,7 +1089,7 @@
 .fe-structured-editor .spe-outline-icon {
   width: 1.35rem;
   height: 1.35rem;
-  padding: 0 !important;
+  padding: 0;
   line-height: 1.2;
   font-size: 0.78rem;
   border: 0;

@@ -244,7 +244,7 @@ label,
 }
 
 .card-subtitle {
-    color: var(--fs-text-muted) !important;
+    color: var(--fs-text-muted);
 }
 
 /* Muted / secondary helpers — cover every Bootstrap utility we use in messages */
@@ -273,8 +273,8 @@ label,
 .form-control::placeholder,
 .form-select::placeholder {
     /* Was --fs-text-secondary (undefined → unreadable). Keep clearly lighter than field bg. */
-    color: var(--fs-text-secondary, #c8d0e0) !important;
-    opacity: 1 !important;
+    color: var(--fs-text-secondary, #c8d0e0);
+    opacity: 1;
     font-style: normal;
     -webkit-text-fill-color: var(--fs-text-secondary, #c8d0e0);
 }
@@ -465,16 +465,16 @@ input[type="file"]:disabled::file-selector-button {
 .table > tbody > tr.table-warning > * {
     --bs-table-bg-type: transparent;
     --bs-table-bg-state: transparent;
-    background-color: rgba(226, 179, 66, 0.14) !important;
-    color: var(--fs-text-primary) !important;
+    background-color: rgba(226, 179, 66, 0.14);
+    color: var(--fs-text-primary);
     box-shadow: inset 3px 0 0 var(--fs-accent-amber);
 }
 
 .table > tbody > tr.table-primary > * {
     --bs-table-bg-type: transparent;
     --bs-table-bg-state: transparent;
-    background-color: rgba(99, 102, 241, 0.16) !important;
-    color: var(--fs-text-primary) !important;
+    background-color: rgba(99, 102, 241, 0.16);
+    color: var(--fs-text-primary);
     box-shadow: inset 3px 0 0 var(--fs-accent-indigo);
 }
 
@@ -482,12 +482,12 @@ input[type="file"]:disabled::file-selector-button {
 .table > tbody > tr.table-warning .text-decoration-underline,
 .table > tbody > tr.table-primary a,
 .table > tbody > tr.table-primary .text-decoration-underline {
-    color: var(--fs-link) !important;
+    color: var(--fs-link);
 }
 
 .table > tbody > tr.table-warning .text-muted,
 .table > tbody > tr.table-primary .text-muted {
-    color: var(--fs-text-muted) !important;
+    color: var(--fs-text-muted);
 }
 
 /* Home: My jobs collapse header */
@@ -514,27 +514,27 @@ input[type="file"]:disabled::file-selector-button {
 /* List groups (project list, cast list) — explicit high-contrast theme text color. */
 .list-group-item {
     background-color: var(--fs-bg-card);
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
     border-color: var(--fs-border-color);
 }
 
 .project-list__pick {
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
     font-weight: 600;
     transition: color 0.15s ease;
 }
 
 .project-list__pick:hover {
-    color: var(--fs-accent-indigo) !important;
+    color: var(--fs-accent-indigo);
 }
 
 .list-group-item.active .project-list__pick,
 .list-group-item.active .project-list__pick:hover {
-    color: #ffffff !important;
+    color: #ffffff;
 }
 
 .list-group-item-action {
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
 }
 
 .scene-join-row {
@@ -553,7 +553,7 @@ input[type="file"]:disabled::file-selector-button {
 .list-group-item-action:active,
 .list-group-item-action:active:focus {
     background-color: var(--fs-bg-card-hover);
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
 }
 
 .list-group-item.active,
@@ -564,40 +564,40 @@ input[type="file"]:disabled::file-selector-button {
 .list-group-item-action.active:hover,
 .list-group-item-action.active:focus,
 .list-group-item-action.active:focus-visible {
-    background-color: var(--fs-accent-indigo) !important;
-    border-color: var(--fs-accent-indigo) !important;
-    color: #ffffff !important;
+    background-color: var(--fs-accent-indigo);
+    border-color: var(--fs-accent-indigo);
+    color: #ffffff;
 }
 
 /* Labels on active row stay white (Bootstrap / theme often leave child spans near-white-on-white). */
 .list-group-item.active .char-list-name,
 .list-group-item.active .project-list__pick,
 .list-group-item.active > span:not([class*="thumb"]):not([class*="badge"]):not([class*="miss"]) {
-    color: #ffffff !important;
+    color: #ffffff;
 }
 
 /*
- * Active indigo row sets color:#fff !important on the whole item, which paints light
+ * Active indigo row sets color:#fff on the whole item, which paints light
  * buttons (btn-light / text-bg-light) as white-on-white. Restore readable contrast.
  */
 .list-group-item.active .btn-light,
 .list-group-item.active .btn-light:hover:not(:disabled),
 .list-group-item.active .btn-light:focus,
 .list-group-item.active a.btn-light {
-    background-color: #ffffff !important;
-    border-color: #ffffff !important;
-    color: #1e1b4b !important; /* deep indigo text on white */
+    background-color: #ffffff;
+    border-color: #ffffff;
+    color: #1e1b4b; /* deep indigo text on white */
 }
 
 .list-group-item.active .btn-outline-light,
 .list-group-item.active .btn-outline-light:hover:not(:disabled) {
-    color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.85) !important;
-    background-color: transparent !important;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.85);
+    background-color: transparent;
 }
 
 .list-group-item.active .btn-outline-light:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.15) !important;
+    background-color: rgba(255, 255, 255, 0.15);
 }
 
 .list-group-item.active .badge.text-bg-light,
@@ -608,7 +608,7 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 .list-group-item.active .form-select {
-    color: #ffffff !important;
+    color: #ffffff;
 }
 
 /* Modals — Bootstrap defaults to a white modal-content background with
@@ -616,11 +616,11 @@ input[type="file"]:disabled::file-selector-button {
    Never nest .modal-dialog inside .modal-backdrop: backdrop.show uses opacity
    which would make the entire dialog (including text) semi-transparent. */
 .modal-content {
-    background: var(--fs-bg-card) !important;
+    background: var(--fs-bg-card);
     border: 1px solid var(--fs-border-color);
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
     box-shadow: var(--fs-shadow-card);
-    opacity: 1 !important;
+    opacity: 1;
 }
 
 .modal-header,
@@ -630,7 +630,7 @@ input[type="file"]:disabled::file-selector-button {
 }
 
 .modal-title {
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
 }
 
 .modal-body {
@@ -639,7 +639,7 @@ input[type="file"]:disabled::file-selector-button {
 
 .modal .form-label,
 .modal .form-check-label {
-    color: var(--fs-text-primary) !important;
+    color: var(--fs-text-primary);
 }
 
 .modal .input-group-text {
@@ -2025,7 +2025,7 @@ h1:focus {
     background: var(--fs-bg-card);
 }
 .home-active-toolbar {
-    gap: 0.5rem !important;
+    gap: 0.5rem;
 }
 .home-project-select {
     font-weight: 600;
@@ -2033,7 +2033,7 @@ h1:focus {
 .home-project-label {
     letter-spacing: 0.06em;
     font-weight: 600;
-    font-size: 0.7rem !important;
+    font-size: 0.7rem;
     line-height: 1;
     padding-right: 0.15rem;
 }
@@ -2056,7 +2056,9 @@ h1:focus {
 }
 .home-showcase-heading:hover,
 .home-showcase-heading:focus-visible {
-    color: var(--bs-light, #f8f9fa) !important;
+    /* .text-secondary reads --bs-secondary-rgb for its color. */
+    --bs-secondary-rgb: var(--bs-light-rgb);
+    --bs-text-opacity: 1;
 }
 .home-showcase-heading__arrow {
     opacity: 0;
@@ -2354,72 +2356,72 @@ h1:focus {
 /* Cast index — global so Characters_CastList (child) gets constraints */
 .cast-index-list {
     background: var(--fs-bg-card, #1a222d);
-    border-color: var(--fs-border-color, #3a4554) !important;
+    border-color: var(--fs-border-color, #3a4554);
 }
 .cast-index-list .char-list-item,
 .list-group-item.char-list-item {
-    display: flex !important;
-    align-items: center !important;
-    gap: 0.55rem !important;
-    padding-top: 0.4rem !important;
-    padding-bottom: 0.4rem !important;
-    background-color: var(--fs-bg-card, #1a222d) !important;
-    color: var(--fs-text-primary, #e8eef6) !important;
-    border-color: rgba(148, 163, 184, 0.12) !important;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    background-color: var(--fs-bg-card, #1a222d);
+    color: var(--fs-text-primary, #e8eef6);
+    border-color: rgba(148, 163, 184, 0.12);
     width: 100%;
     text-align: left;
 }
 .cast-index-list .char-list-item:hover:not(:disabled):not(.active),
 .list-group-item.char-list-item:hover:not(:disabled):not(.active) {
-    background-color: var(--fs-bg-card-hover, #232d3b) !important;
-    color: var(--fs-text-primary, #e8eef6) !important;
+    background-color: var(--fs-bg-card-hover, #232d3b);
+    color: var(--fs-text-primary, #e8eef6);
 }
 .list-group-item.char-list-item.active,
 .list-group-item.char-list-item.active:hover,
 .list-group-item.char-list-item.active:focus,
 .list-group-item.char-list-item.active:focus-visible,
 .list-group-item.char-list-item.active:active {
-    background-color: var(--fs-accent-indigo, #4f46e5) !important;
-    border-color: var(--fs-accent-indigo, #4f46e5) !important;
-    color: #ffffff !important;
+    background-color: var(--fs-accent-indigo, #4f46e5);
+    border-color: var(--fs-accent-indigo, #4f46e5);
+    color: #ffffff;
     z-index: 2;
 }
 .char-list-name {
     flex: 1;
     min-width: 0;
     text-align: left;
-    color: inherit !important;
+    color: inherit;
     font-weight: 600;
     font-size: 0.85rem;
 }
 .list-group-item.char-list-item.active .char-list-name {
-    color: #ffffff !important;
+    color: #ffffff;
 }
 .char-list-thumb {
-    width: 36px !important;
-    height: 36px !important;
-    max-width: 36px !important;
-    max-height: 36px !important;
+    width: 36px;
+    height: 36px;
+    max-width: 36px;
+    max-height: 36px;
     border-radius: 0.35rem;
-    object-fit: cover !important;
+    object-fit: cover;
     background: #0b0f14;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    flex-shrink: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
 }
 .char-list-thumb--empty,
 .char-list-thumb--voice,
 .char-list-thumb--voice-missing,
 .char-list-thumb--group {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
 }
 .char-list-thumb--empty {
     background: #422006;
@@ -2442,34 +2444,34 @@ h1:focus {
     border: 1px solid rgba(13, 202, 240, 0.45);
 }
 .char-list-thumb__icon {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 100% !important;
-    height: 100% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
     font-size: 1.1rem;
     font-weight: 700;
-    line-height: 1 !important;
+    line-height: 1;
     user-select: none;
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0;
+    padding: 0;
 }
 .char-list-thumb__icon i,
 .char-list-thumb__icon .bi {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    line-height: 1 !important;
-    font-size: 1.1rem !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    font-size: 1.1rem;
 }
 .char-list-thumb__icon i::before,
 .char-list-thumb__icon .bi::before {
-    display: block !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    line-height: 1 !important;
+    display: block;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
 }
 .char-list-lock {
     flex-shrink: 0;
@@ -2506,7 +2508,7 @@ h1:focus {
 }
 
 .voice-dictation-scrim {
-  position: fixed !important;
+  position: fixed;
   inset: 0;
   z-index: 20000;
   background: rgba(2, 6, 23, 0.55);
@@ -2522,11 +2524,11 @@ h1:focus {
 }
 /* Always in the viewport — never a dropdown that falls off the long Locations/Cast page. */
 .voice-dictation-popover--modal {
-  position: fixed !important;
-  left: 50% !important;
-  top: 50% !important;
-  right: auto !important;
-  transform: translate(-50%, -50%) !important;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
   max-height: min(90vh, 34rem);
   overflow: auto;
 }
@@ -2602,10 +2604,10 @@ h1:focus {
   gap: 0.3rem;
 }
 .voice-dictation-chip {
-  font-size: 0.72rem !important;
+  font-size: 0.72rem;
   line-height: 1.2;
-  padding: 0.2rem 0.45rem !important;
-  border-radius: 999px !important;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
   white-space: normal;
   text-align: left;
 }

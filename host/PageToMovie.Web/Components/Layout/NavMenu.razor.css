@@ -296,13 +296,13 @@
 }
 
 .nav-user-signin {
-    display: flex !important;
+    display: flex;
     align-items: center;
     gap: 0.65rem;
-    padding: 0.45rem 0.5rem !important;
-    border-radius: 0.65rem !important;
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.65rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    height: auto !important;
+    height: auto;
     min-height: 2.75rem;
 }
 

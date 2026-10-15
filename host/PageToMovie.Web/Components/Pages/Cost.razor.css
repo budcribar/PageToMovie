@@ -25,8 +25,8 @@
 }
 
 .cost-hub .card-body {
-    padding-top: 0.55rem !important;
-    padding-bottom: 0.55rem !important;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
 }
 
 .cost-hub-label {
