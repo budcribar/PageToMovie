@@ -16,6 +16,8 @@ public enum ModelCapability
     LipSync,
     /// <summary>Prompt-based edit of an already-generated clip (xAI's /v1/videos/edits). Input is video+text-prompt, not text-prompt(+refs) like <see cref="Video"/> generation, and not video+audio like <see cref="LipSync"/> — kept distinct.</summary>
     VideoEdit,
+    /// <summary>Speech-to-text for dialogue checks. Word timings in, transcript out. The catalog default stays the existing ElevenLabs row; other providers are operator-selected.</summary>
+    Transcription,
 }
 
 /// <summary>
@@ -432,6 +434,9 @@ public sealed class SupportedModelEntry
     /// <summary>USD per minute of output video (LipSync only, flat rate — Sync Labs-style lip-sync models aren't priced per resolution like <see cref="VideoCostPerSecondByResolution"/>). Null when not applicable/unconfirmed.</summary>
     public double? CostPerMinuteUsd { get; init; }
 
+    /// <summary>USD per hour of audio transcribed (Transcription only). Null when the vendor has not published a rate for this model id.</summary>
+    public double? CostPerHourUsd { get; init; }
+
     /// <summary>Raw provider string from models_catalog.json (e.g. OpenAI, Xai, Google).</summary>
     public string ProviderName { get; init; } = "";
 
@@ -530,6 +535,7 @@ public static class SupportedModelCatalog
         new() { Id = "voice", DisplayName = "Voice Clone / TTS", Description = "Personal voice clone from a short sample, then spoken dialogue or narration for the film.", Order = 70 },
         new() { Id = "lipsync", DisplayName = "Video Lip-Sync", Description = "Resyncs a generated clip's mouth movement to a separate dialogue or narration audio track.", Order = 80 },
         new() { Id = "video-edit", DisplayName = "Video Clip Edit", Description = "Prompt-based edit of an already-generated clip (re-render an action, color, or detail from a text instruction).", Order = 85 },
+        new() { Id = "transcription", DisplayName = "Speech to text", Description = "Turns spoken audio into text with word timings for dialogue checks.", Order = 75 },
     ];
 
     private static Dictionary<string, List<string>>? _loadedTaskRankings;
@@ -850,6 +856,7 @@ public static class SupportedModelCatalog
             "vision" => ModelCapability.Vision,
             "audio" or "music" => ModelCapability.Audio,
             "voice" or "tts" or "voice_clone" => ModelCapability.Voice,
+            "transcription" or "stt" => ModelCapability.Transcription,
             "lip_sync" or "lipsync" => ModelCapability.LipSync,
             "video_edit" or "videoedit" => ModelCapability.VideoEdit,
             "chat" or "planning" or "video_review" or VideoReviewCapabilityId => ModelCapability.Chat,
@@ -1317,6 +1324,7 @@ public static class SupportedModelCatalog
             case "vision": cap = ModelCapability.Vision; return true;
             case "audio": case "music": cap = ModelCapability.Audio; return true;
             case "voice": cap = ModelCapability.Voice; return true;
+            case "transcription": case "stt": cap = ModelCapability.Transcription; return true;
             case "lipsync": case "lip-sync": cap = ModelCapability.LipSync; return true;
             case "videoedit": case "video-edit": cap = ModelCapability.VideoEdit; return true;
             case VideoReviewCapabilityId: case "videoreview": cap = ModelCapability.Chat; return true;
@@ -1504,6 +1512,12 @@ public static class SupportedModelCatalog
                 // Cost fields optional — xAI hasn't published edit-specific pricing; entries may
                 // proxy generation's videoCostPerSecondByResolution as a labeled estimate instead.
                 break;
+
+            case ModelCapability.Transcription:
+                Need(!string.IsNullOrWhiteSpace(e.EndpointPath), "endpointPath");
+                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
+                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
+                break;
         }
     }
 
@@ -1627,6 +1641,7 @@ public static class SupportedModelCatalog
         CostPerCloneUsd = e.CostPerCloneUsd,
         CostPerThousandCharsUsd = e.CostPerThousandCharsUsd,
         CostPerMinuteUsd = e.CostPerMinuteUsd,
+        CostPerHourUsd = e.CostPerHourUsd,
     };
 
     public static SupportedModelEntry FromDto(SupportedModelDto d)
@@ -1694,6 +1709,7 @@ public static class SupportedModelCatalog
         CostPerCloneUsd = d.CostPerCloneUsd,
         CostPerThousandCharsUsd = d.CostPerThousandCharsUsd,
         CostPerMinuteUsd = d.CostPerMinuteUsd,
+        CostPerHourUsd = d.CostPerHourUsd,
     };
     }
 
@@ -1835,6 +1851,7 @@ public string? Notes { get; set; }
     public double? CostPerCloneUsd { get; set; }
     public double? CostPerThousandCharsUsd { get; set; }
     public double? CostPerMinuteUsd { get; set; }
+    public double? CostPerHourUsd { get; set; }
 }
 
 public sealed class ModelCapabilityDefinition

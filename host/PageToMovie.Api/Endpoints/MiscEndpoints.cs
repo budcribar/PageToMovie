@@ -29,9 +29,9 @@ public static class MiscEndpoints
         // <summary>Public stream for a shared WIP (no login — token is the capability).</summary>
         app.MapGet("/api/share/{token}", GetShareToken);
         // <summary>CORS-safe download of provider video URL (short-lived ticket from gen job).</summary>
-        // Speech-to-text (ElevenLabs Scribe) for voice-capture verification: the client uploads an
-        // extracted dialogue segment and we return the transcript (+ word timings). Used to confirm a
-        // detected window contains the expected narrator line — never for the user's own takes.
+        // Speech-to-text for voice-capture verification: the client uploads an extracted dialogue
+        // segment and we return the transcript (+ word timings). Provider follows the project's
+        // transcription model (catalog default is ElevenLabs Scribe).
         app.MapPost("/api/transcribe", PostTranscribe);
         return app;
     }
@@ -132,7 +132,8 @@ public static class MiscEndpoints
     private static async Task<IResult> PostTranscribe(HttpRequest request,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
-    ElevenLabsScribeClient scribe,
+    ITranscriptionClient transcription,
+    ProjectStore store,
     CancellationToken ct)
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
@@ -146,11 +147,16 @@ public static class MiscEndpoints
         return Results.BadRequest(new { ok = false, error = "audio file required" });
 
     var lang = form["language_code"].ToString();
+    var modelId = await ResolveTranscriptionModelAsync(form, store, ct).ConfigureAwait(false);
     await using var ms = new MemoryStream();
     await file.CopyToAsync(ms, ct);
 
-    var result = await scribe.TranscribeAsync(
-        ms.ToArray(), file.FileName, string.IsNullOrWhiteSpace(lang) ? null : lang, ct);
+    var result = await transcription.TranscribeAsync(
+        ms.ToArray(),
+        file.FileName,
+        string.IsNullOrWhiteSpace(lang) ? null : lang,
+        modelId,
+        ct).ConfigureAwait(false);
     if (!result.Ok)
         return Results.Json(new { ok = false, error = result.Error }, statusCode: StatusCodes.Status502BadGateway);
 
@@ -162,4 +168,30 @@ public static class MiscEndpoints
         words = result.Words.Select(w => new { text = w.Text, start = w.Start, end = w.End, type = w.Type }),
     });
 }
+
+    /// <summary>
+    /// Explicit <c>model</c> form field, else the project's transcription slot.
+    /// Unset returns null so the router uses the catalog default (ElevenLabs Scribe).
+    /// </summary>
+    private static async Task<string?> ResolveTranscriptionModelAsync(
+        IFormCollection form, ProjectStore store, CancellationToken ct)
+    {
+        var explicitModel = form["model"].ToString();
+        if (ProjectModelSelection.IsUsableModelId(explicitModel))
+            return explicitModel.Trim();
+
+        var projectId = form["project_id"].ToString();
+        if (string.IsNullOrWhiteSpace(projectId))
+            return null;
+
+        try
+        {
+            var cfg = await store.GetConfigAsync(projectId.Trim(), ct).ConfigureAwait(false);
+            return ProjectModelSelection.TryGet(cfg, ProjectModelSelection.TranscriptionConfigKey);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 }

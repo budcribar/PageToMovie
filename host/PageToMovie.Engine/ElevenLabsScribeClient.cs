@@ -21,11 +21,8 @@ public sealed record ScribeResult(bool Ok, string? Text, IReadOnlyList<ScribeWor
 /// detected dialogue window actually contains the expected narrator line (→ confident line↔window
 /// mapping for the dub overlay + read-along text), never to transcribe the user's own takes.
 /// </summary>
-public sealed class ElevenLabsScribeClient
+public sealed class ElevenLabsScribeClient : ITranscriptionClient
 {
-    // scribe_v1 is the broadly-available STT model; word-level timestamps are returned by default.
-    private const string DefaultModel = "scribe_v1";
-
     private readonly HttpClient _http;
     private readonly ILogger<ElevenLabsScribeClient> _log;
 
@@ -45,10 +42,15 @@ public sealed class ElevenLabsScribeClient
         byte[] audio,
         string fileName,
         string? languageCode = null,
+        string? modelId = null,
         CancellationToken ct = default)
     {
         if (audio is null || audio.Length < 128)
             return ScribeResult.Fail("Audio is empty or too short.");
+
+        var entry = ResolveEntry(modelId);
+        if (entry is null)
+            return ScribeResult.Fail("Speech to text: no ElevenLabs model selected.");
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -56,8 +58,8 @@ public sealed class ElevenLabsScribeClient
 
         try
         {
-            using var form = BuildScribeForm(audio, fileName, languageCode);
-            using var req = new HttpRequestMessage(HttpMethod.Post, "speech-to-text");
+            using var form = BuildScribeForm(audio, fileName, languageCode, entry);
+            using var req = new HttpRequestMessage(HttpMethod.Post, entry.EndpointPath.TrimStart('/'));
             req.Headers.TryAddWithoutValidation("xi-api-key", apiKey);
             req.Content = form;
 
@@ -78,11 +80,31 @@ public sealed class ElevenLabsScribeClient
         }
     }
 
-    private static MultipartFormDataContent BuildScribeForm(byte[] audio, string fileName, string? languageCode)
+    /// <summary>
+    /// ElevenLabs transcription row. An explicit id must be that provider.
+    /// An unset id uses the transcription capability default when that default is ElevenLabs.
+    /// </summary>
+    private static SupportedModelEntry? ResolveEntry(string? modelId)
+    {
+        if (ProjectModelSelection.IsUsableModelId(modelId))
+        {
+            var selected = SupportedModelCatalog.Find(modelId, ModelCapability.Transcription);
+            return selected is { Enabled: true, Provider: ModelProviderFamily.ElevenLabs } ? selected : null;
+        }
+
+        var def = SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Transcription);
+        if (string.IsNullOrWhiteSpace(def))
+            return null;
+        var entry = SupportedModelCatalog.Find(def, ModelCapability.Transcription);
+        return entry is { Enabled: true, Provider: ModelProviderFamily.ElevenLabs } ? entry : null;
+    }
+
+    private static MultipartFormDataContent BuildScribeForm(
+        byte[] audio, string fileName, string? languageCode, SupportedModelEntry entry)
     {
         var form = new MultipartFormDataContent
         {
-            { new StringContent(DefaultModel), "model_id" },
+            { new StringContent(entry.Id), "model_id" },
             { new StringContent("word"), "timestamps_granularity" },
         };
         if (!string.IsNullOrWhiteSpace(languageCode))

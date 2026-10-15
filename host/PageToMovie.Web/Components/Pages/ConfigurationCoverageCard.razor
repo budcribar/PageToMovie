@@ -107,8 +107,9 @@
                                     @{
                                         var showModelPicker = !c.OptionalOff || isOptionalJob;
                                         var modelChoices = providerModels.ToList();
+                                        var offerOff = isOptionalJob && c.AllowOff;
                                         // Always offer Off for optional jobs so users can enable then disable without a separate control.
-                                        if (isOptionalJob
+                                        if (offerOff
                                             && !modelChoices.Any(m => string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)))
                                         {
                                             modelChoices.Insert(0, new SupportedModelDto
@@ -135,7 +136,7 @@
                                                 disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
                                                 value="@modelSelected"
                                                 @onchange="e => Cov.OnCoverageModelChangedAsync(c.Id, e.Value?.ToString())">
-                                            @if (string.IsNullOrWhiteSpace(c.ProviderId) && isOptionalJob)
+                                            @if (string.IsNullOrWhiteSpace(c.ProviderId) && offerOff)
                                             {
                                                 <option value="none">Off — pick a provider to enable</option>
                                             }

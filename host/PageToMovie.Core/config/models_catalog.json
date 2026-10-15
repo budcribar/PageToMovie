@@ -152,6 +152,13 @@
       "description": "Prompt-based edit of an already-generated clip (re-render an action, color, or detail from a text instruction).",
       "defaultModelId": "grok-imagine-video-edit",
       "order": 85
+    },
+    {
+      "id": "transcription",
+      "displayName": "Speech to text",
+      "description": "Turns spoken audio into text with word timings for dialogue checks.",
+      "defaultModelId": "scribe_v1",
+      "order": 75
     }
   ],
   "taskRankings": null,
@@ -3168,6 +3175,49 @@
       "costPerMinuteUsd": 8.0,
       "pricingNotes": "fal.ai sync-lipsync/v3 2026-08-15: $8/minute of output video.",
       "pricingLastReviewedAt": "2026-08-15"
+    },
+    {
+      "id": "scribe_v1",
+      "displayName": "ElevenLabs Scribe",
+      "capability": "Transcription",
+      "provider": "ElevenLabs",
+      "apiBase": "https://api.elevenlabs.io/v1",
+      "endpointPath": "speech-to-text",
+      "requiredEnvKeys": [
+        "ElevenLabs_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "Existing speech-to-text model. Word timestamps via timestamps_granularity=word. This row is the transcription capability default so projects that have not picked another model keep the current ElevenLabs path.",
+      "providerId": "elevenlabs",
+      "providerLabel": "ElevenLabs",
+      "pricingNotes": "https://elevenlabs.io/pricing/api (reviewed 2026-10-14) lists Scribe v2 batch at $0.22 per hour. This row keeps model id scribe_v1, the id the product already sends; that page does not publish a separate scribe_v1 rate, so costPerHourUsd is left unset.",
+      "lastVerifiedAt": "2026-10-14",
+      "pricingLastReviewedAt": "2026-10-14"
+    },
+    {
+      "id": "grok-voice-transcribe-2.0",
+      "displayName": "Grok Voice Transcribe 2.0",
+      "capability": "Transcription",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "stt",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "costPerHourUsd": 0.1,
+      "notes": "Batch speech-to-text (POST /v1/stt). GA 2026-09-17. grok-voice-transcribe-1.0 reached end of life 2026-10-02 and requests to that slug are auto-routed here. Word timestamps are always returned. Optional diarize, multichannel, and keyterms exist; this client sends the file and model (and language when the caller has one). Streaming (wss://api.x.ai/v1/stt, $0.20/hr) is not used. 500 MB max file, 10 requests/second. 38+ languages including English. Sources: https://docs.x.ai/developers/model-capabilities/audio/speech-to-text , https://docs.x.ai/developers/models/speech-to-text , https://docs.x.ai/developers/rest-api-reference/inference/speech-to-text",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "REST $0.10 per hour of audio. Streaming $0.20 per hour is a different endpoint and is not called. https://docs.x.ai/developers/models/speech-to-text and https://docs.x.ai/developers/pricing (reviewed 2026-10-14).",
+      "lastVerifiedAt": "2026-10-14",
+      "pricingLastReviewedAt": "2026-10-14"
     }
   ],
   "task_rankings": {

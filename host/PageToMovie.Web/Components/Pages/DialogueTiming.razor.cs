@@ -160,7 +160,7 @@ public partial class DialogueTiming
                 "PageToMovieFfmpeg.extractAudioSegmentAsync", url, row.WindowStartSec, row.WindowEndSec);
             if (audio is null || audio.Length < 256) { _status = "No audio in that window."; return; }
 
-            var transcript = await Engine.TranscribeSegmentAsync(audio, "segment.wav");
+            var transcript = await Engine.TranscribeSegmentAsync(audio, "segment.wav", projectId: _projectId);
             row.HeardText = (transcript?.Text ?? "").Trim();
             row.Words = (transcript?.Words ?? new())
                 .Where(tw => !string.IsNullOrWhiteSpace(tw.Text) &&

@@ -35,6 +35,7 @@ public partial class Configuration
         internal List<SupportedModelDto> _visionModels = new();
 
         internal List<SupportedModelDto> _voiceModels = new();
+        internal List<SupportedModelDto> _transcriptionModels = new();
 
 
         internal async Task LoadCatalogAsync()
@@ -66,6 +67,7 @@ public partial class Configuration
             _videoReviewModels = new();
             _audioModels = new();
             _voiceModels = new();
+            _transcriptionModels = new();
         }
 
         private async Task TryHydrateCatalogJsonAsync()
@@ -130,6 +132,7 @@ public partial class Configuration
             _visionModels = _allModels.Where(m => MatchesCapability(m, "vision")).ToList();
             _audioModels = _allModels.Where(m => MatchesCapability(m, "audio")).ToList();
             _voiceModels = _allModels.Where(m => MatchesCapability(m, "voice")).ToList();
+            _transcriptionModels = _allModels.Where(m => MatchesCapability(m, "transcription")).ToList();
             // Review: only models the catalog marks SupportsVideoReview, else chat/vision from catalog.
             _videoReviewModels = _allModels.Where(m => m.SupportsVideoReview).ToList();
             if (_videoReviewModels.Count == 0)
@@ -166,6 +169,12 @@ public partial class Configuration
                 S.Coverage._voiceModel = "none";
             if (string.IsNullOrWhiteSpace(S.Coverage._videoEditModel))
                 S.Coverage._videoEditModel = "none";
+            // Speech-to-text has no Off state. Empty shows the catalog default (ElevenLabs), not xAI.
+            if (!ProjectModelSelection.IsUsableModelId(S.Coverage._transcriptionModel))
+            {
+                S.Coverage._transcriptionModel =
+                    SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Transcription) ?? "";
+            }
         }
 
 

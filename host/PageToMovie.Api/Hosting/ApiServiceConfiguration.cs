@@ -434,6 +434,14 @@ internal static class ApiServiceConfiguration
             c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
             c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket // STT on a short dialogue segment
         }).WithRuntimeTimeout(TimeoutBucket.Audio));
+        ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<XaiSpeechToTextClient>(c =>
+        {
+            c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.XaiApiBase);
+            c.Timeout = TimeSpan.FromHours(2); // ceiling only — the per-request limit is the runtime bucket
+        }).WithRuntimeTimeout(TimeoutBucket.Audio));
+        // Fakes mode returns before this method and binds ITranscriptionClient to FakeTranscriptionClient.
+        // Transient so each request gets the pooled typed HttpClients (same lifetime as AddHttpClient<T>).
+        builder.Services.AddTransient<ITranscriptionClient, MultiProviderTranscriptionClient>();
         builder.Services.AddSingleton<IAudioClient, MultiProviderAudioClient>();
         // Lip-sync and voice-clone narration: explicit, human-triggered actions only (never wired
         // into any automatic job/pipeline — see the lip-sync / voice/clone / voice/speak routes).

@@ -143,6 +143,36 @@ public class ConfigurationStudioCoverageTests
         Assert.Equal("grok-imagine-video", host.Coverage._modelName);
     }
 
+    [Fact]
+    public void Transcription_row_defaults_to_elevenlabs_and_offers_xai_without_an_off_switch()
+    {
+        var host = new Configuration();
+        host.EnsureDomains();
+        host.Catalog._transcriptionModels = SupportedModelCatalog.ToDtoList()
+            .Where(m => string.Equals(m.Capability, "transcription", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        host.Coverage._transcriptionModel =
+            SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Transcription) ?? "";
+
+        var row = host.Coverage.BuildCoverageRows().Single(r => r.Id == "transcription");
+        Assert.False(row.AllowOff);
+        Assert.False(row.Required);
+        Assert.Equal(host.Coverage._transcriptionModel, row.ModelId);
+        Assert.Equal(
+            SupportedModelCatalog.NormalizeProviderId(
+                SupportedModelCatalog.ProviderIdFor(row.ModelId, ModelCapability.Transcription)),
+            row.ProviderId);
+
+        var models = host.Coverage.ModelsForCoverage("transcription");
+        Assert.Equal(2, models.Count);
+        Assert.Contains(models, m =>
+            string.Equals(m.ProviderId, "elevenlabs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(models, m =>
+            string.Equals(m.ProviderId, "grok", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(models, m =>
+            string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string FirstCatalogProviderId(ModelCapability capability)
     {
         var entry = SupportedModelCatalog.ForCapability(capability)
