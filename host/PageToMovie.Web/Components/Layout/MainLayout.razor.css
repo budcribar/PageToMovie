@@ -76,6 +76,9 @@ main {
 article.content {
     padding-top: 1.25rem;
     padding-bottom: 1.5rem;
+    /* Same horizontal inset the px-4 utility applied; desktop tightens this below. */
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
 }
 
 @media (max-width: 640.98px) {
@@ -116,8 +119,8 @@ article.content {
     }
 
     article.content {
-        padding-left: 1.25rem !important;
-        padding-right: 1.25rem !important;
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
         flex: 1;
         min-width: 0;
     }

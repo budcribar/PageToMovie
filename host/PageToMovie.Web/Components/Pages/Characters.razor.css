@@ -2,19 +2,19 @@
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    padding-top: 0.4rem !important;
-    padding-bottom: 0.4rem !important;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
     /* Unselected: theme card + primary text (dark-mode safe) */
-    background-color: var(--fs-bg-card) !important;
-    color: var(--fs-text-primary) !important;
-    border-color: var(--fs-border-color) !important;
+    background-color: var(--fs-bg-card);
+    color: var(--fs-text-primary);
+    border-color: var(--fs-border-color);
 }
 
 .char-list-item:hover:not(:disabled):not(.active),
 .char-list-item:focus:not(:disabled):not(.active),
 .char-list-item:focus-visible:not(:disabled):not(.active) {
-    background-color: var(--fs-bg-card-hover) !important;
-    color: var(--fs-text-primary) !important;
+    background-color: var(--fs-bg-card-hover);
+    color: var(--fs-text-primary);
 }
 
 /* Selected: indigo panel + solid white labels (never white-on-white) */
@@ -23,9 +23,9 @@
 .list-group-item.char-list-item.active:focus,
 .list-group-item.char-list-item.active:focus-visible,
 .list-group-item.char-list-item.active:active {
-    background-color: var(--fs-accent-indigo) !important;
-    border-color: var(--fs-accent-indigo) !important;
-    color: #ffffff !important;
+    background-color: var(--fs-accent-indigo);
+    border-color: var(--fs-accent-indigo);
+    color: #ffffff;
     z-index: 2;
 }
 
@@ -33,11 +33,11 @@
     flex: 1;
     min-width: 0;
     text-align: left;
-    color: inherit !important;
+    color: inherit;
 }
 
 .list-group-item.char-list-item.active .char-list-name {
-    color: #ffffff !important;
+    color: #ffffff;
     font-weight: 600;
 }
 
@@ -132,7 +132,7 @@
 
 .list-group-item.active .char-list-thumb--empty .char-list-thumb__icon,
 .list-group-item.active .char-list-thumb--voice-missing .char-list-thumb__icon {
-    color: #842029 !important;
+    color: #842029;
 }
 
 .list-group-item.active .char-list-thumb--voice {
@@ -141,13 +141,13 @@
 }
 
 .list-group-item.active .char-list-thumb--voice .char-list-thumb__icon {
-    color: #0f5132 !important;
+    color: #0f5132;
 }
 
 .list-group-item.active .char-list-voice-miss {
     background: rgba(248, 215, 218, 0.95);
     border-color: rgba(220, 53, 69, 0.9);
-    color: #842029 !important;
+    color: #842029;
 }
 
 .char-seed-tile-wrap {
@@ -479,7 +479,7 @@
 }
 
 .char-panel-toggle:hover {
-    background: rgba(0, 0, 0, 0.03) !important;
+    background: rgba(0, 0, 0, 0.03);
 }
 
 .char-panel-toggle:focus-visible {
