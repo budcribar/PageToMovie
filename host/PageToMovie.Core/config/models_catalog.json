@@ -167,6 +167,7 @@
         "OPENAI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 128000,
       "inputCostPerMillionTokens": 2.5,
       "outputCostPerMillionTokens": 10.0,
@@ -342,6 +343,7 @@
         "OPENAI_API_KEY"
       ],
       "enabled": true,
+      "deprecated": true,
       "maxInputTokens": 128000,
       "inputCostPerMillionTokens": 0.15,
       "outputCostPerMillionTokens": 0.6,
@@ -364,6 +366,7 @@
         "OPENAI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 200000,
       "inputCostPerMillionTokens": 1.1,
       "outputCostPerMillionTokens": 4.4,
@@ -373,8 +376,7 @@
       "maxOutputTokens": 100000,
       "pricingNotes": "Lifecycle: shutdown 2026-10-23. Token rates left as last published ($1.10 / $4.40 per 1M); do not use for new work.",
       "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-imagine-video",
@@ -1363,6 +1365,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "maxReferenceImages": 3,
@@ -1391,8 +1394,7 @@
       "videoReferenceImageCost": 0.0,
       "pricingNotes": "Gemini API Veo 3.1 2026-08-15: $0.40/s at 720p and 1080p (unchanged; deprecations page reviewed 2026-10-08 does not restate rates). Official model id veo-3.1-generate-preview (catalog id stays veo-3.1). Shutdown 2026-10-22.",
       "lastVerifiedAt": "2026-10-08",
-      "pricingLastReviewedAt": "2026-10-08",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-10-08"
     },
     {
       "id": "veo-3.1-fast-generate-preview",
@@ -1405,6 +1407,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "maxReferenceImages": 3,
@@ -1433,8 +1436,7 @@
       "videoReferenceImageCost": 0.0,
       "pricingNotes": "Google Gemini API 2026-08-15: $0.10/s 720p, $0.12/s 1080p (unchanged; deprecations page reviewed 2026-10-08 does not restate rates). Shutdown 2026-10-22.",
       "lastVerifiedAt": "2026-10-08",
-      "pricingLastReviewedAt": "2026-10-08",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-10-08"
     },
     {
       "id": "grok-imagine-image-quality",
@@ -1447,6 +1449,7 @@
         "XAI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
@@ -1458,8 +1461,7 @@
       "maxPromptLength": 4000,
       "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
       "lastVerifiedAt": "2026-09-08",
-      "pricingLastReviewedAt": "2026-09-08",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-09-08"
     },
     {
       "id": "grok-imagine-image",
@@ -1472,6 +1474,7 @@
         "XAI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
@@ -1483,8 +1486,7 @@
       "maxPromptLength": 4000,
       "pricingNotes": "imageCostPerImage from vendor list price in catalog; re-check provider pricing page when rates change.",
       "lastVerifiedAt": "2026-09-08",
-      "pricingLastReviewedAt": "2026-09-08",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-09-08"
     },
     {
       "id": "grok-imagine-image-2.0",
@@ -1569,6 +1571,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": true,
       "supportsVideoReview": false,
@@ -1580,8 +1583,7 @@
       "maxPromptLength": 4000,
       "pricingNotes": "ai.google.dev/gemini-api/docs/pricing 2026-10-07 paid standard, unchanged from 2026-09-01: $0.045 per 0.5K image, $0.067 per 1K image (default), $0.101 per 2K image, $0.151 per 4K image. Image output also listed as $60/1M tokens. imageCostPerImage=0.067 is the official 1K list equivalent. Deprecated 2026-10-06; Google recommends gemini-nano-banana-2.1.",
       "lastVerifiedAt": "2026-10-07",
-      "pricingLastReviewedAt": "2026-10-07",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-10-07"
     },
     {
       "id": "gemini-nano-banana-2.1",
@@ -1889,6 +1891,7 @@
         "XAI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 256000,
       "maxOutputTokens": 128000,
       "inputCostPerMillionTokens": 3.0,
@@ -1901,8 +1904,7 @@
       "providerLabel": "xAI",
       "pricingNotes": "Unconfirmed / not on official list as of 2026-08-15. Do not use leftover $3/$15 per 1M or 256k context for cost planning.",
       "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "grok-4.20-reasoning",
@@ -2139,6 +2141,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 1048576,
       "inputCostPerMillionTokens": 0.3,
       "outputCostPerMillionTokens": 2.5,
@@ -2151,8 +2154,7 @@
       "maxOutputTokens": 65536,
       "pricingNotes": "Google Gemini API list price 2026-08-15: $0.30 input / $2.50 output per 1M tokens. Context 1,048,576 in / 65,536 out.",
       "lastVerifiedAt": "2026-08-15",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.6-flash",
@@ -2190,6 +2192,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "inputCostPerMillionTokens": 0.75,
@@ -2202,8 +2205,7 @@
       "providerLabel": "Google",
       "pricingNotes": "ai.google.dev/gemini-api/docs/pricing 2026-08-15: $0.75 in / $3.75 out per 1M through 2026-12-31, then $1.50 / $7.50. Context 1,048,576 in / 65,536 out.",
       "lastVerifiedAt": "2026-09-06",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.8-flash",
@@ -2541,6 +2543,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 1048576,
       "inputCostPerMillionTokens": 0.3,
       "outputCostPerMillionTokens": 2.5,
@@ -2553,8 +2556,7 @@
       "maxOutputTokens": 65536,
       "lastVerifiedAt": "2026-08-15",
       "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15): $0.30 / $2.50 per 1M. Context 1,048,576 in / 65,536 out.",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.7-flash",
@@ -2567,6 +2569,7 @@
         "GEMINI_API_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "maxInputTokens": 1048576,
       "maxOutputTokens": 65536,
       "inputCostPerMillionTokens": 0.75,
@@ -2579,8 +2582,7 @@
       "providerLabel": "Google",
       "pricingNotes": "Same token rates as chat sibling (Google Gemini API 2026-08-15 promo through 2026-12-31): $0.75 / $3.75 per 1M. Context 1,048,576 in / 65,536 out.",
       "lastVerifiedAt": "2026-09-06",
-      "pricingLastReviewedAt": "2026-08-15",
-      "deprecated": true
+      "pricingLastReviewedAt": "2026-08-15"
     },
     {
       "id": "gemini-3.8-flash",
@@ -2667,6 +2669,7 @@
         "FAL_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
@@ -2676,8 +2679,7 @@
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-15",
-      "deprecated": true
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/minimax/music",
@@ -2764,6 +2766,7 @@
         "FAL_KEY"
       ],
       "enabled": false,
+      "deprecated": true,
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
@@ -2773,8 +2776,7 @@
       "providerLabel": "Fal.ai",
       "supportsVocals": false,
       "maxPromptLength": 1000,
-      "lastVerifiedAt": "2026-08-15",
-      "deprecated": true
+      "lastVerifiedAt": "2026-08-15"
     },
     {
       "id": "fal-ai/stable-audio-25/text-to-audio",
