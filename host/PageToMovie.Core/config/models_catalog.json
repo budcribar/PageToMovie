@@ -3123,6 +3123,52 @@
       "pricingLastReviewedAt": "2026-08-15"
     },
     {
+      "id": "xai-custom-voices",
+      "displayName": "xAI Custom Voice (English)",
+      "capability": "Voice",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "custom-voices",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "isVoiceCloneStep": true,
+      "maxPromptLength": 60000,
+      "notes": "PROVISIONAL / unofficial identifier. xAI has not published a custom-voice or TTS model id (docs.x.ai/developers/model-capabilities/audio/custom-voices). This id is endpoint-derived from POST /v1/custom-voices and must not be sent as a model field. Multipart file is the reference clip (max 120s; 90-120s recommended; wav preferred). Optional name plus language=en. Success is HTTP 201 with an 8-character voice_id reused by the speak row. POST /v1/custom-voices is Enterprise-gated and available only in the United States (not Illinois); HTTP 403 means this team cannot create voices via the API. English only on this product path. No published per-clone price (console allows up to 30 voices). maxPromptLength mirrors the TTS unary cap; this call sends audio, not text.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "docs.x.ai/developers/model-capabilities/audio/custom-voices reviewed 2026-10-15: no per-clone list price. API create is Enterprise-gated. TTS characters are priced on the speak row.",
+      "lastVerifiedAt": "2026-10-15",
+      "pricingLastReviewedAt": "2026-10-15"
+    },
+    {
+      "id": "xai-tts",
+      "displayName": "xAI Text to Speech (English)",
+      "capability": "Voice",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "tts",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "costPerThousandCharsUsd": 0.015,
+      "maxPromptLength": 60000,
+      "notes": "PROVISIONAL / unofficial identifier. xAI has not published a TTS model id (docs.x.ai/developers/model-capabilities/audio/text-to-speech). This id is endpoint-derived from POST /v1/tts and must not be sent as a model field. Body is text, voice_id, and language. This product path always sends language=en (English). xAI documents 20 languages; only English is offered here. Unary limit 60,000 characters. Response is raw audio (MP3 at 24 kHz / 128 kbps when output_format is omitted). Inline tags such as [laugh], [sigh], and <whisper> are passed through. voice_id comes from xAI Custom Voice or the console. Price $15 per 1M characters.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "docs.x.ai/developers/pricing Voice Pricing reviewed 2026-10-15: Text to Speech $15.00 per 1M characters ($0.015 per 1K characters).",
+      "lastVerifiedAt": "2026-10-15",
+      "pricingLastReviewedAt": "2026-10-15"
+    },
+    {
       "id": "fal-ai/sync-lipsync/v2/pro",
       "displayName": "Sync Lipsync 2 Pro (Fal.ai)",
       "capability": "LipSync",

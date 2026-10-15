@@ -291,10 +291,11 @@ public interface IVideoEditClient
 
 /// <summary>
 /// Voice-clone narration/dialogue: clone a voice from a short reference sample, then synthesize
-/// speech audio for arbitrary text in that voice (Fal.ai / MiniMax). Two explicit steps mirroring
-/// the underlying provider's own API shape (clone once → reuse the returned voice id across many
-/// speak calls) rather than one combined call, so a caller only pays the (larger, one-time) clone
-/// cost once per sample. Deliberately its own interface, not folded into <see cref="IAudioClient"/>:
+/// speech audio for arbitrary text in that voice (Fal.ai / MiniMax, or xAI Custom Voices + TTS).
+/// Two explicit steps mirroring the underlying provider's own API shape (clone once → reuse the
+/// returned voice id across many speak calls) rather than one combined call, so a caller only pays
+/// the clone cost once per sample. The routing implementation picks the adapter from the selected
+/// catalog voice model's provider. Deliberately its own interface, not folded into <see cref="IAudioClient"/>:
 /// that interface is shaped for one text-prompt-to-music-track call, while this is a stateful
 /// two-step "identity, then arbitrary text" flow closer to <see cref="IVideoClient"/>'s
 /// reference-image pattern than to music generation. Explicit, human-triggered only — never runs
@@ -304,9 +305,15 @@ public interface IVoiceCloneClient
 {
     bool IsConfigured { get; }
 
-    /// <param name="sampleAudioPath">Local path to the reference voice sample (provider requires >=10s of clean speech).</param>
-    /// <param name="model">Catalog model id for the clone step. Null resolves the catalog default clone-shaped model.</param>
-    /// <returns>Provider voice id (e.g. MiniMax <c>custom_voice_id</c>) to pass to <see cref="SynthesizeSpeechAsync"/>, or null if the call failed.</returns>
+    /// <summary>
+    /// Whether the adapter for <paramref name="entry"/> can run.
+    /// A single-provider client uses <see cref="IsConfigured"/>. The router checks that provider only.
+    /// </summary>
+    bool IsReady(PageToMovie.Core.Models.SupportedModelEntry? entry) => IsConfigured;
+
+    /// <param name="sampleAudioPath">Local path to the reference voice sample.</param>
+    /// <param name="model">Catalog model id for the clone step. The router uses this row's provider. Required.</param>
+    /// <returns>Provider voice id (MiniMax <c>custom_voice_id</c>, or an xAI 8-character <c>voice_id</c>) to pass to <see cref="SynthesizeSpeechAsync"/>, or null if the call failed.</returns>
     Task<string?> CloneVoiceAsync(
         string sampleAudioPath,
         string? model = null,
@@ -314,8 +321,8 @@ public interface IVoiceCloneClient
 
     /// <param name="text">Narration/dialogue text to speak. Callers should check the resolved model's <c>MaxPromptLength</c> (catalog) before calling — long-form narration (e.g. a whole book chapter) is the caller's responsibility to split into multiple calls; this client does not chunk automatically.</param>
     /// <param name="voiceId">Provider voice id previously returned by <see cref="CloneVoiceAsync"/>.</param>
-    /// <param name="model">Catalog model id for the speak step. Null resolves the catalog default speak-shaped model.</param>
-    /// <returns>Provider URL for the synthesized speech audio, or null if the call failed.</returns>
+    /// <param name="model">Catalog model id for the speak step. The router uses this row's provider. Required.</param>
+    /// <returns>Speech location: an https URL (Fal) or a <c>data:</c> URI of the raw audio (xAI TTS). Null if the call failed.</returns>
     Task<string?> SynthesizeSpeechAsync(
         string text,
         string voiceId,

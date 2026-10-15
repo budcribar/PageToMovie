@@ -64,8 +64,9 @@ public sealed class VoiceCloneApplyService
                 Ok = false,
                 Error =
                     "No voice clone model selected for this project. " +
-                    "Open Settings → Studio coverage → Voice clone, choose ElevenLabs Instant voice clone " +
-                    "or Fal MiniMax Voice Clone, save, then try again. Your recording is still saved.",
+                    "Open Settings → Studio coverage → Voice clone and choose a model " +
+                    "(xAI is the English option; ElevenLabs and Fal remain available), save, then try again. " +
+                    "Your recording is still saved.",
             };
         }
 
@@ -77,7 +78,7 @@ public sealed class VoiceCloneApplyService
                 ModelId = cloneModel.Id,
                 Error =
                     $"No voice apply path for model '{cloneModel.Id}' (provider {cloneModel.ProviderId}). " +
-                    "Pick ElevenLabs Instant voice clone or Fal MiniMax Voice Clone in Settings.",
+                    "Pick a voice model in Settings. xAI is the English option; ElevenLabs stays available.",
             };
 
         // Do not auto-switch providers. If this key/model cannot clone, surface the error and let
