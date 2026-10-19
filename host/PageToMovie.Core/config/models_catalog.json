@@ -3015,13 +3015,13 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": false,
-      "notes": "Model: Suno via AI Music API. Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. Create path /api/v1/sonic/create. As of 2026-09-09 Suno withdrew v3.5\u2013v5.5 on its own platform; this reseller still accepts existing sonic-v* ids, which map to v6. v6-wild and v6-mini are not available here yet. No documented duration control; client mix trims to scene length.",
+      "notes": "Model: Suno via AI Music API. Provider: AI Music API (aimusicapi.ai) \u2014 different unofficial reseller. Create path /api/v1/sonic/create. Docs (https://docs.aimusicapi.ai/doc-2058749.md, model availability updated 2026-09-09) list chirp-v6, chirp-v6-wild, and chirp-v6-mini as selectable (sonic-v6 spellings also accepted); each generation costs 14 credits. Duration control is documented (duration parameter 10\u2013360 s). The reseller withdrew the older chirp-v5 wire id and now serves withdrawn ids with v6 (no client change required per the reseller).",
       "providerId": "aimusicapi",
       "providerLabel": "AI Music API (aimusicapi.ai)",
       "supportsVocals": true,
-      "maxAudioDurationSeconds": 240,
+      "maxAudioDurationSeconds": 360,
       "maxPromptLength": 3000,
-      "lastVerifiedAt": "2026-09-28"
+      "lastVerifiedAt": "2026-10-19"
     },
     {
       "id": "elevenlabs-music",
