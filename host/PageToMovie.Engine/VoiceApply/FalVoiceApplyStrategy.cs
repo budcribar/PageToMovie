@@ -61,7 +61,7 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
                          ?? ProviderId;
         var voiceId = await _client.CloneVoiceAsync(ctx.SamplePath, cloneModelId, ct).ConfigureAwait(false);
         await VoiceApplyCallLog.LogCloneAsync(
-            _telemetry, ctx.ProjectId, ctx.CharKey, cloneModelId, providerId,
+            _telemetry, new VoiceApplyCallIdentity(ctx.ProjectId, ctx.CharKey, cloneModelId, providerId),
             ctx.CloneModel?.CostPerCloneUsd, voiceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(voiceId))
             return new VoiceApplyResult { Ok = false, Error = "Fal MiniMax voice clone failed — see server logs." };
@@ -78,7 +78,7 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
             var audioUrl = await _client.SynthesizeSpeechAsync(speak.Text, voiceId, speak.ModelId, ct)
                 .ConfigureAwait(false);
             await VoiceApplyCallLog.LogSpeakAsync(
-                _telemetry, ctx.ProjectId, ctx.CharKey, speak.ModelId, speak.ProviderId, speak.Text,
+                _telemetry, new VoiceApplyCallIdentity(ctx.ProjectId, ctx.CharKey, speak.ModelId, speak.ProviderId), speak.Text,
                 ctx.SpeakModel?.CostPerThousandCharsUsd, !string.IsNullOrWhiteSpace(audioUrl), ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(audioUrl))
             {
