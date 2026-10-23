@@ -6,6 +6,13 @@ namespace PageToMovie.Engine.VoiceApply;
 /// <summary>One telemetry shape for clone and speak apply steps.</summary>
 internal readonly record struct VoiceSpeakSelection(string Text, string ModelId, string ProviderId);
 
+/// <summary>Project, character, and model identity shared by clone and speak telemetry.</summary>
+internal readonly record struct VoiceApplySubject(
+    string ProjectId,
+    string? CharKey,
+    string? ModelId,
+    string ProviderId);
+
 internal static class VoiceApplyCallLog
 {
     public static VoiceSpeakSelection SelectSpeak(VoiceApplyContext ctx, string providerId)
@@ -22,10 +29,7 @@ internal static class VoiceApplyCallLog
 
     public static Task LogCloneAsync(
         ProjectTelemetryService? telemetry,
-        string projectId,
-        string? charKey,
-        string? modelId,
-        string providerId,
+        VoiceApplySubject subject,
         double? estimatedUsd,
         string? voiceId,
         CancellationToken ct)
@@ -35,12 +39,12 @@ internal static class VoiceApplyCallLog
         var ok = !string.IsNullOrWhiteSpace(voiceId);
         return telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
-            ProjectId = projectId,
+            ProjectId = subject.ProjectId,
             Kind = "voice_clone",
             Mode = "voice_clone",
-            Model = modelId,
-            Provider = providerId,
-            CharKey = charKey,
+            Model = subject.ModelId,
+            Provider = subject.ProviderId,
+            CharKey = subject.CharKey,
             EstimatedUsd = estimatedUsd,
             Ok = ok,
             Error = ok ? null : "Voice clone failed",
@@ -49,10 +53,7 @@ internal static class VoiceApplyCallLog
 
     public static Task LogSpeakAsync(
         ProjectTelemetryService? telemetry,
-        string projectId,
-        string? charKey,
-        string? modelId,
-        string providerId,
+        VoiceApplySubject subject,
         string text,
         double? costPerThousandCharsUsd,
         bool ok,
@@ -65,12 +66,12 @@ internal static class VoiceApplyCallLog
             : (double?)null;
         return telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
-            ProjectId = projectId,
+            ProjectId = subject.ProjectId,
             Kind = "tts",
             Mode = "dialogue_tts",
-            Model = modelId,
-            Provider = providerId,
-            CharKey = charKey,
+            Model = subject.ModelId,
+            Provider = subject.ProviderId,
+            CharKey = subject.CharKey,
             PromptChars = text.Length,
             EstimatedUsd = estimatedUsd,
             Ok = ok,
