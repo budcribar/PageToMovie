@@ -9,10 +9,12 @@ namespace PageToMovie.Engine;
 /// </summary>
 public static class VoiceSpeechPayload
 {
+    private const string DataUriScheme = "data:";
+
     public static string ToDataUri(ReadOnlyMemory<byte> audio, string? contentType)
     {
         var mime = Mime(contentType);
-        return "data:" + mime + ";base64," + Convert.ToBase64String(audio.Span);
+        return DataUriScheme + mime + ";base64," + Convert.ToBase64String(audio.Span);
     }
 
     public static bool TryDecodeDataUri(string? value, out byte[] bytes, out string contentType)
@@ -20,14 +22,14 @@ public static class VoiceSpeechPayload
         bytes = [];
         contentType = "audio/mpeg";
         if (string.IsNullOrWhiteSpace(value) ||
-            !value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            !value.StartsWith(DataUriScheme, StringComparison.OrdinalIgnoreCase))
             return false;
 
         var comma = value.IndexOf(',');
-        if (comma <= "data:".Length)
+        if (comma <= DataUriScheme.Length)
             return false;
 
-        var header = value["data:".Length..comma];
+        var header = value[DataUriScheme.Length..comma];
         var semi = header.IndexOf(';');
         var mime = (semi >= 0 ? header[..semi] : header).Trim();
         if (mime.Length > 0)

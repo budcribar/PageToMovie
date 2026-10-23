@@ -80,8 +80,11 @@ public sealed class XaiVoiceApplyStrategy : IVoiceApplyStrategy
         }
 
         await VoiceApplyCallLog.LogCloneAsync(
-            _telemetry, ctx.ProjectId, ctx.CharKey, cloneModelId, providerId,
-            ctx.CloneModel.CostPerCloneUsd, voiceId, ct).ConfigureAwait(false);
+            _telemetry,
+            new VoiceApplySubject(ctx.ProjectId, ctx.CharKey, cloneModelId, providerId),
+            ctx.CloneModel.CostPerCloneUsd,
+            voiceId,
+            ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(voiceId))
             return new VoiceApplyResult { Ok = false, Error = "xAI voice clone failed — see server logs." };
 
@@ -119,8 +122,12 @@ public sealed class XaiVoiceApplyStrategy : IVoiceApplyStrategy
             var audioUrl = await _client.SynthesizeSpeechAsync(speak.Text, voiceId, speak.ModelId, ct)
                 .ConfigureAwait(false);
             await VoiceApplyCallLog.LogSpeakAsync(
-                _telemetry, ctx.ProjectId, ctx.CharKey, speak.ModelId, speak.ProviderId, speak.Text,
-                ctx.SpeakModel?.CostPerThousandCharsUsd, !string.IsNullOrWhiteSpace(audioUrl), ct).ConfigureAwait(false);
+                _telemetry,
+                new VoiceApplySubject(ctx.ProjectId, ctx.CharKey, speak.ModelId, speak.ProviderId),
+                speak.Text,
+                ctx.SpeakModel?.CostPerThousandCharsUsd,
+                !string.IsNullOrWhiteSpace(audioUrl),
+                ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(audioUrl))
                 return (null, null);
             var bytes = await VoiceSpeechPayload.TryReadAsync(_httpFactory, _log, audioUrl, ct)
