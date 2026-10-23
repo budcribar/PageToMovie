@@ -502,6 +502,8 @@ public static class SupportedModelCatalog
     public const string VideoRoleGenerate = "generate";
     public const string VideoRoleExtend = "extend";
     private const string MaxPromptLengthField = "maxPromptLength";
+    private const string PricingNotesField = "pricingNotes";
+    private const string PricingLastReviewedAtField = "pricingLastReviewedAt";
     public const string ElevenLabsApiBase = "https://api.elevenlabs.io/v1";
 
     private static List<SupportedModelEntry>? _loadedEntries;
@@ -1463,8 +1465,8 @@ public static class SupportedModelCatalog
                 Need(e.MaxOutputTokens is > 0, "maxOutputTokens");
                 Need(e.InputCostPerMillionTokens is not null, "inputCostPerMillionTokens");
                 Need(e.OutputCostPerMillionTokens is not null, "outputCostPerMillionTokens");
-                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
-                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
+                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), PricingNotesField);
+                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), PricingLastReviewedAtField);
                 break;
 
             case ModelCapability.Video:
@@ -1480,16 +1482,16 @@ public static class SupportedModelCatalog
                 Need(e.VideoReferenceImageCost is not null, "videoReferenceImageCost");
                 if (e.SupportsVideoContinue)
                     Need(e.VideoExtendCostPerSecond is not null, "videoExtendCostPerSecond");
-                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
-                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
+                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), PricingNotesField);
+                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), PricingLastReviewedAtField);
                 break;
 
             case ModelCapability.Image:
                 Need(e.MaxReferenceImages is not null, "maxReferenceImages");
                 Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 Need(e.ImageCostPerImage is not null, "imageCostPerImage");
-                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
-                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
+                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), PricingNotesField);
+                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), PricingLastReviewedAtField);
                 break;
 
             case ModelCapability.Audio:
@@ -1515,8 +1517,8 @@ public static class SupportedModelCatalog
 
             case ModelCapability.Transcription:
                 Need(!string.IsNullOrWhiteSpace(e.EndpointPath), "endpointPath");
-                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
-                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
+                Need(!string.IsNullOrWhiteSpace(e.PricingNotes), PricingNotesField);
+                Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), PricingLastReviewedAtField);
                 break;
         }
     }
