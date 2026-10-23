@@ -24,6 +24,7 @@ public partial class Configuration
         private const string CapReview = "review";
         private const string CapVideo = "video";
         private const string CapVideoEdit = "video-edit";
+        private const string CapTranscription = "transcription";
         private const string CapImage = "image";
         private const string CapPlanning = "planning";
         private const string CapVision = "vision";
@@ -60,6 +61,9 @@ public partial class Configuration
 
         internal string _voiceModel = "none";
 
+        /// <summary>Unset projects display the catalog default (ElevenLabs Scribe), not xAI.</summary>
+        internal string _transcriptionModel = "";
+
 
 
         internal void ParseFocusFromUri()
@@ -84,6 +88,7 @@ public partial class Configuration
                 CapVoice or "voice_clone" or "clone" or "tts" => CapVoice,
                 CapReview or "qa" or "video_review" or "quality" => CapReview,
                 CapVideoEdit or "edit" or "clip_edit" or "videoedit" or "video_edit" => CapVideoEdit,
+                CapTranscription or "stt" or "speech" => CapTranscription,
                 CapVideo or "film" => CapVideo,
                 CapImage or "portrait" or "characters" => CapImage,
                 CapPlanning or "script" or "chat" or "screenplay" => CapPlanning,
@@ -107,6 +112,8 @@ public partial class Configuration
             public bool Required { get; set; } = true;
             public bool OptionalOff { get; set; }
             public bool KeyReady { get; set; }
+            /// <summary>When false, an optional job still has no Off choice (speech-to-text always runs).</summary>
+            public bool AllowOff { get; set; } = true;
         }
 
 
@@ -122,6 +129,7 @@ public partial class Configuration
                 MakeCoverage(CapReview, "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
                 MakeCoverage(CapMusic, "Background music", "Optional scores", _audioModel, CapAudio, required: false),
                 MakeCoverage(CapVoice, "Voice clone & speech", "Clones your voice and speaks the dialogue. The xAI option is English.", _voiceModel, CapVoice, required: false),
+                MakeCoverage(CapTranscription, "Speech to text", "Heard words and timings for dialogue checks", _transcriptionModel, CapTranscription, required: false, allowOff: false),
                 MakeCoverage(CapVideoEdit, "Clip editing", "Optional: re-render a clip from a written instruction", _videoEditModel, nameof(ModelCapability.VideoEdit), required: false),
             };
             return rows;
@@ -138,7 +146,8 @@ public partial class Configuration
             string capability,
             bool required,
             bool preferVideoReview = false,
-            string? forceProviderId = null)
+            string? forceProviderId = null,
+            bool allowOff = true)
         {
             // Optional stage turned off (music "none", etc.).
             var off = string.IsNullOrWhiteSpace(modelId)
@@ -174,6 +183,7 @@ public partial class Configuration
                 OptionalOff = !required && off,
                 // Optional + off counts as "ready" for the checklist (nothing missing).
                 KeyReady = keyReady || (!required && off),
+                AllowOff = allowOff,
             };
         }
 
@@ -340,6 +350,7 @@ public partial class Configuration
             CapReview => _qualityModel,
             CapMusic => _audioModel,
             CapVoice => _voiceModel,
+            CapTranscription => _transcriptionModel,
             CapVideoEdit => _videoEditModel,
             _ => "",
         };
@@ -356,6 +367,7 @@ public partial class Configuration
                 case CapReview: _qualityModel = modelId; break;
                 case CapMusic: _audioModel = modelId; break;
                 case CapVoice: _voiceModel = modelId; break;
+                case CapTranscription: _transcriptionModel = modelId; break;
                 case CapVideoEdit: _videoEditModel = modelId; break;
             }
         }
@@ -370,6 +382,7 @@ public partial class Configuration
             CapReview => S.Catalog._videoReviewModels,
             CapMusic => S.Catalog._audioModels,
             CapVoice => S.Catalog._voiceModels,
+            CapTranscription => S.Catalog._transcriptionModels,
             CapVideoEdit => S.Catalog._videoEditModels,
             _ => Array.Empty<SupportedModelDto>(),
         };
@@ -478,6 +491,7 @@ public partial class Configuration
                 CapReview => pr.SupportsVideoReview || pr.SupportsChat,
                 CapMusic => IsMusicCoverageProvider(pr.ProviderId),
                 CapVoice => IsVoiceCoverageProvider(pr.ProviderId),
+                CapTranscription => IsTranscriptionCoverageProvider(pr.ProviderId),
                 _ => false,
             };
 
@@ -489,6 +503,17 @@ public partial class Configuration
         private static bool IsVoiceCoverageProvider(string? providerId) =>
             string.Equals(providerId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
             || string.Equals(providerId, "fal", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsTranscriptionCoverageProvider(string? providerId)
+        {
+            if (string.IsNullOrWhiteSpace(providerId)) return false;
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            return SupportedModelCatalog.ForCapability(ModelCapability.Transcription)
+                .Any(m => string.Equals(
+                    SupportedModelCatalog.NormalizeProviderId(m.ProviderId),
+                    pid,
+                    StringComparison.OrdinalIgnoreCase));
+        }
 
         private List<ProviderKeyStatusDto> MaterializeCoverageProviderRows(HashSet<string> ids)
         {
@@ -564,6 +589,7 @@ public partial class Configuration
             CapReview => "chat",
             CapMusic => CapAudio,
             CapVoice => CapVoice,
+            CapTranscription => CapTranscription,
             CapVideoEdit => nameof(ModelCapability.VideoEdit),
             _ => "chat",
         };

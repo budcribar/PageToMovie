@@ -136,6 +136,13 @@ public partial class Configuration
             S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
             S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
             S.Coverage._videoEditModel = GetStr(ProjectModelSelection.VideoEditConfigKey, S.Coverage._videoEditModel);
+            S.Coverage._transcriptionModel = GetStr(
+                ProjectModelSelection.TranscriptionConfigKey, S.Coverage._transcriptionModel);
+            if (!ProjectModelSelection.IsUsableModelId(S.Coverage._transcriptionModel))
+            {
+                S.Coverage._transcriptionModel =
+                    SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Transcription) ?? "";
+            }
         }
 
         private void ApplyPipelineFields()
@@ -220,6 +227,7 @@ public partial class Configuration
                 ["audio_model_name"] = S.Coverage._audioModel,
                 ["voice_model_name"] = S.Coverage._voiceModel,
                 [ProjectModelSelection.VideoEditConfigKey] = S.Coverage._videoEditModel,
+                [ProjectModelSelection.TranscriptionConfigKey] = S.Coverage._transcriptionModel,
                 ["enable_background_music"] = S.Coverage._enableBackgroundMusic,
                 ["background_music_volume_percent"] = S.Coverage._backgroundMusicVolumePercent,
                 ["model_selections"] = new Dictionary<string, string>
@@ -231,6 +239,7 @@ public partial class Configuration
                     ["video-review"] = S.Coverage._qualityModel,
                     ["audio"] = S.Coverage._audioModel,
                     ["video-edit"] = S.Coverage._videoEditModel,
+                    ["transcription"] = S.Coverage._transcriptionModel,
                 },
                 ["aspect_ratio"] = _aspect,
                 ["resolution"] = _resolution,

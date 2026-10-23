@@ -102,7 +102,7 @@ public sealed class ClientVoiceCaptureService
             "PageToMovieFfmpeg.detectSpeechSegmentsAsync", ct, sceneVideoUrl, new { });
         var windows = FilterMinDurationWindows(detect);
         var perWindow = await MatchWindowsFirstPassAsync(
-            sceneVideoUrl, windows, expectedLines, sc.Scene, onProgress, ct);
+            phrases.ProjectId, sceneVideoUrl, windows, expectedLines, sc.Scene, onProgress, ct);
         MergeMatchedWindows(phrases, sc, perWindow);
     }
 
@@ -118,6 +118,7 @@ public sealed class ClientVoiceCaptureService
     }
 
     private async Task<List<WindowMatch>> MatchWindowsFirstPassAsync(
+        string projectId,
         string sceneVideoUrl,
         List<JsSpeechWindow> windows,
         List<string> expectedLines,
@@ -130,7 +131,7 @@ public sealed class ClientVoiceCaptureService
         {
             ct.ThrowIfCancellationRequested();
             onProgress?.Invoke($"Scene {scene:D2}: verifying phrase {wi + 1}/{windows.Count}…");
-            var match = await MatchWindowAsync(sceneVideoUrl, windows[wi], expectedLines, ct);
+            var match = await MatchWindowAsync(projectId, sceneVideoUrl, windows[wi], expectedLines, ct);
             if (match is not null)
                 perWindow.Add(match);
         }
@@ -138,6 +139,7 @@ public sealed class ClientVoiceCaptureService
     }
 
     private async Task<WindowMatch?> MatchWindowAsync(
+        string projectId,
         string sceneVideoUrl,
         JsSpeechWindow w,
         IReadOnlyList<string> expectedLines,
@@ -156,7 +158,7 @@ public sealed class ClientVoiceCaptureService
         if (audio is null || audio.Length < 256)
             return null;
 
-        var transcript = await _engine.TranscribeSegmentAsync(audio, "segment.wav", ct);
+        var transcript = await _engine.TranscribeSegmentAsync(audio, "segment.wav", ct, projectId);
         var heard = (transcript?.Text ?? "").Trim();
         if (heard.Length == 0)
             return null;

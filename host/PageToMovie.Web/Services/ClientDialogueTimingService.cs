@@ -47,7 +47,7 @@ public sealed class ClientDialogueTimingService
             .OrderBy(w => w.StartSec)
             .ToList();
 
-        var heardWindows = await TranscribeSpeechWindows(sceneVideoUrl, windows, scene, onProgress, ct);
+        var heardWindows = await TranscribeSpeechWindows(projectId, sceneVideoUrl, windows, scene, onProgress, ct);
 
         // Align: each script line takes its BEST-overlap unused window anywhere in the scene (order and
         // duplicates don't break it). Ties/no-overlap leave the line unmatched. Leftover windows are
@@ -74,7 +74,7 @@ public sealed class ClientDialogueTimingService
     }
 
     private async Task<List<HeardWindow>> TranscribeSpeechWindows(
-        string sceneVideoUrl, List<JsSpeechWindow> windows, int scene,
+        string projectId, string sceneVideoUrl, List<JsSpeechWindow> windows, int scene,
         Action<string>? onProgress, CancellationToken ct)
     {
         var heardWindows = new List<HeardWindow>();
@@ -93,7 +93,7 @@ public sealed class ClientDialogueTimingService
             catch { continue; }
             if (audio is null || audio.Length < 256) continue;
 
-            var transcript = await _engine.TranscribeSegmentAsync(audio, "segment.wav", ct);
+            var transcript = await _engine.TranscribeSegmentAsync(audio, "segment.wav", ct, projectId);
             var heard = StripSoundEffectTags((transcript?.Text ?? "").Trim());
             var words = FilterHeardWords(transcript);
             // A window that was ONLY a sound-effect tag ("[outro jingle]") has nothing left to review —

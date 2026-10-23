@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVoiceCloneClient, FakeVoiceCloneClient>();
         services.AddSingleton<IVideoEditClient, FakeGrokVideoEditClient>();
         services.AddSingleton<IVoiceClient, FakeVoiceClient>();
+        services.AddSingleton<ITranscriptionClient, FakeTranscriptionClient>();
         return services;
     }
 }

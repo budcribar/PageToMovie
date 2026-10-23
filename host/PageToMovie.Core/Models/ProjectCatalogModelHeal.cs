@@ -73,6 +73,11 @@ public static class ProjectCatalogModelHeal
             ModelCapability.VideoEdit,
             "video-edit",
             [ProjectModelSelection.VideoEditConfigKey]);
+        ValidateOptional(
+            cfg,
+            ModelCapability.Transcription,
+            "transcription",
+            [ProjectModelSelection.TranscriptionConfigKey]);
         return changed;
     }
 

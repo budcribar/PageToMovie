@@ -17,6 +17,7 @@ public static class ProjectModelSelection
     public const string AudioConfigKey = "audio_model_name";
     public const string VoiceConfigKey = "voice_model_name";
     public const string VideoEditConfigKey = "video_edit_model_name";
+    public const string TranscriptionConfigKey = "transcription_model_name";
 
     /// <summary>
     /// Read a configured model id from project config. Empty if unset or "none"/"disabled".
@@ -64,6 +65,7 @@ public static class ProjectModelSelection
         ModelCapability.Voice => "voice",
         ModelCapability.LipSync => "lipsync",
         ModelCapability.VideoEdit => "video-edit",
+        ModelCapability.Transcription => "transcription",
         _ => capability.ToString().ToLowerInvariant(),
     };
 

@@ -204,6 +204,8 @@ public class ProjectModelSelectionTests
     [InlineData("voice", ModelCapability.Voice)]
     [InlineData("tts", ModelCapability.Voice)]
     [InlineData("lip_sync", ModelCapability.LipSync)]
+    [InlineData("transcription", ModelCapability.Transcription)]
+    [InlineData("stt", ModelCapability.Transcription)]
     public void CapabilityFromApiKind_maps_known_kinds(string kind, ModelCapability expected)
     {
         Assert.Equal(expected, SupportedModelCatalog.CapabilityFromApiKind(kind));

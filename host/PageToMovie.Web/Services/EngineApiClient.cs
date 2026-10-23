@@ -2171,11 +2171,10 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         }
     }
 
-    /// <summary>Transcribe an extracted audio segment via server-side Scribe (STT). Used to verify a
-    /// detected window contains the expected narrator line (confident line↔window mapping); returns
-    /// null on any failure.</summary>
+    /// <summary>Transcribe an extracted audio segment. The server uses the project's transcription
+    /// model (catalog default is the existing speech-to-text row). Returns null on any failure.</summary>
     public async Task<TranscriptDto?> TranscribeSegmentAsync(
-        byte[] audio, string fileName = "segment.wav", CancellationToken ct = default)
+        byte[] audio, string fileName = "segment.wav", CancellationToken ct = default, string? projectId = null)
     {
         if (audio is null || audio.Length < 128) return null;
         SyncIdentityHeaders();
@@ -2185,6 +2184,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             var content = new ByteArrayContent(audio);
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
             form.Add(content, "file", string.IsNullOrWhiteSpace(fileName) ? "segment.wav" : fileName);
+            if (!string.IsNullOrWhiteSpace(projectId))
+                form.Add(new StringContent(projectId.Trim()), "project_id");
             using var resp = await _http.PostAsync("/api/transcribe", form, ct);
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadFromJsonAsync<TranscriptDto>(JsonOpts, ct);
