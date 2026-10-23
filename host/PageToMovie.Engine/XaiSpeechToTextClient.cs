@@ -23,7 +23,7 @@ public sealed class XaiSpeechToTextClient : ITranscriptionClient
         _http = http;
         _log = log;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(SupportedModelCatalog.XaiApiBase.TrimEnd('/') + "/");
+            _http.BaseAddress = new Uri(SupportedModelCatalog.XaiApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public async Task<ScribeResult> TranscribeAsync(
