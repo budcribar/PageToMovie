@@ -538,9 +538,9 @@ public static class VoiceEndpoints
         CancellationToken ct)
     {
         var result = new SpeakSynthResult();
-        if (!runtime.VoiceClone.IsConfigured)
+        if (!runtime.VoiceClone.IsReady(entry))
         {
-            result.EarlyError = Results.BadRequest(new { ok = false, error = "Connect a voice service (Fal) in Settings for MiniMax speech." });
+            result.EarlyError = Results.BadRequest(new { ok = false, error = VoiceCloneReadiness.NotReadyMessage(entry) });
             return result;
         }
         var speakModelId = SupportedModelCatalog.ResolveSpeakModelId(entry?.Id, entry?.ProviderId ?? providerId, model);
@@ -557,6 +557,14 @@ public static class VoiceEndpoints
     private static async Task TryDownloadOrProxySpeechAsync(
         IHttpClientFactory httpFactory, MediaProxyTicketStore tickets, string audioUrl, SpeakSynthResult result, CancellationToken ct)
     {
+        if (VoiceSpeechPayload.TryDecodeDataUri(audioUrl, out var inline, out var inlineType))
+        {
+            result.AudioBytes = inline;
+            result.ContentType = inlineType;
+            if (inlineType.Contains("wav", StringComparison.OrdinalIgnoreCase))
+                result.FileExt = ".wav";
+            return;
+        }
         try
         {
             var http = httpFactory.CreateClient();
