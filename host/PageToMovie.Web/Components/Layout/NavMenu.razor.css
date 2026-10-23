@@ -296,13 +296,13 @@
 }
 
 .nav-user-signin {
-    display: flex !important;
+    display: flex;
     align-items: center;
     gap: 0.65rem;
-    padding: 0.45rem 0.5rem !important;
-    border-radius: 0.65rem !important;
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.65rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    height: auto !important;
+    height: auto;
     min-height: 2.75rem;
 }
 
@@ -349,6 +349,9 @@
 .nav-item {
     font-size: 0.9rem;
     padding-bottom: 0.5rem;
+    /* Same horizontal inset the px-3 utility applied, so the collapsed rail can tighten it. */
+    padding-left: 1rem;
+    padding-right: 1rem;
 }
 
     .nav-item:first-of-type {
@@ -386,9 +389,9 @@
     }
 
 /* Collapsed rail: icons only, centered */
-.nav-scrollable.nav-collapsed .nav-item.px-3 {
-    padding-left: 0.35rem !important;
-    padding-right: 0.35rem !important;
+.nav-scrollable.nav-collapsed .nav-item {
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
 }
 
 .nav-scrollable.nav-collapsed .nav-item ::deep .nav-link {

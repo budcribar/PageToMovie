@@ -60,21 +60,9 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
                          ?? SupportedModelCatalog.CatalogProviderId(cloneModelId, "voice")
                          ?? ProviderId;
         var voiceId = await _client.CloneVoiceAsync(ctx.SamplePath, cloneModelId, ct).ConfigureAwait(false);
-        if (_telemetry is not null)
-        {
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                ProjectId = ctx.ProjectId,
-                Kind = "voice_clone",
-                Mode = "voice_clone",
-                Model = cloneModelId,
-                Provider = providerId,
-                CharKey = ctx.CharKey,
-                EstimatedUsd = ctx.CloneModel?.CostPerCloneUsd,
-                Ok = !string.IsNullOrWhiteSpace(voiceId),
-                Error = string.IsNullOrWhiteSpace(voiceId) ? "Voice clone failed" : null,
-            }, ct).ConfigureAwait(false);
-        }
+        await VoiceApplyCallLog.LogCloneAsync(
+            _telemetry, ctx.ProjectId, ctx.CharKey, cloneModelId, providerId,
+            ctx.CloneModel?.CostPerCloneUsd, voiceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(voiceId))
             return new VoiceApplyResult { Ok = false, Error = "Fal MiniMax voice clone failed — see server logs." };
 
@@ -84,36 +72,14 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
 
         string? previewRel = null;
         string? previewUrl = null;
-        var ttsText = VoicePreviewStore.DefaultPreviewText(ctx.PreviewText);
-        var speakModelId = ctx.SpeakModel?.Id
-                           ?? SupportedModelCatalog.FirstEnabledSpeakModelId(providerId)
-                           ?? "";
-        var speakProvider = ctx.SpeakModel?.ProviderId
-                            ?? SupportedModelCatalog.CatalogProviderId(speakModelId, "tts")
-                            ?? providerId;
+        var speak = VoiceApplyCallLog.SelectSpeak(ctx, providerId);
         try
         {
-            var audioUrl = await _client.SynthesizeSpeechAsync(ttsText, voiceId, speakModelId, ct)
+            var audioUrl = await _client.SynthesizeSpeechAsync(speak.Text, voiceId, speak.ModelId, ct)
                 .ConfigureAwait(false);
-            var estimatedUsd = ctx.SpeakModel?.CostPerThousandCharsUsd is { } rate
-                ? Math.Round(rate * ttsText.Length / 1000.0, 4)
-                : (double?)null;
-            if (_telemetry is not null)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    ProjectId = ctx.ProjectId,
-                    Kind = "tts",
-                    Mode = "dialogue_tts",
-                    Model = speakModelId,
-                    Provider = speakProvider,
-                    CharKey = ctx.CharKey,
-                    PromptChars = ttsText.Length,
-                    EstimatedUsd = estimatedUsd,
-                    Ok = !string.IsNullOrWhiteSpace(audioUrl),
-                    Error = string.IsNullOrWhiteSpace(audioUrl) ? "Speech synthesis failed" : null,
-                }, ct).ConfigureAwait(false);
-            }
+            await VoiceApplyCallLog.LogSpeakAsync(
+                _telemetry, ctx.ProjectId, ctx.CharKey, speak.ModelId, speak.ProviderId, speak.Text,
+                ctx.SpeakModel?.CostPerThousandCharsUsd, !string.IsNullOrWhiteSpace(audioUrl), ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(audioUrl))
             {
                 var bytes = await DownloadBytesAsync(audioUrl, ct).ConfigureAwait(false);
@@ -148,19 +114,6 @@ public sealed class FalVoiceApplyStrategy : IVoiceApplyStrategy
         };
     }
 
-    private async Task<byte[]?> DownloadBytesAsync(string url, CancellationToken ct)
-    {
-        try
-        {
-            var http = _httpFactory.CreateClient();
-            using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return null;
-            return await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to download TTS audio from {Url}", url);
-            return null;
-        }
-    }
+    private Task<byte[]?> DownloadBytesAsync(string url, CancellationToken ct) =>
+        VoiceSpeechPayload.TryReadAsync(_httpFactory, _log, url, ct);
 }

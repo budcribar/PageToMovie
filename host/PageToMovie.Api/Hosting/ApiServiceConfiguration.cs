@@ -149,9 +149,8 @@ internal static class ApiServiceConfiguration
         // other provider clients — under PageToMovie:UseFakes it resolves to FakeVoiceClient (via
         // AddPageToMovieFakes) so voice clone / dialogue TTS never reaches ElevenLabs even when a key is set.
         builder.Services.AddSingleton<PageToMovie.Engine.VoiceApply.VoicePreviewStore>();
-        // Strategy order: Fal first (specific CanHandle), ElevenLabs last (default / mock fallback).
-        builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.FalVoiceApplyStrategy>();
-        builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.ElevenLabsVoiceApplyStrategy>();
+        // Voice apply strategies are registered in RegisterAiClients so fakes mode never
+        // constructs the xAI HTTP client. Order there: Fal, xAI, ElevenLabs.
         builder.Services.AddSingleton<VoiceCloneApplyService>();
         builder.Services.AddSingleton<ReviewEventStore>();
         builder.Services.AddSingleton<ProjectRulesService>();
@@ -344,6 +343,9 @@ internal static class ApiServiceConfiguration
             // access) merges the fake test-vendor catalog — regardless of whether UseFakes came from
             // config/appsettings or an env var. See SupportedModelCatalog.FakeCatalogEnabled.
             Environment.SetEnvironmentVariable("PAGETOMOVIE_USE_FAKES", "1");
+            // Same strategy order as live mode, bound to fake voice clients. XaiVoiceCloneClient
+            // is not registered here, so no call opens a socket to api.x.ai.
+            RegisterVoiceApplyStrategies(builder, useFakes: true);
             return;
         }
 
@@ -445,8 +447,6 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<IAudioClient, MultiProviderAudioClient>();
         // Lip-sync and voice-clone narration: explicit, human-triggered actions only (never wired
         // into any automatic job/pipeline — see the lip-sync / voice/clone / voice/speak routes).
-        // Fal.ai is the only provider today, so these bind straight to the concrete client (no
-        // MultiProvider* dispatcher yet — same pattern as IGeminiVideoAnalysisClient below).
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalLipSyncClient>(c =>
         {
             c.BaseAddress = TrailingSlashUri(FalLipSyncClient.ApiBase);
@@ -457,8 +457,16 @@ internal static class ApiServiceConfiguration
             c.BaseAddress = TrailingSlashUri(FalVoiceCloneClient.ApiBase);
             c.Timeout = TimeSpan.FromMinutes(4);
         }));
+        // Same api.x.ai origin and catalog key slot as Grok chat/video. Not registered in fakes mode.
+        ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<XaiVoiceCloneClient>(c =>
+        {
+            c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.XaiApiBase);
+            c.Timeout = TimeSpan.FromMinutes(4);
+        }));
         builder.Services.AddSingleton<ILipSyncClient>(sp => sp.GetRequiredService<FalLipSyncClient>());
-        builder.Services.AddSingleton<IVoiceCloneClient>(sp => sp.GetRequiredService<FalVoiceCloneClient>());
+        builder.Services.AddSingleton<IVoiceCloneClient>(sp => new RoutingVoiceCloneClient(
+            sp.GetRequiredService<FalVoiceCloneClient>(),
+            sp.GetRequiredService<XaiVoiceCloneClient>()));
 
         // Dispatchers: every existing caller keeps depending on IChatClient / IImageClient /
         // IVideoClient / IVisionClient and is routed to the right concrete provider client
@@ -490,6 +498,31 @@ internal static class ApiServiceConfiguration
             var log = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ElevenLabsVoiceClient>>();
             return new ElevenLabsVoiceClient(http, log, allowMockFallback: true);
         });
+        RegisterVoiceApplyStrategies(builder, useFakes: false);
+    }
+
+    /// <summary>
+    /// Fal, then xAI, then ElevenLabs. First <see cref="IVoiceApplyStrategy.CanHandle"/> wins.
+    /// ElevenLabs stays last. Live mode injects the concrete clone client so each strategy's
+    /// <c>IsConfigured</c> is that provider's key, not the router's "either key" flag.
+    /// </summary>
+    private static void RegisterVoiceApplyStrategies(WebApplicationBuilder builder, bool useFakes)
+    {
+        if (useFakes)
+        {
+            builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.FalVoiceApplyStrategy>();
+            builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.XaiVoiceApplyStrategy>();
+            builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.ElevenLabsVoiceApplyStrategy>();
+            return;
+        }
+
+        builder.Services.AddSingleton<IVoiceApplyStrategy>(sp =>
+            ActivatorUtilities.CreateInstance<PageToMovie.Engine.VoiceApply.FalVoiceApplyStrategy>(
+                sp, sp.GetRequiredService<FalVoiceCloneClient>()));
+        builder.Services.AddSingleton<IVoiceApplyStrategy>(sp =>
+            ActivatorUtilities.CreateInstance<PageToMovie.Engine.VoiceApply.XaiVoiceApplyStrategy>(
+                sp, sp.GetRequiredService<XaiVoiceCloneClient>()));
+        builder.Services.AddSingleton<IVoiceApplyStrategy, PageToMovie.Engine.VoiceApply.ElevenLabsVoiceApplyStrategy>();
     }
 
     private static void ConfigurePooledSocketsHandler(IHttpClientBuilder b)

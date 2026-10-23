@@ -4121,7 +4121,7 @@ public sealed class FilmJobService
                         || entry?.Provider == ModelProviderFamily.ElevenLabs
                         || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
-        var configError = SpeakProviderConfigError(useEleven, voiceId);
+        var configError = SpeakProviderConfigError(useEleven, voiceId, entry);
         if (configError is not null)
             return (null, configError);
 
@@ -4140,12 +4140,12 @@ public sealed class FilmJobService
         }, null);
     }
 
-    private string? SpeakProviderConfigError(bool useEleven, string voiceId)
+    private string? SpeakProviderConfigError(bool useEleven, string voiceId, SupportedModelEntry? entry)
     {
         if (useEleven && !_voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
             return "ElevenLabs key is not configured.";
-        if (!useEleven && !_voiceClone.IsConfigured)
-            return "Voice provider (Fal) is not configured.";
+        if (!useEleven && !_voiceClone.IsReady(entry))
+            return VoiceCloneReadiness.NotReadyMessage(entry);
         return null;
     }
 
@@ -4181,6 +4181,8 @@ public sealed class FilmJobService
             .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(audioUrl))
             return (null, ".mp3", "Speech synthesis failed");
+        if (VoiceSpeechPayload.TryDecodeDataUri(audioUrl, out var inline, out var inlineType))
+            return (inline, GuessTtsExtension(inlineType), null);
         try
         {
             var http = _httpFactory.CreateClient();

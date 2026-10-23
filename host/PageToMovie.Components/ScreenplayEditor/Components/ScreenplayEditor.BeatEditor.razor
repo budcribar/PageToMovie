@@ -110,7 +110,6 @@
         else if (Beat.BeatType == BeatType.Transition)
         {
             <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light spe-sel flex-grow-1"
-                    style="height: 26px; font-size: 0.8rem;"
                     title="@Beat.TransitionPreset.GetJargonHint()"
                     @bind="Beat.TransitionPreset"
                     @bind:after="OnChanged">

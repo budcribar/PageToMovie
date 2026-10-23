@@ -14,7 +14,8 @@ namespace PageToMovie.Engine;
 /// poll response schema was never fully confirmed — this parses defensively across several
 /// plausible shapes and should be tightened against a real response once a working account is
 /// available (the account this was built for hit a sign-in error on aimusicapi.ai/sunoapi.com
-/// during setup). No documented duration control, unlike sunoapi.org.
+/// during setup). Duration control is documented (10–360 s;
+/// https://docs.aimusicapi.ai/doc-2058749.md). This client does not send it.
 /// </summary>
 public sealed class AiMusicApiClient : IAudioClient
 {

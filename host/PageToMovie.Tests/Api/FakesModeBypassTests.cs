@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using PageToMovie.Core.Abstractions;
+using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
+using PageToMovie.Engine.VoiceApply;
 using PageToMovie.Fakes;
 using Xunit;
 
@@ -33,6 +35,7 @@ public class FakesModeBypassTests : IClassFixture<PageToMovieApiFactory>
         AssertFake<IGeminiVideoAnalysisClient, FakeGeminiChatClient>(services);
         AssertFake<ILipSyncClient, FakeLipSyncClient>(services);
         AssertFake<IVoiceCloneClient, FakeVoiceCloneClient>(services);
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(XaiVoiceCloneClient));
         // Previously wired to the real ElevenLabs client even under fakes — now faked too.
         AssertFake<IVoiceClient, FakeVoiceClient>(services);
         AssertFake<IVideoEditClient, FakeGrokVideoEditClient>(services);
@@ -43,6 +46,19 @@ public class FakesModeBypassTests : IClassFixture<PageToMovieApiFactory>
     {
         Assert.Contains(services, d =>
             d.ServiceType == typeof(TInterface) && d.ImplementationType == typeof(TFake));
+    }
+
+    [Fact]
+    public void Fakes_host_registers_voice_strategies_without_the_xai_http_client()
+    {
+        Assert.Null(_factory.Services.GetService<XaiVoiceCloneClient>());
+        Assert.IsType<FakeVoiceCloneClient>(_factory.Services.GetRequiredService<IVoiceCloneClient>());
+
+        var strategies = _factory.Services.GetServices<IVoiceApplyStrategy>().ToList();
+        Assert.Equal(3, strategies.Count);
+        Assert.IsType<FalVoiceApplyStrategy>(strategies[0]);
+        Assert.IsType<XaiVoiceApplyStrategy>(strategies[1]);
+        Assert.IsType<ElevenLabsVoiceApplyStrategy>(strategies[2]);
     }
 
     [Fact]
