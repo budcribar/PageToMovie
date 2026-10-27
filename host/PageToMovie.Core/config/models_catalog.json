@@ -253,6 +253,28 @@
       "pricingLastReviewedAt": "2026-09-30"
     },
     {
+      "id": "gpt-6.1-terra",
+      "displayName": "OpenAI GPT-6.1 Terra",
+      "capability": "Chat",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1050000,
+      "inputCostPerMillionTokens": 1.0,
+      "outputCostPerMillionTokens": 5.0,
+      "notes": "GA successor to gpt-5.6-terra. Standard API prices are 50% cheaper than gpt-5.6-terra and gpt-6.1-sol. Strong visual reasoning and computer use. Reasoning effort: none, low, medium (default), high, xhigh, max. Text and image input, text out (no audio/video). Knowledge cutoff Jun 1, 2026. Chat Completions is supported; tool calling requires the Responses API. Context window 1,050,000 stored in maxInputTokens; the model page also lists a separate maximum input of 922,000 tokens (notes only; that lower figure is not written into maxInputTokens). Max output 128,000. Long-context surcharge above 272K input tokens: 2x input/cache rates and 1.5x output for the full request. Batch and Flex are 50% off; Fast mode is 2x.",
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "maxOutputTokens": 128000,
+      "pricingNotes": "OpenAI list 2026-10-27: $1.00 input / $0.05 cached input (5% of uncached) / $1.25 cache writes per 1M (30-minute retention; $2.50 for 12-hour retention) / $5.00 output per 1M. Prompts with more than 272K input tokens: 2x input and cache rates and 1.5x output for the full request. Batch and Flex are 50% off Standard; Fast mode is 2x Standard. Source: https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+      "lastVerifiedAt": "2026-10-27",
+      "pricingLastReviewedAt": "2026-10-27"
+    },
+    {
       "id": "gpt-6-luna",
       "displayName": "OpenAI GPT-6 Luna",
       "capability": "Chat",
