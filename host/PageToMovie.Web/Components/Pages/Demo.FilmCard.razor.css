@@ -19,6 +19,12 @@
     transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .demo-card {
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+}
+
 .demo-card:hover {
     border-color: var(--fs-border-hover, rgba(148, 163, 184, 0.45));
     transform: translateY(-2px);

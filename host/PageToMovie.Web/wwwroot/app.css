@@ -374,7 +374,7 @@ label,
 .btn {
     border-radius: 8px;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
 }
 
 .btn-primary {
@@ -972,6 +972,12 @@ code {
     animation: fs-progress-shine 1.25s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .progress-busy__shine {
+        animation: none;
+    }
+}
+
 @keyframes fs-progress-shine {
     0% { left: -40%; }
     100% { left: 100%; }
@@ -1128,7 +1134,7 @@ hr {
     border-radius: 8px;
     padding: 0.5rem 1rem;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
 .nav-pills .nav-link.active {
@@ -1809,6 +1815,16 @@ h1:focus {
     38% { transform: rotate(0deg); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .home-pipeline__sheet.s1,
+    .home-pipeline__sheet.s2,
+    .home-pipeline__sheet.s3,
+    .home-pipeline__chev,
+    .home-pipeline__clapper-top {
+        animation: none;
+    }
+}
+
 @media (max-width: 767.98px) {
     .home-hero {
         justify-content: center;
@@ -2247,6 +2263,11 @@ h1:focus {
     border-color: rgba(148, 163, 184, 0.55);
     transform: translateY(-1px);
     color: inherit;
+}
+@media (prefers-reduced-motion: reduce) {
+    .home-showcase-thumb {
+        transition: border-color 0.15s ease;
+    }
 }
 .home-showcase-thumb img {
     width: 100%;

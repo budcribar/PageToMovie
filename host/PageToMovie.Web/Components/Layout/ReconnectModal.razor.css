@@ -155,3 +155,19 @@
         opacity: 0;
     }
 }
+
+@media (prefers-reduced-motion: reduce) {
+    #components-reconnect-modal[open] {
+        /* Keep the opacity fade so the dialog still appears; drop the spatial slide. */
+        animation: components-reconnect-modal-fadeInOpacity 0.5s ease-in-out 0.3s;
+        animation-fill-mode: both;
+    }
+
+    .components-rejoining-animation div {
+        animation: none;
+        top: 8px;
+        left: 8px;
+        width: 64px;
+        height: 64px;
+    }
+}
