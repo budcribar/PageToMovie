@@ -16,7 +16,13 @@
     border-radius: 1rem;
     overflow: hidden;
     box-shadow: var(--fs-shadow-card);
-    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .demo-card {
+        transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
 }
 
 .demo-card:hover {
