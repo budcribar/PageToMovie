@@ -115,6 +115,7 @@ public class PageToMovieApiFactory : WebApplicationFactory<PageToMovie.Api.Progr
         Environment.SetEnvironmentVariable("PageToMovie_USE_FAKES", null);
         Environment.SetEnvironmentVariable("PAGETOMOVIE_USE_FAKES", null);
         Environment.SetEnvironmentVariable("PageToMovie__UseFakes", null);
+        Environment.SetEnvironmentVariable("PAGETOMOVIE__USEFAKES", null);
         SupportedModelCatalog.ReloadCatalog();
         try
         {

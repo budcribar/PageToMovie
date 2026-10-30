@@ -331,8 +331,7 @@ internal static class ApiServiceConfiguration
 
     private static bool ResolveUseFakes(WebApplicationBuilder builder) =>
         builder.Configuration.GetValue("PageToMovie:UseFakes", false)
-        || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "1", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "true", StringComparison.OrdinalIgnoreCase);
+        || SupportedModelCatalog.FakeCatalogEnabled();
 
     private static void RegisterAiClients(WebApplicationBuilder builder, bool useFakes)
     {
