@@ -93,6 +93,15 @@
         "Minimax"
       ],
       "order": 8
+    },
+    {
+      "id": "pika",
+      "label": "Pika",
+      "aliases": [
+        "Pika",
+        "pika"
+      ],
+      "order": 9
     }
   ],
   "capabilities": [
@@ -1108,6 +1117,56 @@
       "pricingNotes": "platform.minimax.io/docs/guides/pricing-paygo Video Generation output (reviewed 2026-09-26): MiniMax-H3 768P $0.08/s, 2K $0.13/s. Input materials on the same page: audio free; images first 5 free then $0.04 per additional image (videoReferenceImageCost is that marginal rate, not a charge on every image); input video billed by input duration and output resolution at 2K $0.13/s, 768P $0.08/s. Specs from platform.minimax.io/docs/guides/video-generation and /docs/api-reference/video-generation-v2-create. No extend rate: supportsVideoContinue is false. Regeneration (768P to 2K) is a different API at $0.05/s of regenerated output and is not modeled as continue.",
       "lastVerifiedAt": "2026-09-26",
       "pricingLastReviewedAt": "2026-09-26"
+    },
+    {
+      "id": "pika/pika-h3-flex",
+      "displayName": "Pika H3 Flex",
+      "capability": "Video",
+      "provider": "Pika",
+      "apiBase": "https://api.dev.pika.art",
+      "endpointPath": "v1/media/pika/pika-h3-flex/text-to-video",
+      "requiredEnvKeys": [
+        "PIKA_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 9,
+      "supportsReferenceAudios": false,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 5,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.02,
+        "768p": 0.04,
+        "1080p": 0.07,
+        "2k": 0.08,
+        "4k": 0.16
+      },
+      "supportedAspectRatios": [
+        "auto",
+        "21:9",
+        "16:9",
+        "3:2",
+        "4:3",
+        "5:4",
+        "1:1",
+        "4:5",
+        "3:4",
+        "2:3",
+        "9:16",
+        "9:21"
+      ],
+      "defaultAspectRatio": "auto",
+      "notes": "OPT-IN. Disabled: no Pika API client exists yet (no IVideoClient for providerId pika). Do not enable until that client exists: ModelProviderFamily has no Pika member, so the deserialized Provider family falls back to Xai and key checks would treat this row as xAI. Awaits a Pika client and PIKA_API_KEY. Docs authenticate with the X-API-Key header; they do not name an env var. Catalog id pika/pika-h3-flex is the family id. Official API ids are pika/pika-h3-flex/text-to-video, pika/pika-h3-flex/image-to-video, and pika/pika-h3-flex/reference-to-video (POST https://api.dev.pika.art/v1/media/{id}). endpointPath is the text-to-video route; image-to-video and reference-to-video are sibling paths. Launched 2026-10-29. Text-to-video, first/last-frame image-to-video, and multimodal reference-to-video. Duration 5-15 seconds, whole seconds only. Native render is 480p or 768p; 1080p, 2k, and 4k upscale a 768p render inside the same job. Native stereo audio at 32 kHz, 24 fps, MP4 with H.264 video and AAC audio. Reference-to-video takes up to 12 files total: up to 9 images, 3 videos, and 3 audio clips. Video and audio clips are 2-15 seconds each, at most 15 seconds combined per type. At least one image or video is required. Audio clips can be cited in the prompt to guide voice and sound. Voice lock / speaker identity preservation is not documented, so supportsReferenceAudios is false and maxReferenceAudios stays unset (that flag is voice lock, as on the MiniMax rows). There is no true extend. Image and audio references are free. A video reference is billed per input-video second at the reference-to-video rate, plus output seconds. Optional audio stems (Dialogue, Score, SFX, Foley, Ambience) are $0.001 per second and are not in the per-second map. Prompt up to 8000 characters. Pika API Club members are half off from 2026-10-29 through 2026-11-05; that promo is not the stored price. Sources: https://pika.art/pika-h3-flex , https://dev.pika.art/models/pika/pika-h3-flex/text-to-video , https://dev.pika.art/models/pika/pika-h3-flex/image-to-video , https://dev.pika.art/models/pika/pika-h3-flex/reference-to-video . Reviewed 2026-10-30.",
+      "providerId": "pika",
+      "providerLabel": "Pika",
+      "maxPromptLength": 8000,
+      "videoReferenceImageCost": 0.0,
+      "pricingNotes": "Regular list prices from https://pika.art/pika-h3-flex reviewed 2026-10-30. Text, image, and keyframe generation, per output second: 480p $0.02, 768p $0.04, 1080p $0.07, 2k $0.08, 4k $0.16. videoCostPerSecondByResolution stores those text-to-video and image-to-video rates. Reference-to-video regular rates on the same page are higher and are not in the map (the schema has one per-second map): 480p $0.06, 768p $0.12, 1080p $0.15, 2k $0.16, 4k $0.20 per output second. When a video reference is used, that same reference rate is also charged per input-video second. Image and audio references are free (videoReferenceImageCost=0). Draft-to-video that finishes a 480p or 768p draft at 1080p, 2k, or 4k charges only the difference. Optional audio stems are $0.001 per second. Pika API Club members are half off from 2026-10-29 through 2026-11-05; the promo is not stored in cost fields. The dev.pika.art pricing blocks on 2026-10-30 show those half-off launch rates (text/image 480p $0.01, 768p $0.02, 1080p $0.035, 2k $0.04, 4k $0.08; reference output and video input 480p $0.03, 768p $0.06, 1080p $0.075, 2k $0.08, 4k $0.10). No extend rate: supportsVideoContinue is false.",
+      "lastVerifiedAt": "2026-10-30",
+      "pricingLastReviewedAt": "2026-10-30"
     },
     {
       "id": "grok-imagine-video-edit",
