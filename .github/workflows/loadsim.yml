@@ -48,12 +48,13 @@ jobs:
 
       - name: Start API (fakes)
         run: |
+          # .NET config env vars: __ separates sections and binding ignores case.
+          # PAGETOMOVIE_USE_FAKES is a direct process read (case-sensitive on Linux).
           export PAGETOMOVIE_USE_FAKES=true
-          export PageToMovie_USE_FAKES=true
-          export PageToMovie__UseFakes=true
-          export PageToMovie__Capacity__MaxVideoInFlight=8
-          export PageToMovie__Capacity__MaxVideoInFlightPerUser=2
-          export PageToMovie__Fakes__VideoDelayMs=50
+          export PAGETOMOVIE__USEFAKES=true
+          export PAGETOMOVIE__CAPACITY__MAXVIDEOINFLIGHT=8
+          export PAGETOMOVIE__CAPACITY__MAXVIDEOINFLIGHTPERUSER=2
+          export PAGETOMOVIE__FAKES__VIDEODELAYMS=50
           export ASPNETCORE_ENVIRONMENT=Development
           export ASPNETCORE_URLS=http://127.0.0.1:5088
           # UseUrls ignores ASPNETCORE_URLS; bind only 5088 (no privileged port 80).

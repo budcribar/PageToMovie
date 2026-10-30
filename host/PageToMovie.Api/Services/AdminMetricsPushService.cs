@@ -40,8 +40,7 @@ public sealed class AdminMetricsPushService : BackgroundService
         _env = env;
         _processHistory = processHistory;
         _useFakes = opts.Value.UseFakes
-            || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "1", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "true", StringComparison.OrdinalIgnoreCase)
+            || SupportedModelCatalog.FakeCatalogEnabled()
             || config.GetValue("PageToMovie:UseFakes", false);
     }
 

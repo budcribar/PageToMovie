@@ -717,15 +717,23 @@ public static class SupportedModelCatalog
     /// <summary>
     /// True when the standalone fake test-vendor catalog should be loaded instead of the real one —
     /// i.e. the host is running with <c>PageToMovie:UseFakes</c> on. Read from environment (Core has
-    /// no config access); the Api sets <c>PageToMovie__UseFakes</c>/<c>PAGETOMOVIE_USE_FAKES</c> when
-    /// fakes are on. Always false in the WASM browser (no env) — the browser loads the real embedded
-    /// catalog, then hydrates from the Api's /api/models/catalog-json, which serves the fake catalog
-    /// file on a fakes host.
+    /// no config access). Linux <c>Environment.GetEnvironmentVariable</c> is case-sensitive, so both the
+    /// historical mixed-case names and the ALL_CAPS forms are accepted: <c>PageToMovie__UseFakes</c> /
+    /// <c>PAGETOMOVIE__USEFAKES</c> (the .NET config key) and <c>PageToMovie_USE_FAKES</c> /
+    /// <c>PAGETOMOVIE_USE_FAKES</c> (the direct flag). Always false in the WASM browser (no env) — the
+    /// browser loads the real embedded catalog, then hydrates from the Api's /api/models/catalog-json,
+    /// which serves the fake catalog file on a fakes host.
     /// </summary>
     public static bool FakeCatalogEnabled()
     {
         if (OperatingSystem.IsBrowser()) return false;
-        foreach (var name in new[] { "PageToMovie__UseFakes", "PageToMovie_USE_FAKES", "PAGETOMOVIE_USE_FAKES" })
+        foreach (var name in new[]
+        {
+            "PageToMovie__UseFakes",
+            "PAGETOMOVIE__USEFAKES",
+            "PageToMovie_USE_FAKES",
+            "PAGETOMOVIE_USE_FAKES",
+        })
         {
             var v = Environment.GetEnvironmentVariable(name);
             if (!string.IsNullOrWhiteSpace(v) &&
