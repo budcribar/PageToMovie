@@ -1989,6 +1989,50 @@
       "pricingLastReviewedAt": "2026-10-04"
     },
     {
+      "id": "gpt-image-2.6-sunburst",
+      "displayName": "GPT-Image-2.6 Sunburst",
+      "capability": "Image",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "images/generations",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.02469,
+      "notes": "OPT-IN. Disabled until an OpenAI image client exists. MultiProviderImageClient routes Image only to Grok (Xai), Gemini (Google), and Fal; any other provider, including OpenAI, falls through to Grok, so enabling this row would send jobs to the wrong API. Default snapshot gpt-image-2.6-sunburst equals the catalog id; no dated snapshot is listed. Newer successor of gpt-image-2.5-sunburst (released 2026-11-04). Text and image input, image output. Positioned for detailed visual work and editing. Endpoints supported: v1/images/generations and v1/images/edits only; the model page lists Responses API and Batch as not supported. Request field complexity low/medium/high (default high, no separate fee). Quality low/medium/high/xhigh/max (prompting guide also lists auto). Markup-guided edits on /v1/images/edits (markup annotation layer applies to the first image; not combinable with mask or prompt_rewriter). SVG output via output_format \"svg\" on generations (n=1; no streaming/partials; edits do not output SVG; billed as the image model's reference image plus the authoring model's tokens). Animated GIF output via output_format \"gif\" on generations (frame_count 2-64 default 9, frame_duration_ms 20-2000 default 200, size auto or WxH multiples of 16; not on edits). Multi-image references supported (no published hard cap, so maxReferenceImages is omitted).",
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "pricingNotes": "OpenAI list 2026-11-05 (developers.openai.com/api/docs/models/gpt-image-2.6-sunburst and developers.openai.com/api/docs/guides/image-generation#calculating-costs): token rates, not a flat per-image price. Image output $30/1M tokens. Image input $8/1M, cached image input $2/1M. Text input $5/1M, cached text input $1.25/1M. Responses API and Batch are not supported, so there is no batch image-output rate and cached input is not an Images API path. imageCostPerImage=0.02469 is the official guide calculator's 1024x1024 quality=low image-output-only equivalent for GPT Image 2.6 (Sunburst and Flare): 823 output tokens x $30/1M = $0.02469. Higher quality uses more tokens. Excludes text and image input tokens and streaming partial images.",
+      "lastVerifiedAt": "2026-11-05",
+      "pricingLastReviewedAt": "2026-11-05"
+    },
+    {
+      "id": "gpt-image-2.6-flare",
+      "displayName": "GPT-Image-2.6 Flare",
+      "capability": "Image",
+      "provider": "OpenAI",
+      "apiBase": "https://api.openai.com/v1",
+      "endpointPath": "images/generations",
+      "requiredEnvKeys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "supportsVideoReview": false,
+      "imageCostPerImage": 0.02469,
+      "notes": "OPT-IN. Disabled until an OpenAI image client exists. MultiProviderImageClient routes Image only to Grok (Xai), Gemini (Google), and Fal; any other provider, including OpenAI, falls through to Grok, so enabling this row would send jobs to the wrong API. Default snapshot gpt-image-2.6-flare equals the catalog id; no dated snapshot is listed. Newer successor of gpt-image-2.5-flare (released 2026-11-04). Text and image input, image output. Positioned for fast iteration. Endpoints supported: v1/images/generations and v1/images/edits only; the model page lists Responses API and Batch as not supported. Request field complexity low/medium/high (default high, no separate fee). Quality low/medium/high/xhigh/max (prompting guide also lists auto). Markup-guided edits on /v1/images/edits (markup annotation layer applies to the first image; not combinable with mask or prompt_rewriter). SVG output via output_format \"svg\" on generations (n=1; no streaming/partials; edits do not output SVG; billed as the image model's reference image plus the authoring model's tokens). Animated GIF output via output_format \"gif\" on generations (frame_count 2-64 default 9, frame_duration_ms 20-2000 default 200, size auto or WxH multiples of 16; not on edits). Multi-image references supported (no published hard cap, so maxReferenceImages is omitted).",
+      "providerId": "openai",
+      "providerLabel": "OpenAI",
+      "pricingNotes": "OpenAI list 2026-11-05 (developers.openai.com/api/docs/models/gpt-image-2.6-flare and developers.openai.com/api/docs/guides/image-generation#calculating-costs): token rates, not a flat per-image price. Same rates as gpt-image-2.6-sunburst. Image output $30/1M tokens. Image input $8/1M, cached image input $2/1M. Text input $5/1M, cached text input $1.25/1M. Responses API and Batch are not supported, so there is no batch image-output rate and cached input is not an Images API path. imageCostPerImage=0.02469 is the official guide calculator's 1024x1024 quality=low image-output-only equivalent for GPT Image 2.6 (Sunburst and Flare): 823 output tokens x $30/1M = $0.02469. Higher quality uses more tokens. The guide also says equal token rates do not mean equal cost per image, because token consumption can differ by model and quality. Excludes text and image input tokens and streaming partial images.",
+      "lastVerifiedAt": "2026-11-05",
+      "pricingLastReviewedAt": "2026-11-05"
+    },
+    {
       "id": "grok-4.7",
       "displayName": "Grok 4.7",
       "capability": "Chat",
@@ -2331,7 +2375,7 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired via GeminiChatClient. Supports native multimodal MP4 video review. Disabled 2026-08-15 (video-review default is now gemini-3.7-flash). Id kept so existing projects still resolve until on-open migrate rewrites the slot. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\"). Re-checked 2026-10-14 at ai.google.dev/gemini-api/docs/models/gemini-2.5-flash: Google says this model is not deprecated and will keep being served for past users. This catalog row stays disabled.",
+      "notes": "Wired via GeminiChatClient. Supports native multimodal MP4 video review. Disabled 2026-08-15 (video-review default is now gemini-3.7-flash). Id kept so existing projects still resolve until on-open migrate rewrites the slot. Was gemini-2.5-pro, which Google retired for new API keys (404 \"no longer available to new users\"). Re-checked 2026-10-14 at ai.google.dev/gemini-api/docs/models/gemini-2.5-flash: Google says this model is not deprecated and will keep being served for past users. This catalog row stays disabled. Update 2026-11-05 (ai.google.dev/gemini-api/docs/changelog, 2026-11-02): gemini-2.5-flash is deprecated, no longer selectable in AI Studio, and effective 2026-12-01 all API requests auto-route to gemini-3.5-flash-lite billed at Gemini 3.5 Flash-Lite rates.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
@@ -2733,7 +2777,7 @@
       "supportsVideoContinue": false,
       "supportsReferenceImages": false,
       "supportsVideoReview": true,
-      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Disabled 2026-08-15 with the Chat sibling; id kept for existing projects. Was gemini-2.5-pro, retired by Google for new API keys — see the Chat entry's note. Re-checked 2026-10-14 at ai.google.dev/gemini-api/docs/models/gemini-2.5-flash: Google says this model is not deprecated and will keep being served for past users. This catalog row stays disabled.",
+      "notes": "Wired for clip/frame review (CompleteWithImagesAsync) via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Disabled 2026-08-15 with the Chat sibling; id kept for existing projects. Was gemini-2.5-pro, retired by Google for new API keys — see the Chat entry's note. Re-checked 2026-10-14 at ai.google.dev/gemini-api/docs/models/gemini-2.5-flash: Google says this model is not deprecated and will keep being served for past users. This catalog row stays disabled. Update 2026-11-05 (ai.google.dev/gemini-api/docs/changelog, 2026-11-02): gemini-2.5-flash is deprecated, no longer selectable in AI Studio, and effective 2026-12-01 all API requests auto-route to gemini-3.5-flash-lite billed at Gemini 3.5 Flash-Lite rates.",
       "providerId": "gemini",
       "providerLabel": "Google",
       "maxOutputTokens": 65536,
