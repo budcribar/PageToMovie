@@ -1119,6 +1119,93 @@
       "pricingLastReviewedAt": "2026-09-26"
     },
     {
+      "id": "MiniMax-H3-Highspeed",
+      "displayName": "MiniMax H3 Highspeed",
+      "capability": "Video",
+      "provider": "MiniMax",
+      "apiBase": "https://api.minimax.io",
+      "endpointPath": "v2/video_generation",
+      "requiredEnvKeys": [
+        "MINIMAX_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 9,
+      "supportsReferenceAudios": true,
+      "maxReferenceAudios": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 4,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 3,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.04,
+        "768p": 0.06
+      },
+      "supportedAspectRatios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "adaptive",
+      "notes": "Direct MiniMax pay-as-you-go video at platform.minimax.io (not the Fal-hosted MiniMax voice models). Official id MiniMax-H3-Highspeed. Text-to-video, image-to-video (first and/or last frame), and reference generation (image, video, and audio). Reference mode accepts up to 3 audio clips for voice lock via role=reference_audio (2-15s each, 15s total) that preserve speaker identity, up to 9 reference images (character/look lock), and up to 3 reference videos (guide motion/style only; 2-15s each, 15s total). There is no true extend: this model cannot continue an existing clip from its last frame, so longer scenes must be stitched from separate clips. Duration is 4-15 seconds, integers only. Output is 480P or 768P (2K is not supported). Adaptive aspect ratio is supported, unlike MiniMax-H3-Lite. Text-to-video requires an explicit ratio and cannot use adaptive. Disabled because no IVideoClient is registered for providerId minimax, so selecting this model would fail at generation time. Awaits the MiniMax provider integration and MINIMAX_API_KEY. Do not enable until that client exists: ModelProviderFamily has no MiniMax member, so the deserialized Provider family falls back to Xai and key checks would treat this row as xAI.",
+      "providerId": "minimax",
+      "providerLabel": "MiniMax",
+      "maxPromptLength": 7000,
+      "videoReferenceImageCost": 0.03,
+      "pricingNotes": "platform.minimax.io/docs/pricing/overview Video Generation output (reviewed 2026-11-06): MiniMax-H3-Highspeed 480P $0.04/s, 768P $0.06/s (no 2K). Input materials on the same page: audio free; images first 5 free then $0.03 per additional image (videoReferenceImageCost is that marginal rate, not a charge on every image); input video billed by input duration at the same $/s as the output resolution (480P $0.04/s, 768P $0.06/s). Specs from platform.minimax.io/docs/api-reference/video-generation-v2-create. No extend rate: supportsVideoContinue is false.",
+      "lastVerifiedAt": "2026-11-06",
+      "pricingLastReviewedAt": "2026-11-06"
+    },
+    {
+      "id": "MiniMax-H3-Lite",
+      "displayName": "MiniMax H3 Lite",
+      "capability": "Video",
+      "provider": "MiniMax",
+      "apiBase": "https://api.minimax.io",
+      "endpointPath": "v2/video_generation",
+      "requiredEnvKeys": [
+        "MINIMAX_API_KEY"
+      ],
+      "enabled": false,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": true,
+      "maxReferenceImages": 9,
+      "supportsReferenceAudios": true,
+      "maxReferenceAudios": 3,
+      "supportsVideoReview": false,
+      "minClipDurationSeconds": 4,
+      "maxClipDurationSeconds": 15,
+      "absMaxClipDurationSeconds": 15,
+      "maxSpeakersPerClip": 3,
+      "videoCostPerSecondByResolution": {
+        "480p": 0.025,
+        "768p": 0.04
+      },
+      "supportedAspectRatios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "defaultAspectRatio": "16:9",
+      "notes": "Direct MiniMax pay-as-you-go video at platform.minimax.io (not the Fal-hosted MiniMax voice models). Official id MiniMax-H3-Lite. Text-to-video, image-to-video (first and/or last frame), and reference generation (image, video, and audio). Reference mode accepts up to 3 audio clips for voice lock via role=reference_audio (2-15s each, 15s total) that preserve speaker identity, up to 9 reference images (character/look lock), and up to 3 reference videos (guide motion/style only; 2-15s each, 15s total). There is no true extend: this model cannot continue an existing clip from its last frame, so longer scenes must be stitched from separate clips. Duration is 4-15 seconds, integers only. Output is 480P or 768P (2K is not supported). MiniMax-H3-Lite does not support adaptive aspect ratio yet; specify a concrete ratio. supportedAspectRatios match the sibling list without adaptive, and defaultAspectRatio is 16:9. Disabled because no IVideoClient is registered for providerId minimax, so selecting this model would fail at generation time. Awaits the MiniMax provider integration and MINIMAX_API_KEY. Do not enable until that client exists: ModelProviderFamily has no MiniMax member, so the deserialized Provider family falls back to Xai and key checks would treat this row as xAI.",
+      "providerId": "minimax",
+      "providerLabel": "MiniMax",
+      "maxPromptLength": 7000,
+      "videoReferenceImageCost": 0.02,
+      "pricingNotes": "platform.minimax.io/docs/pricing/overview Video Generation output (reviewed 2026-11-06): MiniMax-H3-Lite 480P $0.025/s, 768P $0.04/s (no 2K). Input materials on the same page: audio free; images first 5 free then $0.02 per additional image (videoReferenceImageCost is that marginal rate, not a charge on every image); input video billed by input duration at the same $/s as the output resolution (480P $0.025/s, 768P $0.04/s). Specs from platform.minimax.io/docs/api-reference/video-generation-v2-create. No extend rate: supportsVideoContinue is false.",
+      "lastVerifiedAt": "2026-11-06",
+      "pricingLastReviewedAt": "2026-11-06"
+    },
+    {
       "id": "pika/pika-h3-flex",
       "displayName": "Pika H3 Flex",
       "capability": "Video",
