@@ -724,6 +724,8 @@ public class SupportedModelCatalogTests
         {
             "grok-imagine-video-1.5",
             "MiniMax-H3",
+            "MiniMax-H3-Highspeed",
+            "MiniMax-H3-Lite",
             "MiniMax-H3-Max",
         };
         foreach (var e in SupportedModelCatalog.ForCapability(ModelCapability.Video, enabledOnly: false))
@@ -737,8 +739,10 @@ public class SupportedModelCatalogTests
     }
 
     [Theory]
-    [InlineData("MiniMax-H3-Max", 5, 0.05, 0.08, 0.074, "480p", "768p")]
-    [InlineData("MiniMax-H3", 4, 0.08, 0.13, 0.04, "768p", "2k")]
+    [InlineData("MiniMax-H3-Max", 5, 0.05, 0.08, 0.074, "480p", "768p", "adaptive")]
+    [InlineData("MiniMax-H3", 4, 0.08, 0.13, 0.04, "768p", "2k", "adaptive")]
+    [InlineData("MiniMax-H3-Highspeed", 4, 0.04, 0.06, 0.03, "480p", "768p", "adaptive")]
+    [InlineData("MiniMax-H3-Lite", 4, 0.025, 0.04, 0.02, "480p", "768p", "16:9")]
     public void MiniMax_video_rows_are_disabled_opt_ins(
         string id,
         int minSeconds,
@@ -746,7 +750,8 @@ public class SupportedModelCatalogTests
         double secondRate,
         double extraImageRate,
         string firstResolution,
-        string secondResolution)
+        string secondResolution,
+        string defaultAspectRatio)
     {
         var m = SupportedModelCatalog.Find(id, ModelCapability.Video);
         Assert.NotNull(m);
@@ -769,8 +774,10 @@ public class SupportedModelCatalogTests
         Assert.Equal(firstRate, m.VideoCostPerSecondByResolution![firstResolution]);
         Assert.Equal(secondRate, m.VideoCostPerSecondByResolution[secondResolution]);
         Assert.Equal(2, m.VideoCostPerSecondByResolution.Count);
-        Assert.Contains("adaptive", m.SupportedAspectRatios!);
-        Assert.Equal("adaptive", m.DefaultAspectRatio);
+        Assert.Contains(defaultAspectRatio, m.SupportedAspectRatios!);
+        Assert.Equal(defaultAspectRatio, m.DefaultAspectRatio);
+        if (defaultAspectRatio != "adaptive")
+            Assert.DoesNotContain("adaptive", m.SupportedAspectRatios!);
         Assert.False(string.IsNullOrWhiteSpace(m.Notes));
         Assert.Contains("MINIMAX_API_KEY", m.Notes, StringComparison.Ordinal);
 
