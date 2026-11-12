@@ -5,7 +5,7 @@ namespace PageToMovie.Api.Services;
 /// <summary>Rolling process memory samples for admin charts.</summary>
 public sealed class ProcessHistoryStore
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<ProcessSampleDto> _samples = new();
     private const int MaxSamples = 180; // ~6 min at 2s
 
