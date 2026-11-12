@@ -31,7 +31,7 @@ public sealed class DemoCatalogService
 
     private readonly ProjectStore _projects;
     private readonly ILogger<DemoCatalogService> _log;
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public DemoCatalogService(ProjectStore projects, ILogger<DemoCatalogService> log)
