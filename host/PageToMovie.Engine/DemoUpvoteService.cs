@@ -14,7 +14,7 @@ public sealed class DemoUpvoteService
 {
     private readonly string _dbPath;
     private readonly ILogger<DemoUpvoteService> _log;
-    private readonly object _initLock = new();
+    private readonly Lock _initLock = new();
     private bool _ready;
 
     public DemoUpvoteService(

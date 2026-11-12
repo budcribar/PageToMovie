@@ -94,7 +94,7 @@ public class UserDatabaseService
     private readonly ILogger<UserDatabaseService> _logger;
     private readonly BillingOptions _billing;
     private readonly string? _workspaceRoot;
-    private readonly object _initLock = new();
+    private readonly Lock _initLock = new();
     private bool _initialized;
 
     public UserDatabaseService(

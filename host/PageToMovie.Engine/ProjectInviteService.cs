@@ -18,7 +18,7 @@ public sealed class ProjectInviteService
 
     private readonly string _dbPath;
     private readonly ILogger<ProjectInviteService> _log;
-    private readonly object _initLock = new();
+    private readonly Lock _initLock = new();
     private bool _initialized;
 
     public ProjectInviteService(IOptions<PageToMovieOptions> options, ILogger<ProjectInviteService>? logger = null)

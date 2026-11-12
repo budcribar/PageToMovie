@@ -196,7 +196,7 @@ public sealed class AutoProjectMerger : IAutoProjectMerger
     {
         try
         {
-            string? R(string p) => File.Exists(p) ? File.ReadAllText(p) : null;
+            static string? R(string p) => File.Exists(p) ? File.ReadAllText(p) : null;
             var result = AutoTextMerger.Merge(R(basePath), R(oursPath) ?? "", R(theirsPath) ?? "", strategy);
             var dir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);

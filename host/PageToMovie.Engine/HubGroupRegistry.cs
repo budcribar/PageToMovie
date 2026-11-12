@@ -26,7 +26,7 @@ public sealed class HubGroupRegistry
 
     private readonly ConcurrentDictionary<string, int> _byUser = new(StringComparer.Ordinal);
     private readonly Queue<HubDeliveryEvent> _events = new();
-    private readonly object _eventGate = new();
+    private readonly Lock _eventGate = new();
 
     public void Add(string userId) =>
         _byUser.AddOrUpdate(userId, 1, (_, n) => n + 1);
