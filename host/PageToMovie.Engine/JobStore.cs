@@ -8,7 +8,7 @@ namespace PageToMovie.Engine;
 public sealed class JobStore : IJobStore
 {
     private readonly ConcurrentDictionary<string, JobRecord> _jobs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
+    private readonly System.Threading.Lock _gate = new();
 
     public JobRecord Create(JobRecord seed)
     {

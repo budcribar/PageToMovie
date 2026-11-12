@@ -507,7 +507,7 @@ public static class SupportedModelCatalog
     public const string ElevenLabsApiBase = "https://api.elevenlabs.io/v1";
 
     private static List<SupportedModelEntry>? _loadedEntries;
-    private static readonly object CatalogSync = new();
+    private static readonly System.Threading.Lock CatalogSync = new();
     private static List<CatalogProviderDefinition>? _loadedProviders;
 
     private static IReadOnlyList<ModelCapabilityDefinition>? _loadedCapabilities;

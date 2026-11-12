@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Services;
 /// </remarks>
 public sealed class PlayMediaIndex
 {
-    private readonly object _gate = new();
+    private readonly System.Threading.Lock _gate = new();
     private readonly Dictionary<(string Project, int Scene), SceneEntry> _scenes = new();
     private readonly Dictionary<(string Project, int Scene, int Clip), ClipUrlEntry> _clipUrls = new();
     private readonly Dictionary<(string Project, int Scene), SegmentEntry> _segments = new();

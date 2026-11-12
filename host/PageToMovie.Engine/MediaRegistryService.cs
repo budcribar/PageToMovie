@@ -17,7 +17,7 @@ public sealed class MediaRegistryService
 {
     private readonly string _dbPath;
     private readonly ILogger<MediaRegistryService> _log;
-    private readonly object _initLock = new();
+    private readonly System.Threading.Lock _initLock = new();
     private bool _initialized;
 
     public MediaRegistryService(

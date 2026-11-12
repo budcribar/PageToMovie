@@ -9,7 +9,7 @@ public sealed class InMemoryLockService : ILockService
 {
     private readonly ConcurrentDictionary<string, LockRecord> _locks =
         new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
+    private readonly System.Threading.Lock _gate = new();
 
     public bool TryAcquire(
         string resource,

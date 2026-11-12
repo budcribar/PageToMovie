@@ -17,7 +17,7 @@ public sealed class ClientVideoStitchService
     private readonly IJSRuntime _js;
     private readonly EngineApiClient _engine;
     private readonly ClientMediaFolderService? _media;
-    private readonly object _skipLock = new();
+    private readonly System.Threading.Lock _skipLock = new();
 
     /// <summary>Stable scene / clip-URL / segment index reused across Play clicks.</summary>
     internal PlayMediaIndex MediaIndex { get; } = new();

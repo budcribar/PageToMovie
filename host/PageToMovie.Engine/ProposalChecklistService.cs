@@ -41,7 +41,7 @@ public sealed class ProposalChecklistService
 
     private readonly ProjectStore _projects;
     private readonly ILogger<ProposalChecklistService> _log;
-    private readonly object _gate = new();
+    private readonly System.Threading.Lock _gate = new();
 
     public ProposalChecklistService(ProjectStore projects, ILogger<ProposalChecklistService> log)
     {

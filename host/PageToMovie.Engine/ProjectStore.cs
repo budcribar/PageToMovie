@@ -4054,7 +4054,7 @@ public sealed partial class ProjectStore
     /// IOException that the catch-all silently swallows. Patches are small and rare, so one gate
     /// for all seed files is cheap.
     /// </summary>
-    private static readonly object CharacterSeedFileGate = new();
+    private static readonly System.Threading.Lock CharacterSeedFileGate = new();
 
     private static void PatchCharacterSeedFile(string path, CharacterSeedTextPatch patch, bool createCastShape)
     {

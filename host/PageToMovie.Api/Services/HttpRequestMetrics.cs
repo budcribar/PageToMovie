@@ -11,7 +11,7 @@ public sealed class HttpRequestMetrics
 
     private long _total;
     private readonly Bucket[] _ring = new Bucket[WindowSeconds];
-    private readonly object _roll = new();
+    private readonly System.Threading.Lock _roll = new();
 
     public HttpRequestMetrics()
     {

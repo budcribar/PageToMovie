@@ -13,7 +13,7 @@ public sealed class ServerMetricsService : IServerMetricsService
     private readonly ConcurrentDictionary<string, int> _apiInFlightByUser =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly object _timingGate = new();
+    private readonly System.Threading.Lock _timingGate = new();
     private readonly List<TimingSample> _samples = new();
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
     private const int MaxSamples = 500;
