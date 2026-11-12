@@ -6,7 +6,7 @@ namespace PageToMovie.Api.Services;
 /// <summary>In-memory live LoadSim telemetry for the admin dashboard.</summary>
 public sealed class LoadSimLiveStore
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<LoadSimProgressDto> _history = new();
     private LoadSimProgressDto? _latest;
     private const int MaxHistory = 120; // ~4 min at 2s interval
