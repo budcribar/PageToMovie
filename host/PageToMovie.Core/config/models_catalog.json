@@ -2647,6 +2647,31 @@
       "pricingLastReviewedAt": "2026-11-12"
     },
     {
+      "id": "gemini-4-hydrogen",
+      "displayName": "Gemini 4 Hydrogen",
+      "capability": "Chat",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-4-hydrogen:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 1.5,
+      "outputCostPerMillionTokens": 7.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "GA 2026-11-12. Everyday Gemini 4 model for coding and agentic work; gemini-4-carbon and gemini-4-argon rows stay. Wired via GeminiChatClient (endpoint models/gemini-4-hydrogen:generateContent). Flat $1.50 input / $7.50 output per 1M tokens (output includes thinking tokens). Free tier available. No intro-price change, unlike gemini-4-carbon and gemini-4-argon. Unified context 1,048,576. Synchronous max output 65,536; long decode up to 1,048,576 (maxOutputTokens stores the synchronous default). Thinking supported: low, medium, high (default high), and xhigh. Inputs text/image/video/audio/PDF, output text only. No audio generation, no image generation, no Live API. Implicit caching only; explicit context caching is not supported. GeminiChatClient sends thinkingConfig.thinkingLevel of low, medium, or high only when a reasoning effort is set (never thinking_budget, MINIMAL, or xhigh — efforts above high map to high) and always sends temperature, which Hydrogen ignores rather than rejecting. No explicit context cache is requested. Sources: https://aistudio.google.com/docs/models/gemini-4-hydrogen , https://aistudio.google.com/docs/pricing , https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen , https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/ .",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "Reviewed 2026-11-13. https://aistudio.google.com/docs/pricing , https://aistudio.google.com/docs/models/gemini-4-hydrogen : paid tier $1.50 input / $7.50 output per 1M tokens (output includes thinking tokens). Free tier is free of charge for input, output, and context caching. No intro-price change (unlike gemini-4-carbon and gemini-4-argon). Cached input $0.075 per 1M (implicit caching only; explicit context caching is not supported). Context 1,048,576. Synchronous max output 65,536; long decode up to 1,048,576 is noted only and is not stored in maxOutputTokens.",
+      "lastVerifiedAt": "2026-11-13",
+      "pricingLastReviewedAt": "2026-11-13"
+    },
+    {
       "id": "grok-4.7",
       "displayName": "Grok 4.7 (vision)",
       "capability": "Vision",
@@ -3047,6 +3072,31 @@
       "pricingNotes": "Same token rates as chat sibling (reviewed 2026-11-12). https://ai.google.dev/gemini-api/docs/pricing , https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-4-carbon-now-available/ , https://ai.google.dev/gemini-api/docs/models/gemini-4-carbon : intro $2 in / $10 out per 1M through 2026-11-30 (output includes thinking), then $4 / $20 from 2026-12-01. Cached input $0.10 then $0.20 (implicit caching only). Not on the free tier. Context 1,048,576. Synchronous max output 65,536.",
       "lastVerifiedAt": "2026-11-12",
       "pricingLastReviewedAt": "2026-11-12"
+    },
+    {
+      "id": "gemini-4-hydrogen",
+      "displayName": "Gemini 4 Hydrogen (vision)",
+      "capability": "Vision",
+      "provider": "Google",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "endpointPath": "models/gemini-4-hydrogen:generateContent",
+      "requiredEnvKeys": [
+        "GEMINI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "inputCostPerMillionTokens": 1.5,
+      "outputCostPerMillionTokens": 7.5,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": true,
+      "notes": "GA 2026-11-12. Same id as chat sibling (Chat↔Vision overlap). Wired for clip/frame review via MultiProviderVisionClient (OCR/cast-classify stay Grok-only). Endpoint models/gemini-4-hydrogen:generateContent. Inputs text/image/video/audio/PDF, output text only. Thinking supported: low, medium, high (default high), and xhigh. Synchronous max output 65,536; long decode up to 1,048,576. Implicit caching only (explicit context caching is not supported). No audio generation, no image generation, no Live API. Free tier available; flat $1.50 input / $7.50 output per 1M tokens (output includes thinking) with no intro-price change. CompleteWithImagesAsync sends temperature only (Hydrogen ignores it) and does not send thinking_budget, thinkingLevel MINIMAL or xhigh, or an explicit context cache. Sources: https://aistudio.google.com/docs/models/gemini-4-hydrogen , https://aistudio.google.com/docs/pricing , https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen , https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/ .",
+      "providerId": "gemini",
+      "providerLabel": "Google",
+      "pricingNotes": "Same token rates as chat sibling (reviewed 2026-11-13). https://aistudio.google.com/docs/pricing , https://aistudio.google.com/docs/models/gemini-4-hydrogen : $1.50 input / $7.50 output per 1M tokens (output includes thinking). Free tier available. No intro-price change. Cached input $0.075 per 1M (implicit caching only). Context 1,048,576. Synchronous max output 65,536.",
+      "lastVerifiedAt": "2026-11-13",
+      "pricingLastReviewedAt": "2026-11-13"
     },
     {
       "id": "fal-ai/musicgen",
